@@ -291,14 +291,6 @@ Blocks resolve before inlines.
         )
         return validate_specification("TestProject", target_dir)
 
-    def test_name_carried_from_a_sibling_check_warns(self, tmp_target_root):
-        target_dir = _init(tmp_target_root)
-        result = self._validate(target_dir, "assert result.returncode == 0")
-        assert "Acceptance snippets" not in [f.section for f in result.failures()]
-        messages = [f.message for f in result.warnings()]
-        assert any("FEATURE-BLOCKS.md [block-priority]" in m for m in messages), messages
-        assert any("never defined" in m for m in messages), messages
-
     def test_unparseable_snippet_fails_rather_than_warning(self, tmp_target_root):
         """Whether a snippet compiles is a fact about the file, so it gates like a parse error.
 
@@ -321,41 +313,6 @@ Blocks resolve before inlines.
         )
         result = self._validate(target_dir, code)
         assert "Acceptance snippets" not in [f.section for f in result.failures()]
-
-    def test_swallowed_runner_output_warns_without_failing(self, tmp_target_root):
-        target_dir = _init(tmp_target_root)
-        code = (
-            "import subprocess\n"
-            "result = subprocess.run(['suite'], capture_output=True, text=True)\n"
-            "assert result.returncode == 0"
-        )
-        result = self._validate(target_dir, code)
-        assert "Acceptance snippets" not in [f.section for f in result.failures()]
-        warnings = [
-            f.message
-            for f in result.findings
-            if f.section == "Acceptance snippets" and f.severity == Severity.WARN
-        ]
-        assert any("never prints it" in m for m in warnings), warnings
-
-    def test_argument_list_with_shell_true_warns(self, tmp_target_root):
-        # The defect that cost a commonmark build its whole repair budget: with shell=True,
-        # POSIX runs only element 0 — a bare env assignment — and the harness never executes.
-        target_dir = _init(tmp_target_root)
-        code = (
-            "import subprocess\n"
-            "result = subprocess.run(\n"
-            "    ['PYTHONPATH=sources', 'python3', 'suite.py', '--number', '1'],\n"
-            "    shell=True, capture_output=True, text=True,\n"
-            ")\n"
-            "print(result.stdout)\n"
-            "assert '1 passed' in result.stdout"
-        )
-        result = self._validate(target_dir, code)
-        assert "Acceptance snippets" not in [f.section for f in result.failures()]
-        messages = [f.message for f in result.warnings()]
-        assert any("FEATURE-BLOCKS.md [block-priority]" in m for m in messages), messages
-        assert any("the intended command never runs" in m for m in messages), messages
 
     def test_corrected_invocation_passes_validation(self, tmp_target_root):
         target_dir = _init(tmp_target_root)

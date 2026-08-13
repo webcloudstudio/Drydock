@@ -35,9 +35,6 @@ from drydock.acceptance import (
     AcceptanceRequirement,
     AcceptanceRunResult,
     ProgrammaticAcceptance,
-    QuarantinedAcceptance,
-    deterministic_setup_defects,
-    flag_unsatisfiable,
     is_terminal_check_failure,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
@@ -117,21 +114,6 @@ BUILD_FAILURE_HINT = (
 UNGATED_FINDING_PREFIX = "UNVERIFIED: acceptance bypassed by --ungate"
 #: A story whose criteria could not be graded because they cannot pass by construction. It is
 #: deliberately not the ``--ungate`` prefix: that marker records an operator decision to release
-#: a real red, while this one records a Blueprint defect that no build decision can clear. The
-#: only repair is to fix the assertion, so ``--ungate`` does not recognise it.
-QUARANTINED_FINDING_PREFIX = "ADVISORY: acceptance criterion may be mis-authored"
-
-
-def _quarantined_finding(entries: tuple[QuarantinedAcceptance, ...]) -> str:
-    """Name the doubtful criteria and the action that clears the doubt. Never a failure."""
-    return (
-        f"{QUARANTINED_FINDING_PREFIX}: "
-        + ", ".join(entry.check_id for entry in entries)
-        + " — static analysis doubts these assertions; they were graded normally. Review the "
-        "authoring in the Blueprint specification."
-    )
-
-
 PROMPT_NAME = "build"
 RunnerFn = Callable[..., object]
 TextCallback = Callable[[str], None]
@@ -278,10 +260,6 @@ class BuildStepResult:
     stop_reason: str = ""
     calls_used: int = 0
     calls_budget: int = 0
-    # Criteria this story owns that were excluded from grading as unsatisfiable by
-    # construction. They are not failures and not passes: they proved nothing, and the
-    # report has to say so rather than let the story read as fully verified.
-    quarantined_acceptance: tuple[QuarantinedAcceptance, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -905,25 +883,6 @@ def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> tuple
         )
     lines.extend(f"  - {detail}" for detail in _stale_applied_specs(plan_path, blueprint_dir))
     return tuple(lines)
-
-
-def _quarantine_unsatisfiable_acceptance(
-    checks: tuple[ProgrammaticAcceptance, ...], *, sources_dir: Path | None
-) -> tuple[tuple[ProgrammaticAcceptance, ...], tuple[QuarantinedAcceptance, ...]]:
-    """Report Blueprint assertions a static analyzer doubts, and grade all of them anyway.
-
-    This used to exclude the flagged criteria and fail the owning story. That made a static
-    prediction load-bearing: the analyzers behind it are an unbounded blacklist grown one
-    observed failure at a time, each carries its own false-positive rate against legitimate
-    snippets, and a wrong call here failed a clean build over a criterion that would have
-    passed. Two of the analyzers had already been retracted for exactly that.
-
-    What replaces it is the runtime classifier. A criterion that genuinely dies in its own frame
-    settles as UNVERIFIED on the evidence of its own traceback, is reported apart from product
-    failures, and is never charged against the build. That is the same protection, decided after
-    the fact rather than predicted, so a false positive costs a warning instead of a build.
-    """
-    return checks, flag_unsatisfiable(checks, sources_dir=sources_dir)
 
 
 _RESULT_RE = re.compile(r"RESULT:\s*(SUCCESS|FAILURE|FAIL|ERROR)", re.IGNORECASE)
@@ -2338,36 +2297,7 @@ def build_target(
                 gathered_checks.append(check)
                 story_by_check[check.check_id] = block
                 story_by_source_check[(check.source, check.check_id)] = block
-        invalid_setup = deterministic_setup_defects(
-            gathered_checks, sources_dir=resolved_build_dir / "sources"
-        )
-        if invalid_setup:
-            listed = "\n".join(f"  - {entry.check_id}: {entry.reason}" for entry in invalid_setup)
-            raise SpecificationError(
-                "Build blocked: acceptance setup cannot reach the product under test.\n"
-                f"{listed}\n"
-                "  Fix and regenerate the Blueprint before running the build.\n"
-                "  No implementation or repair agent was called."
-            )
-        checks, quarantined = _quarantine_unsatisfiable_acceptance(
-            tuple(gathered_checks), sources_dir=resolved_build_dir / "sources"
-        )
-        quarantined_by_block: dict[str, tuple[QuarantinedAcceptance, ...]] = {}
-        if quarantined:
-            _emit(
-                on_text,
-                f"acceptance: {len(quarantined)} "
-                f"criteri{'on' if len(quarantined) == 1 else 'a'} flagged as doubtful by static "
-                f"analysis — graded anyway, review the authoring",
-            )
-            for entry in quarantined:
-                _emit(on_text, f"  - {entry.rendered}")
-                owner = story_by_source_check.get((entry.source, entry.check_id))
-                if owner is not None:
-                    quarantined_by_block[owner.block_id] = (
-                        *quarantined_by_block.get(owner.block_id, ()),
-                        entry,
-                    )
+        checks = tuple(gathered_checks)
         unauthorized = []
         authorized_missing = []
         requirement_evidence: list[str] = []
@@ -3276,7 +3206,6 @@ def build_target(
                 and owner.block_id == block.block_id
             )
             own_failed = tuple(check for check in own_checks if not check.passed)
-            own_quarantined = quarantined_by_block.get(block.block_id, ())
             if ac_attributable:
                 if own_failed:
                     block_state: str = "closed/failed"
@@ -3293,11 +3222,6 @@ def build_target(
             else:
                 block_state = state
                 block_finding = finding
-            if own_quarantined and block_state != "closed/failed":
-                # The criteria were graded, not removed, so the story's state is whatever the
-                # grading said. The doubt is recorded as a finding the author can act on; it is
-                # not grounds for failing a story whose assertions actually ran and passed.
-                block_finding = _quarantined_finding(own_quarantined)
             block_fields: dict[str, str | None] = {
                 "state": block_state,
                 "evidence": _rel(evidence_path, target_dir),
@@ -3439,10 +3363,6 @@ def build_target(
             owned_acceptance = tuple(
                 check for check in acceptance if check.check_id in owned_check_ids
             )
-            owned_quarantined = quarantined_by_block.get(block.block_id, ())
-            # A flagged criterion no longer changes the step's verdict. It was graded like any
-            # other, and its verdict — including UNVERIFIED, which costs the build nothing — is
-            # the authority. The flag is authoring advice carried alongside the result.
             step_status = status
             step_state = state
             step_error = error
@@ -3470,7 +3390,6 @@ def build_target(
                 stop_reason=step_stop_reason,
                 calls_used=len(attempt_records),
                 calls_budget=max_attempt + 1,
-                quarantined_acceptance=owned_quarantined,
             )
             steps.append(step_result)
             if on_step is not None:

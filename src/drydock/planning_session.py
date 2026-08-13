@@ -28,7 +28,6 @@ from typing import Protocol, cast
 from drydock import technology_stack
 from drydock.acceptance import (
     ProgrammaticAcceptance,
-    acceptance_authoring_defects,
     parse_programmatic_acceptance_text,
 )
 from drydock.acceptance_requirements import (
@@ -1788,39 +1787,6 @@ _TEST_SUITE_INVOCATION_RE = re.compile(
 # Mirrors ``acceptance._full_suite``: ``Suite:`` declares a deliberate suite-bound run, and
 # both ``full`` and ``scoped`` are accepted.
 _SUITE_MARKER_RE = re.compile(r"^Suite:\s*(?:full|scoped)\s*$", re.MULTILINE | re.IGNORECASE)
-_SCOPED_SUITE_RE = re.compile(r"^Suite:\s*scoped\s*$", re.MULTILINE | re.IGNORECASE)
-_ZERO_SKIPPED_RE = re.compile(r"(?:assert[^\n]*|\bexpect[^\n]*)[\"']0 skipped[\"']", re.IGNORECASE)
-
-
-def _invokes_unbounded_test_suite(checks: Sequence[ProgrammaticAcceptance]) -> bool:
-    """Report whether any criterion runs the whole test suite it never declared.
-
-    Story acceptance is bounded by default so an ordinary check cannot accidentally invoke the
-    whole test suite: it may stage the suite, or select a slice with ``--pattern`` / ``--number``.
-    The terminal verification story gates on the real suite by declaring ``Suite: full``, which
-    makes the full run deliberate and reviewable.
-
-    The criterion is the unit of judgement. Reading the section as text forced a line-window
-    heuristic to guess which declaration governed which call, and guessed wrong whenever a proof
-    body contained a fence or a heading. A parsed criterion carries its own body and its own
-    ``Suite:`` declaration, so the question is answered per criterion with nothing inferred.
-    """
-    for check in checks:
-        if "spec_tests.py" not in check.code:
-            continue
-        if "--pattern" in check.code or "--number" in check.code:
-            continue
-        if not _TEST_SUITE_INVOCATION_RE.search(check.code):
-            continue
-        if check.full_suite:
-            continue
-        return True
-    return False
-
-
-def _scoped_suite_claims_zero_skipped(acceptance: str) -> bool:
-    """Reject a whole-suite completion condition on an intentionally bounded suite run."""
-    return bool(_SCOPED_SUITE_RE.search(acceptance) and _ZERO_SKIPPED_RE.search(acceptance))
 
 
 # A programmatic story should carry at least this many assertions before it stops
@@ -2102,33 +2068,6 @@ def _integrity_check(
                 "`=== AC <id> ===` criteria, drive the imported test suite, or justify "
                 "`- None. <reason>` inline"
             )
-        for name in targets:
-            text = spec_text(name) if name else None
-            # Scope to the acceptance section. A spec may name the test suite in prose
-            # (a Test Strategy bullet) without any story check ever executing it.
-            acceptance = (
-                _extract_terminal_section(text, "Programmatic Acceptance") if text else None
-            )
-            checks = _acceptance_checks(text, source=str(name)) if text else ()
-            if acceptance and _invokes_unbounded_test_suite(checks):
-                fatal.append(
-                    f"{block.block_id}: Programmatic Acceptance runs the whole test suite "
-                    "without declaring Suite: full; a non-terminal story must bound its run "
-                    "with the runner's --pattern/--number selector, or gate the full run on "
-                    "the terminal Suite: full story and SEA_TRIALS.md final measurement"
-                )
-            # A criterion no implementation can execute is caught where it is authored. Left to
-            # the build it costs a whole repair budget before the loop concludes what is knowable
-            # here for nothing: the criterion, not the code, is what is wrong.
-            for check in checks:
-                for defect in acceptance_authoring_defects(check):
-                    fatal.append(f"{name} [{check.check_id}]: {defect}")
-            if acceptance and _scoped_suite_claims_zero_skipped(acceptance):
-                fatal.append(
-                    f"{block.block_id}: Programmatic Acceptance declares Suite: scoped but "
-                    "asserts zero skipped tests; skipped tests are expected outside the story's "
-                    "selected slice, so only the terminal Suite: full story may require 0 skipped"
-                )
 
     for name, owners in sorted(spec_owners.items()):
         if len(owners) > 1:
@@ -2221,12 +2160,6 @@ def _parse_plan_text(text: str) -> BuildPlan:
     return DrydockManifest.parse(text, source="MANIFEST.md")
 
 
-#: Marks a planning warning about an acceptance criterion a static analyzer believes cannot
-#: pass as authored. The console promotes these above ordinary graph advisories. Nothing is
-#: removed: the analyzers are authoring guidance, not a gate.
-ACCEPTANCE_REMOVED_MARKER = "unsatisfiable acceptance criterion"
-
-
 def _malformed_acceptance_defects(blocks: dict[str, str]) -> tuple[str, ...]:
     """Return every acceptance criterion in the emitted specs that is not Python, or not parseable.
 
@@ -2247,57 +2180,6 @@ def _malformed_acceptance_defects(blocks: dict[str, str]) -> tuple[str, ...]:
             defects.append(str(exc))
             continue
         defects.extend(flagged.rendered for flagged in malformed_criteria(checks))
-    return tuple(defects)
-
-
-def _strip_unsatisfiable_acceptance(
-    blocks: dict[str, str], *, sources_dir: Path | None = None
-) -> tuple[str, ...]:
-    """Report unsatisfiable acceptance criteria in the emitted specs, without editing them.
-
-    This used to delete the criterion. Deletion was enforcement built on a static prediction,
-    and the prediction has a false-positive rate: the analyzers behind it are an unbounded
-    blacklist grown one observed failure at a time, and two of them were retracted after they
-    began failing fixtures that had passed for weeks. Silently removing a legitimate criterion
-    costs more than carrying a doubtful one, because a criterion that really cannot pass now
-    settles as UNVERIFIED at run time and is never charged against the build.
-
-    ``sources_dir`` points at the staged assets the emitted criteria will run against, so a
-    criterion that invokes one can be checked against that asset's own declared preconditions.
-    """
-    from drydock.acceptance import flag_unsatisfiable_acceptance
-
-    findings: list[str] = []
-    for name in sorted(blocks):
-        if name in _RESERVED_BLOCKS:
-            continue
-        findings.extend(
-            f"{name} [{flagged.check_id}]: {ACCEPTANCE_REMOVED_MARKER} — {flagged.reason}"
-            for flagged in flag_unsatisfiable_acceptance(
-                blocks[name], source=name, sources_dir=sources_dir
-            )
-        )
-    return tuple(findings)
-
-
-def _deterministic_acceptance_setup_defects(
-    blocks: dict[str, str], *, sources_dir: Path
-) -> tuple[str, ...]:
-    """Return staged-harness contract violations that cannot reach the product under test."""
-    from drydock.acceptance import (
-        deterministic_setup_defects,
-        parse_programmatic_acceptance_text,
-    )
-
-    defects: list[str] = []
-    for name in sorted(blocks):
-        if name in _RESERVED_BLOCKS:
-            continue
-        checks = parse_programmatic_acceptance_text(blocks[name], source=name)
-        defects.extend(
-            f"{name} [{defect.check_id}]: {defect.reason}"
-            for defect in deterministic_setup_defects(checks, sources_dir=sources_dir)
-        )
     return tuple(defects)
 
 
@@ -2687,23 +2569,6 @@ def _validate_plan_output(
                 result,
             )
         )
-    invalid_setup = _deterministic_acceptance_setup_defects(
-        blocks, sources_dir=blueprint_dir / "sources"
-    )
-    if invalid_setup:
-        listed = "\n".join(f"  {defect}" for defect in invalid_setup)
-        raise SpecificationError(
-            _with_execution_evidence(
-                "Plan generation failed: acceptance setup cannot reach the product under test.\n"
-                f"{listed}\n"
-                "  Satisfy the staged asset's declared invocation contract.\n"
-                "  No Blueprint or Manifest artifacts were written.",
-                result,
-            )
-        )
-    dropped_acceptance = _strip_unsatisfiable_acceptance(
-        blocks, sources_dir=blueprint_dir / "sources"
-    )
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
     if forbidden_artifacts:
         names = ", ".join(forbidden_artifacts)
@@ -2759,8 +2624,7 @@ def _validate_plan_output(
     # Removals lead the warning list: they changed the artifact the author is about to read,
     # so they must not be buried under advisory graph notes.
     warnings = (
-        dropped_acceptance
-        + declaration_warnings
+        declaration_warnings
         + usage_recommendations
         + tuple(defect.rendered() for defect in advisory_plan_shape(emitted_files))
     ) + tuple(

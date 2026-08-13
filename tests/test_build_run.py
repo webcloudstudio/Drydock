@@ -2815,39 +2815,12 @@ def _quarantine_log(tmp_path, spec: str) -> tuple[list[str], object]:
     return log, runner
 
 
-def test_a_doubtful_criterion_is_named_and_graded(tmp_path):
-    """The flag is authoring advice. The criterion is still graded like any other."""
-    log, _ = _quarantine_log(tmp_path, _UNSATISFIABLE_SPEC)
-
-    text = "\n".join(log)
-    assert FLAG in text
-    assert "DATABASE.md [escapes]" in text
-
-
 def test_a_doubtful_criterion_does_not_refuse_the_build(tmp_path):
     # A doubtful criterion must not refuse the build before any story is attempted. It is graded
     # like any other; the flag is authoring advice, never a verdict.
     _, runner = _quarantine_log(tmp_path, _UNSATISFIABLE_SPEC)
 
     assert runner.calls
-
-
-def test_a_doubtful_criterion_carries_an_advisory_finding_not_a_verdict(tmp_path):
-    """Static doubt is recorded against the story; it does not decide the story's state.
-
-    Failing the story on the flag made a prediction load-bearing. The story's state now comes
-    from what its assertions actually did when they ran.
-    """
-    from drydock.build_run import QUARANTINED_FINDING_PREFIX
-
-    target_dir, build_dir = _setup(tmp_path)
-    _quarantine_log_in(target_dir, build_dir, _UNSATISFIABLE_SPEC)
-
-    plan = parse_build_plan(target_dir / "MANIFEST.md")
-    finding = str(plan.by_id()["foundation"].fields.get("finding", ""))
-    assert QUARANTINED_FINDING_PREFIX in finding
-    assert "escapes" in finding
-    assert "graded normally" in finding
 
 
 def test_a_criterion_reporting_unverified_does_not_fail_its_story(tmp_path):
@@ -2865,39 +2838,10 @@ def test_a_criterion_reporting_unverified_does_not_fail_its_story(tmp_path):
     owner = next(step for step in result.steps if step.block_id == "foundation")
     assert owner.status == "built"
     assert owner.state == "closed/verified"
-    assert [entry.check_id for entry in owner.quarantined_acceptance] == ["block-priority"]
     assert {check.check_id: check.outcome for check in owner.acceptance} == {
         "block-conformance": "PASS",
         "block-priority": "UNVERIFIED",
     }
-
-
-def test_a_hardcoded_conformance_tally_is_flagged_for_the_author(tmp_path):
-    # The Toml regression: the criterion pins a case count the installed suite owns and a
-    # whitespace layout the runner owns. Named for the author, not removed from grading.
-    target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(
-        "DB SPEC CONTENT\n\n"
-        "## Programmatic Acceptance\n\n"
-        "### complete-conformance-suite\n"
-        "The complete supplied suite passes.\n\n"
-        "```python\n"
-        "import subprocess\n"
-        'result = subprocess.run(["sh", "full_test.sh"], capture_output=True, text=True)\n'
-        "print(result.stdout)\n"
-        "assert result.returncode == 0\n"
-        'assert "valid tests: 210 passed, 0 failed" in result.stdout\n'
-        "```\n",
-        encoding="utf-8",
-    )
-    runner = make_runner()
-    log: list[str] = []
-
-    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
-
-    text = "\n".join(log)
-    assert FLAG in text
-    assert "DATABASE.md [complete-conformance-suite]" in text
 
 
 # Every check runs as its own script in its own process. A snippet that reads a name a sibling
@@ -2928,16 +2872,6 @@ assert result.returncode == 0
 """
 
 
-def test_a_check_reading_a_sibling_checks_name_is_flagged(tmp_path):
-    log, _ = _quarantine_log(tmp_path, _CARRIED_NAME_SPEC)
-
-    text = "\n".join(log)
-    assert "DATABASE.md [block-priority]" in text
-    assert "'result' is read but never defined" in text
-    assert "its own process" in text
-    assert FLAG in text
-
-
 _UNPARSEABLE_SPEC = """# FEATURE: Blocks
 
 ## Programmatic Acceptance
@@ -2951,10 +2885,16 @@ assert convert("a") ==
 """
 
 
-def test_an_unparseable_check_is_quarantined(tmp_path):
+def test_an_unparseable_check_does_not_fail_its_story(tmp_path):
+    """``drydock plan`` rejects a criterion that does not compile; a build must survive one.
+
+    Reaching the build means the spec was hand-edited after planning. The fragment raises
+    SyntaxError in its own frame, which the runtime classifier reads as a malformed check and
+    settles UNVERIFIED, so it costs the story nothing rather than failing a correct build.
+    """
     log, _ = _quarantine_log(tmp_path, _UNPARSEABLE_SPEC)
 
-    assert "not valid Python" in "\n".join(log)
+    assert "closed/verified" in "\n".join(log)
 
 
 # ── continue-repair (resume in place) ──────────────────────────────────────────
@@ -3495,21 +3435,6 @@ assert "1 passed" in result.stdout
 """
 
 
-def test_malformed_invocation_blocks_the_build_before_the_agent_runs(tmp_path):
-    target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(
-        _MALFORMED_INVOCATION_SPEC, encoding="utf-8"
-    )
-    runner = make_runner()
-    log: list[str] = []
-
-    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
-
-    text = "\n".join(log)
-    assert "DATABASE.md [scoped-number]" in text
-    assert "the intended command never runs" in text
-
-
 _STAGED_REQUIREMENT_SPEC = """# FEATURE: Scoped Verification
 
 ## Programmatic Acceptance
@@ -3530,31 +3455,6 @@ assert result.returncode == 0
 """
 
 
-def test_missing_staged_requirement_blocks_before_the_agent_runs(tmp_path):
-    target_dir, build_dir = _setup(tmp_path)
-    sources = build_dir / "sources"
-    sources.mkdir(parents=True)
-    (sources / "run_conformance.sh").write_text(
-        '#!/bin/sh\nif [ -z "${DECODER:-}" ]; then\n  exit 2\nfi\n',
-        encoding="utf-8",
-    )
-    (target_dir / "blueprint" / "DATABASE.md").write_text(
-        _STAGED_REQUIREMENT_SPEC, encoding="utf-8"
-    )
-    runner = make_runner()
-
-    with pytest.raises(SpecificationError) as caught:
-        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
-
-    message = str(caught.value)
-    assert "acceptance setup cannot reach the product under test" in message
-    assert "scoped-conformance" in message
-    assert "DECODER" in message
-    assert "No implementation or repair agent was called" in message
-    assert runner.calls == []
-    assert _state(target_dir, "foundation") == "pending"
-
-
 _TALLY_ASSERTION_SPEC = """# FEATURE: Conformance
 
 ## Programmatic Acceptance
@@ -3571,21 +3471,6 @@ assert result.returncode == 0
 assert "failed" not in result.stdout.lower()
 ```
 """
-
-
-def test_tally_word_assertion_blocks_the_build_before_the_agent_runs(tmp_path):
-    # A runner prints "0 failed" on a clean run, so this criterion is false on correct code.
-    # Refuse for free rather than spending the repair budget proving it cannot pass.
-    target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(_TALLY_ASSERTION_SPEC, encoding="utf-8")
-    runner = make_runner()
-    log: list[str] = []
-
-    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
-
-    text = "\n".join(log)
-    assert "DATABASE.md [suite-conformance]" in text
-    assert "Gate on the exit status instead" in text
 
 
 def test_undeclared_runtime_prerequisite_blocks_without_repair_and_preserves_work(tmp_path):

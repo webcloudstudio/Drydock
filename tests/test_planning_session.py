@@ -2101,76 +2101,6 @@ def test_suite_staged_directly_below_python_fence_is_not_fatal(tmp_path):
     assert "story-status" in result.plan.by_id()
 
 
-def test_unbounded_test_suite_inside_acceptance_is_fatal(tmp_path):
-    target_dir = _make_target(tmp_path)
-    feature = _SPEC_HEADER.format(
-        ftype="FEATURE", name="Status", ac="Status command exits successfully."
-    ).replace(
-        "## Programmatic Acceptance\n\n",
-        "## Programmatic Acceptance\n\n"
-        "### check-0\nThe full conformance test suite passes.\n\n"
-        "```python\n"
-        "import subprocess, sys\n"
-        'subprocess.run([sys.executable, "tests/spec_tests.py"], check=True)\n'
-        "```\n\n",
-    )
-    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
-    out = (
-        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
-        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
-        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
-    )
-
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(out))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="runs the whole test suite",
-    )
-
-
-def test_scoped_suite_cannot_require_zero_skipped(tmp_path):
-    # The zero-skipped claim is read from a report the harness writes, not from captured stdout:
-    # a tally asserted as a literal substring of a runner's output is stripped as unsatisfiable
-    # before this rule is reached, so the rule is exercised on the form that survives that pass.
-    target_dir = _make_target(tmp_path)
-    feature = _SPEC_HEADER.format(
-        ftype="FEATURE", name="Status", ac="Status command exits successfully."
-    ).replace(
-        "## Programmatic Acceptance\n\n",
-        "## Programmatic Acceptance\n\n"
-        "### check-scoped\nThe owned conformance slice passes.\n\n"
-        "Suite: scoped\n\n"
-        "```python\n"
-        "import subprocess, sys\n"
-        "from pathlib import Path\n"
-        "result = subprocess.run(\n"
-        '    [sys.executable, "tests/spec_tests.py", "--pattern", "Escapes"],\n'
-        "    capture_output=True, text=True,\n"
-        ")\n"
-        "assert result.returncode == 0\n"
-        'assert "0 skipped" in Path("report.txt").read_text(encoding="utf-8")\n'
-        "```\n\n",
-    )
-    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
-    out = (
-        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
-        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
-        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
-    )
-
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(out))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="declares Suite: scoped but asserts zero skipped tests",
-    )
-
-
 def test_unbuilt_specs_are_discarded_and_regenerated(tmp_path):
     """Nothing built: every prior spec is prior plan output, so the replan rewrites it."""
     target_dir = _make_target(tmp_path)
@@ -2345,47 +2275,6 @@ def test_missing_programmatic_acceptance_is_fatal(tmp_path):
         target_dir,
         classification="plan output validation failed",
         detail="Programmatic Acceptance criteria",
-    )
-
-
-def test_a_criterion_no_implementation_can_execute_is_fatal_at_plan_time(tmp_path):
-    """The CommonMark defect, caught before a build spends a repair budget on it.
-
-    The criterion passed a ``str`` to a binary-mode ``subprocess`` call and asserted on characters
-    the specification never mentioned. It raised ``TypeError`` before the program under test ran,
-    so it closed its block failed and no implementation could have reopened it. Both faults are
-    visible in the text of the criterion, so both are decided here rather than seven LLM calls
-    later.
-    """
-    target_dir = _make_target(tmp_path)
-    defective = _SPEC_HEADER.replace(
-        _SPEC_HEADER_PA_BODY,
-        "=== AC runtime-utf8 ===\n"
-        "Intent: The executable accepts Markdown and writes HTML on standard output.\n\n"
-        "import subprocess\n\n"
-        'result = subprocess.run(["./program"], input="café\\n", capture_output=True)\n'
-        "assert result.returncode == 0\n"
-        "=== END AC runtime-utf8 ===\n"
-        "=== AC runtime-exit ===\n"
-        "Intent: The executable exits clean.\n\n"
-        "assert True\n"
-        "=== END AC runtime-exit ===",
-    )
-    arch = defective.format(ftype="ARCHITECTURE", name="Example", ac="None.")
-    feature = defective.format(ftype="FEATURE", name="Status", ac="Status exits successfully.")
-    out = (
-        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
-        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
-        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
-    )
-
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(out))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="runtime-utf8",
     )
 
 
@@ -3255,38 +3144,6 @@ def test_assemble_prompt_omits_change_ticket_section_when_no_changes(tmp_path):
     assert "ignore me" not in result
 
 
-def test_legacy_corpus_marker_no_longer_exempts_a_full_suite_run(tmp_path):
-    """``Corpus:`` is retired: only ``Suite: full`` declares a deliberate full run. A check
-    marked with the legacy spelling that runs the suite unbounded is rejected like any other."""
-    target_dir = _make_target(tmp_path)
-    feature = _SPEC_HEADER.format(
-        ftype="FEATURE", name="Status", ac="Status command exits successfully."
-    ).replace(
-        "## Programmatic Acceptance\n\n",
-        "## Programmatic Acceptance\n\n"
-        "### conformance-full\nCorpus: full\nThe full conformance test suite passes.\n\n"
-        "```python\n"
-        "import subprocess, sys\n"
-        'subprocess.run([sys.executable, "sources/spec_tests.py"], check=True)\n'
-        "```\n\n",
-    )
-    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
-    out = (
-        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
-        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
-        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
-    )
-
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(out))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="runs the whole test suite",
-    )
-
-
 def test_suite_bound_acceptance_accepts_canonical_suite_marker(tmp_path):
     """The current prompt emits the canonical ``Suite: full`` marker; the plan gate must
     exempt it exactly as the executor's ``acceptance._full_suite`` does."""
@@ -3348,57 +3205,6 @@ def _spec_with(acceptance: str) -> str:
         "## User Acceptance\n\n- None.\n\n"
         "## Guardrails\n\n- None.\n"
     )
-
-
-def test_plan_flags_a_doubtful_criterion_without_editing_the_spec(tmp_path):
-    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
-
-    manifest = _manifest()
-    spec = _spec_with(
-        _pa("Status reports state.", "Status exits clean.") + "\n\n" + _MALFORMED_CRITERION
-    )
-    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
-
-    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
-
-    # The spec is written exactly as authored. Silent removal on a static prediction cost more
-    # than it saved: a false positive deleted a criterion that would have passed.
-    assert blocks["FEATURE-Status.md"] == spec
-    # The doubt is surfaced, leading the warning list.
-    assert ACCEPTANCE_REMOVED_MARKER in warnings[0]
-    assert "FEATURE-Status.md [scoped-number]" in warnings[0]
-    assert "the intended command never runs" in warnings[0]
-
-
-def test_plan_leaves_a_satisfiable_spec_and_its_warnings_alone(tmp_path):
-    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
-
-    manifest = _manifest()
-    spec = _spec_with(_pa("Status reports state.", "Status exits clean."))
-    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
-
-    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
-
-    assert blocks["FEATURE-Status.md"] == spec
-    assert not any(ACCEPTANCE_REMOVED_MARKER in w for w in warnings)
-
-
-def test_a_story_whose_only_criterion_is_doubtful_still_plans(tmp_path):
-    """The story keeps its assertion. A flag is authoring advice, not a missing criterion.
-
-    This used to fail the plan, but only because the analyzer had already deleted the story's
-    one criterion. Nothing is deleted now, so the story has verification and plans normally.
-    """
-    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
-
-    manifest = _manifest()
-    spec = _spec_with(_MALFORMED_CRITERION)
-    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
-
-    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
-
-    assert blocks["FEATURE-Status.md"] == spec
-    assert any(ACCEPTANCE_REMOVED_MARKER in warning for warning in warnings)
 
 
 # ── Plan restructure: deterministic Zone A and Zone C wiring ─────────────────────────
@@ -4191,51 +3997,6 @@ assert result.returncode == 0
 ```"""
 
 
-def test_plan_rejects_a_staged_call_missing_the_environment_the_asset_requires(tmp_path):
-    from drydock.errors import SpecificationError
-    from drydock.planning_session import _validate_plan_output
-
-    sources = tmp_path / "sources"
-    sources.mkdir(parents=True, exist_ok=True)
-    (sources / "run_conformance.sh").write_text(_STAGED_HARNESS_SCRIPT, encoding="utf-8")
-    manifest = _manifest()
-    spec = _spec_with(
-        _pa("Status reports state.", "Status exits clean.") + "\n\n" + _STAGED_CRITERION
-    )
-    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
-
-    with pytest.raises(SpecificationError) as caught:
-        _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
-
-    message = str(caught.value)
-    assert "acceptance setup cannot reach the product under test" in message
-    assert "FEATURE-Status.md [key-conformance]" in message
-    assert "DECODER" in message
-    assert "No Blueprint or Manifest artifacts were written" in message
-
-
-def test_plan_keeps_the_same_call_when_it_extends_the_inherited_environment(tmp_path):
-    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
-
-    sources = tmp_path / "sources"
-    sources.mkdir(parents=True, exist_ok=True)
-    (sources / "run_conformance.sh").write_text(_STAGED_HARNESS_SCRIPT, encoding="utf-8")
-    manifest = _manifest()
-    correct = _STAGED_CRITERION.replace(
-        "import subprocess", "import os\nimport subprocess"
-    ).replace(
-        "    capture_output=True,",
-        '    env={**os.environ, "DECODER": "./toml-decoder"},\n    capture_output=True,',
-    )
-    spec = _spec_with(_pa("Status reports state.", "Status exits clean.") + "\n\n" + correct)
-    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
-
-    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
-
-    assert "key-conformance" in blocks["FEATURE-Status.md"]
-    assert not any(ACCEPTANCE_REMOVED_MARKER in w for w in warnings)
-
-
 def _authoring_contract_blueprint_example() -> str:
     """Return the worked Blueprint example from the packaged authoring contract.
 
@@ -4299,7 +4060,6 @@ def test_the_plan_validator_counts_the_authoring_contract_criteria():
         _acceptance_checks,
         _acceptance_status,
         _drives_external_suite,
-        _invokes_unbounded_test_suite,
     )
 
     example = _authoring_contract_blueprint_example()
@@ -4312,7 +4072,6 @@ def test_the_plan_validator_counts_the_authoring_contract_criteria():
     assert not justified
     checks = _acceptance_checks(example, source="FEATURE-Example.md")
     assert count == len(checks), "the counter and the acceptance parser disagree"
-    # The example drives the imported suite under an explicit ``Suite:`` declaration, so it is
-    # neither an unbounded full-suite run nor subject to the several-criteria minimum.
+    # The example drives the imported suite, so it is not subject to the several-criteria
+    # minimum.
     assert _drives_external_suite(checks)
-    assert not _invokes_unbounded_test_suite(checks)

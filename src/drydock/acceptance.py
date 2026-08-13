@@ -691,10 +691,6 @@ def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticA
     return tuple(checks)
 
 
-#: ``subprocess`` entry points whose text/binary mode decides whether a ``str`` argument is legal.
-#: ``getoutput``/``getstatusoutput`` are deliberately absent: they are text-only by definition.
-_SUBPROCESS_CALLS = frozenset({"run", "Popen", "check_output", "check_call", "call"})
-
 #: A string expectation an author cannot mis-escape: an identifier-shaped ASCII token. ``"string"``,
 #: ``"integer"``, ``"application/json"``, and ``"POST"`` are read off a declared interface and carry
 #: nothing to escape. Markup, whitespace, backslashes, quotes, and control characters are excluded:
@@ -797,119 +793,6 @@ def retyped_expectations(code: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(offending))
 
 
-def acceptance_authoring_defects(check: ProgrammaticAcceptance) -> tuple[str, ...]:
-    """Report defects in how a criterion is written, independent of any implementation.
-
-    These are faults a correct implementation cannot fix, so they are caught where they are
-    authored rather than discovered as a wasted repair budget six LLM calls into a build.
-
-    Two rules, both deterministic:
-
-    * **Subprocess mode.** Literal ``str`` input requires text mode; literal bytes-like input
-      requires binary mode. Unknown expressions are left to runtime rather than guessed at plan
-      time. A mismatch raises before the program under test starts.
-    * **ASCII test data.** Acceptance data is ASCII unless the criterion declares ``Encoding:``.
-      A criterion invented at plan time that asserts on characters outside the specification's
-      stated scope tests a requirement nobody wrote down, and it fails the build for a property
-      the product was never asked to have. Declaring the encoding makes the intent reviewable.
-
-    Returns one sentence per defect, empty when the criterion is well formed.
-    """
-    defects: list[str] = []
-    if not check.encoding:
-        offending = sorted({character for character in check.code if ord(character) > 127})
-        if offending:
-            sample = " ".join(
-                f"{character!r} (U+{ord(character):04X})" for character in offending[:4]
-            )
-            defects.append(
-                f"uses non-ASCII test data ({sample}) without declaring `Encoding:`. Acceptance "
-                "data is ASCII unless the specification states an encoding requirement; add "
-                "`Encoding: utf-8` to the criterion when it does, or use ASCII test data"
-            )
-    defects.extend(_subprocess_mode_defects(check.code))
-    return tuple(defects)
-
-
-def _subprocess_mode_defects(code: str) -> tuple[str, ...]:
-    """Report literal ``input=`` values incompatible with their subprocess mode.
-
-    The check is deliberately narrow. When either the input type or mode is dynamic, runtime owns
-    the verdict; rejecting an expression on a static guess would exclude legitimate binary tests.
-    """
-    try:
-        tree = ast.parse(code)
-    except SyntaxError:
-        return ()
-    defects: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
-            continue
-        owner = node.func.value
-        if not isinstance(owner, ast.Name) or owner.id != "subprocess":
-            continue
-        if node.func.attr not in _SUBPROCESS_CALLS:
-            continue
-        keywords = {keyword.arg: keyword.value for keyword in node.keywords if keyword.arg}
-        input_node = keywords.get("input")
-        input_kind = _subprocess_input_kind(input_node)
-        mode = _subprocess_mode(keywords)
-        if input_kind is None or mode is None or input_kind == mode:
-            continue
-        if input_kind == "text":
-            defects.append(
-                f"calls `subprocess.{node.func.attr}` with `str` input in binary mode; pass "
-                "`text=True` or `encoding=...`, otherwise Python raises TypeError before the "
-                "program starts"
-            )
-        else:
-            defects.append(
-                f"calls `subprocess.{node.func.attr}` with bytes-like input in text mode; remove "
-                "`text`, `encoding`, `errors`, and `universal_newlines`, otherwise Python tries "
-                "to encode bytes before the program starts"
-            )
-    return tuple(defects)
-
-
-def _subprocess_input_kind(node: ast.expr | None) -> str | None:
-    if isinstance(node, ast.Constant):
-        if isinstance(node.value, str):
-            return "text"
-        if isinstance(node.value, bytes):
-            return "binary"
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in {"bytearray", "memoryview"}
-    ):
-        return "binary"
-    return None
-
-
-def _subprocess_mode(keywords: dict[str, ast.expr]) -> str | None:
-    """Return the statically declared subprocess mode, or ``None`` when dynamic."""
-    dynamic = False
-    for name in ("encoding", "errors"):
-        if name not in keywords:
-            continue
-        value = keywords[name]
-        if isinstance(value, ast.Constant):
-            if value.value is not None:
-                return "text"
-        else:
-            dynamic = True
-    for name in ("text", "universal_newlines"):
-        if name not in keywords:
-            continue
-        value = keywords[name]
-        if isinstance(value, ast.Constant):
-            if value.value is True:
-                return "text"
-        else:
-            dynamic = True
-    return None if dynamic else "binary"
-
-
 def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, ...]:
     """Return Python acceptance snippets from one Blueprint spec file."""
     stat = path.stat()
@@ -966,103 +849,26 @@ def parse_programmatic_acceptance_text(
 
 
 @dataclass(frozen=True)
-class DroppedAcceptance:
-    """One acceptance criterion a static analyzer believes cannot pass, as authored."""
+class MalformedAcceptance:
+    """One acceptance criterion that does not compile, and so can never execute."""
 
     check_id: str
+    source: str
     reason: str
 
-
-def unsatisfiable_defects(code: str, *, sources_dir: Path | None = None) -> tuple[str, ...]:
-    """Return every reason ``code`` can never pass, whatever the implementation does.
-
-    ``sources_dir`` is the staged-asset directory the proof runs against. When given, the
-    analysis also reads the assets the proof invokes and checks their declared preconditions;
-    without it that class of defect is simply not reported.
-    """
-    from drydock.proof_integrity import (
-        analyze_invocation,
-        analyze_literals,
-        analyze_output_assertions,
-        analyze_shell_escapes,
-        analyze_staged_invocation,
-        analyze_structure,
-    )
-
-    messages = [
-        defect.message
-        for analyze in (
-            analyze_literals,
-            analyze_structure,
-            analyze_invocation,
-            analyze_shell_escapes,
-        )
-        for defect in analyze(code)
-    ]
-    # Only the fatal output assertions belong here. A merely redundant substring check still
-    # passes when the code is correct, so it is a warning, not grounds for dropping the check.
-    messages.extend(defect.message for defect in analyze_output_assertions(code) if defect.fatal)
-    messages.extend(
-        defect.message for defect in analyze_staged_invocation(code, sources_dir=sources_dir)
-    )
-    return tuple(messages)
-
-
-def flag_unsatisfiable_acceptance(
-    text: str, *, source: str, sources_dir: Path | None = None
-) -> tuple[DroppedAcceptance, ...]:
-    """Report acceptance criteria a static analyzer believes cannot pass. Never edits the spec.
-
-    These analyzers are the real prize of the work that produced them: each is a tested
-    description of one way a model writes a broken assertion. As *gates* they fight the model
-    after the fact and accumulate false positives — the space of bad assertions is not
-    enumerable, every analyzer carries its own false-positive rate against legitimate snippets,
-    and two were retracted after they started failing fixtures that had passed for weeks.
-
-    So the knowledge is kept and the enforcement is dropped. A finding here is a warning that
-    may cost marks, never a removal and never a hard gate. The runtime classifier is what
-    protects the build now: a snippet that truly dies in its own frame reports UNVERIFIED and is
-    not charged against the build, and it does so from what actually happened rather than from a
-    prediction about what would.
-    """
-    checks = parse_programmatic_acceptance_text(text, source=source)
-    return tuple(
-        DroppedAcceptance(check_id=check.check_id, reason=defects[0])
-        for check in checks
-        if (defects := unsatisfiable_defects(check.code, sources_dir=sources_dir))
-    )
-
-
-def deterministic_setup_defects(
-    checks: Iterable[ProgrammaticAcceptance], *, sources_dir: Path | None
-) -> tuple[DroppedAcceptance, ...]:
-    """Return acceptance setup defects proved from immutable staged-asset contracts.
-
-    Unlike the broader proof-integrity analyzers, this check does not predict whether an
-    assertion is semantically satisfiable. It reads a staged script's fatal environment guards
-    and compares them with the invocation that the acceptance author supplied. A missing guarded
-    variable prevents the harness from reaching the product under test under every possible
-    implementation, so planning and building may reject it without risking a false product
-    failure.
-    """
-    from drydock.proof_integrity import analyze_staged_invocation
-
-    defects: list[DroppedAcceptance] = []
-    for check in checks:
-        staged = analyze_staged_invocation(check.code, sources_dir=sources_dir)
-        if staged:
-            defects.append(DroppedAcceptance(check_id=check.check_id, reason=staged[0].message))
-    return tuple(defects)
+    @property
+    def rendered(self) -> str:
+        return f"{self.source} [{self.check_id}]: {self.reason}"
 
 
 def syntax_defect(code: str) -> str | None:
     """Return why ``code`` is not Python at all, or ``None`` when it compiles.
 
-    This is deliberately not one of the ``unsatisfiable_defects`` heuristics, and it is gated
-    where those are only reported. Those analyzers *predict* that a well-formed assertion cannot
-    pass, which is a judgment with a false-positive rate — two were retracted for exactly that.
-    Compiling is not a prediction. A criterion that does not parse cannot execute under any
-    implementation, so it verifies nothing, and no correct build can change that.
+    This is the one authoring fact that still gates, and it gates because it is a fact rather
+    than a prediction. The analyzers that were deleted around it *predicted* that a well-formed
+    assertion could not pass, which is a judgment with a false-positive rate. Compiling is not a
+    judgment: a criterion that does not parse cannot execute under any implementation, so it
+    verifies nothing, and no correct build can change that.
 
     Left ungated it is worse than useless: the fragment raises ``SyntaxError`` in its own frame,
     which the runtime classifier reads as a malformed check, which settles UNVERIFIED and costs
@@ -1077,36 +883,6 @@ def syntax_defect(code: str) -> str | None:
         # Source containing a null byte raises ValueError rather than SyntaxError.
         return f"criterion is not valid Python: {exc}"
     return None
-
-
-@dataclass(frozen=True)
-class QuarantinedAcceptance:
-    """One acceptance criterion a static analyzer flagged as unable to pass, as authored."""
-
-    check_id: str
-    source: str
-    reason: str
-
-    @property
-    def rendered(self) -> str:
-        return f"{self.source} [{self.check_id}]: {self.reason}"
-
-
-def flag_unsatisfiable(
-    checks: tuple[ProgrammaticAcceptance, ...], *, sources_dir: Path | None = None
-) -> tuple[QuarantinedAcceptance, ...]:
-    """Report criteria a static analyzer believes cannot pass, without excluding any of them.
-
-    Excluding a criterion from grading on a static prediction is enforcement, and enforcement
-    is what these analyzers are no longer for. A criterion that genuinely dies in its own frame
-    now settles as UNVERIFIED at run time on the evidence of the traceback, which costs the
-    build nothing and does not depend on an analyzer being right in advance.
-    """
-    return tuple(
-        QuarantinedAcceptance(check_id=check.check_id, source=check.source, reason=defects[0])
-        for check in checks
-        if (defects := unsatisfiable_defects(check.code, sources_dir=sources_dir))
-    )
 
 
 #: Where a build records criteria that were already green at their block's baseline — before that
@@ -1147,10 +923,10 @@ def read_prepassed_acceptance(evidence_dir: Path) -> frozenset[str]:
 
 def malformed_criteria(
     checks: tuple[ProgrammaticAcceptance, ...],
-) -> tuple[QuarantinedAcceptance, ...]:
+) -> tuple[MalformedAcceptance, ...]:
     """Return every criterion that does not compile. A hard authoring defect, not a warning."""
     return tuple(
-        QuarantinedAcceptance(check_id=check.check_id, source=check.source, reason=reason)
+        MalformedAcceptance(check_id=check.check_id, source=check.source, reason=reason)
         for check in checks
         if (reason := syntax_defect(check.code)) is not None
     )

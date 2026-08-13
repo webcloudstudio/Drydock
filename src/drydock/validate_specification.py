@@ -347,24 +347,15 @@ def validate_specification(
                 )
 
     # --- Programmatic Acceptance snippets ---
-    # These analyzers describe ways a model writes a broken assertion, and each is worth
-    # telling an author about. None of them gates. The space of bad assertions is not
-    # enumerable, so the set could only ever grow one observed failure at a time, and every
-    # analyzer carries a false-positive rate against legitimate snippets — two were retracted
-    # after they began failing specs that had validated for weeks. A snippet that truly cannot
-    # exercise the code under test reports UNVERIFIED when it runs, on the evidence of its own
-    # traceback, which is a sounder authority than a prediction. A snippet that fails to parse
-    # is still a hard failure: that is a fact about the file, not a judgement about the
-    # assertion.
+    # One authoring signal, reported and never gated: an expected value the author re-typed
+    # rather than derived. The six analyzers that used to run here predicted from a snippet's
+    # text that it would fail, which is a judgement with a false-positive rate — two were
+    # retracted after they began failing specs that had validated for weeks. A snippet that
+    # truly cannot exercise the code under test reports UNVERIFIED when it runs, on the evidence
+    # of its own traceback, which is a sounder authority than a prediction. A snippet that fails
+    # to parse is still a hard failure: that is a fact about the file, not a judgement.
     section = "Acceptance snippets"
     from drydock.acceptance import parse_programmatic_acceptance, syntax_defect
-    from drydock.proof_integrity import (
-        analyze_invocation,
-        analyze_literals,
-        analyze_output_assertions,
-        analyze_structure,
-        analyze_swallowed_output,
-    )
 
     snippet_defects = 0
     snippet_advisories = 0
@@ -386,16 +377,15 @@ def validate_specification(
                 f(section, f"{md_file.name} [{check.check_id}]: {reason}")
                 snippet_defects += 1
                 continue
-            for analyze in (
-                analyze_literals,
-                analyze_structure,
-                analyze_invocation,
-                analyze_output_assertions,
-                analyze_swallowed_output,
-            ):
-                for defect in analyze(check.code):
-                    w(section, f"{md_file.name} [{check.check_id}]: {defect.message}")
-                    snippet_advisories += 1
+            for literal in check.retyped_expectations:
+                w(
+                    section,
+                    f"{md_file.name} [{check.check_id}]: expects {literal!r}, a value re-typed "
+                    "rather than derived from the input or read back from the system. This "
+                    "criterion is reported but does not gate its story; bind the value to a "
+                    "name and use that name on both sides to make it binding",
+                )
+                snippet_advisories += 1
     if snippet_defects == 0 and snippet_advisories == 0:
         p(section, "Programmatic Acceptance snippets are parseable and raise no authoring flags")
     elif snippet_defects == 0:
