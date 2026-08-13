@@ -56,25 +56,17 @@ Pattern: unwanted
 ## st-006: Every behavior is covered by a test
 Type: technical
 Required: yes
-Criterion: The application shall carry an automated test for each of adding, listing, removing, and rejecting a book.
+Criterion: The application shall carry automated tests for adding a book, listing books in the order added, removing a book, rejecting an empty title or author, marking a book as read, and displaying whether each book is unread or read.
 Testability: deterministic
-Consequence: scores
+Consequence: blocks
 Verification: proof
 Pattern: ubiquitous
 
-## st-007: The interface is usable
-Type: qualitative
-Required: no
-Criterion: A reader can add, view, and remove books without instructions.
-Testability: judgeable
-Consequence: scores
-Verification: llm
-
-## st-008: No reader data leaves the application
-Type: guardrail
+## st-007: A book can be marked as read
+Type: behavioral
 Required: yes
-Criterion: The application shall never transmit a reader's list to a third-party service.
-Testability: judgeable
+Criterion: When a reader marks a book as read, the application shall store the change and show that book as read instead of unread on the next view.
+Testability: deterministic
 Consequence: blocks
-Verification: evidence
-Pattern: ubiquitous
+Verification: proof
+Pattern: event
