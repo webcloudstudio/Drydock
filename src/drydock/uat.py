@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import IO
 
 from drydock import sea_trials, technology_stack
+from drydock.acceptance_contract import AcceptanceContract, contract_from_config, write_contract
 from drydock.build_report import build_score_report
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
@@ -81,6 +82,7 @@ class UATFixture:
     #: stop passing without changing. With it, every run is graded against the same exam and a
     #: regression is finally detectable.
     sea_trials: Path | None = None
+    acceptance: AcceptanceContract = field(default_factory=AcceptanceContract)
 
 
 Runner = Callable[[Sequence[str], Path, dict[str, str], Path, str], CommandResult]
@@ -120,6 +122,10 @@ class UATResult:
     #: Stage this run was re-entered at, empty for a run executed from the beginning. A resumed
     #: run reuses prior state, so its receipt must not present itself as a clean lifecycle.
     resumed_from: str = ""
+    #: Whether Drydock ran the lifecycle without an infrastructure fault: PASS or ERROR.
+    execution_status: str = "PASS"
+    #: Whether the product passed governed acceptance: PASS, FAIL, or NOT_RUN.
+    acceptance_status: str = "NOT_RUN"
     #: Project guardrails the release gate could not settle either way. The run passed — nothing
     #: demonstrated a violation — but each names a prohibition a human must confirm by hand
     #: before the build is released. Reported, never a failure.
@@ -252,6 +258,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         raw_sources = config.get("sources")
         raw_updates = config.get("updates", [])
         raw_test_command = config.get("test_command")
+        raw_acceptance = config.get("acceptance")
         raw_sea_trials = config.get("sea_trials")
         raw_stack = config.get("technology_stack")
         if (
@@ -318,6 +325,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 tuple(raw_test_command),
                 _fixture_stack(declared_stack),
                 _fixture_sea_trials(declared_sea_trials),
+                contract_from_config(raw_acceptance, where=str(config_path)),
             )
         )
     if not fixtures:
@@ -591,6 +599,22 @@ def seed_sea_trials(fixture: UATFixture, workspace: Path) -> Path | None:
     destination = target_dir / sea_trials.FILENAME
     shutil.copyfile(fixture.sea_trials, destination)
     return destination
+
+
+def seed_acceptance_contract(fixture: UATFixture, workspace: Path) -> Path | None:
+    """Place the fixture's governed acceptance commands in the Target before the build.
+
+    This is the fixture acting as Commander. The contract is the only thing in the run that can
+    close a story ``closed/verified`` or fail the release, and nothing the model writes can
+    reach it — ``ACCEPTANCE.json`` is not a Blueprint artifact and no LLM-assisted command emits
+    it. UAT populates the same target-level contract the build and scoring engines read for a
+    real Target, so the two cannot drift apart.
+    """
+    if not fixture.acceptance.declared:
+        return None
+    target_dir = workspace / "targets" / fixture.target
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return write_contract(target_dir, fixture.acceptance)
 
 
 def seed_technology_stack(fixture: UATFixture, workspace: Path) -> Path | None:
@@ -896,6 +920,7 @@ def run_fixture(
             execute(("init", fixture.target), "init")
             seed_technology_stack(fixture, workspace)
             seed_sea_trials(fixture, workspace)
+            seed_acceptance_contract(fixture, workspace)
         if start <= stage_index("import"):
             execute(
                 ("import", fixture.target, str(source_root), "--format", "markdown"),
@@ -937,6 +962,19 @@ def run_fixture(
         status = "failed"
         error = str(exc)
 
+    # Two independent verdicts, because they answer different questions and one must not be
+    # able to launder the other. ``execution_status`` asks whether Drydock itself ran the
+    # lifecycle: a crashed command, a skipped stage, an unreachable harness. ``acceptance_status``
+    # asks whether the product passed its governed acceptance. A product failure is not an
+    # infrastructure error — but an infrastructure error must still stop the run reading as a
+    # pass, which a single status derived from the final command's exit code would allow.
+    execution_status = "ERROR" if (status == "failed" or degraded) else "PASS"
+    if test_failures:
+        acceptance_status = "FAIL"
+    elif scores.get("release") is None:
+        acceptance_status = "NOT_RUN"
+    else:
+        acceptance_status = "PASS" if scores.get("release") == 0 else "FAIL"
     if status != "failed" and test_failures:
         status = "failed"
         error = test_failures[0]
@@ -945,6 +983,9 @@ def run_fixture(
         # named shortfall, not an aborted run and not a clean pass.
         status = "degraded"
         error = "; ".join(degraded)
+    if status == "passed" and not (execution_status == "PASS" and acceptance_status == "PASS"):
+        status = "failed" if acceptance_status == "FAIL" else "degraded"
+        error = error or f"execution {execution_status}, acceptance {acceptance_status}"
 
     attestations = _release_attestations(workspace / "targets" / fixture.target)
     assertions = _assertion_outcomes(
@@ -973,6 +1014,8 @@ def run_fixture(
         environment=environment,
         resumed_from=start_stage if start else "",
         degraded=tuple(degraded),
+        execution_status=execution_status,
+        acceptance_status=acceptance_status,
         attestations=attestations,
         assertions=assertions,
     )
@@ -1000,6 +1043,7 @@ def render_summary(results: Sequence[UATResult], base: Path | None = None) -> st
         lines.extend([
             f"## {result.fixture}: {result.status.upper()}",
             "",
+            f"- Execution: {result.execution_status} · Acceptance: {result.acceptance_status}",
             f"- Target: `{result.target}`",
             f"- Run: `{result.run_id}`",
             f"- Ran: {local_run_window(result.environment)}",

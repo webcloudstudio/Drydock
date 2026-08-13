@@ -23,7 +23,17 @@ from drydock.errors import SpecificationError
 logger = logging.getLogger(__name__)
 
 BLOCK_TYPES = ("feature", "story", "spike", "ac")
-STATES = ("pending", "blocked/questions", "implemented", "closed/verified", "closed/failed")
+STATES = (
+    "pending",
+    "blocked/questions",
+    "implemented",
+    "closed/implemented",
+    "closed/verified",
+    "closed/failed",
+)
+#: Mirrors :data:`drydock.build_plan.FINISHED_STATES`. A block's work is done in either state;
+#: only ``closed/verified`` claims a governed command examined it.
+FINISHED_STATES = frozenset({"closed/verified", "closed/implemented"})
 PLAN_STATES = ("draft", "approved", "closed")
 SCOPES = ("blueprint", "target", "both")
 AC_KINDS = ("smoke", "assertion")
@@ -802,7 +812,7 @@ class DrydockManifest:
 
         def verified(node_id: str) -> bool:
             node = by_id.get(node_id)
-            return node is not None and node.state == "closed/verified"
+            return node is not None and node.state in FINISHED_STATES
 
         result: list[ManifestNode] = []
         for node in self.blocks:
@@ -832,7 +842,7 @@ class DrydockManifest:
 
         def verified(node_id: str) -> bool:
             target = by_id.get(node_id)
-            return target is not None and target.state == "closed/verified"
+            return target is not None and target.state in FINISHED_STATES
 
         if self.uses_computed_blocks:
             for _, work in self.computed_groups():

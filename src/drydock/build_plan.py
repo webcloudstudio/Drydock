@@ -18,7 +18,28 @@ BLOCK_TYPES = ("feature", "story", "spike", "ac")
 # Sealed foundational Blueprint specifications: once applied, a direct edit blocks the
 # build and the change must arrive as a change ticket processed by ``drydock refit``.
 FOUNDATIONAL_SPECS = frozenset({"ARCHITECTURE.md", "DATABASE.md", "UI-GENERAL.md"})
-STATES = ("pending", "blocked/questions", "implemented", "closed/verified", "closed/failed")
+STATES = (
+    "pending",
+    "blocked/questions",
+    "implemented",
+    "closed/implemented",
+    "closed/verified",
+    "closed/failed",
+)
+#: States in which a block's work is finished, so a dependent may build on it.
+#:
+#: ``closed/verified`` means a governed oracle — a Commander-owned or imported command declared in
+#: ``ACCEPTANCE.json`` — ran against this block's slice and passed. ``closed/implemented`` means
+#: the work is done and no such oracle exists to judge it: model-authored criteria ran, drove the
+#: repair loop, and are recorded, but nothing that could establish authority said the slice was
+#: correct. Both are terminal and both let dependents build. Only the first claims verification,
+#: which is why "verified" is never printed for a block no governed command examined.
+#:
+#: ``implemented`` is deliberately absent. It is a *mid-flow* state in the legacy child-``ac``
+#: taxonomy — the story is built and its acceptance blocks have not run yet — so a dependent must
+#: not build on it. Reusing it for the ungoverned terminal case conflated "not verified yet" with
+#: "nothing will ever verify this".
+FINISHED_STATES = frozenset({"closed/verified", "closed/implemented"})
 PLAN_STATES = ("draft", "approved", "closed")
 SCOPES = ("blueprint", "target", "both")
 STORY_TYPES = ("foundational", "service", "feature")
@@ -121,7 +142,7 @@ class BuildPlan:
 
         def verified(block_id: str) -> bool:
             dependency = by_id.get(block_id)
-            return dependency is not None and dependency.state == "closed/verified"
+            return dependency is not None and dependency.state in FINISHED_STATES
 
         runnable = []
         for block in self.blocks:
@@ -160,7 +181,7 @@ class BuildPlan:
 
         def verified(block_id: str) -> bool:
             dependency = by_id.get(block_id)
-            return dependency is not None and dependency.state == "closed/verified"
+            return dependency is not None and dependency.state in FINISHED_STATES
 
         if self.uses_computed_blocks:
             for _, executable in self.computed_groups():
@@ -170,7 +191,7 @@ class BuildPlan:
                 available = {
                     block.block_id
                     for block in executable
-                    if block.state in {"pending", "closed/verified"}
+                    if block.state == "pending" or block.state in FINISHED_STATES
                 }
                 if any(
                     dep not in available and not verified(dep)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -3910,3 +3911,145 @@ def test_a_retyped_expectation_is_disputed_and_the_block_still_closes(tmp_path):
     text = "\n".join(messages)
     assert "disputed: 1 criterion" in text
     assert "foundation-retyped" in text
+
+
+# ── governed acceptance ───────────────────────────────────────────────────────
+# A governed command is the only thing that can close a story verified. It comes from
+# ACCEPTANCE.json, which the Commander owns and no LLM-assisted command writes, and Drydock
+# executes its argv directly rather than inspecting a wrapper the model generated.
+
+
+def _governed(target_dir, stages=None, full=None):
+    from drydock.acceptance_contract import AcceptanceContract, write_contract
+
+    write_contract(
+        target_dir, AcceptanceContract(full=tuple(full or ()), stages=dict(stages or {}))
+    )
+
+
+def test_a_passing_governed_gate_closes_the_story_verified(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    _governed(target_dir, stages={"foundation": (sys.executable, "-c", "raise SystemExit(0)")})
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+
+
+def test_a_failing_governed_gate_fails_the_story_however_the_criteria_went(tmp_path):
+    """The oracle outranks the criteria. Green model checks cannot talk over a red gate."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _marker_spec("built foundation\n"), encoding="utf-8"
+    )
+    _governed(target_dir, stages={"foundation": (sys.executable, "-c", "raise SystemExit(1)")})
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert result.steps[0].status == "failed"
+    assert "governed acceptance failed" in (result.steps[0].error or "")
+    assert _state(target_dir, "foundation") == "closed/failed"
+
+
+def test_a_red_criterion_cannot_stop_a_story_its_governed_gate_passed(tmp_path):
+    """The Toml failure, in one test.
+
+    A fabricated criterion held the line at block 3 while the authoritative suite never got the
+    chance to drive blocks 4-8. With a gate in place the criterion is diagnostic: it is run,
+    reported, and overruled by the oracle.
+    """
+    messages: list[str] = []
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _marker_spec("never written\n"), encoding="utf-8"
+    )
+    _governed(target_dir, stages={"foundation": (sys.executable, "-c", "raise SystemExit(0)")})
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        step_id="foundation",
+        on_text=messages.append,
+    )
+
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert "red where the governed gate passed" in "\n".join(messages)
+
+
+def test_a_gate_that_cannot_run_never_charges_the_product(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _marker_spec("built foundation\n"), encoding="utf-8"
+    )
+    _governed(target_dir, stages={"foundation": ("no-such-harness-98765",)})
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/implemented"
+
+
+def test_an_ungoverned_story_is_implemented_not_verified_when_a_contract_exists(tmp_path):
+    """The console must not call a block verified when nothing with standing examined it."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _marker_spec("built foundation\n"), encoding="utf-8"
+    )
+    _governed(target_dir, full=(sys.executable, "-c", "raise SystemExit(0)"))
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/implemented"
+
+
+def test_without_any_contract_a_binding_criterion_is_still_the_verdict(tmp_path):
+    """An oracle outranks a criterion; a criterion outranks nothing at all.
+
+    Discarding model-authored criteria everywhere would leave a project with no governed suite —
+    which is most projects — with no failure signal whatsoever.
+    """
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _marker_spec("never written\n"), encoding="utf-8"
+    )
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert result.steps[0].status == "failed"
+    assert _state(target_dir, "foundation") == "closed/failed"
+
+
+def test_a_stage_keyed_to_no_story_is_reported(tmp_path):
+    messages: list[str] = []
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _marker_spec("built foundation\n"), encoding="utf-8"
+    )
+    _governed(target_dir, stages={"renamed-last-week": (sys.executable, "-c", "pass")})
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        step_id="foundation",
+        on_text=messages.append,
+    )
+
+    assert "no story matches renamed-last-week" in "\n".join(messages)

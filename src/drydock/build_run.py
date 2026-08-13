@@ -41,6 +41,11 @@ from drydock.acceptance import (
     record_prepassed_acceptance,
     run_programmatic_acceptance,
 )
+from drydock.acceptance_contract import (
+    GateResult,
+    load_contract,
+    run_gate,
+)
 from drydock.acceptance_requirements import (
     authorization_for,
     discover_missing_requirement,
@@ -61,6 +66,7 @@ from drydock.build import (
 from drydock.build_decisions import record_build_decisions, record_skipped_acceptance_decisions
 from drydock.build_environment import EnvMaterialization, materialize_env_file
 from drydock.build_plan import (
+    FINISHED_STATES,
     AppliedSpecRecord,
     BuildPlan,
     PlanBlock,
@@ -114,6 +120,26 @@ BUILD_FAILURE_HINT = (
 UNGATED_FINDING_PREFIX = "UNVERIFIED: acceptance bypassed by --ungate"
 #: A story whose criteria could not be graded because they cannot pass by construction. It is
 #: deliberately not the ``--ungate`` prefix: that marker records an operator decision to release
+#: Recorded on a block that finished with no governed command able to judge it. The work is
+#: done; nothing with standing examined it. Printed rather than silently reading as verified.
+UNGOVERNED_FINDING = (
+    "ADVISORY: implemented, not verified — no governed acceptance command covers this story. "
+    "Declare one in ACCEPTANCE.json to gate it."
+)
+
+
+def _ungoverned_finding(gate: GateResult | None) -> str | None:
+    """Advisory for a block no governed command verified, or ``None`` when one passed."""
+    return None if gate is not None and gate.passed else UNGOVERNED_FINDING
+
+
+def _story_ids(block: PlanBlock) -> tuple[str, ...]:
+    """Return the analyzed story ids a block delivers, for matching a governed stage gate."""
+    covers = block.fields.get("covers", ())
+    values = covers if isinstance(covers, tuple) else (covers,)
+    return tuple(str(value) for value in values if value)
+
+
 PROMPT_NAME = "build"
 RunnerFn = Callable[..., object]
 TextCallback = Callable[[str], None]
@@ -391,7 +417,7 @@ SELECTABLE_STATES = frozenset({"pending", "closed/failed"})
 def _is_buildable(block: PlanBlock, by_id: dict[str, PlanBlock]) -> bool:
     def verified(block_id: str) -> bool:
         dependency = by_id.get(block_id)
-        return dependency is not None and dependency.state == "closed/verified"
+        return dependency is not None and dependency.state in FINISHED_STATES
 
     return block.state in SELECTABLE_STATES and all(verified(dep) for dep in block.depends)
 
@@ -452,7 +478,7 @@ def _blocked_dependency_details(dependencies: tuple[str, ...], by_id: dict[str, 
 
 def _verified_dependency(block_id: str, by_id: dict[str, PlanBlock]) -> bool:
     dependency = by_id.get(block_id)
-    return dependency is not None and dependency.state == "closed/verified"
+    return dependency is not None and dependency.state in FINISHED_STATES
 
 
 def _external_unverified_dependencies(
@@ -496,7 +522,7 @@ def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None
     )
     if not executable:
         return None
-    already_verified = tuple(child for child in executable if child.state == "closed/verified")
+    already_verified = tuple(child for child in executable if child.state in FINISHED_STATES)
     pending = tuple(child for child in executable if child.state in SELECTABLE_STATES)
     if not pending:
         return None
@@ -523,7 +549,7 @@ def _computed_block_parts(
     by_id = plan.by_id()
     executable = next((steps for group, steps in plan.computed_groups() if group == number), ())
     pending = tuple(block for block in executable if block.state in SELECTABLE_STATES)
-    verified = tuple(block for block in executable if block.state == "closed/verified")
+    verified = tuple(block for block in executable if block.state in FINISHED_STATES)
     available = {block.block_id for block in (*pending, *verified)}
     blockers = tuple(
         dict.fromkeys(
@@ -2003,7 +2029,7 @@ def _outstanding_blocks(manifest_path: Path) -> tuple[str, ...]:
     return tuple(
         block.block_id
         for block in manifest.blocks
-        if block.block_type in {"story", "spike"} and block.state != "closed/verified"
+        if block.block_type in {"story", "spike"} and block.state not in FINISHED_STATES
     )
 
 
@@ -2298,6 +2324,35 @@ def build_target(
                 story_by_check[check.check_id] = block
                 story_by_source_check[(check.source, check.check_id)] = block
         checks = tuple(gathered_checks)
+        # The governed contract is read once per unit, from the Target root. Absent, every
+        # block in this unit will close ``implemented``: model-authored criteria still run and
+        # still drive repair, but nothing that could establish authority is present to verify.
+        acceptance_contract = load_contract(target_dir)
+        if acceptance_contract.declared:
+            covered = sum(
+                1
+                for block in unit.steps
+                if acceptance_contract.stage_for(block.block_id, *_story_ids(block))
+            )
+            _emit(
+                on_text,
+                f"governed acceptance: {covered}/{len(unit.steps)} "
+                f"{'story' if len(unit.steps) == 1 else 'stories'} carry a stage gate",
+            )
+            # A stage keyed to a story id the plan never produced gates nothing at all, and it
+            # does so silently — the story ids are model-chosen, so a Commander writing the
+            # contract against a previous run's names is the expected way to get this wrong.
+            known_ids = {block.block_id for block in plan.blocks} | {
+                story for block in plan.blocks for story in _story_ids(block)
+            }
+            orphaned = sorted(set(acceptance_contract.stages) - known_ids)
+            if orphaned:
+                _emit(
+                    on_text,
+                    "governed acceptance: no story matches "
+                    + ", ".join(orphaned)
+                    + " — these stage gates will never run",
+                )
         unauthorized = []
         authorized_missing = []
         requirement_evidence: list[str] = []
@@ -3089,6 +3144,67 @@ def build_target(
                 continue
             break
 
+        # ── The governed gate decides ────────────────────────────────────────────────────
+        #
+        # Everything above this point is model-authored: the criteria, their inputs, their
+        # expected values, and the code meant to satisfy them, all from one author working from
+        # one set of assumptions. It is worth running, worth reporting, and worth spending a
+        # bounded repair budget on — it is the only red/green signal the agent has while it
+        # works. It is not worth handing the verdict to, because when it disagrees with the
+        # product nothing can recover which of the two is wrong.
+        #
+        # A governed command can. It comes from ``ACCEPTANCE.json``, which the Commander owns and
+        # no LLM-assisted command may write, and Drydock executes its argv directly rather than
+        # inspecting a wrapper the model generated. Where one exists for this block's story, it
+        # is the verdict. Where none exists, the block is *implemented* rather than verified —
+        # the work is done and nothing with standing examined it.
+        gate_results: dict[str, GateResult] = {}
+        if acceptance_contract.declared:
+            for block in unit.steps:
+                stage = acceptance_contract.stage_for(block.block_id, *_story_ids(block))
+                if stage is None:
+                    continue
+                stage_name, argv = stage
+                _emit(on_text, f"gate: {stage_name} · {' '.join(argv)}")
+                gate = run_gate(stage_name, argv, build_dir=resolved_build_dir)
+                gate_results[block.block_id] = gate
+                _emit(on_text, f"gate: {gate.rendered}")
+        # A model-authored criterion no longer decides whether the run continues. Stopping the
+        # build on one is what left Toml with blocks 4-8 unbuilt while a fabricated backslash
+        # expectation held the line at block 3; the authoritative suite never got the chance to
+        # drive the rest of the implementation. Only a governed FAIL, or a failure that is not
+        # about acceptance at all, ends a block now.
+        # A governed gate outranks a model-authored criterion; a model-authored criterion
+        # outranks nothing at all. Where a gate covers the block, its verdict is the verdict and
+        # the criteria are diagnostic — an oracle disagreeing with a criterion means the
+        # criterion is wrong. Where no gate covers it, a binding criterion is the only evidence
+        # there is, and discarding it would leave an ungoverned project with no failure signal
+        # whatsoever. Non-binding criteria never decide anything in either case.
+        governed_blocks = {block.block_id for block in unit.steps if block.block_id in gate_results}
+        failing_gates = [gate for gate in gate_results.values() if gate.blocks]
+        if failing_gates:
+            status, state = "failed", "closed/failed"
+            error = "governed acceptance failed: " + ", ".join(gate.name for gate in failing_gates)
+            failure_detail = "\n".join(gate.rendered for gate in failing_gates)
+        elif status == "failed" and _is_repairable(error) and governed_blocks:
+            # Every governed gate passed or could not run. The criteria that stayed red belong
+            # to a story an oracle already judged, so they are evidence about the criteria.
+            overruled = ", ".join(
+                check.check_id
+                for check in acceptance
+                if not check.passed
+                and not check.skipped
+                and (owner := story_by_check.get(check.check_id)) is not None
+                and owner.block_id in governed_blocks
+            )
+            if overruled:
+                status, error, failure_detail = "built", None, ""
+                _emit(
+                    on_text,
+                    f"diagnostic: {overruled} — model-authored criteria red where the governed "
+                    "gate passed; recorded against the criteria, not the product",
+                )
+
         written_reusable_compacts: tuple[str, ...] = ()
         if status not in {"failed", "blocked"} and reusable_compact_sources:
             written_reusable_compacts = _persist_reusable_compacts(
@@ -3196,7 +3312,10 @@ def build_target(
         # story whose own checks all passed verifies rather than inheriting a group-mate's
         # finding. A non-AC failure (execution error, tampered asset, dependency gate, or no
         # checks at all) is not attributable to one story, so every member fails as before.
-        ac_attributable = status == "failed" and any(not check.passed for check in acceptance)
+        ac_attributable = status == "failed" and (
+            any(gate.blocks for gate in gate_results.values())
+            or any(not check.passed and not check.skipped and check.binding for check in acceptance)
+        )
         manifest_updates: dict[str, dict[str, str | None]] = {}
         for block in unit.steps:
             own_checks = tuple(
@@ -3205,20 +3324,65 @@ def build_target(
                 if (owner := story_by_check.get(check.check_id)) is not None
                 and owner.block_id == block.block_id
             )
-            own_failed = tuple(check for check in own_checks if not check.passed)
+            gate = gate_results.get(block.block_id)
             if ac_attributable:
-                if own_failed:
-                    block_state: str = "closed/failed"
-                    block_finding: str | None = _failure_finding(
+                # Per-block attribution: only the story whose own governed gate failed is
+                # closed/failed. A group-mate that passed its own gate, or has none, does not
+                # inherit the finding.
+                own_failed = tuple(
+                    check for check in own_checks if not check.passed and check.binding
+                )
+                if gate is not None:
+                    # Governed: the gate is the verdict for this story, and its own criteria are
+                    # diagnostic whatever they said.
+                    if gate.blocks:
+                        block_state: str = "closed/failed"
+                        block_finding: str | None = _failure_finding(
+                            "failed", f"governed acceptance failed: {gate.name}", result, own_checks
+                        )
+                    elif gate.passed:
+                        block_state, block_finding = "closed/verified", None
+                    else:
+                        block_state = "closed/implemented"
+                        block_finding = (
+                            f"ADVISORY: governed gate {gate.name} {gate.outcome} — {gate.detail}"
+                        )
+                elif own_failed:
+                    # Ungoverned: a binding criterion is the only evidence there is.
+                    block_state = "closed/failed"
+                    block_finding = _failure_finding(
                         "failed",
                         "programmatic acceptance failed: "
                         + ", ".join(check.check_id for check in own_failed),
                         result,
                         own_checks,
                     )
+                elif acceptance_contract.declared:
+                    block_state, block_finding = "closed/implemented", UNGOVERNED_FINDING
                 else:
-                    block_state = "closed/verified"
-                    block_finding = None
+                    block_state, block_finding = "closed/verified", None
+            elif status in {"failed", "blocked"}:
+                block_state = state
+                block_finding = finding
+            elif gate is not None and gate.passed:
+                block_state = "closed/verified"
+                block_finding = None
+            elif gate is not None:
+                # The gate could not run. That is a fault in the kit, not the product, so it
+                # never fails the block — but it also cannot verify it.
+                block_state = "closed/implemented"
+                block_finding = (
+                    f"ADVISORY: governed gate {gate.name} {gate.outcome} — {gate.detail}. "
+                    "The product was not judged; repair the harness and rerun."
+                )
+            elif acceptance_contract.declared and state == "closed/verified":
+                # The project declares governed acceptance and this story is not covered by it.
+                # Its criteria passed, which is worth recording and is not verification: the
+                # same author wrote the criteria and the code. The distinction is only drawn for
+                # a project that has opted into governance — telling a project with no contract
+                # at all that nothing it builds is verified would be noise, not information.
+                block_state = "closed/implemented"
+                block_finding = UNGOVERNED_FINDING
             else:
                 block_state = state
                 block_finding = finding

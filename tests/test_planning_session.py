@@ -4075,3 +4075,70 @@ def test_the_plan_validator_counts_the_authoring_contract_criteria():
     # The example drives the imported suite, so it is not subject to the several-criteria
     # minimum.
     assert _drives_external_suite(checks)
+
+
+# ── a malformed criterion must never stop the pipeline ────────────────────────
+# Bad stories and bad Sea Trials are outside Drydock's control. A bad acceptance criterion is
+# not: Drydock's own command generates it against Drydock's own contract, so a pipeline that
+# cannot process one cleanly is a pipeline defect. The criterion is surfaced, never fatal.
+
+
+def _spec_with_criterion(code: str) -> str:
+    return (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        f"=== AC broken-check ===\nIntent: Demonstrate the criterion.\n\n{code}\n"
+        "=== END AC broken-check ===\n"
+    )
+
+
+def test_a_criterion_that_does_not_compile_is_reported_not_fatal():
+    from drydock.planning_session import _malformed_acceptance_defects
+
+    defects = _malformed_acceptance_defects({
+        "FEATURE-Example.md": _spec_with_criterion("assert 1=2")
+    })
+
+    assert [defect.check_id for defect in defects] == ["broken-check"]
+    assert "not valid Python" in defects[0].reason
+
+
+def test_an_unpaired_container_is_reported_against_its_file():
+    from drydock.planning_session import _malformed_acceptance_defects
+
+    defects = _malformed_acceptance_defects({
+        "FEATURE-Example.md": "=== AC one ===\nIntent: x.\n\nassert True\n"
+    })
+
+    assert len(defects) == 1
+    assert defects[0].source == "FEATURE-Example.md"
+
+
+def test_a_compiling_criterion_reports_nothing():
+    from drydock.planning_session import _malformed_acceptance_defects
+
+    assert (
+        _malformed_acceptance_defects({"FEATURE-Example.md": _spec_with_criterion("assert 1 == 1")})
+        == ()
+    )
+
+
+def test_a_malformed_criterion_becomes_a_blocking_decision():
+    """Interactively this asks before the story builds; under --override it survives for review."""
+    from drydock.planning_session import (
+        _malformed_acceptance_defects,
+        malformed_acceptance_decisions,
+    )
+
+    defects = _malformed_acceptance_defects({
+        "FEATURE-Example.md": _spec_with_criterion("assert 1=2")
+    })
+    decisions = malformed_acceptance_decisions(defects)
+
+    assert len(decisions) == 1
+    decision = decisions[0]
+    assert decision.severity == "blocking"
+    assert decision.origin == "plan"
+    assert decision.blueprint == "FEATURE-Example.md"
+    assert decision.status == "open"
+    assert "broken-check" in decision.title
+    assert "not valid Python" in decision.description

@@ -122,21 +122,20 @@ FAILURE_DETAIL: <what happened, why, and what to change before rerunning>
 
 15. When a declared acceptance criterion cannot pass no matter how the code is written,
    say so with this exact token. You may not edit the criterion — it is staged and
-   restored before grading — so a repair pass cannot fix it and Drydock must stop
-   instead of spending the remaining budget:
+   restored before grading:
 
 ```text
 AC_BROKEN: <check-id>[, <check-id>]
 ```
 
-   Emit it only after running the criterion and confirming the underlying command
-   succeeded while the assertion still failed. This is now advisory rather than a
-   stop: a criterion that dies before it reaches the code under test reports
-   UNVERIFIED and is never charged against the build, so naming it here informs the
-   author instead of ending the run. The clearest case is an assertion about a
-   command's output text that contradicts what the command prints on success — for
-   example asserting a runner's stdout omits the word `failed` when the runner prints
-   `0 failed` in its summary on a clean run. Name the affected check ids. Emit the token
-   alongside your normal `RESULT` line and state the reasoning in `FAILURE_DETAIL`;
-   emit it even when `RESULT: SUCCESS` because the code itself is correct. Do not use it
-   for a criterion you merely failed to satisfy.
+   This is a report, not a verdict, and it stops nothing. A criterion reaches you only
+   when its expected value is one its author could not have invented — a status code, a
+   staged suite's exit status, a value the criterion itself supplied as input — so your
+   claim that the criterion rather than the code is at fault is the less likely
+   explanation, and the budget is spent as it would be for any other failure. A
+   criterion whose expectation *was* hand-typed already settles `DISPUTED` on its own,
+   without you naming it. Emit the token only after running the criterion and confirming
+   the underlying command succeeded while the assertion still failed. Name the affected
+   check ids, emit it alongside your normal `RESULT` line, state the reasoning in
+   `FAILURE_DETAIL`, and emit it even when `RESULT: SUCCESS`. Do not use it for a
+   criterion you merely failed to satisfy.

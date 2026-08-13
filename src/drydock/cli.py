@@ -2358,6 +2358,7 @@ def cmd_score_drydock(
 
 _BUILD_STATE_MARK = {
     "closed/verified": "[done]",
+    "closed/implemented": "[unverified]",
     "implemented": "[review]",
     "pending": "[pending]",
     "blocked/questions": "[QUESTIONS]",

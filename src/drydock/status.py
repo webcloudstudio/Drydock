@@ -401,6 +401,10 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
 
     executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
     total = len(executable)
+    # Only a governed verdict counts as verified here. This is the human-facing "is it done"
+    # gate, and a block that finished with nothing able to judge it is exactly what an operator
+    # needs to see. Dependency scheduling uses FINISHED_STATES so such a block does not stall
+    # the work behind it; completion is a different question from runnability.
     remaining = [block for block in executable if block.state != "closed/verified"]
     verified = total - len(remaining)
 

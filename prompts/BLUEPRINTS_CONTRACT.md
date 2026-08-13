@@ -187,6 +187,56 @@ A state oracle cannot pass against a stub and cannot fail because a runner print
 "warning". Almost every acceptance defect observed in practice has the same shape: the oracle was
 a string in captured output.
 
+### The expected value must be one you could not get wrong
+
+Reading state back is half the rule. The other half is what you compare it *to*.
+
+> **Never type an expected value twice. Bind it to a name and use the name on both sides.**
+
+You are authoring this criterion before the code exists, so a hand-typed expectation is a
+prediction about bytes you have not seen. When the prediction is wrong the criterion fails against
+a correct implementation, and nothing downstream can tell that from a real defect. This is the
+single largest source of wasted build budget on record.
+
+| Expected value | Verdict |
+|---|---|
+| A name bound to the value the criterion supplied as input | **Correct** |
+| A status code, exit status, or count | **Correct** |
+| A contract token read off a declared interface — `"integer"`, `"application/json"`, `"POST"` | **Correct** |
+| A staged suite's exit status | **Correct** |
+| A string literal you typed out as the expected result | **Forbidden** |
+
+The forbidden row is judged mechanically: a string expectation carrying anything escapable —
+whitespace, a backslash, a quote, a newline, a non-ASCII character — that the criterion did not
+also supply as input. A criterion that breaks the rule still runs and is still reported, but it
+settles `DISPUTED` and gates nothing, so it buys the story no coverage at all.
+
+The case this comes from. Wrong:
+
+```
+source = 'basic = "line\\nvalue"\nraw = \'C:\\\\Users\\\\nodejs\'\n'
+result = subprocess.run(["./toml-decoder"], input=source, capture_output=True, text=True)
+decoded = json.loads(result.stdout)
+assert decoded["raw"]["value"] == r"C:\Users\nodejs"     # re-typed, and wrong
+```
+
+A TOML literal string preserves its backslashes verbatim, so the decoder returned the doubled
+form and the expectation was wrong. Right:
+
+```
+raw = "C:\\Users\\nodejs"
+source = f"raw = '{raw}'\n"
+result = subprocess.run(["./toml-decoder"], input=source, capture_output=True, text=True)
+decoded = json.loads(result.stdout)
+assert decoded["raw"]["value"] == raw                    # one spelling, cannot disagree
+```
+
+When a transform's output genuinely cannot be derived from its input — a renderer turning `# h`
+into `<h1>h</h1>` — do not hand-write the expectation at all. Bind the criterion to the
+authoritative suite that defines correctness for that transform. Where no such suite exists, put
+the case in the project's own test suite, where the implementer writes it against real output,
+rather than predicting it here.
+
 ### Authoring patterns
 
 **1 — Round trip (the default form).** For anything that stores, mutates, or removes state:
@@ -257,27 +307,22 @@ reached the code under test, so it says nothing about the build.
 ### Satisfiability
 
 Every assertion must be satisfiable by a correct implementation. An expectation no implementation
-can meet is a defect, not a red baseline. String literals are the usual source of one: inside a raw
+can meet is a defect, not a red baseline. Escaping is the usual source of one: inside a raw
 literal, `\n` and `\r` are a backslash followed by a letter, not a control character, so
-`r"text\n"` asserts against six characters ending in a literal backslash. Write control characters
-in a normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"\\n"` when a
-literal backslash is genuinely intended. Drydock warns about this at `drydock validate` and at plan
-time; the warning does not remove the criterion or stop the build, so the authoring is yours to get
-right.
+`r"text\n"` asserts against six characters ending in a literal backslash. Binding the value to a
+name and using it on both sides removes the question entirely, which is why that is the rule.
 
 ### Runnability
 
-Two authoring rules are enforced at plan time. A criterion that breaks either is rejected before
-any build spends a call on it, because no implementation can turn it green.
-
 **Subprocess mode.** Match the mode to `input=`. Text input declares `text=True` or `encoding=...`;
 binary input uses a bytes-like value and does not declare `text`, `encoding`, `errors`, or
-`universal_newlines`. A mismatch raises before the program under test starts. Write:
+`universal_newlines`. A mismatch raises `TypeError` before the program under test starts, which
+reports UNVERIFIED — the criterion buys the story nothing. Write:
 
 ```
-result = subprocess.run(["./program"], input="one line\n", capture_output=True, text=True)
+payload = "one line\n"
+result = subprocess.run(["./program"], input=payload, capture_output=True, text=True)
 assert result.returncode == 0
-assert result.stdout == "<p>one line</p>\n"
 ```
 
 For a binary or invalid-encoding criterion, write:
@@ -297,10 +342,12 @@ state an encoding requirement, the criterion says so and may then use that encod
 Intent: The executable round-trips UTF-8 source, per INSTRUCTIONS.md.
 Encoding: utf-8
 
+source = "café\n"
 result = subprocess.run(
-    ["./program"], input="café\n", capture_output=True, text=True, encoding="utf-8"
+    ["./program"], input=source, capture_output=True, text=True, encoding="utf-8"
 )
-assert result.stdout == "<p>café</p>\n"
+assert result.returncode == 0
+assert source.strip() in result.stdout
 === END AC runtime-utf8 ===
 ```
 

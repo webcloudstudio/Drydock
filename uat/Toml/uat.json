@@ -4,6 +4,7 @@
     "sources/INSTRUCTIONS.md",
     "sources/toml-v1.0.0.md",
     "sources/full_test.sh",
+    "sources/stage_test.sh",
     "sources/run_conformance.sh",
     "sources/setup_harness.sh"
   ],
@@ -13,5 +14,43 @@
   "test_command": [
     "sh",
     "sources/full_test.sh"
-  ]
+  ],
+  "acceptance": {
+    "full": [
+      "sh",
+      "sources/full_test.sh"
+    ],
+    "stages": {
+      "parser-lexical-scalars": [
+        "sh",
+        "sources/stage_test.sh",
+        "valid/bool/**|valid/integer/**|valid/float/**|invalid/bool/**|invalid/integer/**|invalid/float/**"
+      ],
+      "parser-strings": [
+        "sh",
+        "sources/stage_test.sh",
+        "valid/string/**|invalid/string/**|invalid/control/**"
+      ],
+      "parser-keys": [
+        "sh",
+        "sources/stage_test.sh",
+        "valid/key/**|invalid/key/**"
+      ],
+      "parser-tables": [
+        "sh",
+        "sources/stage_test.sh",
+        "valid/table/**|invalid/table/**"
+      ],
+      "parser-arrays-inline": [
+        "sh",
+        "sources/stage_test.sh",
+        "valid/array/**|valid/inline-table/**|invalid/array/**|invalid/inline-table/**"
+      ],
+      "parser-datetimes": [
+        "sh",
+        "sources/stage_test.sh",
+        "valid/datetime/**|invalid/datetime/**"
+      ]
+    }
+  }
 }

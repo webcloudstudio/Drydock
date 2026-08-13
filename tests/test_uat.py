@@ -292,7 +292,7 @@ def test_discover_fixture_rejects_update_for_unknown_basename(tmp_path: Path) ->
         discover_fixtures(tmp_path)
 
 
-def test_run_uat_builds_initial_and_updated_sources_and_keeps_scores_advisory(
+def test_run_uat_builds_initial_and_updated_sources_and_gates_on_the_release_verdict(
     tmp_path: Path,
 ) -> None:
     fixtures_root = tmp_path / "fixtures"
@@ -329,7 +329,12 @@ def test_run_uat_builds_initial_and_updated_sources_and_keeps_scores_advisory(
     )
 
     result = results[0]
-    assert result.status == "passed"
+    # The release gate is the project's acceptance verdict, not an advisory number, so a
+    # non-zero ``score release`` fails the run. The two statuses stay separate: Drydock ran the
+    # whole lifecycle without an infrastructure fault, and the product did not pass acceptance.
+    assert result.status == "failed"
+    assert result.execution_status == "PASS"
+    assert result.acceptance_status == "FAIL"
     assert result.build_passes == 2
     assert result.score_exit_codes == {"acceptance": 0, "build-report": 0, "release": 1}
     assert ("import", "ReadingList", "--update") in calls
@@ -344,7 +349,7 @@ def test_run_uat_builds_initial_and_updated_sources_and_keeps_scores_advisory(
     assert any(label.endswith("after-refit-1-build-status") for label in labels)
     assert any(label.endswith("after-refit-1-build-workspace-status") for label in labels)
     assert (case_root / "result.json").is_file()
-    assert "ReadingList: PASSED" in (case_root / "README.md").read_text(encoding="utf-8")
+    assert "ReadingList: FAILED" in (case_root / "README.md").read_text(encoding="utf-8")
     assert (case_root / "index.html").is_file()
 
 

@@ -32,8 +32,9 @@ from drydock.acceptance import (
     run_programmatic_acceptance,
     tally_outcomes,
 )
+from drydock.acceptance_contract import GateResult, load_contract, run_gate
 from drydock.acceptance_requirements import authorization_for, requirement_available
-from drydock.build_plan import BuildPlan, parse_build_plan, stale_applied_specs
+from drydock.build_plan import FINISHED_STATES, BuildPlan, parse_build_plan, stale_applied_specs
 from drydock.build_score import (
     VALID_VERDICTS,
     BuildScoreResult,
@@ -329,8 +330,21 @@ def score_release(
 
     blockers: list[str] = []
     warnings: list[str] = []
+    # The governed full gate. When the Commander declares one in ACCEPTANCE.json, its classified
+    # exit status is the product verdict and it blocks on its own — no model judgement, no proof
+    # binding, no prose. This is the difference between a release gate that runs the acceptance
+    # command and one that asks whether model-authored criteria happened to tag the right Sea
+    # Trial id, which is what the proof path does when a criterion declares no Command.
+    contract = load_contract(target_dir)
+    full_gate: GateResult | None = None
+    if contract.full:
+        full_gate = run_gate("full", contract.full, build_dir=build_dir)
+        if full_gate.blocks:
+            blockers.append(f"Governed acceptance gate failed: {full_gate.rendered}")
+        elif not full_gate.passed:
+            blockers.append(f"Governed acceptance gate could not run: {full_gate.rendered}")
     executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
-    incomplete = [block.block_id for block in executable if block.state != "closed/verified"]
+    incomplete = [block.block_id for block in executable if block.state not in FINISHED_STATES]
     if incomplete:
         # Reported, not gating. The Manifest is the plan for meeting the contract, not the
         # contract: a story is a means. Blocking on its state made story acceptance a release
@@ -575,6 +589,7 @@ def score_release(
         "target": target,
         "complete": complete,
         "qualified": complete and bool(attestations),
+        "governed_gate": full_gate.to_dict() if full_gate else None,
         "criteria": [asdict(item) for item in criteria],
         "blockers": blockers,
         "attestations": attestations,

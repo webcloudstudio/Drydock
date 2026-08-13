@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from drydock.build import work_kind_of
-from drydock.build_plan import BuildPlan, PlanBlock
+from drydock.build_plan import FINISHED_STATES, BuildPlan, PlanBlock
 from drydock.build_run import SELECTABLE_STATES
 
 STEP_TYPES = ("story", "spike")
@@ -179,7 +179,7 @@ def build_status(plan: BuildPlan) -> BuildStatus:
 
 def _verified(block_id: str, by_id: dict[str, PlanBlock]) -> bool:
     dependency = by_id.get(block_id)
-    return dependency is not None and dependency.state == "closed/verified"
+    return dependency is not None and dependency.state in FINISHED_STATES
 
 
 def _buildable_blocks(plan: BuildPlan) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -200,7 +200,7 @@ def _buildable_blocks(plan: BuildPlan) -> tuple[tuple[str, ...], tuple[str, ...]
             available = {
                 block.block_id
                 for block in executable
-                if block.state in SELECTABLE_STATES or block.state == "closed/verified"
+                if block.state in SELECTABLE_STATES or block.state in FINISHED_STATES
             }
             external_deps = tuple(
                 dep

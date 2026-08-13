@@ -309,12 +309,21 @@ Rules:
   object while persisting nothing must fail. Enumerate coverage from the interface — every route
   and method, every subcommand and behavior-changing flag, every exported function — rather than
   sampling it. Assert declared failure signals on negative paths, never message wording.
-- Every assertion must be satisfiable by a correct implementation. Read each expectation back as
-  the exact bytes it produces. Inside a raw literal, `\n` and `\r` are a backslash and a letter,
-  not a control character: `r"text\n"` does not end in a newline. Write control characters in a
-  normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"\\n"` when a literal
-  backslash is intended. Drydock warns about this defect; the warning does not remove the
-  criterion, so the authoring is yours to get right.
+- **Never type an expected value twice. Bind it to a name and use the name on both sides.** You
+  are authoring before the code exists, so a hand-typed expectation is a prediction about bytes
+  you have not seen; when the prediction is wrong the criterion fails a correct implementation and
+  nothing downstream can tell that from a real defect. Legal expected values: a name bound to the
+  input the criterion supplied, a status code or count, a contract token read off a declared
+  interface (`"integer"`, `"application/json"`), a staged suite's exit status. Illegal: a string
+  literal you typed out as the expected result. Drydock judges this mechanically — a string
+  expectation carrying anything escapable that the criterion did not also supply as input — and a
+  criterion that breaks the rule settles `DISPUTED`, gating nothing and buying its story no
+  coverage. Write `raw = "C:\\Users\\nodejs"; source = f"raw = '{raw}'\n"; ...
+  assert decoded["raw"]["value"] == raw`, never a second spelling of the same value.
+- Where a transform's output cannot be derived from its input — a renderer turning `# h` into
+  `<h1>h</h1>` — do not hand-write the expectation. Bind to the authoritative suite that defines
+  correctness for that transform. Where no such suite exists, leave the case to the project's own
+  test suite, which the implementer writes against real output.
 - Write `- None.` only when the item genuinely has no programmatic surface (pure visual/manual
   UI, or a Commander-observed check). State the reason on the same line, e.g.
   `- None. Visual-only screen; behavior covered by its backing FEATURE spec.` Bare `- None.` on a
