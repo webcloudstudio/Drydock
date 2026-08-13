@@ -1293,12 +1293,18 @@ _CASE_TALLY_RE = re.compile(
 )
 
 
+#: Names a block failed by its governed stage gate rather than by a model-authored criterion.
+GOVERNED_FAILURE_PREFIX = "governed acceptance failed"
+
+
 def _is_repairable(error: str | None) -> bool:
     """True when a failed block can be driven green by another informed LLM pass.
 
-    Only a programmatic-acceptance miss or a surviving agent-reported failure is
-    repairable: the build directory holds the partial work and the failing checks name
-    what remains. Every other classification (token/context limit, sandbox unavailable,
+    A governed gate failure, a programmatic-acceptance miss, or a surviving agent-reported
+    failure is repairable: the build directory holds the partial work and the failing gate or
+    checks name what remains. A red governed gate is the most repairable signal there is — it
+    is the authoritative statement of what the product still gets wrong — so it must buy passes
+    rather than end the block with the budget unspent. Every other classification (token/context limit, sandbox unavailable,
     provider error, dependency gate, staged-asset tamper, no files written) is terminal
     and never loops — re-running it only wastes a pass. ``no files written`` reaches here
     only for a block with no acceptance criteria; with criteria it is downgraded to advisory
@@ -1306,9 +1312,11 @@ def _is_repairable(error: str | None) -> bool:
     """
     if not error:
         return False
-    return error.startswith("programmatic acceptance failed") or error.startswith(
-        _AGENT_REPORTED_PREFIX
-    )
+    return error.startswith((
+        "programmatic acceptance failed",
+        GOVERNED_FAILURE_PREFIX,
+        _AGENT_REPORTED_PREFIX,
+    ))
 
 
 # The objective escape hatch. An agent that has run a criterion and concluded the criterion
@@ -2498,6 +2506,7 @@ def build_target(
         base_model = model or prompt.model
         max_attempt = max(0, repair_attempts)
         attempt_records: list[AttemptRecord] = []
+        gate_results: dict[str, GateResult] = {}
         # Consecutive flat passes. Reset by any pass that moves the deterministic acceptance
         # score, so progress/flat/progress/flat never accumulates into a stop.
         consecutive_stalls = 0
@@ -3010,6 +3019,33 @@ def build_target(
                                             "(0 disables; JVM/Go stacks reserve more)",
                                         )
 
+            # The governed gates run on every attempt, not once after the budget is spent.
+            # A gate that reports only at the end drives no repair at all: the block simply
+            # fails with the whole budget unused. Running it here makes it the red/green signal
+            # the repair loop is steering by, which is the point of a stage gate.
+            gate_results = {}
+            for gated_block in unit.steps:
+                stage = acceptance_contract.stage_for(
+                    gated_block.block_id, *_story_ids(gated_block)
+                )
+                if stage is None:
+                    continue
+                stage_name, argv = stage
+                gate = run_gate(stage_name, argv, build_dir=resolved_build_dir)
+                gate_results[gated_block.block_id] = gate
+                _emit(on_text, f"gate: {gate.rendered}")
+            if any(gate.blocks for gate in gate_results.values()):
+                # A red gate is a product failure whatever the criteria said, and it is
+                # repairable: another informed pass is exactly what can move it.
+                status = "failed"
+                error = f"{GOVERNED_FAILURE_PREFIX}: " + ", ".join(
+                    gate.name for gate in gate_results.values() if gate.blocks
+                )
+                failure_detail = "\n".join(
+                    f"{gate.rendered}\n{(gate.stdout or gate.stderr)[-4000:]}"
+                    for gate in gate_results.values()
+                    if gate.blocks
+                )
             previous_record = attempt_records[-1] if attempt_records else None
             passed_check_ids = tuple(check.check_id for check in acceptance if check.passed)
             passed_checks = len(passed_check_ids)
@@ -3033,7 +3069,7 @@ def build_target(
             stalled = (
                 status == "failed"
                 and _is_repairable(error)
-                and bool(acceptance)
+                and bool(acceptance or gate_results)
                 and previous_record is not None
                 and not ac_progress
                 and not quantitative_progress
@@ -3158,17 +3194,6 @@ def build_target(
         # inspecting a wrapper the model generated. Where one exists for this block's story, it
         # is the verdict. Where none exists, the block is *implemented* rather than verified —
         # the work is done and nothing with standing examined it.
-        gate_results: dict[str, GateResult] = {}
-        if acceptance_contract.declared:
-            for block in unit.steps:
-                stage = acceptance_contract.stage_for(block.block_id, *_story_ids(block))
-                if stage is None:
-                    continue
-                stage_name, argv = stage
-                _emit(on_text, f"gate: {stage_name} · {' '.join(argv)}")
-                gate = run_gate(stage_name, argv, build_dir=resolved_build_dir)
-                gate_results[block.block_id] = gate
-                _emit(on_text, f"gate: {gate.rendered}")
         # A model-authored criterion no longer decides whether the run continues. Stopping the
         # build on one is what left Toml with blocks 4-8 unbuilt while a fabricated backslash
         # expectation held the line at block 3; the authoritative suite never got the chance to
@@ -3184,8 +3209,6 @@ def build_target(
         failing_gates = [gate for gate in gate_results.values() if gate.blocks]
         if failing_gates:
             status, state = "failed", "closed/failed"
-            error = "governed acceptance failed: " + ", ".join(gate.name for gate in failing_gates)
-            failure_detail = "\n".join(gate.rendered for gate in failing_gates)
         elif status == "failed" and _is_repairable(error) and governed_blocks:
             # Every governed gate passed or could not run. The criteria that stayed red belong
             # to a story an oracle already judged, so they are evidence about the criteria.

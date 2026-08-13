@@ -4053,3 +4053,40 @@ def test_a_stage_keyed_to_no_story_is_reported(tmp_path):
     )
 
     assert "no story matches renamed-last-week" in "\n".join(messages)
+
+
+def test_a_red_governed_gate_drives_the_repair_loop(tmp_path):
+    """A gate that reports only after the budget is spent drives no repair at all.
+
+    The gate is the red/green signal the loop steers by, so it runs on every attempt and its
+    output reaches the next agent call. Here it goes green on the second pass.
+    """
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _marker_spec("built foundation\n"), encoding="utf-8"
+    )
+    marker = build_dir / "gate-pass.txt"
+    _governed(
+        target_dir,
+        stages={
+            "foundation": (
+                sys.executable,
+                "-c",
+                f"import pathlib,sys; p=pathlib.Path({str(marker)!r});"
+                " sys.exit(0) if p.exists() else (p.write_text('x'), sys.exit(1))[1]",
+            )
+        },
+    )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert result.steps[0].calls_used == 2, "the red gate must buy a repair pass"
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"

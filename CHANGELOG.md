@@ -82,6 +82,11 @@ command surface and Typed Specification contract are unstable and may change bet
   rather than `closed/verified`, with an advisory saying so, because "verified" is a claim about
   an oracle. That distinction is drawn only for a project that has opted into governance.
 
+  The gates run inside the repair loop, on every attempt, and their output is fed to the next
+  agent call. A gate that reported only after the budget was spent would drive no repair at all —
+  the block would simply fail with every pass unused — so a red gate is classified repairable and
+  is the signal the loop steers by.
+
   `build_plan.FINISHED_STATES` lets `implemented` satisfy a dependency, so an ungoverned story no
   longer stalls the blocks behind it. Gate execution is classified three ways and the distinction
   is load-bearing: exit zero is a product PASS, a non-zero exit from a command that ran is a
