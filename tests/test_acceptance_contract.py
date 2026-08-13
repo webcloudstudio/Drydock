@@ -148,6 +148,27 @@ def test_a_nonzero_exit_from_a_command_that_ran_is_a_product_failure(tmp_path):
     assert "12 failed" in gate.stdout
 
 
+def test_exit_two_is_a_usage_error_not_a_product_failure(tmp_path):
+    """The `diff` and `grep` convention: 1 is a legitimate negative answer, 2 is trouble. A gate
+    script exits 2 for an unset variable, a bad argument, or a harness that is not the version the
+    run named -- none of which observed the product. Toml 20260813.195530 is the recorded case: a
+    version probe refused to run, every gate exited 2, and the release reported the decoder as
+    failing when nothing had examined it."""
+    _, build = _target(tmp_path)
+
+    gate = run_gate(
+        "full",
+        (sys.executable, "-c", "import sys; print('usage: ...', file=sys.stderr); sys.exit(2)"),
+        build_dir=build,
+    )
+
+    assert gate.outcome == OUTCOME_ERROR
+    assert not gate.blocks
+    assert not gate.passed
+    assert gate.return_code == 2
+    assert "could not run" in gate.detail
+
+
 def test_a_missing_command_is_an_error_not_a_product_failure(tmp_path):
     """The harness was absent. Charging that to the build turns a kit fault into a defect."""
     _, build = _target(tmp_path)

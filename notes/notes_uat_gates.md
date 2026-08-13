@@ -321,6 +321,8 @@ Every distinct failure mode in the 18 runs. `status` is as of 2026-08-13.
 | D-013 | `ACCEPTANCE.json` stage keys are model-chosen slugs; a rename silently unbinds the gate | G-BUILD-04 | not yet observed | **open — latent** |
 | D-014 | **`test` creates `instance/reading_list.sqlite3`; `score release` then blocks the build as dirty** | G-TEST-01 → G-SCORE-05 | ReadingList `20260813.160121` | **open — see below** |
 | D-015 | Build does not converge inside the pass budget; recorded as `degraded` with no attribution | G-BUILD-08 | 6 runs | **open** |
+| D-021 | A governed gate exiting 2 — a usage error, meaning it could not run — is classified `FAIL` and charged to the product | G-BUILD-04 → G-SCORE-01 | Toml `20260813.195530` | fixed — exit 2 is now ERROR (§29) |
+| D-022 | The Toml fixture's `run_conformance.sh` probed the harness with `toml-test -version`, which that harness does not accept; the version guard then refused every run | G-BUILD-04 | Toml `20260813.195530` | fixed — uses the `version` subcommand |
 
 ### D-014 in full, because it is the cleanest example of the whole disease
 
@@ -1311,7 +1313,7 @@ Ordered so that each phase is validated by the one before it.
 | 2.1 | V-6 — hygiene leaves the verdict; git state reported, not gating | `score.py:362-366`, `build_score.py:433-440` | **D-014** |
 | 2.2 | V-1 + V-3 — four terminal verdicts, three trial verdicts, the statement | `score.py`, `sea_trials.py` | |
 | 2.3 | V-5 — `Verification:` becomes a hint; delete the proof-tag override | `score.py:520-535` | **D-016** |
-| 2.4 | V-7 — ERROR computed first and separately | `score.py`, `uat.py` | |
+| 2.4 | V-7 — ERROR computed first and separately | `score.py`, `uat.py` | **partly done — see §29** |
 | 2.5 | Converge `score.py` and `build_score.py` on one policy engine | both | |
 
 ### Phase 3 — The tier model
@@ -1426,3 +1428,35 @@ Implementing Parts II–V would diverge from `docs/Drydock_Specification.md` in 
 
 The specification is the author's. These are surfaced so the divergence is a decision rather than
 an accident.
+
+---
+
+## 29. Exit 2 as the Gate's "Could Not Run" — Adopted, With a Caveat
+
+`2026-08-13` · settled by the author · `spec:na` · `impl:implemented`
+
+**A governed acceptance command exiting 2 means it could not run.** `run_gate` classifies it
+`OUTCOME_ERROR` alongside an absent executable, a timeout, and a signal: it does not block, it is
+never charged to the build, and `score release` reports *could not run* rather than *failed*.
+This is the narrow half of 2.4 — the fault domain is now right at the point of execution. The
+verdict-level half (V-7: ERROR computed first, before grading, as a terminal verdict) is still
+unimplemented.
+
+The convention is `diff`'s and `grep`'s: **1 is a legitimate negative answer, 2 is trouble.** It is
+already Drydock's stated contract in `AGENTS.md`, so this applies to a gate script the same rule
+Drydock's own commands follow.
+
+**The caveat, recorded deliberately.** The evidence for this convention inside Drydock is one
+location: the three shipped Toml gate scripts, which the author wrote. No Commander-supplied
+command has ever been observed using exit 2, and nothing enforces the meaning — a third-party
+suite is free to exit 2 for "tests failed". Adopting a project-wide rule on a single instance is
+thin, and it is adopted anyway because the failure is asymmetric: reading a real product failure
+as a kit fault yields PENDING and a visible unverified block, while reading a kit fault as a
+product failure yields a false FAILED, which is the defect this whole file exists to remove. A
+misread in the safe direction is loud and recoverable; a misread in the other direction is what
+produced eighteen runs of no signal.
+
+Left as is. If a real Target ever ships a gate that means "failed" by exit 2, the fix is a
+per-gate declaration in `ACCEPTANCE.json`, not a change to the default.
+
+D-021 and D-022 in §4 are the run that produced this.

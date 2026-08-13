@@ -31,12 +31,11 @@ _RECORDED_VERDICTS = {"PASS": MET, "FAIL": NOT_MET, "INCONCLUSIVE": PENDING}
 # asymmetric evidence rule requires before a criterion may be graded NOT MET.
 _FAILING_CITATION = re.compile(r"=FAIL\b")
 
-# A governed gate exiting 2 said it could not run. Drydock's own exit contract reserves 2 for a
-# usage error, and the shipped gate scripts honour it -- an unset DECODER, a bad argument, a
-# harness that is not the version the run named. `run_gate` classifies every non-zero exit as
-# FAIL, so that statement arrives here as a product verdict. It is a kit fault: nothing about the
-# product was observed. Corrected in extraction so the corpus records the verdict each run should
-# have produced rather than the one it did.
+# A governed gate exiting 2 said it could not run. `run_gate` now classifies that as ERROR, so
+# runs recorded from 2026-08-13 onward arrive already carrying the right domain. This correction
+# is for the runs recorded before it, which stamped `outcome: FAIL` on a gate that never observed
+# the product. Extraction restores the domain so the corpus holds the verdict each run should have
+# produced rather than the one it did.
 _KIT_FAULT_EXIT_CODES = frozenset({2})
 
 # Blockers that mean Drydock could not execute the judgement at all.

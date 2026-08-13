@@ -221,6 +221,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-13: A governed acceptance gate exiting 2 is a kit fault, not a product failure.
+  `run_gate` classified every non-zero exit as `FAIL`, so a gate script reporting a usage error —
+  an unset variable, a bad argument, a conformance harness that is not the version the run named —
+  was recorded as the product failing a test that never ran. Exit 2 now classifies as `ERROR`
+  alongside an absent executable, a timeout, and a signal: it does not block, it is never charged
+  to the build, and `score release` reports it as `Governed acceptance gate could not run` rather
+  than `failed`. This follows `diff` and `grep`, where 1 is a legitimate negative answer and 2 is
+  trouble, and it is the contract Drydock's own commands already state. A Commander-supplied
+  command that means something else by 2 is now read as a kit fault, which is the safe direction:
+  a kit fault never fails a release.
+
 - 2026-08-13: The Toml UAT fixture's conformance harness runs. `sources/run_conformance.sh` probed
   the suite's identity with `toml-test -version`, which is not a flag the harness accepts: it
   printed general help, exit 0, and the version guard compared that help text against the expected

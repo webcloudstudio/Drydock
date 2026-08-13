@@ -44,6 +44,12 @@ FILENAME = "ACCEPTANCE.json"
 #: A governed gate runs a whole conformance suite, not a unit test.
 GATE_TIMEOUT_SECONDS = 1800
 
+#: The exit status a governed command uses to say it could not run. Drydock's own commands reserve
+#: 2 for a usage error, and the shipped gate scripts follow it, so a gate is held to the same
+#: contract. A Commander-supplied command that means something else by 2 is misread as a kit fault
+#: rather than a product failure -- the safe direction, since a kit fault never fails a release.
+GATE_USAGE_EXIT = 2
+
 # The three things a gate execution can mean. The distinction is the point: a command that ran and
 # reported failure is evidence about the product, while a command that could not run is evidence
 # about the kit and must never be charged to the build.
@@ -218,9 +224,9 @@ def run_gate(
 
     Exit zero is the product passing. A non-zero exit from a command that ran is the product
     failing. Everything that prevented the command from running — an absent executable, a
-    timeout, a signal, a permission refusal — is ERROR, which is evidence about the kit and is
-    never charged against the build. Collapsing that third case into FAIL is how a missing
-    harness becomes a product defect in the record.
+    timeout, a signal, a permission refusal, or an exit of ``GATE_USAGE_EXIT`` — is ERROR, which
+    is evidence about the kit and is never charged against the build. Collapsing that third case
+    into FAIL is how a missing harness becomes a product defect in the record.
     """
     identity = build_identity(build_dir) if record_identity else ""
     if not build_dir.is_dir():
@@ -284,6 +290,23 @@ def run_gate(
             stderr=completed.stderr,
             duration_ms=duration,
             detail=f"terminated by signal {-completed.returncode}",
+            build_identity=identity,
+        )
+    # Exit 2 is a usage error, not a verdict: the command is saying it could not run. This is the
+    # `diff` and `grep` convention -- 1 is a legitimate negative answer, 2 is trouble -- and the
+    # one Drydock's own commands follow. A gate script reports it for an unset variable, a bad
+    # argument, or a harness that is not the version the run named, none of which observed the
+    # product.
+    if completed.returncode == GATE_USAGE_EXIT:
+        return GateResult(
+            name,
+            OUTCOME_ERROR,
+            argv,
+            return_code=completed.returncode,
+            stdout=completed.stdout,
+            stderr=completed.stderr,
+            duration_ms=duration,
+            detail=f"exited {GATE_USAGE_EXIT} (usage error): the gate could not run",
             build_identity=identity,
         )
     outcome = OUTCOME_PASS if completed.returncode == 0 else OUTCOME_FAIL
