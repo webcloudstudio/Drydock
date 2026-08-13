@@ -4184,3 +4184,76 @@ def test_a_malformed_criterion_becomes_a_blocking_decision():
     assert decision.status == "open"
     assert "broken-check" in decision.title
     assert "not valid Python" in decision.description
+
+
+# ── Invariant boundary form, end to end through the plan checks ──────────────────
+#
+# Toml run 20260813.231738 died `KeyError: 'TOPOLOGY.md'` in the continuation loop. The prompts
+# had moved to `=== BEGIN ARTIFACT <name> === / === END ARTIFACT ===` and the parser had followed,
+# but the checks that ask a structural question of the raw response still counted named closes.
+# The invariant close carries no name, so every artifact of an undamaged response read as unpaired,
+# the accumulator emptied, and the loop indexed a topology it had just discarded.
+
+_INVARIANT_STAGE_ONE = (
+    "=== BEGIN ARTIFACT TOPOLOGY.md ===\n"
+    "# TOPOLOGY: Demo\n"
+    "## story alpha\n"
+    "=== END ARTIFACT ===\n"
+    "=== BEGIN ARTIFACT DECISIONS.json ===\n"
+    "[]\n"
+    "=== END ARTIFACT ===\n"
+)
+
+
+def test_invariant_form_response_has_no_unpaired_artifacts():
+    blocks = _parse_strict_blocks(_INVARIANT_STAGE_ONE, FakeRun(text=_INVARIANT_STAGE_ONE))
+
+    assert sorted(blocks) == ["DECISIONS.json", "TOPOLOGY.md"]
+    assert ps._unpaired_artifact_names(_INVARIANT_STAGE_ONE, blocks) == frozenset(), (
+        "an invariant close was not counted, so the continuation accumulator emptied"
+    )
+
+
+def test_invariant_form_response_reports_no_delimiter_defect():
+    blocks = _parse_strict_blocks(_INVARIANT_STAGE_ONE, FakeRun(text=_INVARIANT_STAGE_ONE))
+
+    assert _artifact_delimiter_defects(_INVARIANT_STAGE_ONE, blocks) == ()
+    assert ps._artifact_delimiters_are_complete(_INVARIANT_STAGE_ONE, blocks)
+
+
+def test_invariant_form_artifact_that_opens_without_closing_is_still_reported():
+    """Recognising the invariant close must not blind the check to a genuine truncation."""
+    text = _INVARIANT_STAGE_ONE + "=== BEGIN ARTIFACT FEATURE-Cut.md ===\n# FEATURE: Cut\n"
+    blocks = _parse_strict_blocks(text, FakeRun(text=text))
+
+    assert "FEATURE-Cut.md" in ps._unpaired_artifact_names(text, blocks)
+
+
+def test_embedded_invariant_header_is_reported_under_the_artifact_name():
+    """A cut-and-restart leaves the opener inside the body; the name must be the artifact's."""
+    text = (
+        "=== BEGIN ARTIFACT TOPOLOGY.md ===\n"
+        "# TOPOLOGY: Demo\n"
+        "=== BEGIN ARTIFACT TOPOLOGY.md ===\n"
+        "# TOPOLOGY: Demo\n"
+        "=== END ARTIFACT ===\n"
+    )
+    blocks = {"TOPOLOGY.md": "# TOPOLOGY: Demo\n=== BEGIN ARTIFACT TOPOLOGY.md ===\n# TOPOLOGY"}
+
+    defects = _artifact_delimiter_defects(text, blocks)
+
+    assert any("`TOPOLOGY.md`" in defect for defect in defects)
+    assert not any("BEGIN ARTIFACT" in defect for defect in defects)
+    assert "TOPOLOGY.md" in ps._unpaired_artifact_names(text, blocks)
+
+
+def test_conformed_spec_is_extracted_from_the_invariant_form():
+    """`plan_conform` emits the invariant boundary; a backreference regex matched nothing."""
+    text = "=== BEGIN ARTIFACT FEATURE-Login.md ===\n# FEATURE: Login\n=== END ARTIFACT ===\n"
+
+    assert ps._extract_conformed_spec(text, "FEATURE-Login.md") == "# FEATURE: Login"
+
+
+def test_conformed_spec_extraction_survives_an_unusable_response():
+    """The caller degrades to `spec left unchanged`; conformance never fails a plan."""
+    assert ps._extract_conformed_spec("prose with no artifact block", "FEATURE-Login.md") is None

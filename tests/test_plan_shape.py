@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from drydock.artifact_blocks import parse_artifact_blocks
 from drydock.plan_shape import (
     OutputContract,
     check_contract,
@@ -28,23 +29,13 @@ WELL_FORMED = (
 
 
 def parsed(text: str) -> dict[str, str]:
-    """Minimal block extraction mirroring the planning parser, for checker input."""
-    blocks: dict[str, str] = {}
-    name: str | None = None
-    body: list[str] = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("=== END ") and stripped.endswith(" ==="):
-            if name is not None:
-                blocks[name] = "\n".join(body).strip()
-            name, body = None, []
-            continue
-        if stripped.startswith("=== ") and stripped.endswith(" ==="):
-            name, body = stripped[4:-4].strip(), []
-            continue
-        if name is not None:
-            body.append(line)
-    return blocks
+    """Block extraction for checker input, through the parser that owns the envelope grammar.
+
+    A hand-rolled stand-in here reads one boundary grammar and reports the checker green against
+    blocks the real parser never produced — the same divergence between grammar readers that took
+    Toml run 20260813.231738 down.
+    """
+    return parse_artifact_blocks(text, label="Shape")
 
 
 def codes(defects) -> list[str]:
@@ -169,3 +160,27 @@ def test_second_pass_without_a_named_artifact_falls_back():
 def test_render_defects_is_one_line_per_defect():
     text = "=== END A.md ===\n"
     assert render_defects(check_delimiters(text)).count("\n") == 0
+
+
+INVARIANT_FORM = (
+    "=== BEGIN ARTIFACT ARCHITECTURE.md ===\n"
+    "# ARCHITECTURE: Demo\n"
+    "=== END ARTIFACT ===\n"
+    "=== BEGIN ARTIFACT MANIFEST.md ===\n"
+    "# MANIFEST: Demo\n"
+    "=== END ARTIFACT ===\n"
+)
+
+
+def test_invariant_boundary_form_produces_no_delimiter_defect():
+    """The close carries no name to count, so name-counting called every artifact unclosed."""
+    assert check_delimiters(INVARIANT_FORM) == ()
+
+
+def test_invariant_boundary_form_satisfies_the_contract():
+    assert check_contract(INVARIANT_FORM, parsed(INVARIANT_FORM), CONTRACT) == ()
+
+
+def test_unclosed_invariant_block_is_still_detected():
+    text = "=== BEGIN ARTIFACT ARCHITECTURE.md ===\n# ARCHITECTURE: Demo\n"
+    assert codes(check_delimiters(text)) == ["unclosed"]

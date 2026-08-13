@@ -20,16 +20,12 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from drydock.artifact_blocks import RESERVED_BLOCK_NAMESPACE
+from drydock.artifact_blocks import pair_artifact_delimiters
 
-# The envelope grammar reserves the ``AC`` namespace so the nested ``=== AC <id> ===`` proof
-# blocks inside a Blueprint body are not counted as artifact boundaries; see ``artifact_blocks``.
-_OPEN_RE = re.compile(
-    rf"^===\s+(?P<name>(?!END\b){RESERVED_BLOCK_NAMESPACE}[^\n=]+?)\s+===\s*$", re.MULTILINE
-)
-_END_RE = re.compile(
-    rf"^===\s+END\s+{RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?)\s+===\s*$", re.MULTILINE
-)
+# Delimiter grammar — including the ``AC`` namespace reservation that keeps the nested
+# ``=== AC <id> ===`` proof blocks out of the envelope — lives in ``artifact_blocks`` and is
+# reached only through ``pair_artifact_delimiters``. A second copy here is how this module came
+# to read one boundary grammar while the parser read two.
 _TYPED_HEADING_RE = re.compile(r"^#\s+[A-Za-z][A-Za-z0-9_-]*\s*:\s*.+?\s*$", re.MULTILINE)
 
 
@@ -77,25 +73,24 @@ def has_typed_heading(body: str) -> bool:
 
 
 def check_delimiters(text: str) -> tuple[ShapeDefect, ...]:
-    """Verify every artifact appears in exactly one paired open/END delimiter set."""
-    defects: list[ShapeDefect] = []
-    opens = [match.group("name").strip() for match in _OPEN_RE.finditer(text)]
-    ends = [match.group("name").strip() for match in _END_RE.finditer(text)]
+    """Verify every artifact appears in exactly one paired open/END delimiter set.
 
-    for name in opens:
-        if opens.count(name) > 1:
+    Pairing is positional, so the check reads the invariant ``=== END ARTIFACT ===`` close and the
+    named ``=== END <name> ===`` close alike. Counting names would report every invariant-form
+    artifact as unclosed and every close as an orphan, because that close carries no name.
+    """
+    defects: list[ShapeDefect] = []
+    pairing = pair_artifact_delimiters(text)
+    opened = pairing.opened
+
+    for name in opened:
+        if opened.count(name) > 1:
             defects.append(ShapeDefect("duplicate-open", name, "opened more than once"))
             break
-    for name in dict.fromkeys(opens):
-        if name not in ends:
-            defects.append(
-                ShapeDefect("unclosed", name, "opened with no matching `=== END` delimiter")
-            )
-    for name in dict.fromkeys(ends):
-        if name not in opens:
-            defects.append(
-                ShapeDefect("orphan-end", name, "closed with no matching opening delimiter")
-            )
+    for name in dict.fromkeys(pairing.unclosed):
+        defects.append(ShapeDefect("unclosed", name, "opened with no matching `=== END` delimiter"))
+    for name in dict.fromkeys(pairing.orphan_closes):
+        defects.append(ShapeDefect("orphan-end", name, "closed with no matching opening delimiter"))
     return tuple(defects)
 
 

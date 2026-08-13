@@ -39,18 +39,20 @@ SCORED = [entry for entry in CORPUS if entry["reached_gate"]]
 
 
 def test_the_corpus_is_the_whole_recorded_record():
-    assert len(CORPUS) == 20
+    assert len(CORPUS) == 21
     assert len(SCORED) == 11
     assert {entry["fixture"] for entry in CORPUS} == {"CommonMark", "ReadingList", "Toml"}
 
 
 def test_a_run_that_never_reached_the_gate_offers_no_facts():
-    """Nine runs failed in analyze, plan, or build. They carry no gate verdict at all — which is a
+    """Ten runs failed in analyze, plan, or build. They carry no gate verdict at all — which is a
     different statement from a product failure, and the distinction the run record could not make
-    without reading logs. Toml 20260813.211658 is the ninth: it died in the artifact parser, one
-    LLM call in, so it offers no facts at all."""
+    without reading logs. Toml 20260813.211658 died in the artifact parser one LLM call in;
+    20260813.231738 died in the plan continuation loop, on the same failure class one layer up —
+    the checks that read the raw delimiters had not learned the invariant boundary the prompts had
+    already adopted. Neither offers any facts."""
     unscored = [entry for entry in CORPUS if not entry["reached_gate"]]
-    assert len(unscored) == 9
+    assert len(unscored) == 10
     assert all(entry["facts"] is None for entry in unscored)
     assert all(entry["expected_verdict"] is None for entry in unscored)
 

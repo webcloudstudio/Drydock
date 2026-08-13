@@ -27,6 +27,21 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-13: Every check that reasons over raw artifact delimiters now reads both boundary
+  grammars. Adopting the invariant close taught the two parsers a second grammar but left five
+  callers counting named `=== END <name> ===` lines, and the invariant close carries no name to
+  count: `drydock plan` read an undamaged Stage 1 response as wholly unpaired, discarded the
+  topology it had just parsed, and died `KeyError: 'TOPOLOGY.md'` in the continuation loop
+  (Toml run `20260813.231738`). The same blindness made `plan_shape.check_delimiters` report
+  every artifact unclosed and every close an orphan, and made `plan conform` silently find no
+  spec in a well-formed response.
+
+  Pairing is now computed once, positionally, by `artifact_blocks.pair_artifact_delimiters`, and
+  shared by `planning_session` and `plan_shape`; it mirrors the parser's own recovery rules, so a
+  structural check can no longer disagree with what the parser extracted. The duplicate delimiter
+  regexes in `plan_shape` are deleted, and `plan conform` extracts through the shared parser
+  rather than a name-backreferencing regex that the invariant close cannot satisfy.
+
 - 2026-08-13: A malformed artifact block no longer discards the artifacts beside it. Both the
   `analyze`-path parser (`artifact_blocks`) and the `plan`-path parser (`planning_session`) now
   reject per artifact: a block whose name is not allowed, or whose boundaries could not be

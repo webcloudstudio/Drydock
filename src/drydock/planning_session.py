@@ -36,7 +36,11 @@ from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
     recommend_external_declarations,
 )
-from drydock.artifact_blocks import RESERVED_BLOCK_NAMESPACE
+from drydock.artifact_blocks import (
+    RESERVED_BLOCK_NAMESPACE,
+    pair_artifact_delimiters,
+    parse_artifact_report,
+)
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
@@ -61,6 +65,7 @@ from drydock.decisions import (
     write_decisions,
 )
 from drydock.errors import (
+    DrydockError,
     ErrorRecord,
     RecordedError,
     SpecificationError,
@@ -731,6 +736,17 @@ def _has_substantive_outside_text(text: str, *, after_artifacts: bool) -> bool:
 #: ``=== END AC <id> ===``. Without it every Blueprint body carrying a criterion looks like an
 #: absorbed artifact and is dropped as damaged.
 _HEADER_ANYWHERE_RE = re.compile(rf"=== {RESERVED_BLOCK_NAMESPACE}(?:END )?(?P<name>[^=\n]+?) ===")
+#: An invariant-form header carries its name behind a fixed lead-in. Stripped so an embedded
+#: header is reported under the artifact's own name in both grammars.
+_INVARIANT_HEADER_LEAD_RE = re.compile(r"^BEGIN\s+ARTIFACT\s+")
+
+
+def _embedded_artifact_headers(body: str) -> set[str]:
+    """Artifact headers found inside a parsed body, by artifact name, in either grammar."""
+    return {
+        _INVARIANT_HEADER_LEAD_RE.sub("", match.group("name").strip())
+        for match in _HEADER_ANYWHERE_RE.finditer(body)
+    }
 
 
 def _artifact_delimiter_defects(text: str, blocks: dict[str, str]) -> tuple[str, ...]:
@@ -753,17 +769,15 @@ def _artifact_delimiter_defects(text: str, blocks: dict[str, str]) -> tuple[str,
     """
     defects: list[str] = []
 
-    opened = [match.group("name").strip() for match in _OPEN_BLOCK_LINE_RE.finditer(text)]
-    for name in sorted({name for name in opened if name not in blocks}):
+    pairing = pair_artifact_delimiters(text)
+    for name in sorted({name for name in pairing.unclosed if name not in blocks}):
         defects.append(
             f"`{name}` opens but never closes, so it was dropped from the response entirely; "
             "every artifact that opens must close"
         )
 
     for name, body in blocks.items():
-        embedded = sorted({
-            match.group("name").strip() for match in _HEADER_ANYWHERE_RE.finditer(body)
-        })
+        embedded = sorted(_embedded_artifact_headers(body))
         if embedded:
             defects.append(
                 f"`{name}` contains an artifact header inside its body "
@@ -775,10 +789,9 @@ def _artifact_delimiter_defects(text: str, blocks: dict[str, str]) -> tuple[str,
 
 def _artifact_delimiters_are_complete(text: str, blocks: dict[str, str]) -> bool:
     """Whether every parsed artifact appears in exactly one paired delimiter set."""
-    opens = Counter(match.group("name").strip() for match in _OPEN_BLOCK_LINE_RE.finditer(text))
-    ends = Counter(match.group("name").strip() for match in _END_BLOCK_LINE_RE.finditer(text))
+    pairing = pair_artifact_delimiters(text)
     expected = Counter({name: 1 for name in blocks})
-    return bool(expected) and opens == ends == expected
+    return bool(expected) and not pairing.unclosed and Counter(pairing.closed) == expected
 
 
 def _outside_text_is_waiver_eligible(
@@ -1912,11 +1925,19 @@ def _assemble_conform_prompt(
 
 
 def _extract_conformed_spec(text: str, filename: str) -> str | None:
-    """Return the body of the ``=== <filename> ===`` artifact block, or None if absent."""
-    for match in _BLOCK_RE.finditer(text):
-        if match.group(1).strip() == filename:
-            return match.group(2).strip()
-    return None
+    """Return the body of the named artifact block, or None if absent.
+
+    Parsed through the shared envelope parser rather than a backreference regex: the invariant
+    close carries no name to back-reference, so a regex pairing open to close by name matches
+    nothing at all against a response in that form and reports the spec as simply missing.
+    """
+    try:
+        parsed = parse_artifact_report(text, label="Spec conformance")
+    except DrydockError:
+        # The caller degrades to "spec left unchanged" on an absent block, which is the right
+        # outcome for an unusable response too. Conformance never fails a plan.
+        return None
+    return parsed.blocks.get(filename)
 
 
 def conform_specs(
@@ -3258,18 +3279,15 @@ def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[
     Named rather than described, because the continuation loop has to drop exactly these and ask
     for them again. :func:`_artifact_delimiter_defects` renders the same two facts as prose for a
     refusal; this returns them as identifiers.
+
+    Pairing is positional and shared, so both boundary grammars are read alike. Counting named
+    ``=== END <name> ===`` lines cannot see the invariant ``=== END ARTIFACT ===`` close, which
+    named every artifact of an undamaged response damaged and emptied the accumulator the
+    continuation loop indexes.
     """
-    lines = text.splitlines()
-    normalized = "\n".join(
-        line
-        for index, line in enumerate(lines)
-        if index == 0
-        or line.strip() != lines[index - 1].strip()
-        or not _END_BLOCK_LINE_RE.match(line)
-    )
-    ends = Counter(match.group("name").strip() for match in _END_BLOCK_LINE_RE.finditer(normalized))
-    unpaired = {name for name in blocks if ends[name] != 1}
-    unpaired |= {name for name, body in blocks.items() if _HEADER_ANYWHERE_RE.search(body)}
+    closed = Counter(pair_artifact_delimiters(text).closed)
+    unpaired = {name for name in blocks if closed[name] != 1}
+    unpaired |= {name for name, body in blocks.items() if _embedded_artifact_headers(body)}
     return frozenset(unpaired)
 
 

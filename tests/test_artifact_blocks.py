@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from drydock.artifact_blocks import parse_artifact_blocks, parse_artifact_report
+from drydock.artifact_blocks import (
+    pair_artifact_delimiters,
+    parse_artifact_blocks,
+    parse_artifact_report,
+)
 from drydock.errors import DrydockError
 
 # The response that killed Toml run 20260813.211658: four well-formed artifacts and one whose
@@ -276,3 +280,82 @@ def test_ac_containers_are_not_artifact_boundaries():
 
     assert set(blocks) == {"STORY-Login.md"}
     assert "=== AC login-1 ===" in blocks["STORY-Login.md"]
+
+
+# ── Delimiter pairing ────────────────────────────────────────────────────────────
+#
+# Pairing answers a structural question of the raw response — did everything that opened also
+# close? — that several callers ask outside the parser. It is exercised here because a pairing
+# rule that disagrees with the parser is what killed Toml run 20260813.231738: the prompts moved
+# to the invariant boundary, the parser followed, and four name-counting checks did not.
+
+
+def test_pairing_reads_the_invariant_close():
+    text = (
+        "=== BEGIN ARTIFACT TOPOLOGY.md ===\n# TOPOLOGY: Demo\n=== END ARTIFACT ===\n"
+        "=== BEGIN ARTIFACT DECISIONS.json ===\n[]\n=== END ARTIFACT ===\n"
+    )
+
+    pairing = pair_artifact_delimiters(text)
+
+    assert pairing.closed == ("TOPOLOGY.md", "DECISIONS.json")
+    assert pairing.unclosed == ()
+    assert pairing.orphan_closes == ()
+
+
+def test_pairing_reads_the_named_close():
+    text = "=== A.md ===\nalpha\n=== END A.md ===\n=== B.md ===\nbeta\n=== END B.md ===\n"
+
+    pairing = pair_artifact_delimiters(text)
+
+    assert pairing.closed == ("A.md", "B.md")
+    assert pairing.unclosed == ()
+
+
+def test_pairing_reads_both_grammars_in_one_response():
+    text = (
+        "=== BEGIN ARTIFACT A.md ===\nalpha\n=== END ARTIFACT ===\n"
+        "=== B.md ===\nbeta\n=== END B.md ===\n"
+    )
+
+    assert pair_artifact_delimiters(text).closed == ("A.md", "B.md")
+
+
+def test_pairing_names_an_artifact_that_opens_and_never_closes():
+    text = "=== A.md ===\nalpha\n=== END A.md ===\n=== BEGIN ARTIFACT B.md ===\nbeta\n"
+
+    pairing = pair_artifact_delimiters(text)
+
+    assert pairing.closed == ("A.md",)
+    assert pairing.unclosed == ("B.md",)
+    assert pairing.opened == ("A.md", "B.md")
+
+
+def test_pairing_reports_a_named_close_with_nothing_open_as_an_orphan():
+    text = "=== END A.md ===\n"
+
+    assert pair_artifact_delimiters(text).orphan_closes == ("A.md",)
+
+
+def test_an_invariant_close_can_never_be_an_orphan_by_name():
+    """It carries no name, so a dropped opener surfaces as a missing artifact instead."""
+    assert pair_artifact_delimiters("=== END ARTIFACT ===\n").orphan_closes == ()
+
+
+def test_pairing_agrees_with_the_parser_on_a_misnamed_close():
+    """§30.2 — accepted by position, so pairing must count it closed, not damaged."""
+    pairing = pair_artifact_delimiters(_COMPASS_RUN)
+
+    assert "COMPASS.md" in pairing.closed
+    assert pairing.unclosed == ()
+    assert set(pairing.closed) == set(parse_artifact_report(_COMPASS_RUN, label="Test").blocks)
+
+
+def test_pairing_ignores_ac_containers():
+    text = (
+        "=== BEGIN ARTIFACT STORY-Login.md ===\n"
+        "=== AC login-1 ===\nassert True\n=== END AC login-1 ===\n"
+        "=== END ARTIFACT ===\n"
+    )
+
+    assert pair_artifact_delimiters(text).closed == ("STORY-Login.md",)

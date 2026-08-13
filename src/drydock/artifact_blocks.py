@@ -194,6 +194,79 @@ def parse_artifact_report(
     return ArtifactParseResult(blocks=accepted, rejected=tuple(rejected), repaired=parsed.repaired)
 
 
+@dataclass(frozen=True)
+class DelimiterPairing:
+    """Which artifacts opened, and which of them reached a close, under either boundary grammar.
+
+    Several checks elsewhere in the codebase ask a structural question of the raw response —
+    *did everything that opened also close?* — rather than of the parsed blocks. Counting names
+    with the named-close regex answers that question wrongly the moment an artifact closes with
+    the invariant ``=== END ARTIFACT ===`` token, because the close carries no name to count:
+    every artifact reads as unclosed and every close reads as an orphan. Pairing is therefore
+    computed once, by walking the delimiters in order, and shared.
+
+    ``closed`` lists the names that opened and closed, in the order they closed, so a caller can
+    require exactly one pairing per artifact. ``unclosed`` lists the names that opened and did
+    not, which is the tail a truncated response leaves behind. ``orphan_closes`` lists named
+    closes that arrived with nothing open — the signature of a dropped opening delimiter. An
+    invariant close names nothing, so it can never appear there.
+    """
+
+    closed: tuple[str, ...] = ()
+    unclosed: tuple[str, ...] = ()
+    orphan_closes: tuple[str, ...] = ()
+
+    @property
+    def opened(self) -> tuple[str, ...]:
+        """Every name that opened a block, closed or not."""
+        return self.closed + self.unclosed
+
+
+def pair_artifact_delimiters(text: str) -> DelimiterPairing:
+    """Pair artifact delimiters by position, in whichever boundary grammar they are written.
+
+    Mirrors :func:`_parse_delimited_blocks` rather than re-deriving the rules: an open with a
+    block already open closes nothing and leaves that block unclosed; a close terminates the open
+    block whether or not it names it (§30.2); a name-mismatched close followed by real content is
+    a transposed boundary and opens the artifact it names. A close with nothing open pairs with
+    nothing and is left to the parser, which owns recovering the dropped opener.
+    """
+    closed: list[str] = []
+    unclosed: list[str] = []
+    orphan_closes: list[str] = []
+    current: str | None = None
+
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        classified = _classify(line)
+        if classified is None:
+            continue
+        kind, marker_name = classified
+        if kind == _OPEN:
+            if current is not None:
+                unclosed.append(current)
+            assert marker_name is not None
+            current = marker_name
+            continue
+        if current is None:
+            if marker_name is not None:
+                orphan_closes.append(marker_name)
+            continue
+        closed.append(current)
+        if marker_name is None or marker_name == current:
+            current = None
+        elif _closes_the_open_block(lines, index=index):
+            current = None
+        else:
+            current = marker_name
+
+    if current is not None:
+        unclosed.append(current)
+    return DelimiterPairing(
+        closed=tuple(closed), unclosed=tuple(unclosed), orphan_closes=tuple(orphan_closes)
+    )
+
+
 def _classify(line: str) -> tuple[str, str | None] | None:
     """Return ``(kind, name)`` for a delimiter line, or ``None`` for content.
 
