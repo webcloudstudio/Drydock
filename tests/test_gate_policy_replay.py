@@ -22,6 +22,7 @@ from uat_corpus import (
 )
 
 from drydock.gate_policy import (
+    ERROR,
     FAILED,
     MET,
     NOT_MET,
@@ -38,8 +39,8 @@ SCORED = [entry for entry in CORPUS if entry["reached_gate"]]
 
 
 def test_the_corpus_is_the_whole_recorded_record():
-    assert len(CORPUS) == 18
-    assert len(SCORED) == 10
+    assert len(CORPUS) == 19
+    assert len(SCORED) == 11
     assert {entry["fixture"] for entry in CORPUS} == {"CommonMark", "ReadingList", "Toml"}
 
 
@@ -93,14 +94,24 @@ def test_every_failed_replay_names_a_cited_artifact():
         assert all(item.citations for item in failed), entry["run_id"]
 
 
-def test_no_recorded_run_was_unjudgeable():
-    assert all(not entry["facts"].kit_faults for entry in SCORED)
+def test_exactly_one_recorded_run_was_unjudgeable():
+    """Ten of the eleven scored runs reached a verdict about the product. The eleventh did not:
+    Toml 20260813.195530 could not start its conformance harness, so its governed gate exited 2
+    and observed nothing. It is the corpus's only ERROR, and the only case where a recorded run's
+    verdict and the verdict it should have produced disagree -- FAIL against ERROR -- because
+    `run_gate` reads every non-zero exit as a product failure."""
+    unjudgeable = [entry for entry in SCORED if entry["facts"].kit_faults]
+    assert [entry["run_id"] for entry in unjudgeable] == ["20260813.195530"]
+    assert fold(unjudgeable[0]["facts"]).verdict == ERROR
 
 
 def test_hygiene_alone_never_decides_a_replayed_verdict():
-    """Six of the ten scored runs carried a hygiene or plan-state blocker. Stripping them changes
-    no verdict, which is what makes removing them from the release path safe."""
-    carried = [entry for entry in SCORED if entry["facts"].reported]
+    """Six of the scored runs carried a hygiene or plan-state blocker. Stripping them changes no
+    verdict, which is what makes removing them from the release path safe. Runs carrying a kit
+    fault are excluded: their verdict is decided before any of this, by V-7."""
+    carried = [
+        entry for entry in SCORED if entry["facts"].reported and not entry["facts"].kit_faults
+    ]
     assert len(carried) >= 6
     for entry in carried:
         stripped = RunFacts(entry["facts"].target, entry["facts"].trials)

@@ -609,6 +609,35 @@
       },
       "expected_verdict": "FAILED",
       "note": "st-001 cites six failing conformance checks. Note the distinction from the retraction of D-011: the product was never demonstrated defective, but the criterion -- the full suite exits zero -- demonstrably failed, because six stories were never built. The fold grades the evidence in front of it. A future run under the tier model, where the dependency stall does not occur, is expected to pass."
+    },
+    {
+      "fixture": "Toml",
+      "run_id": "20260813.195530",
+      "reached_gate": true,
+      "facts": {
+        "target": "Toml",
+        "trials": [
+          {
+            "criterion_id": "st-001",
+            "graded": "NOT MET",
+            "citations": [
+              "FEATURE-Conformance.md:conformance-full-suite=FAIL"
+            ],
+            "demonstrated_failure": "",
+            "governed_pass": false,
+            "guardrail": false,
+            "criterion": ""
+          }
+        ],
+        "kit_faults": [
+          "Governed acceptance gate could not run: full exited 2"
+        ],
+        "reported": [
+          "Governed acceptance gate failed: full: FAIL (exit 2) \u00b7 sh sources/full_test.sh"
+        ]
+      },
+      "expected_verdict": "ERROR",
+      "note": "The harness never ran. sources/run_conformance.sh probed the suite version with `toml-test -version`, which that harness does not accept, so it printed help, the version guard refused the run, and every governed gate exited 2. Nothing about the decoder was observed, so no verdict about it is available: V-7 makes this ERROR. The run instead reported FAILED with st-001 NOT MET, because run_gate classifies every non-zero exit as a product FAIL. That is the fold charging a kit fault to the product -- D-014's shape in a new place -- and it is why this entry is scored ERROR rather than FAILED."
     }
   ]
 }

@@ -46,7 +46,7 @@ fi
 # names no particular suite: whichever toml-test happened to be on PATH decided the run, and a
 # different version on a different machine is a different exam. Recorded always, and enforced
 # when the caller states which version it expects.
-HARNESS_VERSION="$("${HARNESS}" -version 2>/dev/null | head -n 1 || true)"
+HARNESS_VERSION="$("${HARNESS}" version 2>/dev/null | head -n 1 || true)"
 echo "harness: ${HARNESS} ${HARNESS_VERSION:-(version unknown)}" >&2
 if [ -n "${TOML_TEST_VERSION:-}" ] && [ -n "${HARNESS_VERSION}" ]; then
     case "${HARNESS_VERSION}" in

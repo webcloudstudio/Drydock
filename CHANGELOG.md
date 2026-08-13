@@ -221,6 +221,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-13: The Toml UAT fixture's conformance harness runs. `sources/run_conformance.sh` probed
+  the suite's identity with `toml-test -version`, which is not a flag the harness accepts: it
+  printed general help, exit 0, and the version guard compared that help text against the expected
+  `v2.2.0` and refused to run. The probe now uses the `version` subcommand, as
+  `setup_harness.sh` already did. Every governed gate in the fixture routes through this script,
+  so the failure surfaced as three failed layout acceptance criteria, `test` exiting 2, and a
+  release blocked on `full: FAIL (exit 2)` — none of which concerned the decoder under test. The
+  guard itself is unchanged: a harness that is genuinely the wrong version is still refused.
+
 - 2026-08-12: A missing project-local executable in a pre-build acceptance observation no longer
   parks a finished story on an unanswerable authorization. `_MISSING_EXECUTABLE_RE` in
   `acceptance_requirements` excluded `/` from its capture but not the newline, so stderr naming a

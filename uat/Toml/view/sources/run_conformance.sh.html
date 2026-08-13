@@ -53,6 +53,23 @@ EOF
     exit 127
 fi
 
+# The suite&#x27;s identity is part of the verdict. Without this, &quot;the authoritative suite passed&quot;
+# names no particular suite: whichever toml-test happened to be on PATH decided the run, and a
+# different version on a different machine is a different exam. Recorded always, and enforced
+# when the caller states which version it expects.
+HARNESS_VERSION=&quot;$(&quot;${HARNESS}&quot; -version 2&gt;/dev/null | head -n 1 || true)&quot;
+echo &quot;harness: ${HARNESS} ${HARNESS_VERSION:-(version unknown)}&quot; &gt;&amp;2
+if [ -n &quot;${TOML_TEST_VERSION:-}&quot; ] &amp;&amp; [ -n &quot;${HARNESS_VERSION}&quot; ]; then
+    case &quot;${HARNESS_VERSION}&quot; in
+        *&quot;${TOML_TEST_VERSION}&quot;*) ;;
+        *)
+            echo &quot;error: harness is ${HARNESS_VERSION}, expected ${TOML_TEST_VERSION}.&quot; &gt;&amp;2
+            echo &quot;Run: sh sources/setup_harness.sh&quot; &gt;&amp;2
+            exit 2
+            ;;
+    esac
+fi
+
 NO_COLOR=1 exec &quot;${HARNESS}&quot; test -toml 1.0 -decoder &quot;${DECODER}&quot; &quot;$@&quot;
 </pre></article>
 </main>

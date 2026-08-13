@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sources/stage_test.sh</title>
+<link rel="stylesheet" href="../../assets/kit.css">
+</head>
+<body>
+<main>
+<header class="fileheader"><div class="kind">Project document</div><h1>sources/stage_test.sh</h1><div class="filenav"><a href="../../index.html">&larr; Report</a><a href="../../sources/stage_test.sh">Raw file</a></div></header>
+<article class="doc"><pre>#!/bin/sh
+# stage_test.sh — governed stage gate. Runs one slice of the authoritative suite.
+#
+# Same contract as full_test.sh, scoped to the cases a single story owns: build the decoder,
+# then run the installed toml-test suite over the pattern given as $1. Exit status is the
+# verdict and the whole verdict. Do not filter, skip, or reinterpret.
+set -eu
+if [ $# -ne 1 ]; then
+  echo &quot;usage: stage_test.sh &lt;toml-test -run pattern&gt;&quot; &gt;&amp;2
+  exit 2
+fi
+TOML_TEST_VERSION=&quot;${TOML_TEST_VERSION:-v2.2.0}&quot;
+export TOML_TEST_VERSION
+go build -o toml-decoder ./cmd/toml-decoder
+DECODER=&quot;$PWD/toml-decoder&quot; exec sh sources/run_conformance.sh -run &quot;$1&quot;
+</pre></article>
+</main>
+</body>
+</html>

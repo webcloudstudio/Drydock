@@ -31,6 +31,14 @@ _RECORDED_VERDICTS = {"PASS": MET, "FAIL": NOT_MET, "INCONCLUSIVE": PENDING}
 # asymmetric evidence rule requires before a criterion may be graded NOT MET.
 _FAILING_CITATION = re.compile(r"=FAIL\b")
 
+# A governed gate exiting 2 said it could not run. Drydock's own exit contract reserves 2 for a
+# usage error, and the shipped gate scripts honour it -- an unset DECODER, a bad argument, a
+# harness that is not the version the run named. `run_gate` classifies every non-zero exit as
+# FAIL, so that statement arrives here as a product verdict. It is a kit fault: nothing about the
+# product was observed. Corrected in extraction so the corpus records the verdict each run should
+# have produced rather than the one it did.
+_KIT_FAULT_EXIT_CODES = frozenset({2})
+
 # Blockers that mean Drydock could not execute the judgement at all.
 _KIT_FAULT_MARKERS = (
     "Staged build asset was modified",
@@ -108,6 +116,10 @@ def extract_run_facts(record: dict, *, target: str) -> RunFacts:
         elif kind == REPORTED:
             reported.append(text)
     gate = record.get("governed_gate")
+    if isinstance(gate, dict) and gate.get("return_code") in _KIT_FAULT_EXIT_CODES:
+        kit_faults.append(
+            f"Governed acceptance gate could not run: {gate.get('name', 'full')} exited 2"
+        )
     if isinstance(gate, dict) and gate.get("passed") and not gate.get("blocks"):
         trials = [TrialFacts(**{**vars(trial), "governed_pass": True}) for trial in trials]
     return RunFacts(
