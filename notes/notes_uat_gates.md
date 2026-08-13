@@ -6,8 +6,8 @@
 | Route | uat |
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
-| Pending spec | 15 approved items |
-| Pending impl | 16 unimplemented sections |
+| Pending spec | 16 approved items |
+| Pending impl | 17 unimplemented sections |
 
 ---
 
@@ -43,7 +43,7 @@ to build). That is ~150 lines and sufficient to begin. The rest is evidence for 
 **Settled, do not relitigate:** Q1 and Q2 in §27.3; the eight resolutions in §27.1; the three calls
 in §27.2. All three fixture `SEA_TRIALS.md` files are already correct (`185b55a`).
 
-**Build next — §30.2, then §30.3.** Part VI is the current refit and supersedes this paragraph's
+**Build next — §30.2, §30.3, then §30.4.** Part VI is the current refit and supersedes this paragraph's
 earlier advice. Phase 0 and Phase 1 are **done and committed**; §31 records what landed. The two
 runs since then died on the artifact parser, not on anything the verdict model addresses, and
 §30.3 is D-008 — the most frequent cause of a dead run across twenty. **Read Part VI first.**
@@ -1565,7 +1565,68 @@ act on.
 Applies identically at `plan` (`planning_session.py:3421-3436`), which is the original D-008 and
 the more expensive one: there the discarded batch cost 19 blueprints and eight LLM calls.
 
-### 30.4 Re-running may simply work, and that is the problem
+### 30.4 Guarantee the block end: make the close invariant
+
+`2026-08-13` · `spec:approved` · `impl:unimplemented`
+
+**Why it truncated.** Not a random slip. The evidence:
+
+| Artifact | Its own first heading | Closed |
+|---|---|---|
+| `ANALYSIS.md` | `# Blueprint Analysis: TOML 1.0.0 Parser` | correctly |
+| `SEA_TRIALS.md` | `# Sea Trials: TOML 1.0.0 Parser` | correctly |
+| `TECHNOLOGY_STACK.md` | `# Technology Stack` | correctly |
+| **`COMPASS.md`** | **`# COMPASS: TOML 1.0.0 Parser`**, then `## Compass` | **`=== END COMPASS ===`** |
+
+The only artifact that closed wrongly is the only one whose content restates its own filename stem
+verbatim, in the same casing. Twenty-five lines separated the open from the close. At the close,
+the salient token in context was `COMPASS` — just used twice as a heading — and it beat the
+`COMPASS.md` typed twenty-five lines earlier. **The model echoed the name of the thing, not the
+name of the file.**
+
+This predicts recurrence: any artifact whose content restates its filename stem is exposed. It has
+not bitten before because the older artifacts' headings do not collide with their filenames.
+
+**There is no way to guarantee what a model types.** What is achievable is to leave nothing that
+*can* be got wrong. The close delimiter currently carries a variable that must be reproduced from
+memory, across arbitrary content, while the content actively competes for it.
+
+**The fix — the close carries no variable part:**
+
+```
+=== BEGIN ARTIFACT COMPASS.md ===
+# COMPASS: TOML 1.0.0 Parser
+...
+=== END ARTIFACT ===
+```
+
+The name appears exactly once, at the open, where it is being typed deliberately. The close is a
+constant token with nothing to recall and nothing to collide with. This is MIME multipart
+discipline: one invariant boundary, and the part's name is data *inside* the part rather than
+syntax in its terminator.
+
+**Three independent layers, and they should all land:**
+
+| Layer | Change | Effect |
+|---|---|---|
+| **Prevent** | invariant close token (this section) | the class stops existing |
+| **Recover** | close by position; a name disagreement is reported, not fatal (§30.2) | a residual slip is survivable, including a wholly wrong name |
+| **Contain** | per-artifact rejection (§30.3) | an unrecoverable block costs one artifact, not the run |
+
+Prevention alone is not enough — it constrains only artifacts Drydock's own prompts define, and
+the parser still has to survive whatever arrives. Recovery alone leaves the diagnostic misleading.
+Containment alone leaves every run one formatting slip away from losing an artifact it did not
+need to lose.
+
+**Migration.** The parser accepts both forms; the named close stays valid and stays checked, so
+nothing recorded stops parsing. Prompts move to the invariant form. Touches
+`artifact_blocks.py`, `prompts/analyze.md`, `prompts/plan_create.md`, and any prompt emitting
+`=== <name> ===` containers. **The `=== AC <id> === … === END AC <id> ===` containers are
+deliberately excluded** — there the id in both markers is a real checksum binding a criterion to
+its identity (§21.1), the content is code rather than prose about itself, and the collision that
+caused this cannot arise.
+
+### 30.5 Re-running may simply work, and that is the problem
 
 `2026-08-13` · `spec:na` · `impl:na`
 
@@ -1616,11 +1677,14 @@ and the freeze-integrity test will require the count updates in
 `2026-08-13` · `spec:na` · `impl:na`
 
 1. **§30.2** — the misleading diagnostic. Small, self-contained, and it makes the next occurrence
-   readable rather than a puzzle.
+   readable rather than a puzzle. Recovery.
 2. **§30.3** — per-artifact rejection at `analyze`, then the same at `plan`. This is D-008 and it
-   is the most frequent cause of a dead run in the record.
-3. Then re-run Toml. With both landed, a formatting slip costs one artifact and a report line
-   instead of a run.
+   is the most frequent cause of a dead run in the record. Containment.
+3. **§30.4** — the invariant close token, in the parser and then in the prompts. Prevention.
+   Last of the three because it is the only one that needs prompt changes, and the first two make
+   it safe to roll out incrementally.
+4. Then re-run Toml. With all three landed, a formatting slip costs one artifact and a report line
+   instead of a run — and the slip that caused this one cannot occur.
 
 §26 item 3.1a (P-3a, the per-branch stall) remains the highest-value item after those, and is
 unchanged by any of this.
