@@ -1024,3 +1024,119 @@ def test_a_criterion_that_does_not_parse_reports_no_authoring_defect():
     check = _criterion("assert render( ==")
 
     assert acceptance.acceptance_authoring_defects(check) == ()
+
+
+# ── R1: the oracle whitelist ──────────────────────────────────────────────────
+# A criterion binds only when its expected value is one the author could not have got wrong.
+# The failure this rule exists for is a real one: a criterion supplied a TOML literal string
+# with doubled backslashes, re-typed the expectation with single ones, and failed a correct
+# decoder six figures of tokens into a build.
+
+
+def test_a_retyped_expectation_does_not_bind():
+    """The exact criterion that sank Toml run 20260813.084830."""
+    check = _criterion(
+        "import json, subprocess\n"
+        "source = 'raw = \\'C:\\\\\\\\Users\\\\\\\\nodejs\\'\\n'\n"
+        "result = subprocess.run(['./toml-decoder'], input=source,"
+        " capture_output=True, text=True)\n"
+        "decoded = json.loads(result.stdout)\n"
+        'assert decoded["raw"]["value"] == r"C:\\Users\\nodejs"\n'
+    )
+
+    assert check.retyped_expectations == ("C:\\Users\\nodejs",)
+    assert not check.binding
+
+
+def test_binding_the_value_to_a_name_makes_the_same_claim_bind():
+    """Round trip: one escaping decision instead of two, so it cannot disagree with itself."""
+    check = _criterion(
+        "import json, subprocess\n"
+        'raw = "C:\\\\Users\\\\nodejs"\n'
+        "source = f\"raw = '{raw}'\\n\"\n"
+        "result = subprocess.run(['./toml-decoder'], input=source,"
+        " capture_output=True, text=True)\n"
+        "decoded = json.loads(result.stdout)\n"
+        'assert decoded["raw"]["value"] == raw\n'
+    )
+
+    assert check.retyped_expectations == ()
+    assert check.binding
+
+
+def test_a_status_oracle_binds():
+    check = _criterion(
+        "import subprocess\n"
+        "result = subprocess.run(['./program'], capture_output=True, text=True)\n"
+        "assert result.returncode == 0\n"
+    )
+
+    assert check.binding
+
+
+def test_a_contract_token_binds():
+    """`"string"` is read off a declared interface; there is nothing in it to mis-escape."""
+    check = _criterion(
+        "import json, subprocess\n"
+        "result = subprocess.run(['./toml-decoder'], input='a = 1\\n',"
+        " capture_output=True, text=True)\n"
+        "decoded = json.loads(result.stdout)\n"
+        'assert decoded["a"]["type"] == "integer"\n'
+    )
+
+    assert check.binding
+
+
+def test_structural_claims_bind():
+    """Membership, identity, and absence carry no re-typed bytes."""
+    check = _criterion(
+        "import json, subprocess\n"
+        "result = subprocess.run(['./program'], capture_output=True, text=True)\n"
+        "decoded = json.loads(result.stdout)\n"
+        'assert "title" in decoded\n'
+        'assert decoded.get("deleted") is None\n'
+    )
+
+    assert check.binding
+
+
+def test_a_suite_bound_criterion_is_recognised():
+    check = _criterion(
+        "import os, subprocess\n"
+        "result = subprocess.run(['sh', 'sources/run_conformance.sh', '-run', 'valid/*'],"
+        " env={**os.environ, 'DECODER': './toml-decoder'}, capture_output=True, text=True)\n"
+        "assert result.returncode == 0\n"
+    )
+
+    assert check.suite_bound
+    assert check.binding
+
+
+def test_an_echoed_input_literal_binds():
+    """Asserting the bytes that went in came back out is the round trip, spelled once."""
+    check = _criterion(
+        "import subprocess\n"
+        "result = subprocess.run(['./program'], input='line one\\n',"
+        " capture_output=True, text=True)\n"
+        "assert result.stdout == 'line one\\n'\n"
+    )
+
+    assert check.binding
+
+
+def test_a_transform_expectation_does_not_bind():
+    """A renderer's output cannot be derived from its input, so it is reported, not charged."""
+    check = _criterion(
+        "import subprocess\n"
+        "result = subprocess.run(['./cmark'], input='# Hello\\n',"
+        " capture_output=True, text=True)\n"
+        "assert result.stdout == '<h1>Hello</h1>\\n'\n"
+    )
+
+    assert not check.binding
+    assert check.retyped_expectations == ("<h1>Hello</h1>\n",)
+
+
+def test_an_unparseable_criterion_reports_no_oracle_finding():
+    """The compile gate owns unparseable code; two reports of one fault help nobody."""
+    assert _criterion("assert render( ==").retyped_expectations == ()

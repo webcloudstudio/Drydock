@@ -339,6 +339,28 @@ class ProgrammaticAcceptance:
         """A suite-bound check runs a whole conformance suite, not a story unit test."""
         return SUITE_TIMEOUT_SECONDS if self.full_suite else TIMEOUT_SECONDS
 
+    @property
+    def suite_bound(self) -> bool:
+        """True when the verdict comes from a staged runner rather than from this criterion."""
+        return self.full_suite or _invokes_staged_asset(self.code)
+
+    @property
+    def retyped_expectations(self) -> tuple[str, ...]:
+        """Expected string literals this criterion re-typed instead of binding to its input."""
+        return retyped_expectations(self.code)
+
+    @property
+    def binding(self) -> bool:
+        """True when a failure of this criterion is evidence about the product.
+
+        A criterion binds when every expected value it asserts is one it could not have got
+        wrong: a staged suite's exit status, a status code, a value read back from the input it
+        supplied, or a contract token that carries nothing escapable. A criterion that re-typed
+        its expected bytes by hand did the one thing that fails independently of the product, so
+        it is graded and reported but never charged against the build.
+        """
+        return not self.retyped_expectations
+
 
 @dataclass(frozen=True)
 class AcceptanceRunResult:
@@ -663,6 +685,107 @@ def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticA
 #: ``subprocess`` entry points whose text/binary mode decides whether a ``str`` argument is legal.
 #: ``getoutput``/``getstatusoutput`` are deliberately absent: they are text-only by definition.
 _SUBPROCESS_CALLS = frozenset({"run", "Popen", "check_output", "check_call", "call"})
+
+#: A string expectation an author cannot mis-escape: an identifier-shaped ASCII token. ``"string"``,
+#: ``"integer"``, ``"application/json"``, and ``"POST"`` are read off a declared interface and carry
+#: nothing to escape. Markup, whitespace, backslashes, quotes, and control characters are excluded:
+#: each has to be escaped correctly twice — once building the input, once stating the expectation —
+#: and that is the assertion class that fails independently of the product.
+#:
+#: ``\Z`` rather than ``$``: ``$`` also matches before a trailing newline, which would admit exactly
+#: the rendered-output literals this is meant to exclude.
+_CONTRACT_TOKEN_RE = re.compile(r"[A-Za-z0-9_./+-]*\Z")
+
+#: The path prefix that marks a staged, externally authored asset. A criterion whose verdict is
+#: such a runner's exit status did not invent its oracle.
+_STAGED_PREFIX = "sources/"
+
+
+def _invokes_staged_asset(code: str) -> bool:
+    """True when the criterion runs something staged under ``sources/``."""
+    return _STAGED_PREFIX in code
+
+
+def _is_escapable(value: str) -> bool:
+    """True when stating this literal requires escaping decisions that can disagree."""
+    return not value.isascii() or not _CONTRACT_TOKEN_RE.match(value)
+
+
+def _supplied_literals(tree: ast.AST) -> frozenset[str]:
+    """Return every string literal bound to a name or passed as input by the criterion.
+
+    A literal the criterion itself supplies is not a re-typed expectation: asserting the value
+    that went in came back out is the round trip, and it cannot disagree with itself.
+    """
+    supplied: set[str] = set()
+    for node in ast.walk(tree):
+        # Bound to a name: `raw = "C:\\Users\\nodejs"` then asserted against `raw` later, or
+        # asserted against the same literal, are the same claim.
+        if isinstance(node, ast.Assign):
+            for value in ast.walk(node.value):
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    supplied.add(value.value)
+        # Passed as input to the code under test: `input=source`, `json={"title": "Dune"}`,
+        # `subprocess.run([...])`. Whatever went in may be asserted on the way out.
+        elif isinstance(node, ast.Call):
+            for argument in (*node.args, *(keyword.value for keyword in node.keywords)):
+                for value in ast.walk(argument):
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        supplied.add(value.value)
+    return frozenset(supplied)
+
+
+def _comparison_expectations(tree: ast.AST) -> tuple[ast.Constant, ...]:
+    """Return the string constants asserted as expected values by an ``==`` comparison."""
+    found: list[ast.Constant] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assert):
+            continue
+        for inner in ast.walk(node.test):
+            if not isinstance(inner, ast.Compare):
+                continue
+            # Only equality states "the value is exactly this". Membership, identity, and
+            # ordering are structural claims that carry no re-typed bytes.
+            for operator, comparator in zip(inner.ops, inner.comparators, strict=True):
+                if not isinstance(operator, (ast.Eq, ast.NotEq)):
+                    continue
+                for side in (inner.left, comparator):
+                    if isinstance(side, ast.Constant) and isinstance(side.value, str):
+                        found.append(side)
+    return tuple(found)
+
+
+@cache
+def retyped_expectations(code: str) -> tuple[str, ...]:
+    """Return expected string literals the criterion re-typed rather than bound to its input.
+
+    This is the whole of the authoring rule, and it is a whitelist over a decidable property
+    rather than a catalogue of observed failures. An expected value is legal when it is a status
+    code, a value read back from the input the criterion supplied, or a contract token carrying
+    nothing escapable. It is illegal when the author typed the expected bytes a second time,
+    because that is the one assertion that can be wrong while the product is right.
+
+    The case this exists for, from a real run::
+
+        source = 'raw = \\'C:\\\\\\\\Users\\\\\\\\nodejs\\'\\n'
+        assert decoded["raw"]["value"] == r"C:\\Users\\nodejs"
+
+    A TOML literal string preserves its backslashes, so the expectation was wrong and the decoder
+    was right. Binding the value to a name and using it on both sides removes the second escaping
+    decision, and with it the entire failure class.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        # Not parseable is a separate, already-reported fact. Nothing to classify.
+        return ()
+    supplied = _supplied_literals(tree)
+    offending = [
+        node.value
+        for node in _comparison_expectations(tree)
+        if _is_escapable(node.value) and node.value not in supplied
+    ]
+    return tuple(dict.fromkeys(offending))
 
 
 def acceptance_authoring_defects(check: ProgrammaticAcceptance) -> tuple[str, ...]:
