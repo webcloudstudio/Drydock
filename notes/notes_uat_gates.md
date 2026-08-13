@@ -2,16 +2,15 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V1 |
+| Version | 2026-08-13 V2 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
-| Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs, plus the compilation method for future defects. |
-| Pending spec | 0 approved items |
-| Pending impl | 0 unimplemented sections |
+| Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict model that replaces them. |
+| Pending spec | 6 approved items |
+| Pending impl | 6 unimplemented sections |
 
-**This file is analysis, not a change proposal.** It exists so that the next defect can be named
-against a fixed reference instead of re-derived. Nothing here authorizes an edit to
-`docs/Drydock_Specification.md`.
+**§1–§11 are analysis. §12–§17 are the proposed model**, approved in discussion 2026-08-13.
+Nothing here authorizes an edit to `docs/Drydock_Specification.md`.
 
 Companion file: `notes/notes_uat.md` holds the 2026-08-10 diagnosis and the Sea Trials redesign.
 This file supersedes its gate inventory (§"Gate inventory after simplification"), which listed four
@@ -517,3 +516,303 @@ That is a decidable acceptance test for the gate model itself, available today, 
 - Changing `analyze` criterion generation for real Targets.
 - Any edit to `docs/Drydock_Specification.md`. The divergence at `:952` (SCORECARD described as
   "seven-dimension quality + drift scores") is recorded as a fact only.
+
+---
+---
+
+# PART II — THE PROPOSED MODEL
+
+`2026-08-13` · approved in discussion
+
+## 12. The Two Paths, Stated Once
+
+The whole design follows from separating two things that have been fused since the beginning.
+
+| | **Sea Trials** | **Story / block AC** |
+|---|---|---|
+| What it is | the user's stated objectives, made as deterministic as possible | test-driven build guidance |
+| Question | *is this project acceptable?* | *did this increment get built correctly?* |
+| Method | **judged** — an LLM reasons over all available evidence | **executed** — code runs, exits 0 or not |
+| Authored by | Commander (frozen), else `analyze` | `plan`, per story |
+| Determines the release verdict | **yes — it is the only input** | **no, by any path** |
+| Determines block state | no | yes |
+| Noise tolerance | none — this is the product's report card | high — some AC will be wrong and that is survivable |
+
+The load-bearing sentence: **a project succeeds if its success criteria are met, regardless of
+noise on the acceptance criteria.** Story AC is how Drydock builds the right thing. Sea Trials are
+how Drydock reports whether it did.
+
+**Sea Trials are not test-driven.** They are graded. Deterministic evidence feeds the grade; it
+does not *constitute* the grade. This is the correction to `score.py:520-535`, where a trial
+declaring `Verification: proof` has the grader's verdict discarded and replaced by whether a
+model-authored AC happened to tag `Sea Trials: st-NNN` — routing project acceptance through the
+test-driven path, which is precisely the fusion this section undoes.
+
+---
+
+## 13. The Verdict Model — `V-*`
+
+### V-1 — Four terminal verdicts, and only four
+
+| Verdict | Meaning | Exit |
+|---|---|---|
+| **PASSED** | Every project criterion met. | 0 |
+| **PENDING MANUAL VERIFICATION** | No criterion demonstrably failed; one or more cannot be settled from available evidence. Each names a next step. | 0 |
+| **FAILED** | At least one criterion **demonstrably** failed. | 1 |
+| **ERROR** | Drydock could not execute the judgement. Says nothing about the product. | 1 |
+
+`PENDING` is **not a failure**. It is a project with an open question, and it exits 0. This single
+change is what makes ReadingList `20260813.160121` report honestly.
+
+### V-2 — The asymmetric evidence rule *(the engineering core)*
+
+> **MET may be reached by inference. NOT MET requires a demonstration.
+> Absence of evidence yields PENDING, never NOT MET.**
+
+Deterministic evidence is **monotonic downward only**:
+
+| Transition | Permitted? |
+|---|---|
+| PENDING → MET, by reasoning over evidence | **yes** — this is what the grader is for |
+| PENDING → NOT MET, by reasoning alone | **no** — this is the defect |
+| NOT MET → MET, by reasoning | **no** — a red governed gate cannot be argued away |
+| MET → NOT MET, by a demonstrated failure | yes |
+
+The grader may only return NOT MET while **citing a specific artifact that exhibits the failure** —
+a red conformance case, a failing assertion, a named code path. "I have no proof it holds" is
+PENDING. This is the rule that makes the system deterministic in the direction that matters:
+**Drydock can only fail a project by exhibiting a failure.**
+
+It also preserves UC-008. Toml's U+3000 defect (D-011) produces 126 red conformance cases, which
+pin NOT MET, which the grader cannot reason away. The model gets latitude only in the direction of
+absent evidence.
+
+### V-3 — Three per-trial verdicts, one vocabulary
+
+`MET` · `NOT MET` · `PENDING`.
+
+Retires six words covering three states across two subsystems: `PASS`/`FAIL`/`INCONCLUSIVE` in the
+grader and `HELD`/`BREACHED`/`UNPROVEN` in the guardrail reporter. One vocabulary, everywhere.
+
+### V-4 — A guardrail is not a special kind of criterion
+
+`Type: guardrail` becomes reporting metadata only. It gets no inference rules of its own, no
+separate verdict words, and no absolute-prohibition logic.
+
+The reason it acquired them was that a prohibition seemed unprovable, so the system demanded
+positive proof and failed without it. Under V-2 that case is already handled: a prohibition with no
+counter-example and supporting evidence grades MET or PENDING, and never FAILED. The special case
+was a workaround for the missing asymmetry rule.
+
+Retires `prompts/score_release.md:35-37`, which instructs *"Return `PASS` only when the supplied
+evidence positively shows the prohibition held... Never infer that a guardrail held"* — and which
+also carries the now-false claim *"which fails the gate exactly as a breach does"* (`score.py:565`
+has made it an attestation since this week). The prompt is stale and it is biasing the grader:
+st-008's recorded rationale is a verbatim restatement of that instruction.
+
+### V-5 — Deterministic evidence is input, not override
+
+`Verification:` stops selecting a verdict-producing mechanism. Every trial is graded by the same
+pass, and every trial's grade sees every piece of evidence. `Verification:` survives only as a
+hint about which evidence is most relevant.
+
+Precedence inside the grade:
+
+```
+1. A demonstrated failure bound to this criterion    → NOT MET, non-negotiable
+2. A governed gate PASS covering this criterion      → MET, non-negotiable
+3. Otherwise                                          → the grader reasons: MET or PENDING
+```
+
+### V-6 — Hygiene leaves the release path entirely
+
+Under P-1, no DRYDOCK-domain gate blocks. Concretely:
+
+| Gate | Was | Becomes |
+|---|---|---|
+| G-SCORE-05 build dir dirty | blocker | **removed from the verdict.** Each run is independent evidence; git state is not project acceptance. Kills D-014. |
+| G-SCORE-04 no git code identity | blocker | reported provenance field |
+| G-SCORE-03 stale applied specs | blocker | operator warning |
+| G-SCORE-13 Manifest not closed/verified | warning | unchanged — already correct |
+| G-SCORE-07 staged asset modified | blocker | **ERROR**, not FAILED — the thing judged is not the thing built, so no verdict is available |
+
+### V-7 — ERROR is computed first, and separately
+
+Before any grading: can Drydock judge at all? Governed gate could not execute (missing binary,
+timeout, signal), staged asset tampered, required artifact missing or unparseable, grader returned
+nothing. Any of these → **ERROR**, stop, claim nothing about the product.
+
+This is the fourth fault domain (KIT) surfacing at the top level. Today these are indistinguishable
+from FAILED, which is why the run record cannot separate "Drydock broke" from "the product is
+wrong" without reading logs.
+
+---
+
+## 14. The AC Tier Model — `T-*`
+
+Story AC never reaches the release verdict (§12). It has one job: drive the build to the right
+thing. Four tiers, by how much authority the criterion has earned.
+
+| Tier | Source | Autonomous (`uat`) | Interactive | Rationale |
+|---|---|---|---|---|
+| **T-1 BLOCKING** | governed argv in `ACCEPTANCE.json`; imported authoritative suite | blocks the block | blocks the block | authority Drydock did not author |
+| **T-2 CONSULTATIVE** | model AC with an R1-legal oracle | repairs, then **degrades** the block to `closed/implemented` and continues | raises a **blocking DECISION** and asks | the model could not have got the expected value wrong, but it could still have asked the wrong question |
+| **T-3 ADVISORY** | model AC that re-types an expected literal | runs, records `DISPUTED`, never blocks | same | the criterion may be wrong in a way indistinguishable from a product defect |
+| **T-4 VOID** | malformed — does not compile, unclosed container | recorded as a DECISION, gates nothing | recorded as a DECISION, gates nothing | it is not a criterion |
+
+**T-2 is the tier that makes UAT finish.** It is the direct answer to *"sometimes in uat it will
+fail or retry and sometimes in real life it will stop the build and ask using our existing
+DECISIONS process."* Same criterion, same code, different consequence by execution mode — because
+in autonomous mode there is nobody to ask, and stopping a run nobody can restart is strictly worse
+than continuing with the block honestly marked unverified.
+
+Under T-2, D-010 and D-015 largely dissolve: a chain stalls only on T-1, which is real.
+
+**No tier reaches the release verdict.** A `closed/implemented` block is reported (G-SCORE-13) and
+never blocks. The release verdict comes from Sea Trials, which is the whole point of §12.
+
+---
+
+## 15. What `score release` Becomes
+
+```
+score release
+│
+├─ 1. CAN WE JUDGE?                                      → ERROR and stop  (V-7)
+│     governed gate executable · staged assets intact · artifacts parse
+│
+├─ 2. GATHER EVIDENCE   (deterministic, no judgement)
+│     governed gate outcomes · AC outcomes by tier · measurements
+│     · file facts · test output · dependency manifest · route coverage
+│
+├─ 3. PIN WHAT IS SETTLED                                (V-5 precedence 1 & 2)
+│     demonstrated failure → NOT MET · governed PASS → MET
+│
+├─ 4. GRADE THE REMAINDER      (one LLM pass, all trials, all evidence)
+│     may infer MET · may return PENDING · may return NOT MET only with a citation  (V-2)
+│
+├─ 5. FOLD                     (policy block in SEA_TRIALS.md, not Python)
+│     any NOT MET → FAILED · else any PENDING → PENDING · else PASSED
+│
+└─ 6. STATE IT
+```
+
+### The statement
+
+```
+ReadingList: PENDING MANUAL VERIFICATION — st-008
+
+  Automated acceptance passed.  7 of 8 project criteria met.
+
+  st-008  The application shall never transmit a reader's list to a third-party service.
+          Evidence:   architecture-local-boundary passed; ui-layout-assets-local passed;
+                      no third-party network client in the dependency manifest.
+          Next step:  Manually verify that no reader-list data leaves the machine — or
+                      rewrite st-008 as an observable criterion and add a deterministic
+                      acceptance check.
+```
+
+Every PENDING carries a **next step**, and the next step always offers both routes: settle it by
+hand, or make it observable. That is the mechanism by which the criteria improve over time.
+
+### Sea Trial wording
+
+Because the grader may now infer, criteria should be authored as **observable positive statements**
+rather than unfalsifiable prohibitions. `analyze` and the frozen fixtures adopt this.
+
+| Rather than | Author |
+|---|---|
+| The application shall never transmit a reader's list to a third-party service. | The application's declared dependencies contain no third-party network client, and no code path issues a request to a non-local host. |
+
+Same intent. The second is checkable, inferable, and its failure is demonstrable — so it can reach
+MET or NOT MET instead of parking at PENDING forever.
+
+### `result.json`
+
+```json
+"status": "passed | pending | failed | error",
+"verdict_line": "ReadingList: PENDING MANUAL VERIFICATION — st-008",
+"criteria": [{"id": "st-008", "verdict": "PENDING",
+              "rationale": "...", "evidence": [...], "next_step": "..."}],
+"gate_verdicts": [{"id": "G-SCORE-05", "outcome": "REPORTED", "domain": "DRYDOCK"}]
+```
+
+`build_score.py` and `score.py` converge on one policy engine. Two scorers that can disagree about
+the same project is a defect generator; `score release` does not currently read the policy block
+that `build_score` honours.
+
+---
+
+## 16. Corrections to Part I
+
+### 16.1 Everything about this process lives in `uat/`
+
+`uat/` is the entire empirical record of Drydock's own acceptance: three fixtures, their frozen
+Commander inputs, and every run ever executed —
+`uat/<Fixture>/runs/<id>/{result.json,evidence/,workspace/,build/,view/}`, complete with prompts,
+provider output, and evidence trees. There is no other source. Any claim about how Drydock behaves
+is checkable there and nowhere else.
+
+**Caveat, and it corrects §7.3:** the 18 runs were produced by materially different software. Their
+*verdicts* are not comparable across versions, and a recorded run cannot be replayed through the
+lifecycle to test a gate change.
+
+What survives version drift is the **evidence**, and the scoring policy is a pure function over it.
+So the corpus supports **policy replay, not lifecycle replay**:
+
+- Extract the recorded evidence facts from each run.
+- Run the new fold (§15 steps 3–5) over them.
+- Assert the verdict each run *should* have produced.
+
+That is a real regression suite, available today, at zero token cost, and it is how the model in
+Part II gets tested before a single UAT run is spent. §7.3's claim that gate changes can be
+validated by replaying runs is wrong as written; this is the correct form.
+
+### 16.2 Defect status updates
+
+| Id | Under Part II |
+|---|---|
+| D-008 | still open — P-3, unaddressed by the verdict model |
+| D-009 | resolved by P-4 — remove `_MIN_ASSERTIONS_PER_STORY` |
+| D-010, D-015 | resolved by T-2 — only T-1 stalls a chain |
+| D-011 | still fails, correctly — V-2 pins NOT MET on 126 red cases |
+| D-012 | dissolved — `Verification:` no longer selects a mechanism (V-5), so a Sea Trial without a `Command:` is graded like any other |
+| D-014 | resolved by V-6 — git state leaves the verdict |
+| **D-016** | *new:* `score.py:520-535` overrides the grader's verdict with AC proof-tag binding; `if not referencing: verdict = "INCONCLUSIVE"`. Evidence: ReadingList `20260813.160121`, st-008. Resolved by V-5. |
+| **D-017** | *new:* `prompts/score_release.md:35-37` forbids inference for guardrails and asserts INCONCLUSIVE "fails the gate exactly as a breach does", which `score.py:565` has not done since 2026-08-13. Stale instruction, actively biasing the grader. Resolved by V-4. |
+
+---
+
+## 17. Implementation Order
+
+Cheapest and most diagnostic first. (1) and (2) are prompt/policy only and would have changed
+today's ReadingList verdict on their own.
+
+| # | Change | Touches |
+|---|---|---|
+| 1 | V-4 + V-2 — rewrite the grader contract; remove the guardrail inference ban and the stale gate claim | `prompts/score_release.md` |
+| 2 | V-6 — hygiene out of the verdict; git state reported, not gating | `score.py`, `build_score.py` |
+| 3 | V-1 + V-3 — four terminal verdicts, three trial verdicts, the statement | `score.py`, `uat.py`, `sea_trials.py` |
+| 4 | V-5 — `Verification:` becomes a hint; delete the proof-tag override | `score.py:520-535` |
+| 5 | V-7 — ERROR computed first and separately | `score.py`, `uat.py` |
+| 6 | T-2 — consultative tier, autonomous vs interactive consequence | `build_run.py`, `decisions.py` |
+| 7 | P-4 — delete `_MIN_ASSERTIONS_PER_STORY` (D-009) | `planning_session.py:2065` |
+| 8 | §16.1 policy-replay harness over the 18 recorded runs | `tests/` |
+
+Item 8 should land alongside item 3, so that everything after it is validated against the corpus
+rather than against a fresh UAT run.
+
+---
+
+## 18. Open Questions (Part II)
+
+- **Does `PENDING` exit 0?** Proposed yes — it is not a failure. But UAT's own release-readiness
+  question ("can Drydock ship?") probably wants *no run FAILED or ERRORed*, with PENDING counted
+  separately. Two different consumers of the same verdict.
+- **ERROR and FAILED both exit 1** under the 0/1/2 contract. Distinguished only in `result.json`.
+  Acceptable, or does ERROR warrant its own code?
+- **Can the grader be trusted with inference at all,** given it is the same class of model that
+  authors the criteria? V-2's asymmetry is the answer — it can only be generous, never punitive —
+  but that is an argument, not a measurement. §16.1's replay harness can measure it.
+- **What settles a PENDING?** A human answer needs somewhere to live. `DECISIONS.json` is the
+  existing mechanism and probably the right one.
