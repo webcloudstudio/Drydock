@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V7 |
+| Version | 2026-08-13 V8 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
-| Pending spec | 16 approved items |
-| Pending impl | 17 unimplemented sections |
+| Pending spec | 3 approved items — §27.3 Q1, §30.3, §30.4 |
+| Pending impl | 1 unimplemented section — §27.3 Q1 (P-3a, the per-branch stall) |
 
 ---
 
@@ -43,10 +43,13 @@ to build). That is ~150 lines and sufficient to begin. The rest is evidence for 
 **Settled, do not relitigate:** Q1 and Q2 in §27.3; the eight resolutions in §27.1; the three calls
 in §27.2. All three fixture `SEA_TRIALS.md` files are already correct (`185b55a`).
 
-**Build next — §30.2, §30.3, then §30.4.** Part VI is the current refit and supersedes this paragraph's
-earlier advice. Phase 0 and Phase 1 are **done and committed**; §31 records what landed. The two
-runs since then died on the artifact parser, not on anything the verdict model addresses, and
-§30.3 is D-008 — the most frequent cause of a dead run across twenty. **Read Part VI first.**
+**Build next — §26 item 3.1a, the per-branch stall (§27.3 Q1). It is the only unimplemented item
+left in this file.** Part VI is the current refit and supersedes this paragraph's earlier advice.
+Phase 0 and Phase 1 are **done and committed**; §31 records what landed. §30's three delimiter
+layers — recovery, containment, prevention — landed in `299b702`, and §32 records the regression
+that produced and the shared-pairing fix that closed it (`b7ce19e`). Three consecutive runs died
+in the delimiter layer without observing the product; **re-run Toml before building anything.**
+**Read Part VI first.**
 
 **Phases 2–5 of §26 still wait for the measurement Phase 0 produces**, except the narrow half of
 2.4, which landed as §29.
@@ -316,7 +319,7 @@ Every distinct failure mode in the 18 runs. `status` is as of 2026-08-13.
 | D-005 | UNPROVEN guardrail treated as breach | G-SCORE-12 | `78f9233` | fixed — attestation |
 | D-006 | `analyze` writes the exam it is graded on | G-ANA-03 | all pre-`20260810` runs | fixed — frozen Commander file |
 | D-007 | Assertion that never reached the code counted as product failure | G-BUILD-05 | pervasive | fixed — UNVERIFIED |
-| D-008 | One malformed artifact discards a batch of 19 blueprints | G-PLAN-02 | CommonMark `20260811.184523`, `.215210` | **open** |
+| D-008 | One malformed artifact discards a batch of 19 blueprints | G-PLAN-02 | CommonMark `20260811.184523`, `.215210` | fixed — per-artifact rejection, §30.3, `299b702` |
 | D-009 | Assertion-count minimum forces the model to author AC it has no oracle for | G-PLAN-12 | CommonMark `20260811.215210` — killed 8 LLM calls in | **open** |
 | D-010 | A story that will not close stalls every dependent block | G-BUILD-08 | Toml, all 8 runs | **open by design — see §6.4** |
 | D-011 | ~~Toml parser accepts U+3000 as whitespace~~ **RETRACTED — see §23.1.** The 126 valid-case failures are unbuilt work, not a parser bug | G-BUILD-08 | Toml `20260813.084830` | folded into D-010 |
@@ -326,7 +329,8 @@ Every distinct failure mode in the 18 runs. `status` is as of 2026-08-13.
 | D-015 | Build does not converge inside the pass budget; recorded as `degraded` with no attribution | G-BUILD-08 | 6 runs | **open** |
 | D-021 | A governed gate exiting 2 — a usage error, meaning it could not run — is classified `FAIL` and charged to the product | G-BUILD-04 → G-SCORE-01 | Toml `20260813.195530` | fixed — exit 2 is now ERROR (§29) |
 | D-022 | The Toml fixture's `run_conformance.sh` probed the harness with `toml-test -version`, which that harness does not accept; the version guard then refused every run | G-BUILD-04 | Toml `20260813.195530` | fixed — uses the `version` subcommand |
-| D-023 | A mismatched closing delimiter is read as a new opening block, not as a malformed close, so the run dies naming a block the model never opened | G-ANA-01 | Toml `20260813.211658` — `=== END COMPASS ===` closing `=== COMPASS.md ===` | **open — §30.2** |
+| D-023 | A mismatched closing delimiter is read as a new opening block, not as a malformed close, so the run dies naming a block the model never opened | G-ANA-01 | Toml `20260813.211658` — `=== END COMPASS ===` closing `=== COMPASS.md ===` | fixed — closed by position, §30.2, `299b702` |
+| D-024 | The invariant boundary was adopted by the parsers and nine prompts but not by five callers that read delimiters directly; an undamaged response read as wholly unpaired | G-PLAN-02 | Toml `20260813.231738` — `KeyError: 'TOPOLOGY.md'` | fixed — one shared positional pairing, §32, `b7ce19e` |
 
 ### D-014 in full, because it is the cleanest example of the whole disease
 
@@ -1352,7 +1356,7 @@ Ordered so that each phase is validated by the one before it.
 
 | Defect | Why |
 |---|---|
-| **D-008** — one malformed artifact discards a batch of 19 | P-3 addresses it in principle; no design yet. Cost is real (3 of 18 runs) but it is a transport problem, independent of everything above |
+| ~~**D-008** — one malformed artifact discards a batch of 19~~ | **Scheduled and done.** §30.1 demonstrated it at `analyze` as well as `plan` and made it the most frequent cause of a dead run in the record; §30.3 is the fix, `299b702` |
 
 ---
 
@@ -1515,7 +1519,7 @@ Two independent defects compound here, and they want separate fixes.
 
 ### 30.2 A mismatched close is read as an open (D-023)
 
-`2026-08-13` · `spec:na` · `impl:unimplemented`
+`2026-08-13` · `spec:na` · `impl:implemented`
 
 `_parse_delimited_blocks` in `artifact_blocks.py` has no concept of *a close that does not match
 its open*. Seeing `=== END COMPASS ===` while inside `COMPASS.md`, it does not recognise a
@@ -1538,7 +1542,7 @@ all. Recognise the close by position, and report the name disagreement.
 
 ### 30.3 A parse defect discards artifacts it did not judge (D-008)
 
-`2026-08-13` · `spec:approved` · `impl:unimplemented`
+`2026-08-13` · `spec:approved` · `impl:implemented`
 
 Even with 30.2 fixed, the surviving behaviour is wrong: one bad block aborts every block.
 `artifact_blocks.py:100-105` loops over the parsed names and raises on the first that is not
@@ -1567,7 +1571,7 @@ the more expensive one: there the discarded batch cost 19 blueprints and eight L
 
 ### 30.4 Guarantee the block end: make the close invariant
 
-`2026-08-13` · `spec:approved` · `impl:unimplemented`
+`2026-08-13` · `spec:approved` · `impl:implemented`
 
 **Why it truncated.** Not a random slip. The evidence:
 
@@ -1672,19 +1676,129 @@ offers no facts. It joins the eight unscored runs. Regenerate with `python tests
 and the freeze-integrity test will require the count updates in
 `tests/test_gate_policy_replay.py`.
 
-### 31.4 Order for the next session
+### 31.4 Order for the next session — closed
 
-`2026-08-13` · `spec:na` · `impl:na`
+`2026-08-13` · `spec:na` · `impl:implemented`
 
-1. **§30.2** — the misleading diagnostic. Small, self-contained, and it makes the next occurrence
-   readable rather than a puzzle. Recovery.
-2. **§30.3** — per-artifact rejection at `analyze`, then the same at `plan`. This is D-008 and it
-   is the most frequent cause of a dead run in the record. Containment.
-3. **§30.4** — the invariant close token, in the parser and then in the prompts. Prevention.
-   Last of the three because it is the only one that needs prompt changes, and the first two make
-   it safe to roll out incrementally.
-4. Then re-run Toml. With all three landed, a formatting slip costs one artifact and a report line
-   instead of a run — and the slip that caused this one cannot occur.
+Items 1–3 (§30.2 recovery, §30.3 containment, §30.4 prevention) landed in commit `299b702`.
+Item 4, the re-run, produced §32 and its regression. All three layers are now in the tree and
+tested, and §32's fix is what makes them true of the whole lifecycle rather than of the parsers
+alone.
 
 §26 item 3.1a (P-3a, the per-branch stall) remains the highest-value item after those, and is
 unchanged by any of this.
+
+---
+
+## 32. Run 20260813.231738 — the invariant boundary was adopted by half the codebase (D-024)
+
+### 32.1 What happened
+
+`2026-08-13` · `spec:na` · `impl:implemented`
+
+The re-run called for by §31.4 item 4 died 90 seconds and three LLM calls in, at commit `f2e63da`
+plus `299b702`:
+
+```
+error: KeyError: 'TOPOLOGY.md'
+A MAJOR ERROR HAS OCCURRED — drydock plan toml --override has stopped.
+```
+
+The model's Stage 1 output was flawless — `TOPOLOGY.md` and `DECISIONS.json`, both in the new
+invariant form, both well-formed. Replaying the recorded output through the tree as it stood:
+
+```
+blocks parsed:  ['TOPOLOGY.md', 'DECISIONS.json']     ← the parser: correct
+unpaired:       {'TOPOLOGY.md', 'DECISIONS.json'}     ← the check: everything damaged
+plan_shape:     unclosed BEGIN ARTIFACT TOPOLOGY.md, orphan-end ARTIFACT
+```
+
+`_continue_short_plan` drops the damaged set from its accumulator and then indexes
+`accumulated[TOPOLOGY_BLOCK]`. Nothing survived, so the loop indexed a topology it had itself
+discarded one line earlier.
+
+### 32.2 Why — the shape of the defect, which is the part worth keeping
+
+§30.4 changed the *grammar*. Commit `299b702` taught the two artifact **parsers** the new
+boundary and migrated nine prompts to emit it. It did not touch five other callers, because
+those callers do not parse. They ask a **structural question of the raw response** — *did
+everything that opened also close?* — by counting named `=== END <name> ===` lines.
+
+**The invariant close carries no name to count.** That is its entire purpose (§30.4), and it is
+exactly what makes a name-counting check blind to it. Every artifact of an undamaged response
+read as unclosed, and every close read as an orphan.
+
+| Site | Symptom |
+|---|---|
+| `planning_session._unpaired_artifact_names` | the crash — accumulator emptied |
+| `planning_session._artifact_delimiter_defects` | fatal *"damaged artifact delimiters"* on clean output |
+| `planning_session._artifact_delimiters_are_complete` | outside-text waiver path permanently dead |
+| `plan_shape.check_delimiters` | every artifact unclosed, plus an orphan `ARTIFACT` |
+| `planning_session._extract_conformed_spec` | `plan conform` silently finds no spec — a backreference cannot pair a nameless close |
+
+The generalisation, and it outranks the specific bug: **a grammar with two readers has one of
+them wrong.** Five checks answered a question about delimiters by re-deriving the delimiter rules
+locally. Each was correct when written. None could be correct after the grammar moved, and
+nothing in the design made that failure visible — the parser and the checks disagreed silently,
+and the first symptom was a `KeyError` four functions away from the cause.
+
+This is the same structural failure as §1.3, one layer down: **thirty-one gates authored against
+no shared model of what a gate is** becomes **six readers authored against no shared model of
+what a delimiter is.** The fix has the same shape too — one authority, shared, rather than a
+sixth correct copy.
+
+### 32.3 The fix
+
+`artifact_blocks.pair_artifact_delimiters` computes pairing **once**, positionally, and every
+caller shares it. It mirrors the parser's own recovery rules rather than re-deriving them: an
+open with a block already open leaves that block unclosed; a close terminates the open block
+whether or not it names it (§30.2); a name-mismatched close followed by real content is a
+transposed boundary and opens what it names.
+
+The property that matters is not that the walk handles both grammars — it is that **a structural
+check can no longer disagree with what the parser extracted.** A future grammar change has one
+place to land.
+
+`plan_shape`'s duplicate delimiter regexes are deleted rather than extended; `_extract_conformed_spec`
+goes through the shared parser and still degrades to *spec left unchanged* on an unusable
+response. Genuine damage still reports in the invariant form: unclosed artifact, duplicate open,
+orphan close, and a body that absorbed a restarted artifact. Commit `b7ce19e`, 18 tests.
+
+**One test was itself an instance of the defect.** `tests/test_plan_shape.py` fed the checker a
+hand-rolled block extractor — a sixth reader of the grammar — so the shape tests passed green
+against blocks the real parser never produced. Replaced with the real parser. A test double that
+re-implements the contract under test cannot witness the contract changing.
+
+### 32.4 What this says about §30.5
+
+§30.5 argued that a 20%-rate formatting slip is not bad luck and must be fixed rather than
+re-run. That was right, and this run adds the other half: **the fix for a transport defect is
+itself transport, and it is the same class of change that caused the defect.** Three consecutive
+runs — `211658`, `195530`, `231738` — died in the delimiter layer, one of them on the fix for the
+previous one. The three layers of §30.4 (prevent, recover, contain) all landed; what was missing
+was that nothing verified the *whole lifecycle* spoke the grammar, only that the parsers did.
+
+Cost of the lesson: three runs, roughly 40 minutes and 6M tokens, none of which observed anything
+about the Toml product.
+
+### 32.5 Defect record
+
+| Id | Defect | Gate | Evidence | Status |
+|---|---|---|---|---|
+| **D-024** | The invariant boundary (§30.4) was adopted by the parsers and by nine prompts, and not by five callers that read delimiters directly; an undamaged Stage 1 response read as wholly unpaired and `plan` died indexing the topology it had discarded | G-PLAN-02 | Toml `20260813.231738` — `KeyError: 'TOPOLOGY.md'` | fixed — one shared positional pairing, `b7ce19e` |
+
+The run is in `tests/fixtures/uat_corpus.json` as **unscored**: it never reached a gate, so it
+offers no facts. 21 runs, 11 scored. `test_a_run_that_never_reached_the_gate_offers_no_facts`
+now names ten.
+
+### 32.6 Order for the next session
+
+`2026-08-13` · `spec:na` · `impl:na`
+
+1. **Re-run Toml.** Three consecutive runs have been lost to the delimiter layer and none of them
+   observed the product. Prevention, recovery, and containment are all in the tree, and the
+   lifecycle now shares one reading of the grammar.
+2. **§26 item 3.1a — P-3a, the per-branch stall** (§27.3 Q1). Unchanged, still the highest-value
+   remaining item, and still the only `impl:unimplemented` flag in this file.
+
+Phase 2 onward still waits on the measurement Phase 0 produces, per §27.3 Q2.
