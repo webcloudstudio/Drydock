@@ -1014,6 +1014,33 @@ def test_a_failed_build_degrades_the_run_and_the_lifecycle_continues(tmp_path: P
     assert set(result.score_exit_codes) == {"acceptance", "build-report", "release"}
 
 
+def test_incomplete_status_snapshot_does_not_gate_an_empty_frontier(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    runner, seen = _staged_runner(
+        tmp_path,
+        failing=("initial-complete",),
+        ready_passes=0,
+    )
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    result = results[0]
+    assert result.status == "passed"
+    assert result.execution_status == "PASS"
+    assert result.build_passes == 0
+    assert any(label.endswith("initial-complete") for label in seen)
+    assert not result.degraded
+
+
 def test_a_degraded_run_records_its_test_verdict_without_becoming_a_failure(
     tmp_path: Path,
 ) -> None:

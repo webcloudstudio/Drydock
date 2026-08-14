@@ -1598,14 +1598,24 @@ def cmd_status_ready(target: str) -> int:
     Returns 0 only when buildable work remains; complete and blocked Targets both stop the loop.
     """
     check = _resolve_check_target(target)
-    ready = check.exit_code() == 1
+    ready = False
+    reason = check.reason
+    if not check.complete and not check.blocked:
+        from drydock.build_plan import parse_build_plan
+        from drydock.build_status import build_status
+        from drydock.config import get_target_directory
+
+        plan = parse_build_plan(get_target_directory() / target / "MANIFEST.md")
+        frontier = build_status(plan).buildable_ids
+        ready = bool(frontier)
+        reason = f"frontier: {', '.join(frontier)}" if frontier else "no buildable frontier"
     if ready:
         headline = "READY TO BUILD"
     elif check.complete:
         headline = "BUILD COMPLETE"
     else:
         headline = "NOT READY"
-    print(f"{headline}: {target}  ({check.reason})", file=sys.stderr)
+    print(f"{headline}: {target}  ({reason})", file=sys.stderr)
     return 0 if ready else 1
 
 

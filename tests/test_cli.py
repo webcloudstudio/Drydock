@@ -2815,6 +2815,24 @@ class TestStatus:
         assert rc == 1, err
         assert "BUILD COMPLETE: TestTarget" in err
 
+    def test_status_ready_exits_1_when_incomplete_but_frontier_is_empty(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        manifest = tmp_target_root / "TestTarget" / "MANIFEST.md"
+        manifest.write_text(
+            APPROVED_PLAN_STATUS.replace("state: pending", "state: closed/implemented"),
+            encoding="utf-8",
+        )
+
+        check_rc, _, _ = run_cli("status", "TestTarget", "--check")
+        ready_rc, out, err = run_cli("status", "TestTarget", "--ready")
+
+        assert check_rc == 1
+        assert ready_rc == 1
+        assert out == ""
+        assert "NOT READY: TestTarget  (no buildable frontier)" in err
+
     def test_status_ready_exits_1_when_blocked(self, tmp_target_root, isolated_config, monkeypatch):
         from drydock.init_specification import init_specification
 

@@ -66,6 +66,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-14: `drydock status <Target> --ready` checks the actual buildable frontier instead of
+  deriving readiness from verification completeness. A Target whose stories are terminal
+  `closed/implemented` but not `closed/verified` now stops the build loop immediately rather than
+  issuing empty builds until UAT exhausts its pass budget. `status --check` remains the separate,
+  read-only verification-completeness check; UAT records that result without using it to gate
+  final-tree release scoring.
+
 - 2026-08-13: The `plan` repair prompts state the artifact grammar instead of demonstrating a
   different one. Both repair prompts are assembled in Python rather than under `prompts/`, so the
   invariant-boundary migration never reached them: each asked for a "fully paired block" without

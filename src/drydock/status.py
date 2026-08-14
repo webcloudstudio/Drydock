@@ -381,13 +381,17 @@ class CompletionCheck:
 def completion_check(target: str, target_dir: Path) -> CompletionCheck:
     """Return the completion gate for *target* from MANIFEST.md alone.
 
-    Three outcomes drive a build-retry loop:
+    Three outcomes report verification completeness:
 
     * ``COMPLETE`` (exit 0) — every executable block (story or spike) is ``closed/verified``.
-    * ``RETRYABLE`` (exit 1) — the Manifest is approved and executable work remains (pending,
-      implemented, or failed blocks); ``drydock build`` can advance it, so a loop should retry.
+    * ``RETRYABLE`` (exit 1) — the Manifest is approved and executable work remains pending,
+      implemented, or failed. This says nothing about whether another build can advance it.
     * ``BLOCKED`` (exit 2) — no Manifest, an unparsable or draft Manifest, or a Manifest with no
-      executable work. ``drydock build`` cannot help; a loop must abort and a human must act.
+      executable work.
+
+    ``drydock status <Target> --ready`` independently checks the actual build frontier. Completion
+    and buildability are separate observations: ``closed/implemented`` is terminal to scheduling
+    but incomplete under governed verification.
     """
     from drydock.build_plan import parse_build_plan
 
