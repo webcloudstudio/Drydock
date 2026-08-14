@@ -590,9 +590,9 @@ def test_run_uat_flattens_sources_and_tests_completed_build(tmp_path: Path) -> N
     ) in calls
 
 
-def test_run_uat_marks_every_child_command_as_a_uat_run(tmp_path: Path) -> None:
-    # The mode has to cross a process boundary: each step is a separate `python -m drydock`.
-    # `build` reads this to spend its whole repair budget instead of stopping on a flat pass.
+def test_run_uat_does_not_inject_a_retry_mode(tmp_path: Path) -> None:
+    # UAT and interactive builds share one repair policy, so no mode marker crosses the process
+    # boundary.
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
     seen: list[str | None] = []
@@ -618,7 +618,7 @@ def test_run_uat_marks_every_child_command_as_a_uat_run(tmp_path: Path) -> None:
         now=datetime(2026, 8, 9, tzinfo=UTC),
     )
 
-    assert seen and set(seen) == {"1"}
+    assert seen and set(seen) == {None}
 
 
 class _RecordingSink:

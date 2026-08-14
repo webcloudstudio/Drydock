@@ -85,6 +85,7 @@ class ExecutionArtifacts:
     raw_file: Path
     output_file: Path
     stderr_file: Path
+    llm_log_file: Path
 
     @classmethod
     def create(
@@ -110,7 +111,22 @@ class ExecutionArtifacts:
             raw_file=logs / f"{stem}.raw.jsonl",
             output_file=logs / f"{stem}.output.txt",
             stderr_file=logs / f"{stem}.stderr.log",
+            llm_log_file=logs / f"{stem}.llm.log",
         )
+
+    def record_activity(self, line: str) -> None:
+        """Append one line of Drydock's own run telemetry to the execution's LLM log.
+
+        Call banners and token accounting describe a healthy execution, so they do not
+        belong on stderr. The file is created on first write, which keeps runs that
+        announce nothing from leaving an empty artifact behind.
+        """
+        try:
+            self.llm_log_file.parent.mkdir(parents=True, exist_ok=True)
+            with self.llm_log_file.open("a", encoding="utf-8", newline="\n") as stream:
+                stream.write(line.rstrip("\n") + "\n")
+        except OSError:
+            pass  # telemetry recording must never fail an execution
 
     def prune_empty(self) -> None:
         """Discard the stderr transcript when the provider wrote nothing to it.
@@ -134,6 +150,8 @@ class ExecutionArtifacts:
         }
         if self.stderr_file.exists():
             paths["stderr"] = str(self.stderr_file)
+        if self.llm_log_file.exists():
+            paths["llm_log"] = str(self.llm_log_file)
         return paths
 
 

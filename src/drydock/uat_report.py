@@ -1192,8 +1192,8 @@ def _render_case(
         "<h2>Lifecycle commands</h2>",
         '<p class="note">Each Drydock command executed in order, with its recorded exit code '
         "and its own captured streams. A stream is linked only when it captured output; "
-        "stderr carries provider progress on successful commands and is not a failure "
-        "indicator on its own.</p>",
+        "run progress and token accounting are reported on stdout, so a linked stderr "
+        "means the stage wrote diagnostics.</p>",
         commands_table,
         scores_block,
         attestations_block,

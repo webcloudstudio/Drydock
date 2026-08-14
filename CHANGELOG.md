@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-14: LLM run telemetry is no longer written to stderr. The call banner, the prompt
+  breakdown, and the token accounting line (`Completed CODEX/gpt-5.6-luna (plan) rc=0
+  elapsed=1m 21.4s cached=... uncached=... out=...`) describe a healthy execution, so they now
+  print on stdout — which also means the command transcript keeps them — and each execution
+  records its own copy in `logs/<stamp>_<target>_<command>_<provider>.llm.log`, created only
+  when a line is written. Fatal provider errors, authentication failures, and rate-limit blocks
+  stay on stderr. The consequence for diagnostics is that a `.stderr.log` next to a command or
+  an execution now indicates that something went wrong, rather than that an LLM was called: on
+  a clean UAT run the per-stage stderr capture closes empty and `index.html` renders a dash.
+  The provider's own stderr is unchanged and still lands in `<stamp>...stderr.log`.
+
 - 2026-08-14: A UAT proof kit publishes each LLM transcript once. A run drives a Drydock
   workspace, so every assembled prompt, provider transcript, and model output existed twice on
   disk — under `evidence/` and again under `workspace/logs/` — and the kit inventoried both trees
@@ -433,6 +444,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-14: `drydock build` and `drydock uat` now use one repair policy per build block: six
+  repair passes after the initial call, with one flat pass tolerated and two consecutive passes
+  without deterministic acceptance progress ending the block. Interactive builds no longer stop
+  earlier or carry a smaller repair budget than UAT runs.
 - 2026-08-11: A UAT report states when the run happened in local time. The per-kit `README.md` and
   the aggregate summary carry a `Ran:` window rendered from `environment.started_at` /
   `finished_at` in the reader's timezone, alongside the UTC run id. A run id alone reads hours

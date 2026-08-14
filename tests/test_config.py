@@ -491,36 +491,7 @@ class TestConfigEnv:
         assert self._parse(out)["DRYDOCK_WORKSPACE"] == str(spaced)
 
 
-def test_max_consecutive_stalls_follows_the_uat_marker(monkeypatch):
-    from drydock.config import is_uat_run, max_consecutive_stalls
+def test_every_build_tolerates_one_flat_repair_pass():
+    from drydock.config import max_consecutive_stalls
 
-    monkeypatch.delenv("DRYDOCK_UAT", raising=False)
-    assert not is_uat_run()
-    # Interactively the first flat pass ends the block.
-    assert max_consecutive_stalls() == 1
-
-    monkeypatch.setenv("DRYDOCK_UAT", "1")
-    assert is_uat_run()
-    # A UAT run tolerates one flat pass as noise; two in a row is a stall.
     assert max_consecutive_stalls() == 2
-
-    # Marks one execution, never a persisted setting: an unrecognized value is not UAT mode.
-    monkeypatch.setenv("DRYDOCK_UAT", "off")
-    assert max_consecutive_stalls() == 1
-
-
-def test_the_stall_count_is_the_only_uat_specific_repair_behavior():
-    """UAT may pay for more passes; it may never suppress an error class that would gate.
-
-    A leniency that hides a real failure makes the measurement worthless, so the marker is
-    allowed exactly one consumer inside the repair path.
-    """
-    from pathlib import Path
-
-    src = Path(__file__).resolve().parents[1] / "src" / "drydock"
-    callers = sorted(
-        path.name
-        for path in src.glob("*.py")
-        if "is_uat_run" in path.read_text(encoding="utf-8") and path.name != "config.py"
-    )
-    assert callers == [], f"is_uat_run() consumed outside config.py: {callers}"

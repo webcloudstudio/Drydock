@@ -687,7 +687,7 @@ def test_build_emits_step_progress_lines(tmp_path):
     assert any(line == "run: Foundation (foundation)" for line in log)
     assert "LLM BUILD: Foundation [foundation]" in log
     assert "  stories: Foundation [foundation]" in log
-    assert any(line.startswith("  call: 1 of up to 4 · initial build · ") for line in log)
+    assert any(line.startswith("  call: 1 of up to 7 · initial build · ") for line in log)
     assert any(line == "returned: ok · exec-1" for line in log)
     assert not any(line.startswith("  tokens:") for line in log)
     assert any(line == "files: 1 changed — foundation.txt" for line in log)
@@ -2370,7 +2370,7 @@ assert score == 4
     )
 
     assert result.steps[0].status == "failed"
-    assert calls == [0, 1]
+    assert calls == [0, 1, 2]
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
     assert "stopped: deterministic acceptance score did not improve" in evidence
 
@@ -2386,15 +2386,14 @@ def test_repair_loop_exhausts_budget_and_fails(tmp_path):
         build_dir=build_dir,
         runner=runner,
         step_id="foundation",
-        repair_attempts=2,
+        repair_attempts=3,
     )
 
     assert result.steps[0].status == "failed"
     assert result.steps[0].error == "programmatic acceptance failed: foundation-file"
     assert _state(target_dir, "foundation") == "closed/failed"
-    # The first repair has the same 0/1 deterministic acceptance score, so the
-    # loop stops without spending its remaining repair budget.
-    assert [c["attempt"] for c in runner.calls] == [0, 1]
+    # One flat repair is tolerated as noise; the second consecutive flat repair stops the loop.
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
     from drydock.errors import read_error_record
 
     record = read_error_record(target_dir)
@@ -2404,11 +2403,9 @@ def test_repair_loop_exhausts_budget_and_fails(tmp_path):
     assert "stopped: deterministic acceptance score did not improve" in evidence
 
 
-def test_a_uat_run_stops_on_the_second_consecutive_flat_pass(tmp_path, monkeypatch):
-    # Progress is what buys another pass. A UAT tolerates one flat pass as noise between two
-    # productive ones; a second in a row means the model has stopped moving the score, and the
-    # loop must not spend the rest of the budget discovering that again.
-    monkeypatch.setenv("DRYDOCK_UAT", "1")
+def test_every_build_stops_on_the_second_consecutive_flat_pass(tmp_path):
+    # Progress is what buys another pass. One flat pass is tolerated as noise between two
+    # productive ones; a second in a row means the model has stopped moving the score.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
     runner = make_attempt_runner(fix_at=None)
@@ -2438,12 +2435,8 @@ def test_a_uat_run_stops_on_the_second_consecutive_flat_pass(tmp_path, monkeypat
     assert any("repair: stopped" in line for line in lines)
 
 
-def test_a_uat_run_recovers_on_the_call_a_single_flat_pass_would_have_cut_off(
-    tmp_path, monkeypatch
-):
-    # The behavior the tolerance exists to protect: one flat pass, then a green one. Interactively
-    # this block would have been called after the flat pass.
-    monkeypatch.setenv("DRYDOCK_UAT", "1")
+def test_every_build_recovers_after_one_flat_pass(tmp_path):
+    # The behavior the tolerance exists to protect: one flat pass, then a green one.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
     runner = make_attempt_runner(fix_at=2)
@@ -2462,10 +2455,9 @@ def test_a_uat_run_recovers_on_the_call_a_single_flat_pass_would_have_cut_off(
     assert _state(target_dir, "foundation") == "closed/verified"
 
 
-def test_a_flat_pass_between_two_productive_ones_never_accumulates_to_a_stop(tmp_path, monkeypatch):
+def test_a_flat_pass_between_two_productive_ones_never_accumulates_to_a_stop(tmp_path):
     # The count is consecutive, not cumulative. A block that keeps climbing between occasional
     # flat passes is converging, and converging work is exactly what the budget is for.
-    monkeypatch.setenv("DRYDOCK_UAT", "1")
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         """## Programmatic Acceptance
@@ -2507,14 +2499,13 @@ assert score == 6
     assert not result.steps[0].stop_reason
 
 
-def test_a_block_that_progresses_every_pass_runs_to_its_full_bound(tmp_path, monkeypatch):
+def test_a_block_that_progresses_every_pass_runs_to_its_full_bound(tmp_path):
     """The CommonMark regression: a converging block cut off by a fixed call count.
 
     Block 3 of the CommonMark UAT went 3/8 -> 4/8 -> 4/8 -> 6/8 checks and 83 -> 101 -> 109 -> 126
     cases, never stalling, and was stopped at four calls with two criteria still red. Progress must
     buy every pass the bound allows.
     """
-    monkeypatch.setenv("DRYDOCK_UAT", "1")
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         """## Programmatic Acceptance
@@ -2559,10 +2550,9 @@ assert score == 9
     assert step.calls_used == 7
 
 
-def test_a_uat_run_spends_its_budget_on_a_reported_defective_criterion(tmp_path, monkeypatch):
-    # UAT gets the same treatment as an interactive run: the claim is recorded, and the stop is
-    # the ordinary stall rule rather than a verdict the agent handed itself.
-    monkeypatch.setenv("DRYDOCK_UAT", "1")
+def test_a_build_spends_its_stall_allowance_on_a_reported_defective_criterion(tmp_path):
+    # The claim is recorded, and the stop is the ordinary stall rule rather than a verdict the
+    # agent handed itself.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
     runner = _defective_claim_runner(_DEFECTIVE_AC_REPORT)
@@ -2697,12 +2687,12 @@ def test_repair_stall_stops_before_final_model_escalation(tmp_path):
         runner=runner,
         model="sonnet",
         step_id="foundation",
-        repair_attempts=2,
+        repair_attempts=3,
         escalate_model="opus",
     )
 
     models = [c["model"] for c in runner.calls]
-    assert models == ["sonnet", "sonnet"]
+    assert models == ["sonnet", "sonnet", "sonnet"]
 
 
 def test_is_repairable_only_for_acceptance_and_agent_reports():
@@ -3052,7 +3042,7 @@ def test_resume_seeds_attempt_zero_with_live_failure(tmp_path):
     assert "## Repair pass" in prompt
     assert "foundation-file" in prompt
     assert "LLM BUILD: Foundation [foundation]" in messages
-    assert any(line.startswith("  call: 1 of up to 4 · resumed repair · ") for line in messages)
+    assert any(line.startswith("  call: 1 of up to 7 · resumed repair · ") for line in messages)
     assert "  failing: foundation-file" in messages
 
 
@@ -3205,10 +3195,12 @@ def test_a_defect_claim_is_recorded_and_does_not_stop_the_loop(tmp_path):
         on_text=messages.append,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0, 1]
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
     step = result.steps[0]
     assert step.status == "failed"
-    assert step.stop_reason == "deterministic acceptance score did not improve"
+    assert step.stop_reason == (
+        "deterministic acceptance score did not improve on 2 consecutive calls"
+    )
     assert any("recorded, not accepted" in message for message in messages)
 
 
@@ -3233,8 +3225,10 @@ def test_an_unnamed_defect_claim_still_spends_the_repair_budget(tmp_path):
         repair_attempts=3,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0, 1]
-    assert result.steps[0].stop_reason == "deterministic acceptance score did not improve"
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
+    assert result.steps[0].stop_reason == (
+        "deterministic acceptance score did not improve on 2 consecutive calls"
+    )
 
 
 def test_ac_broken_token_is_recorded_when_the_agent_reports_success(tmp_path):
@@ -3259,10 +3253,12 @@ def test_ac_broken_token_is_recorded_when_the_agent_reports_success(tmp_path):
         repair_attempts=3,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0, 1]
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
     step = result.steps[0]
     assert step.status == "failed"
-    assert step.stop_reason == "deterministic acceptance score did not improve"
+    assert step.stop_reason == (
+        "deterministic acceptance score did not improve on 2 consecutive calls"
+    )
 
 
 def test_a_defect_named_only_in_blockers_is_recorded(tmp_path):
@@ -3287,8 +3283,10 @@ def test_a_defect_named_only_in_blockers_is_recorded(tmp_path):
         repair_attempts=3,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0, 1]
-    assert result.steps[0].stop_reason == "deterministic acceptance score did not improve"
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
+    assert result.steps[0].stop_reason == (
+        "deterministic acceptance score did not improve on 2 consecutive calls"
+    )
 
 
 def test_idempotent_rewrite_still_grades_acceptance(tmp_path):
@@ -3316,7 +3314,7 @@ def test_idempotent_rewrite_still_grades_acceptance(tmp_path):
         repair_attempts=3,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0, 1]
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
     step = result.steps[0]
     assert step.status == "failed"
     assert step.error == "programmatic acceptance failed: foundation-file"
@@ -3755,10 +3753,9 @@ def test_a_scoped_build_is_never_reported_as_stalled(tmp_path):
     assert result.exit_code() == 0
 
 
-def test_a_block_that_needed_repeated_repair_reports_a_sizing_advisory(tmp_path, monkeypatch):
+def test_a_block_that_needed_repeated_repair_reports_a_sizing_advisory(tmp_path):
     # Going green after five calls is a decomposition signal, not a build failure. The verdict
     # stays ``built``; the advisory tells the Manifest author the block was too big.
-    monkeypatch.setenv("DRYDOCK_UAT", "1")
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         """## Programmatic Acceptance
@@ -3818,7 +3815,7 @@ def test_a_correctly_sized_block_reports_no_sizing_advisory(tmp_path):
     assert not any("sizing:" in line for line in lines)
 
 
-def test_a_kit_fault_never_buys_a_repair_pass_and_is_reported_by_id(tmp_path, monkeypatch):
+def test_a_kit_fault_never_buys_a_repair_pass_and_is_reported_by_id(tmp_path):
     """A malformed criterion dies in its own frame, so no implementation can turn it green.
 
     It settles UNVERIFIED rather than failing the build — the runtime verdict is evidence about
@@ -3826,7 +3823,6 @@ def test_a_kit_fault_never_buys_a_repair_pass_and_is_reported_by_id(tmp_path, mo
     it can be fixed. What the build owes is that the loop spends nothing on it and that the id is
     named, so the criterion cannot stop gating in silence.
     """
-    monkeypatch.setenv("DRYDOCK_UAT", "1")
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         """## Programmatic Acceptance

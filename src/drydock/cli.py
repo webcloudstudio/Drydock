@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from drydock import __copyright__, __version__
-from drydock.config import settable_config_keys
+from drydock.config import DEFAULT_REPAIR_ATTEMPTS, settable_config_keys
 from drydock.errors import DrydockError, RecordedError, UsageError
 from drydock.stubs import not_implemented
 
@@ -1780,7 +1780,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         escalate_conflict = provider_model_conflict(llm_provider, escalate_model)
         if escalate_conflict is not None:
             raise UsageError(f"escalate model: {escalate_conflict}")
-    repair_attempts = int(getattr(args, "repair_attempts", 3) or 0)
+    repair_attempts = int(getattr(args, "repair_attempts", DEFAULT_REPAIR_ATTEMPTS) or 0)
     if repair_attempts < 0:
         raise UsageError("--repair-attempts must be zero or greater.")
     build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
@@ -1978,7 +1978,11 @@ def _build_running_command(args: argparse.Namespace) -> str:
         ("--normalize-order", "flag", getattr(args, "normalize_order", False)),
         ("--dry-run", "flag", getattr(args, "dry_run", False)),
         ("--show-prompt", "flag", getattr(args, "show_prompt", False)),
-        ("--repair-attempts", "value", getattr(args, "repair_attempts", 3)),
+        (
+            "--repair-attempts",
+            "value",
+            getattr(args, "repair_attempts", DEFAULT_REPAIR_ATTEMPTS),
+        ),
         ("--escalate-model", "value", getattr(args, "escalate_model", None)),
         ("--model", "value", getattr(args, "model", None)),
         ("--llm-provider", "value", getattr(args, "llm_provider", None)),
@@ -1988,7 +1992,7 @@ def _build_running_command(args: argparse.Namespace) -> str:
         if kind == "flag" and value:
             command.append(option)
         elif kind == "value" and value is not None:
-            if option == "--repair-attempts" and value == 3:
+            if option == "--repair-attempts" and value == DEFAULT_REPAIR_ATTEMPTS:
                 continue
             command.extend((option, str(value)))
     return " ".join(command)
@@ -2580,9 +2584,11 @@ def _add_build_options(parser: argparse.ArgumentParser) -> None:
         "--repair-attempts",
         dest="repair_attempts",
         type=int,
-        default=3,
+        default=DEFAULT_REPAIR_ATTEMPTS,
         metavar="<n>",
-        help="Repair passes after a failed block (0 disables; default 3).",
+        help=(
+            f"Repair passes after a failed block (0 disables; default {DEFAULT_REPAIR_ATTEMPTS})."
+        ),
     )
     parser.add_argument(
         "--escalate-model",
@@ -2613,10 +2619,6 @@ def _build_help_details() -> str:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    # Deferred like the other ``uat`` imports: the module pulls in the report and console stack,
-    # and every command pays for it at startup if it is imported at module scope.
-    from drydock.uat import DEFAULT_UAT_REPAIR_ATTEMPTS
-
     parser = DrydockArgumentParser(
         prog="drydock",
         description=(f"Drydock — governed Blueprint-driven software delivery.\n{__copyright__}"),
@@ -2769,11 +2771,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--repair-attempts",
         dest="repair_attempts",
         type=int,
-        default=DEFAULT_UAT_REPAIR_ATTEMPTS,
+        default=DEFAULT_REPAIR_ATTEMPTS,
         metavar="<n>",
         help=(
             "Repairs one build block may spend "
-            f"(default: {DEFAULT_UAT_REPAIR_ATTEMPTS}). Two consecutive passes without "
+            f"(default: {DEFAULT_REPAIR_ATTEMPTS}). Two consecutive passes without "
             "acceptance progress end a block before this bound."
         ),
     )

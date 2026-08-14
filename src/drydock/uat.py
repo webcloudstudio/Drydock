@@ -22,17 +22,13 @@ from typing import IO
 from drydock import sea_trials, technology_stack
 from drydock.acceptance_contract import AcceptanceContract, contract_from_config, write_contract
 from drydock.build_report import build_score_report
+from drydock.config import DEFAULT_REPAIR_ATTEMPTS
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
 from drydock.uat_console import StepSink
 from drydock.uat_report import build_case_kit, local_run_window, write_kit_index
 
 DEFAULT_MAX_BUILD_PASSES = 25
-#: Repairs one build block may spend under UAT, above the interactive default of 3. Progress is
-#: what earns each pass — two consecutive flat passes end the block well before this — so the
-#: bound only decides how much genuine convergence Drydock is willing to pay for. It is a block
-#: bound, not a step bound: the repair loop runs once per ``BuildUnit``, and a unit is one block.
-DEFAULT_UAT_REPAIR_ATTEMPTS = 6
 #: Read size for the child output pump. Small enough that a chunk reaches the console promptly.
 _STREAM_CHUNK_BYTES = 4096
 
@@ -829,7 +825,7 @@ def run_fixture(
     provider: str,
     effort: str | None = None,
     max_build_passes: int = DEFAULT_MAX_BUILD_PASSES,
-    repair_attempts: int = DEFAULT_UAT_REPAIR_ATTEMPTS,
+    repair_attempts: int = DEFAULT_REPAIR_ATTEMPTS,
     runner: Runner = subprocess_runner,
     on_event: Callable[[str], None] | None = None,
 ) -> UATResult:
@@ -869,9 +865,6 @@ def run_fixture(
     env["DRYDOCK_BUILD_DIRECTORY"] = str(build_root)
     env["DRYDOCK_MODEL"] = model
     env["LLM_PROVIDER"] = provider
-    # Mark every child command as part of a UAT run. A UAT measures what Drydock delivers at
-    # the full repair budget, so the build's interactive stall short-circuit is suppressed.
-    env["DRYDOCK_UAT"] = "1"
     # Child output is teed to the console as it arrives. Block buffering into a pipe would
     # withhold it until the step exits, which is exactly what the streaming runner prevents.
     env["PYTHONUNBUFFERED"] = "1"
@@ -1180,7 +1173,7 @@ def run_uat(
     provider: str,
     effort: str | None = None,
     max_build_passes: int = DEFAULT_MAX_BUILD_PASSES,
-    repair_attempts: int = DEFAULT_UAT_REPAIR_ATTEMPTS,
+    repair_attempts: int = DEFAULT_REPAIR_ATTEMPTS,
     runner: Runner = subprocess_runner,
     on_event: Callable[[str], None] | None = None,
     now: datetime | None = None,

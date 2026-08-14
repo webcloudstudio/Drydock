@@ -43,6 +43,8 @@ DEFAULT_PROMPT_WARN_TOKENS = 50_000
 # legitimate specification trips it routinely, so only this one is a genuine ceiling.
 DEFAULT_PROMPT_ERROR_TOKENS = 120_000
 DEFAULT_QUARTERDECK_PORT = 8080
+DEFAULT_REPAIR_ATTEMPTS = 6
+MAX_CONSECUTIVE_REPAIR_STALLS = 2
 # Address-space ceiling, in MB, for a build's acceptance run and everything it spawns. A JVM,
 # a Go toolchain, or a sanitizer build reserves far more virtual address space than it uses;
 # raise this or set it to 0 to lift the bound entirely.
@@ -321,30 +323,17 @@ def settable_config_keys() -> tuple[str, ...]:
     return tuple(_KEY_MAP)
 
 
-def is_uat_run() -> bool:
-    """True while a command runs as a step of ``drydock uat``.
-
-    Set by ``drydock uat`` on the environment of every child command it spawns. Read from the
-    environment only, never the configuration file: this marks one execution, and a persisted
-    setting would silently change every interactive build on the machine.
-    """
-    return os.environ.get("DRYDOCK_UAT", "").strip().lower() in _TRUE_VALUES
-
-
 def max_consecutive_stalls() -> int:
-    """Flat repair passes tolerated before a block is called.
+    """Consecutive flat repair passes tolerated before a block is stopped.
 
     Progress, not a call count, is what earns another pass: a block whose deterministic acceptance
     score keeps climbing is converging and gets to continue up to its budget. Absence of progress
     is what ends it.
 
-    Interactively one flat pass ends the block — the operator should not pay for a model that is
-    spinning. Under ``drydock uat`` a single flat pass is often noise between two productive ones,
-    so the block continues; two in a row is a stall, not noise. This count is the *only* way a UAT
-    run differs from an interactive one inside the repair loop; no error class is suppressed for
-    UAT that would gate interactively.
+    One flat pass can be noise between two productive ones, so every build tolerates it. Two flat
+    passes in a row mean the model has stopped moving the deterministic score.
     """
-    return 2 if is_uat_run() else 1
+    return MAX_CONSECUTIVE_REPAIR_STALLS
 
 
 def get_sandbox_mem_limit_mb() -> int:

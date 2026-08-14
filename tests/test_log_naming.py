@@ -146,6 +146,24 @@ def test_stderr_evidence_with_content_is_kept(tmp_path):
     assert artifacts.paths()["stderr"] == str(artifacts.stderr_file)
 
 
+def test_llm_log_is_created_only_when_activity_is_recorded(tmp_path):
+    artifacts = ExecutionArtifacts.create(
+        tmp_path, "build", "codex", log_dir=tmp_path / "logs", target="commonmark_2"
+    )
+    assert artifacts.llm_log_file.name.endswith(".llm.log")
+    assert not artifacts.llm_log_file.exists()
+    assert "llm_log" not in artifacts.paths()
+
+    artifacts.record_activity("Calling CODEX/gpt-5.6-luna (build)...")
+    artifacts.record_activity("Completed CODEX/gpt-5.6-luna (build)  rc=0")
+
+    assert artifacts.llm_log_file.read_text(encoding="utf-8").splitlines() == [
+        "Calling CODEX/gpt-5.6-luna (build)...",
+        "Completed CODEX/gpt-5.6-luna (build)  rc=0",
+    ]
+    assert artifacts.paths()["llm_log"] == str(artifacts.llm_log_file)
+
+
 @pytest.mark.parametrize(
     ("namespace", "expected"),
     [

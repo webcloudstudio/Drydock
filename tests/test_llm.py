@@ -823,11 +823,36 @@ def test_debug_details_are_not_persisted_or_printed_without_debug(tmp_path, monk
     )
 
     assert list(tmp_path.glob("*.debug.log")) == []
-    stderr = capsys.readouterr().err
-    assert "parameters=" not in stderr
-    assert "parts=" not in stderr
-    assert "Completed CLAUDE" in stderr
-    assert "elapsed=" in stderr
+    captured = capsys.readouterr()
+    assert "parameters=" not in captured.err
+    assert "parts=" not in captured.err
+    # Run telemetry is progress, not a diagnostic: it belongs on stdout.
+    assert "Completed CLAUDE" not in captured.err
+    assert "Completed CLAUDE" in captured.out
+    assert "elapsed=" in captured.out
+
+
+def test_run_telemetry_is_recorded_in_the_llm_log(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command,
+            stdout_text=json.dumps({"type": "result", "result": "OK"}) + "\n",
+            **kwargs,
+        ),
+    )
+
+    run_prompt("Work", tmp_path, llm="claude")
+    capsys.readouterr()
+
+    logs = sorted((tmp_path / "logs").glob("*.llm.log"))
+    assert len(logs) == 1
+    recorded = logs[0].read_text(encoding="utf-8")
+    assert "Calling CLAUDE" in recorded
+    assert "Completed CLAUDE" in recorded
+    # A stderr artifact still means the provider reported something on stderr.
+    assert sorted((tmp_path / "logs").glob("*.stderr.log")) == []
 
 
 def test_debug_details_print_to_console_without_debug_log(tmp_path, monkeypatch, capsys):
@@ -849,9 +874,9 @@ def test_debug_details_print_to_console_without_debug_log(tmp_path, monkeypatch,
         debug=True,
     )
 
-    stderr = capsys.readouterr().err
-    assert "parameters=" in stderr
-    assert "[prompt]" in stderr
+    captured = capsys.readouterr()
+    assert "parameters=" in captured.err
+    assert "[prompt]" in captured.out
     assert list(tmp_path.glob("*.debug.log")) == []
 
 

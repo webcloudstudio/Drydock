@@ -401,11 +401,23 @@ def _wall_time() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
-def _print_run_header(*, llm: str, command_name: str, model: str | None) -> None:
-    print(
+def _announce(artifacts: ExecutionArtifacts, line: str) -> None:
+    """Report one line of run telemetry to the console and to the execution's LLM log.
+
+    Call banners and token accounting are progress, not diagnostics. They stay on stdout so
+    the command transcript keeps them, and they are recorded in ``<stem>.llm.log`` so a
+    ``.stderr.log`` alongside an execution still means something went wrong.
+    """
+    print(line, flush=True)
+    artifacts.record_activity(line)
+
+
+def _print_run_header(
+    artifacts: ExecutionArtifacts, *, llm: str, command_name: str, model: str | None
+) -> None:
+    _announce(
+        artifacts,
         f"{_wall_time()}  Calling {llm.upper()}/{model or '-'} ({command_name})...",
-        file=sys.stderr,
-        flush=True,
     )
 
 
@@ -589,6 +601,7 @@ def _build_prompt_breakdown_summary(
 
 
 def _print_performance_summary(
+    artifacts: ExecutionArtifacts,
     *,
     llm: str,
     command_name: str,
@@ -597,7 +610,8 @@ def _print_performance_summary(
     stats: LlmStats,
     requested_model: str | None = None,
 ) -> None:
-    print(
+    _announce(
+        artifacts,
         _performance_summary(
             llm=llm,
             command_name=command_name,
@@ -606,14 +620,14 @@ def _print_performance_summary(
             stats=stats,
             requested_model=requested_model,
         ),
-        file=sys.stderr,
-        flush=True,
     )
 
 
-def _print_prompt_breakdown(command_name: str, assembly: PromptAssembly) -> None:
+def _print_prompt_breakdown(
+    artifacts: ExecutionArtifacts, command_name: str, assembly: PromptAssembly
+) -> None:
     for line in _prompt_breakdown_summary(command_name, assembly):
-        print(line, file=sys.stderr, flush=True)
+        _announce(artifacts, line)
 
 
 def _parse_result(llm: str, raw: str, artifacts: ExecutionArtifacts) -> tuple[str, LlmStats]:
@@ -1336,7 +1350,7 @@ def run_prompt(
     logger = create_execution_logger(artifacts.execution_id, debug=debug)
     started_at = utc_now()
     if announce:
-        _print_run_header(llm=selected, command_name=command_name, model=model)
+        _print_run_header(artifacts, llm=selected, command_name=command_name, model=model)
     logger.info(
         "execution started id=%s command=%s llm=%s cwd=%s prompt_sha256=%s prompt_bytes=%d",
         artifacts.execution_id,
@@ -1350,7 +1364,7 @@ def run_prompt(
     for line in _prompt_breakdown_summary(command_name, assembly):
         logger.info("%s", line)
     if debug:
-        _print_prompt_breakdown(command_name, assembly)
+        _print_prompt_breakdown(artifacts, command_name, assembly)
     _emit_event(
         artifacts,
         _structured_event(
@@ -1468,6 +1482,7 @@ def run_prompt(
             stats.output_tokens,
         )
         _print_performance_summary(
+            artifacts,
             llm=selected,
             command_name=command_name,
             execution_id=artifacts.execution_id,

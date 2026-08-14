@@ -37,7 +37,7 @@ def test_build_running_command_includes_explicit_flags():
         normalize_order=False,
         dry_run=False,
         show_prompt=False,
-        repair_attempts=3,
+        repair_attempts=6,
         escalate_model=None,
         model=None,
         llm_provider=None,
@@ -764,7 +764,7 @@ class TestAnalyzeCommand:
         assert "--dry-run" in out
         assert "--show-prompt" in out
         assert "--repair-attempts" in out
-        assert "default 3" in out
+        assert "default 6" in out
         assert "--escalate-model" in out
         assert "--reset-failed" not in out
         assert "--force" not in out
@@ -1430,8 +1430,8 @@ state: pending
         assert "failed: feature-catalog — closed/failed · execution exec-fake" in out
         assert "The backend diverges from the spec." in out
         assert "Story recovery (dependency order)" in out
-        assert "drydock build ExampleTarget --story foundation --repair-attempts 3" in out
-        assert "drydock build ExampleTarget --story service --repair-attempts 3" in out
+        assert "drydock build ExampleTarget --story foundation --repair-attempts 6" in out
+        assert "drydock build ExampleTarget --story service --repair-attempts 6" in out
 
     def test_build_failure_diagnosis_reaches_errors_and_evidence(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch

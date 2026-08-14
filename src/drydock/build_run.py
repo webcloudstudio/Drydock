@@ -78,6 +78,7 @@ from drydock.build_plan import (
     stale_applied_specs,
 )
 from drydock.config import (
+    DEFAULT_REPAIR_ATTEMPTS,
     blueprint_dir_for,
     build_dir_for,
     get_sandbox_mem_limit_mb,
@@ -2057,7 +2058,7 @@ def build_target(
     reset: bool = False,
     dry_run: bool = False,
     show_prompt: bool = False,
-    repair_attempts: int = 3,
+    repair_attempts: int = DEFAULT_REPAIR_ATTEMPTS,
     escalate_model: str | None = None,
     dependency_registry_client: RegistryClient | None = None,
     ungate: bool = False,
@@ -3076,8 +3077,8 @@ def build_target(
             )
             # A flat pass is a signal, not always a verdict: one can be noise between two
             # productive passes. A run of them is the verdict, because a model that has stopped
-            # moving the score will not start. ``max_consecutive_stalls`` is 1 interactively — the
-            # first flat pass ends the block — and 2 under ``drydock uat``.
+            # moving the score will not start. Every build tolerates one flat pass as noise and
+            # stops on the second consecutive flat pass.
             consecutive_stalls = consecutive_stalls + 1 if stalled else 0
             stall_budget = max_consecutive_stalls()
             stop_on_stall = stalled and consecutive_stalls >= stall_budget
