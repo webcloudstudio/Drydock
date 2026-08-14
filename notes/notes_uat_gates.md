@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V9 |
+| Version | 2026-08-13 V10 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
-| Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
-| Pending spec | 3 approved items — §27.3 Q1, §30.3, §30.4 |
-| Pending impl | 1 unimplemented section — §27.3 Q1 (P-3a, the per-branch stall) |
+| Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. Part VII collapses the verdict model and severs the last coupling between Sea Trials and story acceptance. |
+| Pending spec | 8 approved items — §27.3 Q1, §30.3, §30.4, §34, §35, §36, §37, §38 |
+| Pending impl | 7 unimplemented sections — §27.3 Q1 (P-3a), §34, §35, §36, §36.1, §37, §38 |
 
 ---
 
@@ -37,14 +37,18 @@ each *should* have produced — and ReadingList `20260813.160121` reports `PASSE
 
 ## Start Here (after a `/clear`)
 
-**Read:** §1.3 (the problem), §12 (the two paths), §13 (V-2, the one engineering idea), §26 (what
-to build). That is ~150 lines and sufficient to begin. The rest is evidence for those four.
+**Read:** §1.3 (the problem), §12 (the two paths), **Part VII (§34–§41), which is the current
+model and supersedes most of Parts II–III**, and §26 (what to build). That is ~250 lines and
+sufficient to begin. The rest is evidence.
 
 **Settled, do not relitigate:** Q1 and Q2 in §27.3; the eight resolutions in §27.1; the three calls
 in §27.2. All three fixture `SEA_TRIALS.md` files are already correct (`185b55a`).
 
-**Build next — §26 item 3.1a, the per-branch stall (§27.3 Q1). It is the only unimplemented item
-left in this file.** Part VI is the current refit and supersedes this paragraph's earlier advice.
+**Build next — Part VII (§40 carries its order). ReadingList `20260814.001652` is the first run
+in the record to reach `score release` with a correct, complete product, and it was refused by
+Drydock's own bookkeeping in a new way (§39). Part VII is the response and is the current
+model.** §26 item 3.1a, the per-branch stall (§27.3 Q1), remains scheduled behind it.
+Part VI records the transport work that got a run this far.
 Phase 0 and Phase 1 are **done and committed**; §31 records what landed. §30's three delimiter
 layers — recovery, containment, prevention — landed in `299b702`, and §32 records the regression
 that produced and the shared-pairing fix that closed it (`b7ce19e`). §33 records the third
@@ -332,6 +336,8 @@ Every distinct failure mode in the 18 runs. `status` is as of 2026-08-13.
 | D-022 | The Toml fixture's `run_conformance.sh` probed the harness with `toml-test -version`, which that harness does not accept; the version guard then refused every run | G-BUILD-04 | Toml `20260813.195530` | fixed — uses the `version` subcommand |
 | D-023 | A mismatched closing delimiter is read as a new opening block, not as a malformed close, so the run dies naming a block the model never opened | G-ANA-01 | Toml `20260813.211658` — `=== END COMPASS ===` closing `=== COMPASS.md ===` | fixed — closed by position, §30.2, `299b702` |
 | D-024 | The invariant boundary was adopted by the parsers and nine prompts but not by five callers that read delimiters directly; an undamaged response read as wholly unpaired | G-PLAN-02 | Toml `20260813.231738` — `KeyError: 'TOPOLOGY.md'` | fixed — one shared positional pairing, §32, `b7ce19e` |
+| D-026 | `plan` and `score release` both enforce "required Sea Trials are covered" and mean different things by it: `plan` accepts an `accepts:` field **or** a `Sea Trials:` proof tag, `score` counts proof tags only. A plan that satisfies G-PLAN-15 in full is refused five times at the release gate | G-PLAN-15 → G-SCORE-09 | ReadingList `20260814.001652` — 7 trials with `accepts:`, 2 with proof tags, 5 blockers | **open** — dissolved by §38 |
+| D-027 | An AC block acquires persistent state and never releases it. `database-order` opens `acceptance-order.sqlite3` in the build tree, inserts two rows, asserts on the whole table, and deletes nothing; three executions accumulated six rows and the criterion failed against a product that is correct (`ORDER BY id`). It passes once and fails forever after | G-BUILD-05 | ReadingList `20260814.001652` — `AssertionError` on a two-element comparison against six rows | **open** — closed by §34, detected by §35 |
 | D-025 | The two repair prompts are assembled in Python, state no artifact grammar, and wrap their input in XML tags; the model mirrored the tags, and a topology repair it had performed correctly was discarded unread — twice — while Stage 2 spent two batch passes on the declaration already known to be defective | G-PLAN-02 | Toml `20260813.234757` — refused on `DECODER-002`, which the repair had covered | fixed — shared emission contract and a reported discard, §33 |
 
 ### D-014 in full, because it is the cleanest example of the whole disease
@@ -1905,3 +1911,407 @@ gate, so it offers no facts. 22 runs, 11 scored.
 
 §32.4's lesson compounds: the fix for a transport defect is itself transport. Cost across the four
 runs is roughly 45 minutes and 7M tokens, none of it spent observing the Toml product.
+
+**Superseded by Part VII.** Item 1 was executed against ReadingList rather than Toml
+(`20260814.001652`): the transport layer held, the product built correctly, and the run was
+refused at the release gate for reasons in Drydock's bookkeeping. §40 carries the current order.
+This section's claim that 3.1a is the only `impl:unimplemented` item no longer holds.
+
+---
+---
+
+# PART VII — THE COLLAPSED VERDICT MODEL
+
+`2026-08-13` · approved in discussion
+
+Evidence: ReadingList `20260814.001652`, the first run in the record to reach `score release`
+with a complete and correct product. It reported `INCOMPLETE` with five blockers, and the same
+file records the grader stating, in its own rationales, that all five criteria are met.
+
+Part VII supersedes V-1, V-2, V-3, V-5, and the `Verification:`-driven machinery in Part II. It
+does not disturb P-1 … P-5, P-3a, V-4, V-6, V-7, V-8, the tier model (§14), the two-destination
+test model (§24), or the exit semantics (§20).
+
+## 34. An acceptance criterion acquires and releases its own state
+
+`2026-08-13` · `spec:approved` · `impl:unimplemented`
+
+**The defect.** `database-order` (D-027) inserted two rows into `acceptance-order.sqlite3`,
+asserted that `list_books()` returned exactly those two, and removed nothing. The store lives in
+the build tree and survives every execution, so run two saw four rows and run three saw six. The
+product is correct — `app/database.py:68` is `SELECT … ORDER BY id`. The criterion failed itself.
+
+Three of the six rows were left by executions in which the assertion *failed*, which is the
+mechanism that makes this compound: a red criterion poisons its own next execution.
+
+**Rejected: sandboxing.** Running each criterion in a disposable copy of the tree makes the
+criterion idempotent by making its environment disposable. It hides the class rather than removing
+it, and it costs the property that makes an acceptance criterion worth running — that it ran where
+the product runs.
+
+**Rejected: delete the store first.** "Fresh store" is add/destroy. It tests against a schema the
+criterion just created rather than the schema the product ships, so uniqueness constraints,
+referential integrity, and every defect that only appears against existing rows become
+unobservable. It would also have hidden the ordering defect it was meant to catch, had one existed:
+`ORDER BY id`, `ORDER BY rowid`, and an accidental `ORDER BY title` all agree on an empty table.
+
+**Adopted: add/delete, against the real store.** A criterion arrives at whatever state exists,
+acquires what it needs, asserts, and releases exactly what it acquired. Three properties follow,
+and none of them hold today:
+
+| Property | Why it matters |
+|---|---|
+| Idempotent | the criterion's verdict does not depend on how many times it has run |
+| Order-independent | no criterion's result depends on another criterion having run first |
+| Schema-real | RI, uniqueness, and populated-table defects are reachable |
+
+It also changes what the assertion may claim. `assert [b["title"] for b in books] == [first,
+second]` is a statement about the whole table, derived from a local action — true only of an empty
+store. The correct assertion is about the rows the criterion owns: they are present, in that
+relative order, positioned after whatever was already there. That holds on the first execution and
+the thousandth, and it is a *stronger* order test, because it runs against a populated table where
+the candidate orderings no longer coincide.
+
+### 34.1 Teardown is a declared part; the control flow is composed
+
+The teardown must run when the assertion fails, or the failing path — the one that will recur —
+leaves the wreckage. A criterion that inserts, asserts, then deletes performs no cleanup on red.
+
+The model is a reliable author of *what to acquire and what to release*, and an unreliable author
+of *the construct that guarantees release runs*: it is boilerplate with no local motivation, and it
+is omitted precisely when the body looks like it cannot fail. So the criterion declares the parts
+and Drydock composes the control flow:
+
+```
+=== AC <id> ===
+Intent: …
+Requires: executable=python3; scope=test
+
+Setup:      <acquire>
+            <assert>
+Teardown:   <release>
+=== END AC <id> ===
+```
+
+`try`/`finally` in Python, `trap` in shell, `defer` in Go — rendered by Drydock from one place,
+never typed by the model. This is §33.3's rule one layer down: the form the prompt shows and the
+form the executor runs are one object.
+
+Four consequences, all load-bearing:
+
+1. **`Teardown:` is optional and absent from most criteria.** `assert 1 + 1 == 2` acquires nothing.
+   A required field that most criteria fill with a placeholder stops carrying information.
+2. **Acquisition is inside the guarded region.** Partial setup — first insert lands, second raises
+   — still tears down what it got. This is why `Setup:` is a declared part rather than a preamble.
+3. **Teardown failure is never product failure.** An exception in teardown is reported *alongside*
+   the assertion's result, never in place of it, and never converts a pass into a fail. Its fault
+   domain is CRITERION or KIT (P-1). A composed `finally` that swallowed the assertion error would
+   be the worst available outcome, and it is the mistake a hand-typed one makes.
+4. **Structure becomes machine-checkable.** With named parts, "does this criterion release what it
+   acquires" is answerable by reading the block, not by running it three times.
+
+### 34.2 Applies to both persistent destinations
+
+The same discipline governs the native test suite (§24). D-014 was this defect in the suite —
+`instance/reading_list.sqlite3` left behind — and D-027 is the same defect in an AC block. TDD
+pattern 7 already states it and nothing enforced it in either destination.
+
+## 35. Residue is observed, not declared
+
+`2026-08-13` · `spec:approved` · `impl:unimplemented`
+
+With `Teardown:` optional, its absence cannot be a syntax defect — so parsing cannot answer "did
+the author forget it". And forgetting is the expected failure: the criterion that most needs a
+teardown is the one whose author was thinking about the assertion.
+
+The answer is V-2's asymmetry applied to housekeeping: **do not demand a declaration of tidiness;
+observe the residue.** After a criterion executes, compare the build tree against what was there
+before. A criterion that leaves a file behind is reported by name, with the residue named.
+
+| Property | Value |
+|---|---|
+| Scope | the build tree only — files appearing or changing |
+| Depth | file level. Score does not open a store to diff its contents |
+| Fault domain | CRITERION |
+| Effect | reported. Never blocks, never reaches the verdict |
+
+**Why file-level is sufficient.** A criterion that leaks into a store leaks *the store itself* on
+its first execution, because the file did not exist yet. `acceptance-order.sqlite3` appearing in
+the build tree is exactly the observation that was available and unmade. The "same size, different
+content" case only arises on the second and later executions of a criterion the first execution
+already reported. Catching it once, early, is the whole value.
+
+It needs no declaration from the model, and it does not care whether the cause was a missing
+`Teardown:`, a teardown that removed half of what it acquired, or a teardown that never ran because
+the assertion failed.
+
+**This is D-014 recast honestly.** The same observation that once failed a perfect release becomes
+a finding attributed to the criterion that produced it, at the moment it produced it, instead of a
+blocker discovered four stages later with no path back to the cause.
+
+**Out of scope: external surfaces.** An S3 object, a queue, a remote table carry the same teardown
+obligation and are not observable this way. Left out deliberately. The reason to revisit is not the
+teardown rule but a containment rule — an AC that reaches outside the build tree is a larger
+problem than one that fails to tidy up inside it.
+
+## 36. Score observes; it does not read reports
+
+`2026-08-13` · `spec:approved` · `impl:unimplemented`
+
+**The rule.** `score release` grades the finished tree by observing it at grading time. Anything it
+cannot observe for itself is not available to pin a verdict.
+
+A verdict about a finished project cannot be assembled from observations of intermediate states. An
+AC that passed at block 3 is a statement about the tree as it stood at block 3, and block 7 can
+have broken it. Every recorded outcome from `build` — AC results, block states, gate outcomes, the
+Manifest — is **history, not evidence**. It stays in the run record as operator context and repair
+signal, and it never reaches the release verdict.
+
+| Trial names | Score does |
+|---|---|
+| a command (`bin/test.sh` exits zero) | runs it, now, against the final tree |
+| a file or structural fact | looks |
+| a behavior with no command | writes an ephemeral probe and runs it (§36.1) |
+| nothing observable | MANUAL (§37) |
+
+**The governed gate is executed, not inherited.** `ACCEPTANCE.json`'s `full` gate is a command, so
+score runs it. V-5's precedence rule survives in wording and changes entirely in meaning: *a
+governed gate PASS* is one score just watched happen.
+
+**The build layer may run the same command.** It should — that is repair signal and it is what an
+AC is for. The forbidden thing is the release verdict inheriting that run's outcome. Same script,
+two consumers, no shared state, neither one's result the other's evidence.
+
+**Score does not read the Manifest.** It is a mid-run report like any other. "Nothing is built yet"
+does not need a block state to express it; it reads as criteria that are NOT MET, each naming what
+is missing.
+
+Two consequences:
+
+- Score becomes a pure function of the finished tree plus the trials, which is what makes it
+  independently re-runnable — the property the policy-replay corpus (§16.1) quietly depends on.
+- It costs an execution: the suite runs again, at the end, having already run during build. That is
+  the price of a verdict about the artifact that actually shipped, and it is cheap against what a
+  stale-evidence verdict costs.
+
+Score is itself an executor, so §35's residue rule applies to it: a suite that leaves rows behind
+dirties the tree during grading.
+
+### 36.1 The ephemeral probe — the third test destination
+
+`2026-08-13` · `spec:approved` · `impl:unimplemented`
+
+A trial that names no command — *"a reader can add a book and see it listed"* — is settled by the
+grader writing the exercise and running it: `add_book()`, `list_books()`, `remove_book()`, under
+§34's add/delete discipline.
+
+**This is the safe place for a model to author a test, and it is the only one.** An AC block is
+authored before the code exists, so every expected value in it is a *prediction* — the root cause
+in §1 and the entire reason R1 exists. A probe is authored against code that exists and can be
+read, so its expectations are *observed*. The grader calls the real function and sees what returns.
+There is nothing to get wrong about a signature that is on screen.
+
+| | Story AC | Native suite | **Ephemeral probe** |
+|---|---|---|---|
+| Authored | before the code | alongside the code | **after the code, at grading** |
+| Expectations | predicted | observed | **observed** |
+| Persists | yes | yes | **no — discarded after one verdict** |
+| Oracle discipline | R1-legal only | full latitude | full latitude |
+| Effect | gates the block | diagnostic | **produces the trial verdict** |
+
+Because it is ephemeral it cannot rot, cannot be re-run against a tree it was not written for, and
+never becomes a gate anyone maintains.
+
+**Grounding rule.** A probe must be grounded in source the grader actually read. An import error
+against a symbol the source does not contain is the *absence of the capability* and grades NOT MET
+(§37). An import error because the grader guessed a module name without reading is grader
+incompetence, not a product verdict.
+
+**No repair budget.** Score observes; it has nothing to fix. The grader may author a different
+probe before reporting — that is doing its job, not a budget — but there is no retry loop and no
+repair pass at the score stage.
+
+**This supplies UC-008.** A completed-but-defective product becomes observable by a probe that
+executes cleanly and gets the wrong answer — the case 22 runs have never produced.
+
+## 37. The verdict vocabulary collapses; PENDING is retired
+
+`2026-08-13` · `spec:approved` · `impl:unimplemented`
+
+`PENDING MANUAL VERIFICATION` (V-1) was doing two unrelated jobs:
+
+1. **A property of the criterion.** *"The product looks pretty"* cannot be settled by any machine,
+   ever, however finished the product is. More evidence does not help. That is a terminal answer,
+   not a waiting state.
+2. **A property of the project.** Score run at the start finds nothing built. Genuinely "not yet",
+   and transient.
+
+One word for both made the second look like the first, which is how a finished, correct project
+gets reported as though it had open questions.
+
+**Resolution: grade it.** The user asked for a grade, so an unbuilt criterion gets an F. Three
+trial states and three run states, and no fourth:
+
+| Trial | Meaning |
+|---|---|
+| **MET** | observed to work |
+| **NOT MET** | observed to be absent or wrong, **with a citation** |
+| **MANUAL** | no machine can settle it; a named human check |
+
+| Run | Meaning | Exit (X-2 unchanged) |
+|---|---|---|
+| **PASSED** | every trial MET; MANUAL attested | 0 |
+| **FAILED** | at least one NOT MET | 0 |
+| **ERROR** | Drydock could not grade | 1 |
+
+### 37.1 V-2 restated, because "absence of evidence" was ambiguous
+
+V-2 said *absence of evidence yields PENDING, never NOT MET*. Two different absences hid in that
+sentence:
+
+- **The capability is absent.** The grader looked, read the source, ran a probe, and there is no
+  page, no route, no green. **That is a demonstration.** NOT MET, citing what it saw.
+- **The grader's ability to observe is absent.** Harness missing, tree unreadable, probe could not
+  execute for reasons about Drydock. Not a grade. ERROR, or MANUAL where the criterion is the
+  reason.
+
+V-2 exists to kill the second dressed as the first — *"I could not prove it works, therefore it
+fails"* — which is the disease this whole file removes. It was never meant to shield an unbuilt
+feature from an F.
+
+> **NOT MET requires the grader to have looked and to cite what it saw, including seeing nothing
+> where something was required. It may not conclude NOT MET from not having looked.**
+
+The generous direction is preserved: inference may raise a criterion to MET; it may never reach
+NOT MET without a citation.
+
+### 37.2 MANUAL is legitimate, rare, and a criticism of the criteria
+
+At the end of a finished project every criterion is MET, NOT MET, or MANUAL. **A large MANUAL set
+is a defect in the criteria, not in the product** — a trial nobody made observable. This is V-8
+arriving from the other direction, and the correction is §15's "next step": rewrite the trial as
+something checkable. MANUAL attests; it never blocks.
+
+### 37.3 The statement
+
+Score lists every criterion and what it observed. That is the whole answer, and it makes
+`score release` useful mid-build rather than only at the end.
+
+```
+ReadingList: FAILED — 2 of 3
+
+  st-001  MET         Flask is the declared and imported framework (app/main.py:3).
+  st-002  MET         Bootstrap 5.3 is served locally (static/bootstrap.min.css).
+  st-003  NOT MET     No template renders the list page; app/templates/ is empty.
+                      Probe: GET / → 404.
+```
+
+"Nothing is built yet" needs no state of its own: it reads as criteria that are NOT MET, each
+naming what is missing. Same shape whether the project is empty, half-built, or finished and
+broken.
+
+## 38. Sea Trials are referenced by nothing
+
+`2026-08-13` · `spec:approved` · `impl:unimplemented`
+
+**Where `proof` came from: distrust of the grader.** The release verdict was meant to be
+deterministic, so rather than let a model judge a criterion, the verdict became a *lookup* — bind
+each trial to a test that already ran and report that test's exit status. A lookup needs a key, so
+`Sea Trials: st-NNN` was added to AC blocks as a backward pointer, and `Verification: proof` became
+the switch selecting the lookup over the judgement.
+
+It did not remove the model from the verdict. It moved it — to a tag typed hours earlier, in a
+different artifact, with no evidence attached and nothing to check it against. A missing tag became
+indistinguishable from a missing capability, which is precisely what `20260814.001652` reported
+five times, each alongside a grader rationale asserting the criterion was met.
+
+**The direction rule.** Sea Trials flow *into* `plan` as context for authoring AC. Nothing points
+back. Once `plan` has decided an AC is valid, that AC's relationship to the Sea Trial is over.
+
+Retired by that rule:
+
+| Retired | Was | Because |
+|---|---|---|
+| `Sea Trials:` proof tags | bound a trial to an AC | nothing reads them |
+| `Verification:` as mechanism selector | chose proof / measurement / evidence | every trial is graded the same way (§36) |
+| `score.py:520-535` proof-tag override | discarded the grader's verdict | **D-016** |
+| G-PLAN-13 | `accepts:` names a known trial | validates a reference that no longer exists |
+| G-PLAN-14 | proof tag names a known trial | same |
+| G-PLAN-15 | required trials have coverage | `plan` certifying at plan time something observable only at score time |
+| `accepts:` on a Manifest block | block-to-trial trace | it is a reference back (**see §41**) |
+
+**Losing G-PLAN-15 is not losing a safety net.** It checks that a *reference exists*, not that a
+capability was built. The plan in `20260814.001652` satisfied it completely, and would have
+satisfied it with every trial referenced by a block that then failed to build. Whether the project
+meets its criteria is settled at score, against what exists — the only place the question is
+answerable.
+
+## 39. What run 20260814.001652 actually was
+
+`2026-08-13` · `spec:na` · `impl:na`
+
+The first run in the record to build a complete, correct product and reach the release gate.
+
+```
+Release gate: ReadingList  INCOMPLETE
+  BLOCKER: Required Sea Trial st-001 is INCONCLUSIVE
+  BLOCKER: Required Sea Trial st-002 is INCONCLUSIVE
+  BLOCKER: Required Sea Trial st-003 is INCONCLUSIVE
+  BLOCKER: Required Sea Trial st-005 is INCONCLUSIVE
+  BLOCKER: Required Sea Trial st-006 is INCONCLUSIVE
+```
+
+`evidence/score-release.json` records the contradiction in one file: every blocked criterion
+carries a grader rationale asserting it is met — *"the complete automated suite exits zero with 28
+tests passed"*, *"submitted title and author are accepted, persisted, and shown in the public
+list"* — and an evidence array reading `no code-bound proof references this criterion`.
+
+**Cause (D-026).** The Manifest carries `accepts:` for all seven trials; `plan` emitted proof tags
+for two (`st-004`, `st-007`). G-PLAN-15 accepts either and passed. `score` counts proof tags only
+and blocked the other five. Nothing was malformed and nothing was missing: the plan satisfied the
+contract as written and the release gate read a different contract.
+
+**This is §32.2 one layer up.** *A grammar with two readers has one of them wrong.* There it was
+the parser and five structural checks; here it is plan integrity and the release gate. Same
+signature — silent disagreement, first symptom far from the cause.
+
+**The one product-shaped failure was a criterion defect (D-027).** `database-order` failed with an
+`AssertionError`; the product is correct. §34 is the fix, §35 the detection.
+
+**The honest verdict for this run is `PASSED: 7 of 7`** — the §33/§32/§30 transport work held, the
+build is correct, and every refusal came from Drydock's bookkeeping.
+
+## 40. Implementation order for Part VII
+
+`2026-08-13` · `spec:na` · `impl:na`
+
+| # | Change | Touches | Closes |
+|---|---|---|---|
+| 7.1 | Delete the proof-tag override; `Verification:` becomes a hint | `score.py:520-535` | **D-016** |
+| 7.2 | Retire proof tags, G-PLAN-13/14/15 | `planning_session.py:2134-2163`, `prompts/` | **D-026** |
+| 7.3 | MET / NOT MET / MANUAL; PASSED / FAILED / ERROR; the listing statement | `score.py`, `sea_trials.py`, `prompts/score_release.md` | V-1, V-3 |
+| 7.4 | V-2 restated as §37.1 in the grader contract | `prompts/score_release.md` | |
+| 7.5 | Score observes at grading time; no mid-run report is evidence; governed gate executed | `score.py` | |
+| 7.6 | Ephemeral probe: the grader authors and runs a grounded exercise | `prompts/score_release.md`, `score.py` | **UC-008** |
+| 7.7 | `Setup:` / `Teardown:` parts; composed control flow | `prompts/BLUEPRINTS_CONTRACT.md`, the AC executor | **D-027** |
+| 7.8 | Residue observation at the build tree, CRITERION-attributed, non-blocking | the AC executor, `score.py` | **D-014** class |
+
+7.1 and 7.2 alone would have made `20260814.001652` report `PASSED: 7 of 7`. They are the cheapest
+items in this file and they unblock the only run that has ever reached the gate cleanly.
+
+§26 item 3.1a (P-3a, the per-branch stall) remains scheduled and is unaffected.
+
+## 41. Open questions (Part VII)
+
+`2026-08-13` · `spec:na` · `impl:na`
+
+- **Does `accepts:` retire with the proof tags?** The direction rule (§38) says a reference from
+  the build layer back to a Sea Trial should not exist, which retires it. Against that, `accepts:`
+  is the only human-readable record of which trial motivated a block, and it gates nothing.
+  Recorded as *retire*, flagged because it was not settled explicitly.
+- **Where do the composed `Setup:` / `Teardown:` renderings live** — one per `Requires: executable`
+  value, in the AC executor, or declared in stack guidance under `Rigging/`?
+- **Does the ephemeral probe get recorded as evidence?** It must be, to serve as a NOT MET
+  citation. Open: whether it is stored per-run under `evidence/` or inlined in the verdict.
+- **How does §35 observe the tree cheaply** for a large build — a manifest of paths and mtimes
+  before and after each criterion, or a git status against the build directory's own index?
