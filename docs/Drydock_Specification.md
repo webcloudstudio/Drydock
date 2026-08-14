@@ -588,7 +588,7 @@ Passing programmatic acceptance unlocks the next set of dependent operations.
 
 A feature repair implements its failed stories and runs the Programmatic Acceptance criteria for both those stories and their verified siblings. A regression reopens the sibling story as `closed/failed`.
 
-Each LLM attempt that reaches the acceptance gate is followed by a deterministic acceptance summary. A failed block receives up to three automatic repair passes. Repair continues when the set of passing acceptance criteria grows without regression, or when that set remains unchanged and at least one per-criterion case tally improves without another case tally regressing. Repair stops when neither condition is met or the repair-pass limit is reached.
+Each LLM attempt that reaches the acceptance gate is followed by a deterministic acceptance summary. A failed block receives up to six automatic repair passes. Repair continues when the set of passing acceptance criteria grows without regression, or when that set remains unchanged and at least one per-criterion case tally improves without another case tally regressing. One pass satisfying neither condition is tolerated. Repair stops after two consecutive passes satisfying neither condition or when the repair-pass limit is reached.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -634,7 +634,7 @@ restored; `drydock score` reports a modified staged asset as a release blocker.
   `--step <STEP>` builds one block: a feature group, or a story resolved to its containing block.
   `--story <STORY>` builds exactly one story, even inside a feature group.
   `--reset` discards prior work and rebuilds clean; with `--step`/`--story` it resets that block, and with no selector it resets every block and wipes the build directory.
-  `--repair-attempts <n>` sets the number of automatic repair passes after a failed block (default 3).
+  `--repair-attempts <n>` sets the number of automatic repair passes after a failed block (default 6).
   `--escalate-model <model>` uses an alternate model on the final repair attempt.
   `--normalize-order` normalizes authored Manifest group order before building.
   `--build-dir <path>` overrides the output directory for the current run.
