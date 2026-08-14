@@ -918,24 +918,27 @@ def test_token_summary_omits_absent_segments():
     assert format_token_summary(None, llm="claude") is None
 
 
-def test_done_line_reports_normalized_tokens_and_cache_hit_rate():
+def test_done_line_uses_two_line_format_without_timestamp_or_execution_id():
     from drydock.llm import LlmStats, _performance_summary
 
     line = _performance_summary(
-        llm="claude",
+        llm="codex",
         command_name="build",
         execution_id="exec-1",
         returncode=0,
         stats=LlmStats(
-            model="claude-opus-5",
-            elapsed_ms=2_000,
-            input_tokens=100,
-            cached_input_tokens=900,
-            output_tokens=50,
+            model="gpt-5.6-luna",
+            elapsed_ms=444_000,
+            input_tokens=4_831_579,
+            cached_input_tokens=4_673_280,
+            output_tokens=13_768,
         ),
     )
-    assert "cached=900 (90% hit) · uncached=100 · out=50" in line
-    assert "tps=25.0" in line
+    assert line == (
+        "  Completed CODEX/gpt-5.6-luna (build)  rc=0\n"
+        "    elapsed=7m 24.0s   cached=4,673,280 (97% hit)   uncached=158,299   "
+        "out=13,768   tps=31.0"
+    )
 
 
 def test_done_line_falls_back_to_requested_model():

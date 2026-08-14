@@ -479,25 +479,24 @@ def _performance_summary(
     stats: LlmStats,
     requested_model: str | None = None,
 ) -> str:
+    _ = execution_id  # Retained for the internal execution-evidence call contract.
     model = stats.model or requested_model or "-"
     elapsed = format_ms(stats.elapsed_ms) or "-"
-    parts = [
-        f"{_wall_time()}  Completed {llm.upper()}/{model} ({command_name})",
-        f"rc={returncode}",
-        f"elapsed={elapsed}",
-    ]
+    detail_parts = [f"elapsed={elapsed}"]
     provider_duration = format_ms(stats.duration_ms)
     if provider_duration and stats.duration_ms != stats.elapsed_ms:
-        parts.append(f"provider={provider_duration}")
+        detail_parts.append(f"provider={provider_duration}")
     if stats.turns is not None:
-        parts.append(f"turns={stats.turns}")
+        detail_parts.append(f"turns={stats.turns}")
     tokens = format_token_summary(stats, llm=llm)
     if tokens:
-        parts.append(tokens)
+        detail_parts.extend(tokens.split(" · "))
     if stats.output_tokens and stats.elapsed_ms and stats.elapsed_ms > 0:
-        parts.append(f"tps={stats.output_tokens / (stats.elapsed_ms / 1000.0):.1f}")
-    parts.append(f"id={execution_id}")
-    return "  ".join(parts)
+        detail_parts.append(f"tps={stats.output_tokens / (stats.elapsed_ms / 1000.0):.1f}")
+    return (
+        f"  Completed {llm.upper()}/{model} ({command_name})  rc={returncode}\n"
+        f"    {'   '.join(detail_parts)}"
+    )
 
 
 def _prompt_breakdown_summary(command_name: str, assembly: PromptAssembly) -> list[str]:
