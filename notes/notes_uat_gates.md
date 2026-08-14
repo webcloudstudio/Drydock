@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V10 |
+| Version | 2026-08-14 V11 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. Part VII collapses the verdict model and severs the last coupling between Sea Trials and story acceptance. |
 | Pending spec | 8 approved items — §27.3 Q1, §30.3, §30.4, §34, §35, §36, §37, §38 |
-| Pending impl | 3 unimplemented sections — §27.3 Q1 (P-3a), §34, §35 |
+| Pending impl | 1 unimplemented section — §34 |
 
 ---
 
@@ -1396,7 +1396,11 @@ Supersedes §10, §18, §22, and §25, which accumulated across four passes and 
 ### 27.3 Settled by the author, 2026-08-13
 
 **Q1 — A T-1 governed gate still red after the repair budget: stop the branch, finish the run.**
-`spec:approved` · `impl:unimplemented`
+`spec:approved` · `impl:na`
+
+**Deferred 2026-08-14.** This is an efficiency improvement, not a convergence or release fix. A
+failed block must still fail the run; continuing independent branches would only collect more
+diagnostics. It is not scheduled for implementation.
 
 The block closes `closed/failed`, its dependents are marked **blocked** and are not built, and
 every independent branch continues. The run completes and reports every gate verdict.
@@ -1934,7 +1938,7 @@ test model (§24), or the exit semantics (§20).
 
 ## 34. An acceptance criterion acquires and releases its own state
 
-`2026-08-13` · `spec:approved` · `impl:unimplemented`
+`2026-08-14` · `spec:approved` · `impl:unimplemented`
 
 **The defect.** `database-order` (D-027) inserted two rows into `acceptance-order.sqlite3`,
 asserted that `list_books()` returned exactly those two, and removed nothing. The store lives in
@@ -1972,53 +1976,68 @@ relative order, positioned after whatever was already there. That holds on the f
 the thousandth, and it is a *stronger* order test, because it runs against a populated table where
 the candidate orderings no longer coincide.
 
-### 34.1 Teardown is a declared part; the control flow is composed
+### 34.1 Build-ready AC grammar
 
-The teardown must run when the assertion fails, or the failing path — the one that will recur —
-leaves the wreckage. A criterion that inserts, asserts, then deletes performs no cleanup on red.
+Every programmatic AC uses three explicitly delimited phases. `CHECK` is required; `SETUP` and
+`TEARDOWN` are optional.
 
-The model is a reliable author of *what to acquire and what to release*, and an unreliable author
-of *the construct that guarantees release runs*: it is boilerplate with no local motivation, and it
-is omitted precisely when the body looks like it cannot fail. So the criterion declares the parts
-and Drydock composes the control flow:
-
-```
+```text
 === AC <id> ===
 Intent: …
 Requires: executable=python3; scope=test
 
-Setup:      <acquire>
-            <assert>
-Teardown:   <release>
+=== SETUP ===
+<acquire state>
+
+=== CHECK ===
+<exercise and assert>
+
+=== TEARDOWN ===
+<release state>
 === END AC <id> ===
 ```
 
-`try`/`finally` in Python, `trap` in shell, `defer` in Go — rendered by Drydock from one place,
-never typed by the model. This is §33.3's rule one layer down: the form the prompt shows and the
-form the executor runs are one object.
+The phase markers are language-neutral grammar owned by Drydock. They are not source-language
+labels. There is no legacy single-body form: Targets are re-analyzed and re-planned before using
+this contract, so every generated AC carries the current grammar.
 
-Four consequences, all load-bearing:
+### 34.2 Execution and verdict contract
 
-1. **`Teardown:` is optional and absent from most criteria.** `assert 1 + 1 == 2` acquires nothing.
-   A required field that most criteria fill with a placeholder stops carrying information.
-2. **Acquisition is inside the guarded region.** Partial setup — first insert lands, second raises
-   — still tears down what it got. This is why `Setup:` is a declared part rather than a preamble.
-3. **Teardown failure is never product failure.** An exception in teardown is reported *alongside*
-   the assertion's result, never in place of it, and never converts a pass into a fail. Its fault
-   domain is CRITERION or KIT (P-1). A composed `finally` that swallowed the assertion error would
-   be the worst available outcome, and it is the mistake a hand-typed one makes.
-4. **Structure becomes machine-checkable.** With named parts, "does this criterion release what it
-   acquires" is answerable by reading the block, not by running it three times.
+Drydock composes the native control flow; the model supplies only the phase bodies.
 
-### 34.2 Applies to both persistent destinations
+- `SETUP` executes inside the protected region. Once setup begins, `TEARDOWN` runs whether setup
+  or check succeeds or fails, including after partial acquisition.
+- `CHECK` produces the AC verdict.
+- Setup and check failures use the existing AC failure classifier. Product-shaped failures are
+  `FAIL`; malformed criteria and unavailable inputs or executables — including the recognized
+  missing-file class — are `UNVERIFIED` and do not fail the product.
+- A teardown failure is printed as a criterion cleanup warning. It never replaces or changes the
+  setup/check verdict and never fails the product.
+- Existing stdout, stderr, and AC result reporting are sufficient. This change creates no new
+  evidence artifact or evidence requirement.
 
-The same discipline governs the native test suite (§24). D-014 was this defect in the suite —
-`instance/reading_list.sqlite3` left behind — and D-027 is the same defect in an AC block. TDD
-pattern 7 already states it and nothing enforced it in either destination.
+### 34.3 Language renderers
+
+The AC grammar applies to every supported target language. Execution is isolated behind a
+language-renderer interface selected from the AC executable declaration.
+
+- Python renders guaranteed cleanup with `try`/`finally`.
+- Go registers `defer` before setup begins, so cleanup is attempted after partial setup failure.
+- Python and Go are the initial renderers. Additional languages add renderers without changing
+  the AC grammar or verdict contract.
+- An unsupported executable makes the AC `UNVERIFIED`; it never produces a product failure.
+
+The renderer owns wrapper syntax, phase ordering, cleanup isolation, and preservation of the
+primary failure. The model never writes `try`/`finally`, `defer`, `trap`, or equivalent control
+flow.
 
 ## 35. Residue is observed, not declared
 
-`2026-08-13` · `spec:approved` · `impl:unimplemented`
+`2026-08-14` · `spec:approved` · `impl:na`
+
+**Deferred 2026-08-14.** Filesystem residue observation is diagnostic only, can be noisy, and
+cannot reliably detect state leaked inside an existing database. §34 directly prevents the
+observed self-poisoning AC failure. No residue observer is scheduled.
 
 With `Teardown:` optional, its absence cannot be a syntax defect — so parsing cannot answer "did
 the author forget it". And forgetting is the expected failure: the criterion that most needs a
