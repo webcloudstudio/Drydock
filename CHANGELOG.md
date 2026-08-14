@@ -27,6 +27,25 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-13: The `plan` repair prompts state the artifact grammar instead of demonstrating a
+  different one. Both repair prompts are assembled in Python rather than under `prompts/`, so the
+  invariant-boundary migration never reached them: each asked for a "fully paired block" without
+  saying what one looks like, then supplied the original body inside `<original-topology>` or
+  `<original-artifact name="…">` tags. The model mirrored the only syntax it was shown. In Toml
+  run `20260813.234757` a topology coverage repair the model performed correctly was discarded
+  unread — twice — and `drydock plan` refused the run on `DECODER-002`, the analyzed story the
+  discarded repair had covered, after Stage 2 had authored ten Blueprints against the declaration
+  already known to be defective.
+
+  `artifact_blocks` now owns the emission contract (`artifact_open`, `wrap_artifact`,
+  `emission_contract_lines`), rendered from the delimiter constants so no prompt hand-types a
+  boundary, and both repair prompts supply their input wrapped in the same grammar they ask for.
+  A single `_read_repair_blocks` replaces the two independent readers in the coverage and
+  continuation repair loops. The XML fallback survives as recovery for replies already in flight
+  and additionally accepts `<NAME>…</NAME>` for filename-shaped names, refusing a reply that mixes
+  forms. A repair Drydock cannot use is now reported with its reason rather than silently
+  returning the uncorrected declaration on four separate paths.
+
 - 2026-08-13: Every check that reasons over raw artifact delimiters now reads both boundary
   grammars. Adopting the invariant close taught the two parsers a second grammar but left five
   callers counting named `=== END <name> ===` lines, and the invariant close carries no name to

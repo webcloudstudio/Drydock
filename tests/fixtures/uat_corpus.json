@@ -654,6 +654,14 @@
       "facts": null,
       "expected_verdict": null,
       "note": ""
+    },
+    {
+      "fixture": "Toml",
+      "run_id": "20260813.234757",
+      "reached_gate": false,
+      "facts": null,
+      "expected_verdict": null,
+      "note": ""
     }
   ]
 }

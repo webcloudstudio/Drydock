@@ -38,8 +38,10 @@ from drydock.acceptance_requirements import (
 )
 from drydock.artifact_blocks import (
     RESERVED_BLOCK_NAMESPACE,
+    emission_contract_lines,
     pair_artifact_delimiters,
     parse_artifact_report,
+    wrap_artifact,
 )
 from drydock.build_plan import (
     AppliedSpecRecord,
@@ -3063,31 +3065,25 @@ def _conflict_challenge_assembly(
 
 def _topology_repair_assembly(*, declaration: str, defect: str, pass_number: int) -> PromptAssembly:
     """Build a small repair prompt for a valid artifact batch with an invalid work graph."""
-    repair = lines_part(
-        "Plan topology repair",
-        [
-            "# Plan Topology Repair",
-            "",
-            "Drydock accepted the Blueprint artifact batch but rejected its transient work graph.",
-            "Repair only the deterministic defect reported below. Preserve every story ID,",
-            "implements assignment and story fields that do not need",
-            "to change. Dependencies must name exact story IDs declared in this topology.",
-            "",
-            "Emit exactly one fully paired TOPOLOGY.md block and no other text or artifact.",
-            "",
-            f"Repair pass: {pass_number}",
-            "",
-            "Deterministic validation defect:",
-            defect.strip(),
-            "",
-            "Original TOPOLOGY.md body:",
-            "<original-topology>",
-            declaration.strip(),
-            "</original-topology>",
-        ],
-        kind="repair",
-    )
-    return PromptAssembly(parts=(repair,))
+    lines = [
+        "# Plan Topology Repair",
+        "",
+        "Drydock accepted the Blueprint artifact batch but rejected its transient work graph.",
+        "Repair only the deterministic defect reported below. Preserve every story ID,",
+        "implements assignment and story fields that do not need",
+        "to change. Dependencies must name exact story IDs declared in this topology.",
+        "",
+        *emission_contract_lines((TOPOLOGY_BLOCK,)),
+        "",
+        f"Repair pass: {pass_number}",
+        "",
+        "Deterministic validation defect:",
+        defect.strip(),
+        "",
+        f"Original {TOPOLOGY_BLOCK}, in the same form your reply must use:",
+        wrap_artifact(TOPOLOGY_BLOCK, declaration),
+    ]
+    return PromptAssembly(parts=(lines_part("Plan topology repair", lines, kind="repair"),))
 
 
 def analyzed_story_ids(blueprint_dir: Path) -> tuple[str, ...]:
@@ -3110,6 +3106,25 @@ def _declaration_coverage_defect(declaration: str, blueprint_dir: Path) -> str:
         analyzed_story_ids(blueprint_dir),
     )
     return "\n  ".join(fatal)
+
+
+def _report_repair_discard(reason: str, on_text: Callable[[str], None] | None) -> None:
+    """Name a repair reply Drydock could not use, so the discard is never silent."""
+    if on_text is not None:
+        on_text(f"[plan] topology repair discarded · {reason}\n")
+
+
+def _discarded_repair(declaration: str, reason: str, on_text: Callable[[str], None] | None) -> str:
+    """Report a repair Drydock could not use, and stand on the uncorrected declaration.
+
+    Proceeding is deliberate — the same rule runs again at final validation, which owns the
+    refusal. Reporting is what was missing: a silently discarded repair let Stage 2 spend a
+    full batch pass on a topology already known to be defective, and the operator saw only
+    the eventual refusal, naming a defect the model had in fact corrected.
+    """
+    if on_text is not None:
+        on_text(f"[plan] topology coverage repair discarded · {reason}\n")
+    return declaration
 
 
 def _repair_declaration_coverage(
@@ -3164,20 +3179,24 @@ def _repair_declaration_coverage(
         except Exception:
             return declaration
         if not result.ok or not result.text.strip():
-            return declaration
-        try:
-            repair_blocks = _parse_strict_blocks(result.text, result)
-        except OutsideArtifactTextError:
-            repair_blocks = _parse_repair_artifact_envelopes(result.text)
-        except Exception:
-            return declaration
+            return _discarded_repair(declaration, "the reply was empty", on_text)
+        repair_blocks, reason = _read_repair_blocks(result)
+        if reason:
+            return _discarded_repair(declaration, reason, on_text)
         if set(repair_blocks) != {TOPOLOGY_BLOCK}:
-            return declaration
+            return _discarded_repair(
+                declaration,
+                f"the reply carried {', '.join(sorted(repair_blocks)) or 'nothing'} "
+                f"rather than {TOPOLOGY_BLOCK} alone",
+                on_text,
+            )
         repaired = repair_blocks[TOPOLOGY_BLOCK]
         stories, defects = parse_topology(repaired)
         # A malformed or emptied re-emission is discarded whole; the accepted declaration stands.
-        if defects or not stories or repaired == declaration:
-            return declaration
+        if defects or not stories:
+            return _discarded_repair(declaration, "the re-emitted topology is malformed", on_text)
+        if repaired == declaration:
+            return _discarded_repair(declaration, "the topology came back unchanged", on_text)
         declaration = repaired
     return declaration
 
@@ -3227,8 +3246,7 @@ def _artifact_repair_assembly(
         "a programmatic surface retains at least two concrete Python acceptance assertions. Every",
         "DECISIONS.json is the sole decision disclosure surface; do not emit Markdown question sections.",
         "",
-        "Emit exactly one fully paired artifact block for each supplied filename and no other",
-        "text or artifact.",
+        *emission_contract_lines(names),
         "",
         f"Repair pass: {pass_number}",
         "",
@@ -3238,10 +3256,8 @@ def _artifact_repair_assembly(
     for name in names:
         lines.extend([
             "",
-            f"Original {name} body:",
-            f"<original-artifact name={json.dumps(name)}>",
-            blocks[name].strip(),
-            "</original-artifact>",
+            f"Original {name}, in the same form your reply must use:",
+            wrap_artifact(name, blocks[name]),
         ])
     return PromptAssembly(parts=(lines_part("Plan artifact repair", lines, kind="repair"),))
 
@@ -3249,23 +3265,66 @@ def _artifact_repair_assembly(
 _REPAIR_ARTIFACT_RE = re.compile(
     r'<artifact name="(?P<name>[^"\n]+)">\s*\n(?P<body>.*?)\n?</artifact>', re.DOTALL
 )
+#: The other envelope observed: the model names the artifact in the tag itself, mirroring the
+#: ``<original-topology>`` wrapper the repair prompt used to supply. The prompt no longer
+#: demonstrates any XML form, so this is recovery for a response already in flight, not a
+#: second supported grammar. The name must look like a filename, which keeps prose in angle
+#: brackets from being read as an artifact.
+_REPAIR_NAMED_TAG_RE = re.compile(
+    r"<(?P<name>[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)>\s*\n(?P<body>.*?)\n?</(?P=name)>", re.DOTALL
+)
 
 
 def _parse_repair_artifact_envelopes(text: str) -> dict[str, str]:
-    """Parse the exact XML envelope models sometimes copy from the repair input tags."""
-    blocks: dict[str, str] = {}
-    cursor = 0
-    for match in _REPAIR_ARTIFACT_RE.finditer(text):
-        if text[cursor : match.start()].strip():
-            return {}
-        name = match.group("name").strip()
-        if not name or name in blocks:
-            return {}
-        blocks[name] = match.group("body").strip()
-        cursor = match.end()
-    if text[cursor:].strip():
-        return {}
-    return blocks
+    """Parse the XML envelopes models sometimes emit in place of the artifact grammar.
+
+    Two spellings are recognised, and a response mixing them is refused: an envelope is a
+    recovery for a known model behaviour, not an invitation to invent a third form.
+    """
+    for pattern in (_REPAIR_ARTIFACT_RE, _REPAIR_NAMED_TAG_RE):
+        blocks: dict[str, str] = {}
+        cursor = 0
+        matched = False
+        for match in pattern.finditer(text):
+            matched = True
+            if text[cursor : match.start()].strip():
+                blocks = {}
+                break
+            name = match.group("name").strip()
+            if not name or name in blocks:
+                blocks = {}
+                break
+            blocks[name] = match.group("body").strip()
+            cursor = match.end()
+        if not matched or not blocks:
+            continue
+        if text[cursor:].strip():
+            continue
+        return blocks
+    return {}
+
+
+def _read_repair_blocks(result: object) -> tuple[dict[str, str], str]:
+    """Read a repair response, returning its artifacts and why they were unusable.
+
+    One reader for both repair loops. Each previously parsed the response itself and
+    discarded an unreadable one by falling out of the loop with no signal, so a repair the
+    model had performed correctly cost the run without ever being reported. The reason is
+    returned rather than raised: an unusable repair is not fatal here — the uncorrected
+    declaration still faces final validation, which owns the refusal.
+    """
+    text = str(getattr(result, "text", "") or "")
+    try:
+        blocks = _parse_strict_blocks(text, result)
+    except OutsideArtifactTextError:
+        blocks = _parse_repair_artifact_envelopes(text)
+        if not blocks:
+            return {}, "the reply used no recognised artifact delimiters"
+    except Exception as exc:
+        return {}, f"the reply could not be parsed ({type(exc).__name__})"
+    if not blocks:
+        return {}, "the reply carried no artifact"
+    return blocks, ""
 
 
 def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[str]:
@@ -4430,15 +4489,22 @@ def create_plan(
                             ),
                         )
                         if not repair_result.ok or not repair_result.text.strip():
+                            _report_repair_discard("the reply was empty", on_text)
                             break
-                        try:
-                            repair_blocks = _parse_strict_blocks(repair_result.text, repair_result)
-                        except OutsideArtifactTextError:
-                            repair_blocks = _parse_repair_artifact_envelopes(repair_result.text)
+                        repair_blocks, reason = _read_repair_blocks(repair_result)
+                        if reason:
+                            _report_repair_discard(reason, on_text)
+                            break
                         if set(repair_blocks) != {TOPOLOGY_BLOCK}:
+                            _report_repair_discard(
+                                f"the reply carried {', '.join(sorted(repair_blocks)) or 'nothing'}"
+                                f" rather than {TOPOLOGY_BLOCK} alone",
+                                on_text,
+                            )
                             break
                         repaired_declaration = repair_blocks[TOPOLOGY_BLOCK]
                         if repaired_declaration == declaration:
+                            _report_repair_discard("the topology came back unchanged", on_text)
                             break
                         declaration = repaired_declaration
                         repaired_blocks = dict(blocks)

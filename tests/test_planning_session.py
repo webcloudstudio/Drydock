@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from drydock import artifact_blocks, technology_stack
 from drydock import planning_session as ps
-from drydock import technology_stack
 from drydock.acceptance import parse_programmatic_acceptance, parse_programmatic_acceptance_text
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
@@ -3595,7 +3595,7 @@ def test_an_unknown_topology_edge_is_repaired_without_regenerating_specs(tmp_pat
     assert len(runner.calls) == 2
     assert "Plan Topology Repair" in runner.calls[1]
     assert "depends on unknown id 'foundation'" in runner.calls[1]
-    assert "Original TOPOLOGY.md body" in runner.calls[1]
+    assert "Original TOPOLOGY.md, in the same form your reply must use" in runner.calls[1]
     assert sorted(result.plan.by_id()) == ["story-foundation", "story-status"]
     assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
 
@@ -4257,3 +4257,86 @@ def test_conformed_spec_is_extracted_from_the_invariant_form():
 def test_conformed_spec_extraction_survives_an_unusable_response():
     """The caller degrades to `spec left unchanged`; conformance never fails a plan."""
     assert ps._extract_conformed_spec("prose with no artifact block", "FEATURE-Login.md") is None
+
+
+# ── Repair transport: the reply must be readable, and a discard must be visible ──────
+
+
+def test_a_coverage_repair_wrapped_in_an_xml_envelope_is_still_read(tmp_path):
+    """The recorded regression: the model corrected the topology and Drydock discarded it.
+
+    Toml `20260813.234757`. The repair prompt supplied its input inside
+    `<original-topology>` tags and never stated the artifact grammar, so the model mirrored
+    the tags it was shown. The reply was correct; only its envelope was not. Stage 2 then
+    spent two batch passes on the uncorrected declaration and the run died on exactly the
+    defect the repair had fixed.
+    """
+    target_dir = _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    uncovered = _TOPOLOGY_DECLARATION.replace(
+        "implements:   FEATURE-Status.md",
+        "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
+    )
+    repaired = uncovered.replace(
+        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
+    )
+    envelope = f"<TOPOLOGY.md>\n{repaired}\n</TOPOLOGY.md>\n"
+    runner = _sequence_runner(_topology_output(uncovered), envelope)
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert (target_dir / "MANIFEST.md").is_file()
+    assert result.plan.by_id()["story-foundation"].fields["covers"] == ("ARCH-001",)
+
+
+def test_the_repair_prompt_states_the_grammar_and_demonstrates_no_other(tmp_path):
+    """A prompt must never show a boundary syntax it does not want back."""
+    assembly = ps._topology_repair_assembly(
+        declaration=_TOPOLOGY_DECLARATION, defect="a defect", pass_number=1
+    )
+    text = assembly.rendered_text
+
+    assert artifact_blocks.ARTIFACT_OPEN_TEMPLATE.format(name="TOPOLOGY.md") in text
+    assert artifact_blocks.ARTIFACT_CLOSE_TOKEN in text
+    assert "<original-topology>" not in text
+
+
+def test_the_artifact_repair_prompt_states_the_same_grammar():
+    assembly = ps._artifact_repair_assembly(
+        blocks={"FEATURE-Status.md": "# FEATURE: Status"},
+        names=("FEATURE-Status.md",),
+        defect="a defect",
+        pass_number=1,
+    )
+    text = assembly.rendered_text
+
+    assert artifact_blocks.ARTIFACT_OPEN_TEMPLATE.format(name="FEATURE-Status.md") in text
+    assert artifact_blocks.ARTIFACT_CLOSE_TOKEN in text
+    assert "<original-artifact" not in text
+
+
+def test_an_unreadable_repair_reply_is_reported_rather_than_swallowed(tmp_path):
+    """Proceeding is correct; proceeding silently is what cost the run."""
+    _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    uncovered = _TOPOLOGY_DECLARATION.replace(
+        "implements:   FEATURE-Status.md",
+        "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
+    )
+    runner = _sequence_runner(_topology_output(uncovered), "I have corrected the topology.")
+    lines: list[str] = []
+
+    with pytest.raises(RecordedError):
+        create_plan("Example", "Example", tmp_path, runner=runner, on_text=lines.append)
+
+    assert any("repair discarded" in line for line in lines)
+    assert any("no recognised artifact delimiters" in line for line in lines)
+
+
+def test_a_repair_reply_mixing_envelope_forms_is_refused():
+    """An envelope is recovery for a known behaviour, not a third supported grammar."""
+    text = '<artifact name="TOPOLOGY.md">\n# one\n</artifact>\n<FEATURE-Status.md>\n# two\n</FEATURE-Status.md>\n'
+
+    assert ps._parse_repair_artifact_envelopes(text) == {}
+
+
+def test_prose_in_angle_brackets_is_not_an_artifact_envelope():
+    assert ps._parse_repair_artifact_envelopes("<note>\nnot a file\n</note>\n") == {}

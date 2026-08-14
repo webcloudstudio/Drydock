@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from drydock import artifact_blocks
 from drydock.artifact_blocks import (
     pair_artifact_delimiters,
     parse_artifact_blocks,
@@ -359,3 +360,24 @@ def test_pairing_ignores_ac_containers():
     )
 
     assert pair_artifact_delimiters(text).closed == ("STORY-Login.md",)
+
+
+def test_the_emission_contract_is_rendered_from_the_grammar_constants():
+    """One authority. A prompt that hand-types a delimiter cannot follow a grammar change."""
+    lines = artifact_blocks.emission_contract_lines(("TOPOLOGY.md", "ARCHITECTURE.md"))
+    text = "\n".join(lines)
+
+    assert artifact_blocks.ARTIFACT_OPEN_TEMPLATE.format(name="<FILENAME>") in text
+    assert artifact_blocks.ARTIFACT_CLOSE_TOKEN in text
+    assert "TOPOLOGY.md, ARCHITECTURE.md" in text
+
+
+def test_a_wrapped_artifact_parses_back_to_its_body():
+    """The form a prompt shows and the form the parser reads are the same object."""
+    wrapped = artifact_blocks.wrap_artifact("TOPOLOGY.md", "## story one\n")
+
+    parsed = artifact_blocks.parse_artifact_blocks(
+        wrapped, label="plan", allowed_names=("TOPOLOGY.md",)
+    )
+
+    assert parsed["TOPOLOGY.md"] == "## story one"

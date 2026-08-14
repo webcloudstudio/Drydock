@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import PurePath
 from re import Pattern
@@ -88,6 +88,43 @@ class ArtifactParseResult:
     @property
     def defects(self) -> tuple[ArtifactDefect, ...]:
         return self.repaired + self.rejected
+
+
+def artifact_open(name: str) -> str:
+    """The opening delimiter for ``name``, in the invariant form."""
+    return ARTIFACT_OPEN_TEMPLATE.format(name=name)
+
+
+def wrap_artifact(name: str, body: str) -> str:
+    """``body`` enclosed in the invariant boundary, as the parser expects to read it."""
+    return f"{artifact_open(name)}\n{body.strip()}\n{ARTIFACT_CLOSE_TOKEN}"
+
+
+def emission_contract_lines(names: Sequence[str]) -> list[str]:
+    """The delimiter grammar, stated for a model, rendered from the constants above.
+
+    A prompt assembled in Python states the grammar the same way a prompt in ``prompts/``
+    does, and neither hand-types a delimiter. The rule this exists to enforce: a prompt
+    must never demonstrate a boundary syntax it does not want back. A repair prompt that
+    wrapped its input in XML tags and asked for a delimited block got XML tags back, and
+    the corrected artifact inside them was discarded unread.
+    """
+    lines = [
+        "Emit each artifact below in exactly this form, and emit no other text:",
+        "",
+        artifact_open("<FILENAME>"),
+        "<the complete file body>",
+        ARTIFACT_CLOSE_TOKEN,
+        "",
+        "The filename appears once, in the opening delimiter. The closing delimiter is the",
+        "constant token above and never carries a name.",
+    ]
+    if names:
+        lines.extend([
+            "",
+            "Emit exactly one such block for each of: " + ", ".join(names) + ".",
+        ])
+    return lines
 
 
 def parse_artifact_blocks(

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V8 |
+| Version | 2026-08-13 V9 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
@@ -47,9 +47,10 @@ in §27.2. All three fixture `SEA_TRIALS.md` files are already correct (`185b55a
 left in this file.** Part VI is the current refit and supersedes this paragraph's earlier advice.
 Phase 0 and Phase 1 are **done and committed**; §31 records what landed. §30's three delimiter
 layers — recovery, containment, prevention — landed in `299b702`, and §32 records the regression
-that produced and the shared-pairing fix that closed it (`b7ce19e`). Three consecutive runs died
-in the delimiter layer without observing the product; **re-run Toml before building anything.**
-**Read Part VI first.**
+that produced and the shared-pairing fix that closed it (`b7ce19e`). §33 records the third
+instance of the same class: the two repair prompts assembled in Python never adopted the grammar,
+and discarded two correct repairs. Four consecutive runs died in the transport layer without
+observing the product; **re-run Toml before building anything.** **Read Part VI first.**
 
 **Phases 2–5 of §26 still wait for the measurement Phase 0 produces**, except the narrow half of
 2.4, which landed as §29.
@@ -331,6 +332,7 @@ Every distinct failure mode in the 18 runs. `status` is as of 2026-08-13.
 | D-022 | The Toml fixture's `run_conformance.sh` probed the harness with `toml-test -version`, which that harness does not accept; the version guard then refused every run | G-BUILD-04 | Toml `20260813.195530` | fixed — uses the `version` subcommand |
 | D-023 | A mismatched closing delimiter is read as a new opening block, not as a malformed close, so the run dies naming a block the model never opened | G-ANA-01 | Toml `20260813.211658` — `=== END COMPASS ===` closing `=== COMPASS.md ===` | fixed — closed by position, §30.2, `299b702` |
 | D-024 | The invariant boundary was adopted by the parsers and nine prompts but not by five callers that read delimiters directly; an undamaged response read as wholly unpaired | G-PLAN-02 | Toml `20260813.231738` — `KeyError: 'TOPOLOGY.md'` | fixed — one shared positional pairing, §32, `b7ce19e` |
+| D-025 | The two repair prompts are assembled in Python, state no artifact grammar, and wrap their input in XML tags; the model mirrored the tags, and a topology repair it had performed correctly was discarded unread — twice — while Stage 2 spent two batch passes on the declaration already known to be defective | G-PLAN-02 | Toml `20260813.234757` — refused on `DECODER-002`, which the repair had covered | fixed — shared emission contract and a reported discard, §33 |
 
 ### D-014 in full, because it is the cleanest example of the whole disease
 
@@ -1802,3 +1804,104 @@ now names ten.
    remaining item, and still the only `impl:unimplemented` flag in this file.
 
 Phase 2 onward still waits on the measurement Phase 0 produces, per §27.3 Q2.
+
+---
+
+## 33. Run 20260813.234757 — the repair prompt taught the model the wrong grammar (D-025)
+
+### 33.1 What happened
+
+`2026-08-13` · `spec:na` · `impl:implemented`
+
+The re-run called for by §32.6 item 1 cleared the delimiter layer, ran the whole plan stage, and
+died at final validation:
+
+```
+Plan integrity check failed:
+  analyzed stories are not delivered by any Manifest story: DECODER-002
+```
+
+Five LLM calls, and the defect was real in only the first one:
+
+| # | Output | Envelope | `covers:` on `decoder-interface` |
+|---|---|---|---|
+| 1 | `234919` | `=== BEGIN ARTIFACT TOPOLOGY.md ===` | `DECODER-001` — the genuine defect |
+| 2 | `235011` | **`<TOPOLOGY.md>`** | `DECODER-001, DECODER-002` — **corrected** |
+| 3 | `235050` | invariant | Stage 2 batch 1 |
+| 4 | `235213` | invariant | Stage 2 batch 2 |
+| 5 | `235315` | **`<TOPOLOGY.md>`** | `DECODER-001, DECODER-002` — **corrected again** |
+
+`_repair_declaration_coverage` fired correctly and the model answered correctly. Both times the
+answer arrived in an XML envelope, `_parse_strict_blocks` raised `OutsideArtifactTextError`, the
+`_parse_repair_artifact_envelopes` fallback matched only `<artifact name="…">` and returned `{}`,
+and the loop fell through `set(repair_blocks) != {TOPOLOGY_BLOCK}` to `return declaration` — the
+uncorrected one, with no message. Stage 2 then spent two full batch passes authoring ten
+Blueprints against a topology already known to be defective.
+
+Topology parsing, `covers` splitting, `render_story_block`, the Manifest round-trip and
+`analyzed_story_ids` were each replayed against the recorded run and are all correct. The entire
+loss is in the repair transport.
+
+### 33.2 Why — a prompt that demonstrates a grammar it does not want back
+
+`_topology_repair_assembly` and `_artifact_repair_assembly` are built in Python, not in
+`prompts/`. Both said *"emit exactly one fully paired block"* without ever stating what a paired
+block looks like, and then supplied the original body inside `<original-topology>` /
+`<original-artifact name="…">`. The only delimiter syntax anywhere in that prompt was XML, so the
+model used XML. The fallback parser's existence is the tell: someone had already observed models
+copying the input tags and guessed at `<artifact name="…">` rather than removing the thing being
+copied.
+
+**This is D-024 a third time.** §30.4's invariant boundary reached the parsers, then reached the
+five structural checks (§32), and never reached the two prompts assembled in Python — because
+`grep` over `prompts/` does not find them. The generalisation from §32.2 holds and needs widening:
+**a grammar with two readers has one of them wrong** — and a prompt is a reader. Nine files under
+`prompts/` were migrated; the two prompts that live in `.py` files were invisible to that
+migration.
+
+The new rule, which is the part worth keeping:
+
+> A prompt must never demonstrate a boundary syntax it does not want back, and must never
+> hand-type the syntax it does.
+
+### 33.3 The fix
+
+`artifact_blocks` gains `artifact_open`, `wrap_artifact`, and `emission_contract_lines` — the
+grammar rendered from `ARTIFACT_OPEN_TEMPLATE` and `ARTIFACT_CLOSE_TOKEN`, never retyped. Both
+repair assemblies state the contract through it and supply the original body via `wrap_artifact`,
+so the form the prompt shows and the form the parser reads are one object. The XML envelopes are
+gone from both prompts.
+
+`_read_repair_blocks` is the single reader for both repair loops, which previously parsed the
+reply independently — the same duplication §32.3 removed one layer down. The envelope fallback
+survives as recovery for replies already in flight and now also accepts `<NAME>…</NAME>` where the
+name looks like a filename; a reply mixing the two forms is refused, because an envelope is a
+concession to observed behaviour and not a third supported grammar.
+
+**A discarded repair is now reported.** Proceeding on the uncorrected declaration stays correct —
+final validation owns the refusal — but four separate paths returned it silently, so the operator
+saw a refusal naming a defect the model had in fact corrected, three minutes and two batch passes
+earlier. Every discard names its reason.
+
+Verified against the recorded run: `_read_repair_blocks` recovers `TOPOLOGY.md` from
+`20260813.235011` with `covers: DECODER-001, DECODER-002` intact. Tests in
+`tests/test_planning_session.py` and `tests/test_artifact_blocks.py`; full suite green.
+
+### 33.4 Corpus
+
+`20260813.234757` is in `tests/fixtures/uat_corpus.json` as **unscored** — it never reached a
+gate, so it offers no facts. 22 runs, 11 scored.
+`test_a_run_that_never_reached_the_gate_offers_no_facts` now names eleven.
+
+### 33.5 Order for the next session
+
+`2026-08-13` · `spec:na` · `impl:na`
+
+1. **Re-run Toml.** Four consecutive runs have now been lost in the transport layer, each one
+   further down it than the last: parser (`211658`), structural checks (`231738`), repair prompt
+   (`234757`). The layer is out of untouched surfaces.
+2. **§26 item 3.1a — P-3a, the per-branch stall** (§27.3 Q1). Unchanged, still the highest-value
+   remaining item, and still the only `impl:unimplemented` flag in this file.
+
+§32.4's lesson compounds: the fix for a transport defect is itself transport. Cost across the four
+runs is roughly 45 minutes and 7M tokens, none of it spent observing the Toml product.
