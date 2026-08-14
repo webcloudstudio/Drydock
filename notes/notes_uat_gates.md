@@ -7,7 +7,7 @@
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. Part VII collapses the verdict model and severs the last coupling between Sea Trials and story acceptance. |
 | Pending spec | 8 approved items — §27.3 Q1, §30.3, §30.4, §34, §35, §36, §37, §38 |
-| Pending impl | 7 unimplemented sections — §27.3 Q1 (P-3a), §34, §35, §36, §36.1, §37, §38 |
+| Pending impl | 3 unimplemented sections — §27.3 Q1 (P-3a), §34, §35 |
 
 ---
 
@@ -2056,7 +2056,7 @@ problem than one that fails to tidy up inside it.
 
 ## 36. Score observes; it does not read reports
 
-`2026-08-13` · `spec:approved` · `impl:unimplemented`
+`2026-08-13` · `spec:approved` · `impl:implemented`
 
 **The rule.** `score release` grades the finished tree by observing it at grading time. Anything it
 cannot observe for itself is not available to pin a verdict.
@@ -2099,7 +2099,7 @@ dirties the tree during grading.
 
 ### 36.1 The ephemeral probe — the third test destination
 
-`2026-08-13` · `spec:approved` · `impl:unimplemented`
+`2026-08-13` · `spec:approved` · `impl:implemented`
 
 A trial that names no command — *"a reader can add a book and see it listed"* — is settled by the
 grader writing the exercise and running it: `add_book()`, `list_books()`, `remove_book()`, under
@@ -2136,7 +2136,7 @@ executes cleanly and gets the wrong answer — the case 22 runs have never produ
 
 ## 37. The verdict vocabulary collapses; PENDING is retired
 
-`2026-08-13` · `spec:approved` · `impl:unimplemented`
+`2026-08-13` · `spec:approved` · `impl:implemented`
 
 `PENDING MANUAL VERIFICATION` (V-1) was doing two unrelated jobs:
 
@@ -2212,7 +2212,7 @@ broken.
 
 ## 38. Sea Trials are referenced by nothing
 
-`2026-08-13` · `spec:approved` · `impl:unimplemented`
+`2026-08-13` · `spec:approved` · `impl:implemented`
 
 **Where `proof` came from: distrust of the grader.** The release verdict was meant to be
 deterministic, so rather than let a model judge a criterion, the verdict became a *lookup* — bind
