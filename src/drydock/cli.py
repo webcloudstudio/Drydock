@@ -488,7 +488,11 @@ def cmd_init(args: argparse.Namespace) -> int:
     )
 
     print(f"Target: {result.target_dir}")
+    # .gitkeep placeholders are directory scaffolding, not project artifacts; the
+    # directory they hold open is what the operator cares about.
     for path in result.created:
+        if path.name == ".gitkeep":
+            continue
         print(f"  CREATED  {path.relative_to(result.target_dir)}")
     if result.skipped:
         print(f"  ({len(result.skipped)} existing baseline files preserved)")
