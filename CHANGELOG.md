@@ -10,6 +10,21 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-14: A UAT proof kit publishes each LLM transcript once. A run drives a Drydock
+  workspace, so every assembled prompt, provider transcript, and model output existed twice on
+  disk — under `evidence/` and again under `workspace/logs/` — and the kit inventoried both trees
+  whole, rendering a separate HTML viewer for each copy. `evidence/` is now the canonical home:
+  a workspace file whose digest matches an evidence artifact is withheld from the inventory, no
+  viewer is written for it, and `index.html` does not link it. Withheld paths are listed in a
+  generated per-run `.gitignore`, and the artifact links the run recorded against its own
+  workspace are remapped onto the published copy, so no receipt link addresses a file the kit
+  held back. Duplication is decided on the digest rather than a suffix list; empty files are
+  exempt, because every empty file shares one digest and "this command wrote no stderr" is a fact
+  worth keeping. `workspace/targets/` is unaffected — the Blueprint, Manifest, and Target
+  artifacts have no evidence twin and remain the record of what the run built. On the recorded
+  CommonMark run this takes the kit from 50 MB to 38 MB on disk and 26 MB committed, with 393
+  links resolving and none pointing at an ignored path.
+
 - 2026-08-14: `drydock score release` grades the finished tree by observing it, and the verdict
   vocabulary collapses to three words. A run is `PASSED`, `FAILED`, or `ERROR`; a criterion is
   `MET`, `NOT MET`, or `MANUAL`. `PENDING MANUAL VERIFICATION` is retired: it was doing two

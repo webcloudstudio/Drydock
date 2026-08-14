@@ -90,6 +90,37 @@ def _case(
     return case
 
 
+def _mirror(case: Path, name: str = "call.prompt.md", body: str = "assembled prompt\n") -> None:
+    """Record one transcript the way a real run does: in evidence, and again in the workspace.
+
+    A run drives a Drydock workspace, so every prompt it assembles exists twice on disk. The
+    kit has to choose one copy to publish; the fixture reproduces the choice.
+    """
+    (case / "evidence" / "prompts").mkdir(exist_ok=True)
+    (case / "evidence" / "prompts" / name).write_text(body, encoding="utf-8")
+    (case / "workspace" / "logs" / name).write_text(body, encoding="utf-8")
+    (case / "evidence" / "llm.jsonl").write_text(
+        json.dumps({
+            "execution_id": "exec-1",
+            "status": "completed",
+            "job": {"command_name": "build", "llm": "codex", "model": "test-model"},
+            "result": {"returncode": 0, "stats": {"elapsed_ms": 10, "input_tokens": 5}},
+            # The run records where it wrote the file, which is its own workspace.
+            "artifacts": {"prompt": str(case / "workspace" / "logs" / name)},
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _ignored(case: Path) -> set[str]:
+    return {
+        line.lstrip("/")
+        for line in (case / ".gitignore").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    }
+
+
 def _links(page: Path) -> set[str]:
     return set(re.findall(r'href="([^"]+)"', page.read_text(encoding="utf-8")))
 
@@ -245,6 +276,86 @@ def test_case_kit_files_the_evidence_into_one_tree_per_directory(
     assert "runs/20260101T000000.000000Z/workspace/" in page
     # Digests belong in SHA256SUMS; a wall of hashes is not what a reviewer reads.
     assert re.search(r"[0-9a-f]{64}", page) is None
+
+
+def test_case_kit_publishes_a_mirrored_transcript_once_from_evidence(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    _mirror(case)
+
+    index = build_case_kit(case)
+
+    links = _links(index)
+    assert "view/evidence/prompts/call.prompt.md.html" in links
+    assert "view/workspace/logs/call.prompt.md.html" not in links
+    # The second copy is not rendered at all, so the kit carries one viewer, not two.
+    assert not (case / "view" / "workspace" / "logs" / "call.prompt.md.html").exists()
+
+
+def test_case_kit_ignores_the_copy_it_withheld_and_nothing_it_links(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    _mirror(case)
+
+    index = build_case_kit(case)
+
+    assert "workspace/logs/call.prompt.md" in _ignored(case)
+    # The invariant that matters: index.html is the only way a committed kit is read, so a
+    # path it links must never be a path git was told to skip.
+    assert _ignored(case).isdisjoint(_links(index))
+
+
+def test_case_kit_points_a_recorded_transcript_link_at_the_copy_it_published(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path / "run")
+    _mirror(case)
+
+    index = build_case_kit(case)
+
+    # The run recorded the workspace path; the receipt has to resolve it to the published copy
+    # or the LLM table links a file the kit deliberately withheld.
+    assert "view/evidence/prompts/call.prompt.md.html" in _links(index)
+    assert all("workspace/logs/call.prompt.md" not in link for link in _links(index))
+
+
+def test_case_kit_keeps_workspace_files_that_evidence_does_not_carry(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    _mirror(case)
+
+    index = build_case_kit(case)
+
+    links = _links(index)
+    # The Blueprint the run drove has no evidence twin and is the record of what was built.
+    assert "view/workspace/targets/commonmark/blueprint/ARCHITECTURE.md.html" in links
+    assert "view/workspace/logs/noise.log.html" in links
+    assert _ignored(case) == {"workspace/logs/call.prompt.md"}
+
+
+def test_case_kit_keeps_an_empty_workspace_log_beside_an_empty_evidence_log(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path / "run")
+    # Every empty file shares one digest. "This command wrote no stderr" is a fact about the
+    # run, so it must not be deduplicated away against an unrelated empty file.
+    (case / "workspace" / "logs" / "build.stderr.log").write_text("", encoding="utf-8")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    # The fixture's evidence already holds an empty 01-init.stderr.log to collide with.
+    assert _ignored(case) == set()
+    assert "build.stderr.log" in page
+
+
+def test_case_kit_withholds_agent_scaffolding_copied_into_the_workspace(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    skill = case / "workspace" / ".claude" / "skills" / "refit"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# refit\n", encoding="utf-8")
+
+    index = build_case_kit(case)
+
+    # Drydock's own tooling, not a record of what the run produced.
+    assert "workspace/.claude/skills/refit/SKILL.md" in _ignored(case)
+    assert all(".claude" not in link for link in _links(index))
 
 
 def test_case_kit_drops_the_error_tab_when_nothing_failed(tmp_path: Path) -> None:

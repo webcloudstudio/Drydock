@@ -44,10 +44,26 @@ PRUNED_DIRECTORIES = frozenset({"__pycache__", ".pytest_cache", ".ruff_cache", "
 
 _INDEX_NAME = "index.html"
 _SUMS_NAME = "SHA256SUMS"
+_IGNORE_NAME = ".gitignore"
 _MANIFEST_PATH = "evidence/manifest.json"
 # Generated at the top of a kit and rewritten on every rebuild, so they are never inventoried:
 # a checksum of a file that the next rebuild replaces is a checksum that fails verification.
-_KIT_OUTPUTS = frozenset({_INDEX_NAME, _SUMS_NAME, "README.md"})
+_KIT_OUTPUTS = frozenset({_INDEX_NAME, _SUMS_NAME, _IGNORE_NAME, "README.md"})
+
+# A run drives a Drydock workspace, and that workspace keeps its own copy of every prompt,
+# provider transcript, and model output the run produced. Inventorying both trees whole
+# publishes each transcript twice and renders an HTML viewer for both copies, which is where
+# the bulk of a kit's size comes from. ``evidence/`` is the canonical home: it is the sectioned,
+# reviewable record, and it holds the same bytes.
+_CANONICAL_ROOT = "evidence"
+_MIRRORED_ROOT = "workspace"
+
+# Agent skill scaffolding copied in so the case could run. It is Drydock's own tooling rather
+# than a record of the build, and it says nothing about what the run produced.
+_UNPUBLISHED_PREFIXES = (
+    f"{_MIRRORED_ROOT}/.claude/",
+    f"{_MIRRORED_ROOT}/.agents/",
+)
 
 _MAX_EXCERPT_BYTES = 16_384
 
@@ -178,13 +194,48 @@ def _tail(path: Path, limit: int = _MAX_EXCERPT_BYTES) -> str:
     return data.decode("utf-8", errors="replace").strip()
 
 
-def _case_groups(case_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
+def _unpublished(canonical: Sequence[FileRecord], mirrored: Sequence[FileRecord]) -> dict[str, str]:
+    """Map each withheld mirrored path to the canonical path that replaces it.
+
+    A withheld path maps to its canonical twin, or to ``""`` when nothing replaces it because
+    it was never part of the build record. One mapping drives all three consumers — the
+    inventory, the ignore file, and the link remapping — so they cannot disagree about what
+    the kit contains.
+
+    Duplication is decided on the digest rather than on a list of suffixes, so a transcript
+    the run names differently in the two trees is still recognised, and a mirrored file that
+    is genuinely unique is never dropped. Empty files are exempt: every empty file shares one
+    digest, and "this command wrote no stderr" is a fact the receipt should keep.
+    """
+    # Skipping empty files here is the whole exemption: nothing can match a digest the
+    # canonical index never learned, so no empty mirrored file is ever withheld.
+    published: dict[str, str] = {}
+    for record in canonical:
+        if record.bytes:
+            published.setdefault(record.sha256, record.path)
+    withheld: dict[str, str] = {}
+    for record in mirrored:
+        if record.path.startswith(_UNPUBLISHED_PREFIXES):
+            withheld[record.path] = ""
+        elif record.sha256 in published:
+            withheld[record.path] = published[record.sha256]
+    return withheld
+
+
+def _case_groups(case_root: Path, target: str) -> tuple[tuple[ArtifactGroup, ...], dict[str, str]]:
     """Inventory a completed case as the four directories a run writes, plus its record.
+
+    Returns the groups and the withheld-path mapping described by :func:`_unpublished`, which
+    the caller writes out as the run's ignore file and uses to redirect recorded links onto
+    the copies the kit publishes.
 
     ``target`` is unused: every directory is inventoried whole, so a Target rename cannot
     silently drop files from the receipt.
     """
     del target
+    canonical = tuple(_iter_files(case_root / _CANONICAL_ROOT, case_root))
+    mirrored = tuple(_iter_files(case_root / _MIRRORED_ROOT, case_root))
+    unpublished = _unpublished(canonical, mirrored)
     groups = [
         ArtifactGroup(
             "Build",
@@ -194,7 +245,7 @@ def _case_groups(case_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
         ArtifactGroup(
             "Evidence",
             "Captured command streams, assembled prompts, model output, and provider transcripts.",
-            tuple(_iter_files(case_root / "evidence", case_root)),
+            canonical,
         ),
         ArtifactGroup(
             "Inputs",
@@ -208,8 +259,9 @@ def _case_groups(case_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
         ),
         ArtifactGroup(
             "Workspace",
-            "Drydock workspace the run drove: Blueprint, Manifest, Target artifacts, and logs.",
-            tuple(_iter_files(case_root / "workspace", case_root)),
+            "Drydock workspace the run drove: Blueprint, Manifest, Target artifacts, and the "
+            "logs Evidence does not already carry.",
+            tuple(record for record in mirrored if record.path not in unpublished),
         ),
         ArtifactGroup(
             "Run record",
@@ -221,7 +273,7 @@ def _case_groups(case_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
             ),
         ),
     ]
-    return tuple(group for group in groups if group.files)
+    return tuple(group for group in groups if group.files), unpublished
 
 
 def _rehash(
@@ -242,9 +294,25 @@ def _rehash(
     )
 
 
-def _llm_calls(records_path: Path, base: Path) -> tuple[dict[str, object], ...]:
-    """Summarize each recorded LLM execution for the receipt's call table."""
+def _llm_calls(
+    records_path: Path, base: Path, redirect: Mapping[str, str] | None = None
+) -> tuple[dict[str, object], ...]:
+    """Summarize each recorded LLM execution for the receipt's call table.
+
+    ``redirect`` remaps an artifact the run recorded under the workspace onto the canonical
+    copy the receipt actually publishes. The run writes these records pointing at its own
+    working tree, so without the remap every prompt, output, and transcript link in the table
+    addresses a file the kit withheld.
+    """
     from drydock.llm_usage import normalize_tokens, read_records
+
+    # Only entries with a replacement redirect. A withheld path that maps to nothing was not
+    # part of the build record, so it keeps its recorded name rather than becoming an empty link.
+    moved = {source: target for source, target in (redirect or {}).items() if target}
+
+    def _artifact(value: object) -> str:
+        relative = _relative(value, base)
+        return moved.get(relative, relative)
 
     records, _ = read_records(records_path)
     calls: list[dict[str, object]] = []
@@ -265,11 +333,28 @@ def _llm_calls(records_path: Path, base: Path) -> tuple[dict[str, object], ...]:
             "input_tokens": total,
             "cached_input_tokens": cached,
             "output_tokens": output,
-            "prompt": _relative(artifacts.get("prompt"), base),
-            "output": _relative(artifacts.get("output"), base),
-            "raw": _relative(artifacts.get("raw"), base),
+            "prompt": _artifact(artifacts.get("prompt")),
+            "output": _artifact(artifacts.get("output")),
+            "raw": _artifact(artifacts.get("raw")),
         })
     return tuple(calls)
+
+
+def _write_ignore(base: Path, unpublished: Iterable[str]) -> None:
+    """Ignore exactly what the receipt withheld, so a clone carries everything it links.
+
+    The receipt and this file are generated from one set. Deriving them separately lets them
+    drift, and the failure that produces is the worst one available here: ``index.html`` is
+    the only way anyone reads a committed kit, so a path it links but git never took is a
+    dead link in the sole interface.
+    """
+    lines = [
+        "# Generated by drydock uat with the receipt; edits are lost on the next rebuild.",
+        f"# Each path below is published from {_CANONICAL_ROOT}/ instead, or is tooling that",
+        "# is not part of the build record. Nothing index.html links is listed here.",
+    ]
+    lines.extend(f"/{path}" for path in sorted(unpublished))
+    (base / _IGNORE_NAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _write_sums(base: Path, groups: Sequence[ArtifactGroup]) -> None:
@@ -941,7 +1026,12 @@ def _attestations(result: dict) -> tuple[str, ...]:
     return tuple(str(item) for item in items) if isinstance(items, list) else ()
 
 
-def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup]) -> str:
+def _render_case(
+    case_root: Path,
+    result: dict,
+    groups: Sequence[ArtifactGroup],
+    redirect: Mapping[str, str] | None = None,
+) -> str:
     target = str(result.get("target") or case_root.name)
     fixture = str(result.get("fixture") or case_root.name)
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
@@ -1026,7 +1116,7 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
 
     inventory = _inventory_panels(groups, f"runs/{result.get('run_id') or case_root.name}/")
 
-    calls = _llm_calls(case_root / "evidence" / "llm.jsonl", case_root)
+    calls = _llm_calls(case_root / "evidence" / "llm.jsonl", case_root, redirect)
     call_rows = [
         [
             _cell(call["command"]),
@@ -1305,7 +1395,8 @@ def build_case_kit(case_root: Path) -> Path:
     target = str(result.get("target") or case_root.name)
 
     manifest_path = case_root / "evidence" / "manifest.json"
-    groups = _case_groups(case_root, target)
+    groups, unpublished = _case_groups(case_root, target)
+    _write_ignore(case_root, unpublished)
 
     # The manifest is rewritten here, so it is inventoried afterwards: a checksum taken before
     # the rewrite describes a file that no longer exists, and `sha256sum -c` reports it FAILED.
@@ -1337,7 +1428,7 @@ def build_case_kit(case_root: Path) -> Path:
     )
     index = case_root / _INDEX_NAME
     with _viewers(viewers):
-        index.write_text(_render_case(case_root, result, groups), encoding="utf-8")
+        index.write_text(_render_case(case_root, result, groups, unpublished), encoding="utf-8")
     return index
 
 
