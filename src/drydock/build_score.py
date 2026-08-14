@@ -472,30 +472,17 @@ def score_target(
     ]
     if vacuous_proofs:
         warnings.append("Programmatic acceptance is vacuous: " + ", ".join(vacuous_proofs))
-    known_trial_ids = {trial.criterion_id for trial in document.trials}
+    # Sea Trials are referenced by nothing. Coverage used to be counted here from ``accepts:``
+    # fields and ``Sea Trials:`` proof tags, which checked that a *reference exists* rather than
+    # that a capability was built — and the release gate counted the same coverage differently,
+    # refusing criteria a grader had positively found met. Whether the project meets its criteria
+    # is settled by observing the finished tree, not by matching tags.
     manifest_refs = {
         value
         for block in executable
         for value in block.fields.get("accepts", ())
         if isinstance(value, str)
     }
-    proof_refs = {value for check in checks for value in check.sea_trials}
-    unknown_refs = sorted((manifest_refs | proof_refs) - known_trial_ids)
-    if unknown_refs:
-        blockers.append("Unknown Sea Trial references: " + ", ".join(unknown_refs))
-    # A required guardrail verified by proof is traceable work like any other: something must
-    # declare ``Sea Trials: <id>``. Without that link the guardrail can only ever be unproven,
-    # so the gap is reported here as missing coverage rather than surfacing as a bare breach.
-    traceable_required = {
-        trial.criterion_id
-        for trial in document.trials
-        if trial.required and trial.testability == "deterministic" and trial.verification == "proof"
-    }
-    uncovered = sorted(traceable_required - (manifest_refs | proof_refs))
-    if uncovered:
-        blockers.append(
-            "Required Sea Trials lack implementation/proof coverage: " + ", ".join(uncovered)
-        )
 
     measurements = tuple(
         _measure(trial, target_dir=target_dir, build_dir=build_dir) for trial in document.trials
@@ -525,12 +512,7 @@ def score_target(
                 "nothing about the build."
             ),
         },
-        "traceability": {
-            "manifest_references": sorted(manifest_refs),
-            "proof_references": sorted(proof_refs),
-            "uncovered_required": uncovered,
-            "unknown_references": unknown_refs,
-        },
+        "traceability": {"manifest_references": sorted(manifest_refs)},
         "measurements": [asdict(item) for item in measurements],
         "evidence_files": evidence_facts,
         "sea_trials": [asdict(item) for item in document.trials],
@@ -592,28 +574,6 @@ def score_target(
         if trial.verification == "measurement":
             verdict = measured.status if measured.status in VALID_VERDICTS else "INCONCLUSIVE"
             evidence = tuple(filter(None, (measured.source, measured.detail)))
-        if trial.verification == "proof":
-            referencing = [
-                (result, integ)
-                for check, result, integ in zip(checks, acceptance, proof_integrity, strict=True)
-                if criterion_id in check.sea_trials
-            ]
-            valid = [result for result, integ in referencing if integ.ok]
-            if not referencing:
-                verdict = "INCONCLUSIVE"
-                evidence = ("no code-bound proof references this criterion",)
-            elif not valid:
-                reasons = "; ".join(reason for _, integ in referencing for reason in integ.reasons)
-                evidence = (
-                    "warning: proof passed but failed integrity: "
-                    + (reasons or "no effective failure path"),
-                )
-            else:
-                verdict = "PASS" if all(item.passed for item in valid) else "FAIL"
-                evidence = tuple(
-                    f"{item.source}:{item.check_id}={'PASS' if item.passed else 'FAIL'}"
-                    for item in valid
-                )
         if trial.verification == "evidence" and "error" in evidence_by_id.get(criterion_id, {}):
             verdict = "INCONCLUSIVE"
             evidence = (str(evidence_by_id[criterion_id]["error"]),)

@@ -8,6 +8,45 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-08-14: `drydock score release` grades the finished tree by observing it, and the verdict
+  vocabulary collapses to three words. A run is `PASSED`, `FAILED`, or `ERROR`; a criterion is
+  `MET`, `NOT MET`, or `MANUAL`. `PENDING MANUAL VERIFICATION` is retired: it was doing two
+  unrelated jobs — a criterion no machine can ever settle, and a project that is not built yet —
+  and one word for both is how a finished, correct project came to be reported as though it had
+  open questions. The first is `MANUAL`, which attests and never blocks; the second is `NOT MET`,
+  because an unbuilt criterion gets an F. `NOT MET` still requires the grader to have looked and
+  to cite what it saw, so a verdict with no citation degrades to `MANUAL` rather than failing a
+  build nobody examined.
+
+  Score no longer reads what the build recorded. An assertion that passed at block 3 is a
+  statement about the tree as it stood at block 3, so AC outcomes, block states, and the Manifest
+  are history and reach no verdict. The governed gate is executed rather than inherited, every
+  `Command:` a trial names is run against the final tree, and the grader is handed the build
+  directory with tools so it can read the source and write an **ephemeral probe** for behavior no
+  command covers. Probes live in `.drydock-probe/` inside the build tree and are deleted after
+  grading whether or not the grader tidied up. The console prints the whole listing — every
+  criterion and what was observed of it — and `evidence/score-release.json` moves to schema
+  version 5 with `verdict`, `verdict_line`, `statement`, and `observations`. `SCORECARD.md` is now
+  a release scorecard rather than a completion gate. Exit codes are unchanged: `PASSED` exits 0,
+  `FAILED` and `ERROR` exit 1, with the two distinguished in the record — UAT now reads the
+  recorded verdict instead of the exit code, so a run Drydock could not grade is an execution
+  fault rather than a product failure.
+
+- 2026-08-14: Sea Trials are referenced by nothing. `Sea Trials:` proof tags on Programmatic
+  Acceptance blocks, `Verification:` as a mechanism selector, and the plan-time coverage gates are
+  all retired: plan no longer validates `accepts:` targets, proof-tag targets, or that required
+  trials are covered, and neither scorer looks up a criterion's verdict from which assertion
+  claimed it. `accepts:` survives as human-readable traceability that gates nothing.
+
+  What this closes: ReadingList run `20260814.001652` built a complete, correct product and was
+  refused five times because `plan` and `score release` read the same coverage contract
+  differently — `plan` accepted an `accepts:` field *or* a proof tag, `score` counted proof tags
+  only. Every blocked criterion carried a grader rationale asserting it was met beside an evidence
+  line reading `no code-bound proof references this criterion`. A grammar with two readers has one
+  of them wrong.
+
 ### Added
 
 - 2026-08-13: Artifact blocks carry an invariant closing boundary.

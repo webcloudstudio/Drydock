@@ -154,8 +154,10 @@ def test_stage_two_ledger_exposes_only_one_bounded_blueprint_batch():
 def test_plan_prompt_separates_final_sea_trial_traceability_from_story_execution():
     prompt = (Path(__file__).parents[1] / "prompts" / "plan_create.md").read_text(encoding="utf-8")
 
-    assert "`accepts:` is traceability metadata, not a child acceptance command." in prompt
-    assert "perform an exhaustive traceability audit" in prompt
+    assert "`accepts:` is human-readable traceability, not a child acceptance command" in prompt
+    # Sea Trials flow into planning and nothing points back: no proof tag, no coverage audit.
+    assert "Sea Trials:" not in prompt
+    assert "traceability audit" not in prompt
 
 
 def test_all_plan_prompts_scope_repository_guardrails_and_require_source_cited_conflicts():
@@ -2219,7 +2221,15 @@ def test_overwrite_discards_even_built_specs(tmp_path):
     assert "Architecture body." not in architecture.read_text(encoding="utf-8")
 
 
-def test_required_sea_trial_requires_manifest_or_proof_traceability(tmp_path):
+def test_a_required_sea_trial_needs_no_plan_time_coverage(tmp_path):
+    """Sea Trials are referenced by nothing.
+
+    Plan integrity used to refuse a plan whose required trials were not named by an ``accepts:``
+    field or a ``Sea Trials:`` proof tag. That checked that a *reference exists*, not that a
+    capability was built, and the release gate — counting proof tags only — then refused five
+    criteria a plan satisfying the check had covered. Whether the project meets its criteria is
+    settled at score, against what exists.
+    """
     target_dir = _make_target(tmp_path)
     (target_dir / "SEA_TRIALS.md").write_text(
         """# Sea Trials: Example
@@ -2234,14 +2244,20 @@ Pattern: ubiquitous
         encoding="utf-8",
     )
 
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="lack implementation/proof coverage",
-    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert "story-status" in result.plan.by_id()
+
+
+def test_an_unknown_accepts_reference_no_longer_rejects_a_plan(tmp_path):
+    """``accepts:`` is human-readable traceability that gates nothing, so a stale id in it is not
+    a reason to discard a whole plan."""
+    _make_target(tmp_path)
+    manifest = _manifest().replace("scope: both\n", "scope: both\naccepts: st-does-not-exist\n")
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    assert result.plan.by_id()["story-status"].fields["accepts"] == ("st-does-not-exist",)
 
 
 def test_manifest_accepts_provides_required_sea_trial_traceability(tmp_path):

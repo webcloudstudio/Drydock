@@ -98,7 +98,6 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
-from drydock.sea_trials import parse_sea_trials_text
 from drydock.source_material import SourceMaterialFile, discover_source_material
 from drydock.source_roles import parse_source_roles, promote_imported_sources
 from drydock.standard_artifacts import ensure_standard_artifacts, render_console
@@ -2128,40 +2127,13 @@ def _integrity_check(
                 "each governed specification has exactly one owning story"
             )
 
-    sea_path = blueprint_dir.parent / "SEA_TRIALS.md"
-    sea_text = sea_path.read_text(encoding="utf-8") if sea_path.is_file() else ""
-    if re.search(r"^##\s+st-", sea_text, re.MULTILINE):
-        sea_document = parse_sea_trials_text(sea_text)
-        known = {trial.criterion_id for trial in sea_document.trials}
-        covered: set[str] = set()
-        for block in plan.blocks:
-            raw_accepts = block.fields.get("accepts", ())
-            refs = raw_accepts if isinstance(raw_accepts, tuple) else (raw_accepts,)
-            for ref in refs:
-                if ref not in known:
-                    fatal.append(f"{block.block_id}: accepts unknown Sea Trial {ref!r}")
-                else:
-                    covered.add(ref)
-        for name, text in emitted_files.items():
-            if not name.endswith(".md"):
-                continue
-            for match in re.finditer(r"^Sea Trials:\s*(.+?)\s*$", text, re.M | re.I):
-                for ref in (part.strip().lower() for part in match.group(1).split(",")):
-                    if ref not in known:
-                        fatal.append(f"{name}: proof references unknown Sea Trial {ref!r}")
-                    else:
-                        covered.add(ref)
-        missing = sorted(
-            trial.criterion_id
-            for trial in sea_document.trials
-            if trial.required
-            and trial.trial_type in {"technical", "behavioral"}
-            and trial.criterion_id not in covered
-        )
-        if missing:
-            fatal.append(
-                "required Sea Trials lack implementation/proof coverage: " + ", ".join(missing)
-            )
+    # Sea Trials flow *into* planning as context for authoring acceptance criteria. Nothing points
+    # back. Three integrity checks used to live here — every ``accepts:`` names a known trial,
+    # every ``Sea Trials:`` proof tag names a known trial, and every required trial has one of the
+    # two — and all three validated a reference rather than a capability. A plan satisfied them
+    # completely while the release gate, counting proof tags only, refused five criteria the
+    # grader had positively found met. Whether the project meets its criteria is settled at score,
+    # against what exists, which is the only place the question is answerable.
 
     # Story count is not capped; see the module note. Reject an under-decomposed plan:
     # every analyzed story is delivered by some story. Stage 1 applied this same rule to

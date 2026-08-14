@@ -287,32 +287,34 @@ class TestHelpAndVersion:
         assert rc == 2
         assert "ac|build|release" in err
 
-    def test_score_release_qualifies_an_unproven_guardrail_instead_of_failing(
+    def test_score_release_prints_the_listing_and_names_each_manual_check(
         self, tmp_path, monkeypatch, capsys
     ):
-        """An unproven prohibition exits 0 and names the manual check it needs.
+        """The listing is the whole answer, and a MANUAL criterion exits 0.
 
-        The release completed: nothing demonstrated a breach. The operator is told exactly what
-        a human still owes, in a line that reads differently from a blocker.
+        Nothing was observed to be absent or wrong; one criterion no machine can settle is named
+        as a check a human owes, in a line that reads differently from a failure.
         """
-        from drydock.build_score import BuildScoreResult
         from drydock.cli import cmd_score_release
+        from drydock.gate_policy import PASSED
+        from drydock.score import ReleaseResult
 
-        unproven = (
-            "Guardrail st-003 is UNPROVEN (no code-bound proof references this criterion): "
-            "The application shall never store a book whose title or author is empty."
+        manual = (
+            "st-003 needs manual verification: The application shall never store a book whose "
+            "title or author is empty."
         )
-        result = BuildScoreResult(
+        result = ReleaseResult(
             target="Demo",
+            verdict=PASSED,
+            statement="Demo: PASSED — 2 of 3\n\n  st-001  MET     observed\n",
             criteria=(),
             blockers=(),
+            attestations=(manual,),
             warnings=(),
             improvements=(),
-            complete=True,
             scorecard_path=tmp_path / "SCORECARD.md",
             evidence_path=tmp_path / "score-release.json",
             execution_id="exec-1",
-            attestations=(unproven,),
         )
         monkeypatch.setattr("drydock.config.require_target_dir", lambda target: tmp_path)
         monkeypatch.setattr("drydock.score.score_release", lambda *a, **k: result)
@@ -324,9 +326,9 @@ class TestHelpAndVersion:
         out = capsys.readouterr().out
 
         assert rc == 0
-        assert "Release gate: Demo  COMPLETE — MANUAL VERIFICATION REQUIRED" in out
-        assert f"  ATTESTATION REQUIRED: {unproven}" in out
-        assert "BLOCKER" not in out
+        assert "Demo: PASSED — 2 of 3" in out
+        assert "st-001  MET     observed" in out
+        assert f"  MANUAL VERIFICATION: {manual}" in out
 
     def test_parse_score_ac_args_accepts_step_flag(self):
         from drydock.cli import _parse_score_ac_args

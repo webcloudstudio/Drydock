@@ -2243,7 +2243,6 @@ def cmd_score_build(target: str) -> int:
 
 
 def cmd_score_release(target: str) -> int:
-    from drydock.build_score import gate_label
     from drydock.config import (
         get_llm_provider,
         get_model,
@@ -2264,13 +2263,15 @@ def cmd_score_release(target: str) -> int:
     )
     refresh_commanders_chair(target_dir)
     print()
-    print(f"Release gate: {target}  {gate_label(result.complete, result.attestations)}")
+    # The listing is the whole answer: every criterion and what was observed of it. A reader who
+    # sees only the blockers cannot tell a project that failed one criterion from one that was
+    # never built, and both are ordinary outcomes of this command.
+    print(result.statement)
+    print()
     print(f"Scorecard: {result.scorecard_path}")
     print(f"Evidence: {result.evidence_path}")
-    for blocker in result.blockers:
-        print(f"  BLOCKER: {blocker}")
     for attestation in result.attestations:
-        print(f"  ATTESTATION REQUIRED: {attestation}")
+        print(f"  MANUAL VERIFICATION: {attestation}")
     return result.exit_code()
 
 

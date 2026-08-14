@@ -1,6 +1,6 @@
 """Policy replay of the release gate over the recorded UAT corpus.
 
-The corpus is 18 runs of three fixtures produced over six days by materially different software.
+The corpus is 24 runs of three fixtures produced over six days by materially different software.
 Their recorded verdicts are not comparable across versions, but their evidence is, and the gate is
 a pure function over evidence — so the corpus is replayable as policy, and every subsequent change
 to the fold is validated against 18 runs at zero token cost instead of against one fresh run.
@@ -24,11 +24,10 @@ from uat_corpus import (
 from drydock.gate_policy import (
     ERROR,
     FAILED,
+    MANUAL,
     MET,
     NOT_MET,
     PASSED,
-    PENDING,
-    PENDING_MANUAL_VERIFICATION,
     RunFacts,
     TrialFacts,
     fold,
@@ -39,8 +38,8 @@ SCORED = [entry for entry in CORPUS if entry["reached_gate"]]
 
 
 def test_the_corpus_is_the_whole_recorded_record():
-    assert len(CORPUS) == 22
-    assert len(SCORED) == 11
+    assert len(CORPUS) == 24
+    assert len(SCORED) == 13
     assert {entry["fixture"] for entry in CORPUS} == {"CommonMark", "ReadingList", "Toml"}
 
 
@@ -71,12 +70,13 @@ def _entry(fixture: str, run_id: str) -> dict:
 
 def test_readinglist_20260813_reports_honestly():
     """The run that motivated the model. 26 of 26 assertions passed and every criterion but one
-    was met; the one exception is a prohibition the grader declined to infer. The recorded run
-    reported FAILED and exited 1, on that plus an uncommitted build directory."""
+    was met; the one exception is a prohibition the grader declined to infer, which attests and
+    does not withhold the pass. The recorded run reported FAILED and exited 1, on that plus an
+    uncommitted build directory."""
     outcome = fold(_entry("ReadingList", "20260813.160121")["facts"])
-    assert outcome.verdict == PENDING_MANUAL_VERIFICATION
+    assert outcome.verdict == PASSED
     assert outcome.exit_code == 0
-    assert outcome.ids_with(PENDING) == ("st-008",)
+    assert outcome.ids_with(MANUAL) == ("st-008",)
     assert outcome.ids_with(NOT_MET) == ()
     assert "Build directory has uncommitted changes" in outcome.reported
 
@@ -157,7 +157,7 @@ def test_uc008_a_completed_but_defective_product_reports_failed():
 
 def test_uc008_a_grader_cannot_reason_a_red_case_back_to_met():
     """The rubber-stamp guard. Deterministic evidence is monotonic downward only: the grader may
-    move PENDING to MET, and may never move a demonstrated failure to MET."""
+    raise an unsettled criterion to MET, and may never move a demonstrated failure to MET."""
     facts = _uc008_facts()
     optimistic = RunFacts(
         facts.target,

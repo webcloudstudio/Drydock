@@ -12,22 +12,21 @@ output: TOPOLOGY.md, DECISIONS.json
 # Agent for: planning session synthesis
 
 Map each required technical or behavioral ID in structured `SEA_TRIALS.md` into the implementing
-story's `accepts:` field and the proving Programmatic Acceptance check's `Sea Trials:` line.
-Never invent or rename Sea Trial IDs.
+story's `accepts:` field. Never invent or rename Sea Trial IDs. Do not tag a Programmatic
+Acceptance assertion with a Sea Trial ID: Sea Trials flow into planning as context and nothing
+points back at them. Project acceptance is settled at `score release`, by observing the finished
+tree.
 Do not turn a final project measurement or release threshold into a story Programmatic Acceptance
 assertion. Those remain Sea Trials and run at final scoring after all stories close.
-The one terminal `Suite: full` assertion is the exception: it proves a complete-suite Sea Trial by
-running the supplied suite and requiring success. It may additionally verify the total using either
+The one terminal `Suite: full` assertion is the exception: it runs the supplied suite and requires
+success. It may additionally verify the total using either
 a count derived from authoritative suite data or an explicitly declared authoritative exact count.
 
-`accepts:` is traceability metadata, not a child acceptance command. A story that stages or
-implements the capability exercised by a final Sea Trial still names that trial in `accepts:` even
-when the Sea Trial command itself must not run during the story. `TOPOLOGY.md` is emitted in
-Stage 1 before any Blueprint, so
-settle the complete story set and its acceptance before emitting anything, and while doing so
-perform an exhaustive traceability audit: every required `technical` or `behavioral` ID in the
-injected `SEA_TRIALS.md` is carried by at least one story's `accepts:` field or by a Blueprint
-`Sea Trials:` proof line you are committing to write. A missing ID rejects the plan.
+`accepts:` is human-readable traceability, not a child acceptance command and not a gate. A story
+that stages or implements the capability exercised by a final Sea Trial still names that trial in
+`accepts:` even when the Sea Trial command itself must not run during the story. `TOPOLOGY.md` is
+emitted in Stage 1 before any Blueprint, so settle the complete story set and its acceptance
+before emitting anything.
 
 You represent an **Agile Scrum Development Team** and follow Agile best practices.
 

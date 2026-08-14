@@ -561,6 +561,22 @@ def _collect_evidence(
     return manifest_path
 
 
+def _release_verdict(target_dir: Path) -> str:
+    """Return the release gate's own verdict — ``PASSED``, ``FAILED``, ``ERROR`` — or ``""``.
+
+    Read from the Target's score evidence rather than from the command's exit code, which cannot
+    carry three states: a run Drydock could not grade and a product that failed both exit 1, and
+    charging the first to the product is the mistake the verdict model exists to remove.
+    """
+    record_path = target_dir / "evidence" / "score-release.json"
+    try:
+        payload = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    verdict = payload.get("verdict") if isinstance(payload, dict) else None
+    return str(verdict) if isinstance(verdict, str) else ""
+
+
 def _release_attestations(target_dir: Path) -> tuple[str, ...]:
     """Return the unproven guardrails the release gate handed back for manual verification.
 
@@ -1016,12 +1032,24 @@ def run_fixture(
     # asks whether the product passed its governed acceptance. A product failure is not an
     # infrastructure error — but an infrastructure error must still stop the run reading as a
     # pass, which a single status derived from the final command's exit code would allow.
+    release_verdict = _release_verdict(workspace / "targets" / fixture.target)
+    if release_verdict == "ERROR":
+        degraded.append("score release could not grade the project")
     execution_status = "ERROR" if (status == "failed" or degraded) else "PASS"
     if test_failures:
         acceptance_status = "FAIL"
     elif scores.get("release") is None:
         acceptance_status = "NOT_RUN"
+    elif release_verdict == "ERROR":
+        # Drydock could not grade. That says nothing about the product, so it is an execution
+        # fault rather than a product failure — the distinction the run record could not make
+        # while the verdict was read out of an exit code that meant both.
+        acceptance_status = "NOT_RUN"
+    elif release_verdict:
+        acceptance_status = "PASS" if release_verdict == "PASSED" else "FAIL"
     else:
+        # No verdict recorded: an older record, or a gate that wrote nothing. Fall back to the
+        # exit code, which still separates a completed gate from one that did not finish.
         acceptance_status = "PASS" if scores.get("release") == 0 else "FAIL"
     if status != "failed" and test_failures:
         status = "failed"

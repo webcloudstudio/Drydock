@@ -34,7 +34,7 @@
           },
           {
             "criterion_id": "st-002",
-            "graded": "PENDING",
+            "graded": "MANUAL",
             "citations": [],
             "demonstrated_failure": "",
             "governed_pass": false,
@@ -61,7 +61,7 @@
           },
           {
             "criterion_id": "st-005",
-            "graded": "PENDING",
+            "graded": "MANUAL",
             "citations": [],
             "demonstrated_failure": "",
             "governed_pass": false,
@@ -70,7 +70,7 @@
           },
           {
             "criterion_id": "st-006",
-            "graded": "PENDING",
+            "graded": "MANUAL",
             "citations": [],
             "demonstrated_failure": "",
             "governed_pass": false,
@@ -84,8 +84,8 @@
           "Build directory has uncommitted changes"
         ]
       },
-      "expected_verdict": "PENDING MANUAL VERIFICATION",
-      "note": "st-002/005/006 were graded INCONCLUSIVE for want of a bound proof, which is an open question, not a failure. The recorded run reported failed on the retired 0..100 rubric and on uncommitted build state."
+      "expected_verdict": "PASSED",
+      "note": "st-002/005/006 were graded INCONCLUSIVE for want of a bound proof. Nothing was observed to be absent or wrong, so the run passes with three criteria attested for manual verification. The recorded run reported failed on the retired 0..100 rubric and on uncommitted build state."
     },
     {
       "fixture": "CommonMark",
@@ -259,7 +259,7 @@
           },
           {
             "criterion_id": "st-007",
-            "graded": "PENDING",
+            "graded": "MANUAL",
             "citations": [],
             "demonstrated_failure": "",
             "governed_pass": false,
@@ -268,7 +268,7 @@
           },
           {
             "criterion_id": "st-008",
-            "graded": "PENDING",
+            "graded": "MANUAL",
             "citations": [],
             "demonstrated_failure": "",
             "governed_pass": false,
@@ -356,7 +356,7 @@
           },
           {
             "criterion_id": "st-008",
-            "graded": "PENDING",
+            "graded": "MANUAL",
             "citations": [],
             "demonstrated_failure": "",
             "governed_pass": false,
@@ -369,8 +369,85 @@
           "Build directory has uncommitted changes"
         ]
       },
-      "expected_verdict": "PENDING MANUAL VERIFICATION",
-      "note": "The headline case. Automated acceptance passed 26 of 26; st-008 is a guardrail the grader could not positively prove and the run reported FAILED, exit 1, on that plus uncommitted build state. Under the model it is one open question and exits 0."
+      "expected_verdict": "PASSED",
+      "note": "The headline case. Automated acceptance passed 26 of 26; st-008 is a prohibition the grader declined to infer, which attests rather than blocks. The recorded run reported FAILED, exit 1, on that plus uncommitted build state."
+    },
+    {
+      "fixture": "ReadingList",
+      "run_id": "20260814.001652",
+      "reached_gate": true,
+      "facts": {
+        "target": "ReadingList",
+        "trials": [
+          {
+            "criterion_id": "st-001",
+            "graded": "MANUAL",
+            "citations": [],
+            "demonstrated_failure": "",
+            "governed_pass": false,
+            "guardrail": false,
+            "criterion": ""
+          },
+          {
+            "criterion_id": "st-002",
+            "graded": "MANUAL",
+            "citations": [],
+            "demonstrated_failure": "",
+            "governed_pass": false,
+            "guardrail": false,
+            "criterion": ""
+          },
+          {
+            "criterion_id": "st-003",
+            "graded": "MANUAL",
+            "citations": [],
+            "demonstrated_failure": "",
+            "governed_pass": false,
+            "guardrail": false,
+            "criterion": ""
+          },
+          {
+            "criterion_id": "st-004",
+            "graded": "MET",
+            "citations": [],
+            "demonstrated_failure": "",
+            "governed_pass": false,
+            "guardrail": false,
+            "criterion": ""
+          },
+          {
+            "criterion_id": "st-005",
+            "graded": "MANUAL",
+            "citations": [],
+            "demonstrated_failure": "",
+            "governed_pass": false,
+            "guardrail": false,
+            "criterion": ""
+          },
+          {
+            "criterion_id": "st-006",
+            "graded": "MANUAL",
+            "citations": [],
+            "demonstrated_failure": "",
+            "governed_pass": false,
+            "guardrail": false,
+            "criterion": ""
+          },
+          {
+            "criterion_id": "st-007",
+            "graded": "MET",
+            "citations": [],
+            "demonstrated_failure": "",
+            "governed_pass": false,
+            "guardrail": false,
+            "criterion": ""
+          }
+        ],
+        "kit_faults": [],
+        "reported": []
+      },
+      "expected_verdict": "PASSED",
+      "note": "The first run in the record to build a complete, correct product and reach the release gate. It was refused five times because plan and score read the coverage contract differently (D-026): the Manifest carried accepts: for all seven trials, plan accepted that, and score counted proof tags only. Every refused criterion carried a grader rationale asserting it was met. The recorded verdicts are the post-override ones, so replay reads five criteria as MANUAL where a live run under the current model reads them MET; either way the run passes, and its one product-shaped failure was a criterion that never released the rows it inserted (D-027), not a defect."
     },
     {
       "fixture": "Toml",
@@ -449,7 +526,7 @@
           },
           {
             "criterion_id": "st-005",
-            "graded": "PENDING",
+            "graded": "MANUAL",
             "citations": [],
             "demonstrated_failure": "",
             "governed_pass": false,
@@ -458,7 +535,7 @@
           },
           {
             "criterion_id": "st-006",
-            "graded": "PENDING",
+            "graded": "MANUAL",
             "citations": [],
             "demonstrated_failure": "",
             "governed_pass": false,
@@ -480,8 +557,8 @@
           "Manifest work is not closed/verified: tables-standard, tables-arrays, tables-semantics, conformance"
         ]
       },
-      "expected_verdict": "PENDING MANUAL VERIFICATION",
-      "note": "st-005/006 INCONCLUSIVE with no cited failure."
+      "expected_verdict": "PASSED",
+      "note": "st-005/006 INCONCLUSIVE with no cited failure: nothing exhibited a defect, so both attest and the run passes."
     },
     {
       "fixture": "Toml",
@@ -662,6 +739,29 @@
       "facts": null,
       "expected_verdict": null,
       "note": ""
+    },
+    {
+      "fixture": "Toml",
+      "run_id": "20260814.002606",
+      "reached_gate": true,
+      "facts": {
+        "target": "Toml",
+        "trials": [
+          {
+            "criterion_id": "st-001",
+            "graded": "MET",
+            "citations": [],
+            "demonstrated_failure": "",
+            "governed_pass": false,
+            "guardrail": false,
+            "criterion": ""
+          }
+        ],
+        "kit_faults": [],
+        "reported": []
+      },
+      "expected_verdict": "PASSED",
+      "note": "Reached the gate with its single criterion met."
     }
   ]
 }

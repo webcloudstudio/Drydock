@@ -5,10 +5,11 @@
   ``SOUNDINGS.md`` with a timestamp. It is deterministic — no model call, no network — and is the
   sole writer of ``SOUNDINGS.md``: the trust-but-verify board the Commander scans instead of
   granting approvals.
-- ``drydock score release`` judges the project-level criteria in ``SEA_TRIALS.md`` against the
-  completed build. Deterministic proofs, measurements, and guardrails are settled mechanically;
-  the model judges only the remaining ``evidence`` and ``llm`` criteria. The verdict is those
-  criteria and nothing else. It writes ``SCORECARD.md`` and ``evidence/score-release.json``.
+- ``drydock score release`` judges the project-level criteria in ``SEA_TRIALS.md`` by observing
+  the finished tree at grading time: it runs the governed gate and every command a trial names,
+  reads the files trials point at, and hands the grader a tree it may read and probe. Nothing
+  recorded during the build is evidence. The verdict is ``PASSED``, ``FAILED``, or ``ERROR``, and
+  it writes ``SCORECARD.md`` and ``evidence/score-release.json``.
 
 Both reuse the build_score primitives so the deterministic verdicts agree across paths.
 """
@@ -16,45 +17,55 @@ Both reuse the build_score primitives so the deterministic verdicts agree across
 from __future__ import annotations
 
 import json
+import re
+import shutil
+import subprocess
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from drydock.acceptance import (
-    OUTCOME_FAIL,
     AcceptanceObservation,
     ProgrammaticAcceptance,
     all_programmatic_acceptance,
     observe_programmatic_acceptance,
-    parse_programmatic_acceptance,
     programmatic_acceptance_for_step,
     read_prepassed_acceptance,
-    run_programmatic_acceptance,
-    tally_outcomes,
 )
 from drydock.acceptance_contract import GateResult, load_contract, run_gate
 from drydock.acceptance_requirements import authorization_for, requirement_available
-from drydock.build_plan import FINISHED_STATES, BuildPlan, parse_build_plan, stale_applied_specs
+from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.build_score import (
-    VALID_VERDICTS,
-    BuildScoreResult,
+    MEASUREMENT_TIMEOUT,
     CriterionResult,
+    MeasurementResult,
     RunnerFn,
     TextCallback,
     _code_identity,
+    _compare_measurement,
     _evidence_fact,
-    _measure,
+    _measurement_payload,
     _parse_json,
-    _render_scorecard,
     _sha,
 )
 from drydock.errors import SpecificationError
+from drydock.gate_policy import (
+    MANUAL,
+    MET,
+    NOT_MET,
+    PASSED,
+    TRIAL_VERDICTS,
+    GateOutcome,
+    RunFacts,
+    TrialFacts,
+    fold,
+)
 from drydock.llm import run_prompt
 from drydock.metadata import get_build_dir
 from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
-from drydock.proof_integrity import analyze_proof
 from drydock.sea_trials import (
+    SeaTrial,
     load_sea_trials,
 )
 from drydock.source_roles import tampered_build_assets
@@ -297,6 +308,234 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
     )
 
 
+#: Where the grader may write an ephemeral probe. It sits inside the build tree so a probe
+#: imports and calls the product exactly as the product runs, it is named so a reader can see at
+#: a glance what left it, and Drydock removes it after grading whether or not the grader tidied
+#: up. The guaranteed release is composed here, not typed by the model.
+PROBE_DIR = ".drydock-probe"
+
+
+@dataclass(frozen=True)
+class TrialObservation:
+    """What Drydock itself observed for one Sea Trial, at grading time.
+
+    ``pinned`` is ``MET``, ``NOT MET``, or empty. A pinned verdict is a fact the grader may not
+    argue with; an empty one leaves the criterion to the grader's judgement over the same
+    evidence.
+    """
+
+    criterion_id: str
+    kind: str
+    source: str = ""
+    return_code: int | None = None
+    pinned: str = ""
+    detail: str = ""
+    output: str = ""
+
+
+@dataclass(frozen=True)
+class ReleaseResult:
+    """The release verdict, its criteria, and where it was written."""
+
+    target: str
+    verdict: str
+    statement: str
+    criteria: tuple[CriterionResult, ...]
+    blockers: tuple[str, ...]
+    attestations: tuple[str, ...]
+    warnings: tuple[str, ...]
+    improvements: tuple[str, ...]
+    scorecard_path: Path
+    evidence_path: Path
+    execution_id: str
+
+    @property
+    def complete(self) -> bool:
+        """Whether every criterion was met. MANUAL attests and never withholds completion."""
+        return self.verdict == PASSED
+
+    def exit_code(self) -> int:
+        return 0 if self.verdict == PASSED else 1
+
+
+def _command_observation(trial: SeaTrial, build_dir: Path) -> TrialObservation:
+    """Run the command a trial names, now, against the final tree.
+
+    A trial that names a command is settled by that command's own exit status unless it also
+    declares a threshold, in which case the number is compared. A command Drydock could not
+    execute pins nothing: that is a statement about the machine, not about the product.
+    """
+    source = json.dumps(list(trial.command))
+    try:
+        completed = subprocess.run(
+            list(trial.command),
+            cwd=build_dir,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=MEASUREMENT_TIMEOUT,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return TrialObservation(
+            trial.criterion_id, "command", source, detail=f"command could not run: {exc}"
+        )
+    output = completed.stdout.strip()
+    tail = "\n".join((output or completed.stderr.strip()).splitlines()[-20:])
+    if trial.target is not None or trial.operator:
+        measured = _measured_value(trial, output, source, completed.returncode)
+        pinned = {"PASS": MET, "FAIL": NOT_MET}.get(measured.status, "")
+        return TrialObservation(
+            trial.criterion_id,
+            "measurement",
+            source,
+            return_code=completed.returncode,
+            pinned=pinned,
+            detail=measured.detail or f"{measured.value} {measured.unit}".strip(),
+            output=tail,
+        )
+    passed = completed.returncode == 0
+    return TrialObservation(
+        trial.criterion_id,
+        "command",
+        source,
+        return_code=completed.returncode,
+        pinned=MET if passed else NOT_MET,
+        detail=f"{source} exited {completed.returncode}",
+        output=tail,
+    )
+
+
+def _measured_value(trial: SeaTrial, text: str, source: str, return_code: int) -> MeasurementResult:
+    """Compare a trial's declared threshold against the command's own output."""
+    if trial.extract:
+        match = re.search(trial.extract, text, re.MULTILINE)
+        if match is None:
+            return MeasurementResult(
+                trial.criterion_id,
+                "INCONCLUSIVE",
+                source=source,
+                return_code=return_code,
+                detail=f"Extract pattern did not match the measurement output: {text[:200]!r}",
+            )
+        try:
+            return _compare_measurement(
+                trial, float(match.group(1)), trial.unit, source, return_code
+            )
+        except (TypeError, ValueError):
+            return MeasurementResult(
+                trial.criterion_id,
+                "INCONCLUSIVE",
+                source=source,
+                return_code=return_code,
+                detail=f"Extract captured a non-numeric value: {match.group(1)!r}",
+            )
+    try:
+        value, unit = _measurement_payload(text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return MeasurementResult(
+            trial.criterion_id,
+            "INCONCLUSIVE",
+            source=source,
+            return_code=return_code,
+            detail=str(exc),
+        )
+    return _compare_measurement(trial, value, unit, source, return_code)
+
+
+def _observe_trials(
+    trials: tuple[SeaTrial, ...], *, target_dir: Path, build_dir: Path
+) -> tuple[TrialObservation, ...]:
+    """Observe every trial Drydock can settle for itself, at grading time.
+
+    ``Verification:`` selects nothing here. What a trial *names* is what gets observed: a command
+    is run, a file is read, and a criterion naming neither is left to the grader, which may probe
+    the tree for itself.
+    """
+    observations: list[TrialObservation] = []
+    for trial in trials:
+        if trial.command:
+            observations.append(_command_observation(trial, build_dir))
+            continue
+        if trial.evidence:
+            fact = _evidence_fact(trial, target_dir)
+            if fact is None:
+                continue
+            observations.append(
+                TrialObservation(
+                    trial.criterion_id,
+                    "evidence",
+                    trial.evidence,
+                    detail=str(fact.get("error", "")),
+                    output=str(fact.get("content", ""))[:4000],
+                )
+            )
+    return tuple(observations)
+
+
+def _render_release_scorecard(
+    outcome: GateOutcome,
+    trials: dict[str, SeaTrial],
+    criteria,
+    *,
+    code_identity: str,
+    improvements: tuple[str, ...],
+) -> str:
+    """Render SCORECARD.md as the verdict listing plus its provenance."""
+    lines = [
+        f"# Release Scorecard: {outcome.target}",
+        "",
+        f"- Verdict: {outcome.verdict}",
+        f"- Code identity: {code_identity or '-'}",
+        "",
+        "## Project acceptance",
+        "",
+        "| ID | Type | Criterion | Verdict | Observed |",
+        "|---|---|---|---|---|",
+    ]
+    for item in criteria:
+        trial = trials[item.criterion_id]
+        observed = "; ".join(item.evidence) or item.rationale
+        lines.append(
+            f"| {item.criterion_id} | {trial.trial_type} | {trial.criterion.replace('|', '/')} | "
+            f"{item.verdict} | {observed.replace('|', '/')} |"
+        )
+    lines.extend(["", "## Failures", ""])
+    failures = [
+        f"{item.criterion_id}: {trials[item.criterion_id].criterion}"
+        for item in criteria
+        if item.verdict == NOT_MET
+    ]
+    failures.extend(outcome.demonstrated_failures)
+    lines.extend(f"- {item}" for item in failures or ("None.",))
+    lines.extend(["", "## Manual verification required", ""])
+    manual = [
+        f"{item.criterion_id}: {trials[item.criterion_id].criterion}"
+        for item in criteria
+        if item.verdict == MANUAL
+    ]
+    lines.extend(f"- {item}" for item in manual or ("None.",))
+    lines.extend(["", "## Could not judge", ""])
+    lines.extend(f"- {item}" for item in outcome.kit_faults or ("None.",))
+    lines.extend(["", "## Advisory warnings", ""])
+    lines.extend(f"- {item}" for item in outcome.reported or ("None.",))
+    lines.extend(["", "## Ranked improvements", ""])
+    lines.extend(f"{index}. {item}" for index, item in enumerate(improvements, 1))
+    if not improvements:
+        lines.append("None.")
+    return "\n".join(lines) + "\n"
+
+
+def _trial_verdict(raw: object, criterion_id: str) -> str:
+    verdict = str(raw or "").strip().upper().replace("_", " ")
+    if verdict not in TRIAL_VERDICTS:
+        raise SpecificationError(
+            f"score release {criterion_id} has invalid verdict {verdict!r}; expected one of "
+            + ", ".join(TRIAL_VERDICTS)
+        )
+    return verdict
+
+
 def score_release(
     target: str,
     target_dir: Path,
@@ -306,177 +545,76 @@ def score_release(
     model: str | None = None,
     llm_provider: str | None = None,
     log_dir: Path | None = None,
-) -> BuildScoreResult:
-    """LLM-assisted release gate: judge project Sea Trials against the built code.
+) -> ReleaseResult:
+    """Judge the finished project against its Sea Trials by observing it, now.
 
-    Reads ``SEA_TRIALS.md`` and judges every project-level criterion. Proofs, measurements, and
-    guardrails are settled deterministically; the model judges only the remaining ``evidence`` and
-    ``llm`` criteria. Writes ``SCORECARD.md`` and ``evidence/score-release.json``.
+    Score observes; it does not read reports. A verdict about a finished project cannot be
+    assembled from observations of intermediate states — an assertion that passed at block 3 is a
+    statement about the tree as it stood at block 3, and block 7 can have broken it. So every
+    record the build left behind (assertion outcomes, block states, gate outcomes, the Manifest)
+    is history, and none of it reaches this verdict. What reaches it is what Drydock can observe
+    at grading time: the governed gate is executed rather than inherited, every command a trial
+    names is run against the final tree, files are read, and the grader is handed that tree with
+    tools so it can read the source and write an ephemeral probe for behavior no command covers.
 
-    The gate is the criteria and nothing else: COMPLETE when every required Sea Trial passes and
-    no guardrail is breached. It used to also average seven model-emitted 0..100 dimensions and
-    block under 80, or under 60 on any one of them, which meant a project that satisfied every
-    criterion its Commander wrote could still be refused by an opinion — and a different opinion
-    on the next run. A release gate has to be reproducible, so the number is gone.
+    Sea Trials are referenced by nothing. Proof tags, ``accepts:`` coverage, and ``Verification:``
+    as a mechanism selector are all gone: they bound a criterion to a test that had already run,
+    which moved the model's judgement to a tag typed hours earlier in a different artifact with no
+    evidence attached — and then refused five criteria the grader had positively found met.
+
+    Writes ``SCORECARD.md`` and ``evidence/score-release.json``. The verdict is ``PASSED``,
+    ``FAILED``, or ``ERROR``.
     """
     sea_path = target_dir / "SEA_TRIALS.md"
-    manifest_path = target_dir / "MANIFEST.md"
     blueprint_dir = target_dir / "blueprint"
     document = load_sea_trials(sea_path)
-    plan = parse_build_plan(manifest_path)
     build_dir = get_build_dir(target, target_dir)
     if not build_dir.is_dir():
         raise SpecificationError(f"build directory not found: {build_dir}")
 
-    blockers: list[str] = []
-    warnings: list[str] = []
-    # The governed full gate. When the Commander declares one in ACCEPTANCE.json, its classified
-    # exit status is the product verdict and it blocks on its own — no model judgement, no proof
-    # binding, no prose. This is the difference between a release gate that runs the acceptance
-    # command and one that asks whether model-authored criteria happened to tag the right Sea
-    # Trial id, which is what the proof path does when a criterion declares no Command.
+    kit_faults: list[str] = []
+    demonstrated: list[str] = []
+    reported: list[str] = []
+
+    # Step 1 — can Drydock judge at all? A substituted staged asset means the thing being scored
+    # is not the thing that was built, so no verdict about the product is available.
+    tampered = tampered_build_assets(target_dir, blueprint_dir, build_dir)
+    if tampered:
+        kit_faults.append("Staged build asset was modified: " + ", ".join(tampered))
+
+    # Step 2 — gather evidence by observing, never by inheriting. The governed gate is a command,
+    # so score runs it. The build layer runs the same command for repair signal; neither run is
+    # the other's evidence.
     contract = load_contract(target_dir)
     full_gate: GateResult | None = None
     if contract.full:
         full_gate = run_gate("full", contract.full, build_dir=build_dir)
         if full_gate.blocks:
-            blockers.append(f"Governed acceptance gate failed: {full_gate.rendered}")
+            demonstrated.append(f"Governed acceptance gate failed: {full_gate.rendered}")
         elif not full_gate.passed:
-            blockers.append(f"Governed acceptance gate could not run: {full_gate.rendered}")
-    executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
-    incomplete = [block.block_id for block in executable if block.state not in FINISHED_STATES]
-    if incomplete:
-        # Reported, not gating. The Manifest is the plan for meeting the contract, not the
-        # contract: a story is a means. Blocking on its state made story acceptance a release
-        # input through the back door — a criterion the model wrote and got wrong closed a
-        # story ``closed/failed`` and failed a release whose every Sea Trial passed. What the
-        # Manifest was standing in for — a contract satisfied by work nobody did — is covered
-        # directly below, where a required Sea Trial without implementation or proof coverage
-        # blocks. That tests the contract; this tested the plan.
-        warnings.append("Manifest work is not closed/verified: " + ", ".join(incomplete))
-    # Hygiene is reported, never gating. A gate may only block on a fault domain it can
-    # distinguish, and none of these three can distinguish a defective product from tidy
-    # bookkeeping. The case that settled it: a ReadingList run passed every Sea Trial and every
-    # assertion, then failed the release because running the project's own test suite created
-    # `instance/reading_list.sqlite3` and left the tree dirty. Drydock ran the tests, the tests
-    # wrote a file, and Drydock refused the release because a file was there. Git state is
-    # evidence about the workspace; it is not project acceptance.
-    stale = stale_applied_specs(plan, blueprint_dir)
-    if stale:
-        warnings.append(
-            "Applied Blueprint specifications are stale: " + ", ".join(s.rel_path for s in stale)
-        )
+            kit_faults.append(f"Governed acceptance gate could not run: {full_gate.rendered}")
+
+    observations = _observe_trials(document.trials, target_dir=target_dir, build_dir=build_dir)
+
+    # Hygiene is provenance, never a verdict input: a gate may only block on a fault domain it can
+    # distinguish, and git state cannot tell a defective product from a test run that wrote a file.
     code_identity, dirty = _code_identity(build_dir)
     if not code_identity:
-        warnings.append("Build directory has no usable Git code identity")
+        reported.append("Build directory has no usable Git code identity")
     if dirty:
-        warnings.append("Build directory has uncommitted changes")
+        reported.append("Build directory has uncommitted changes")
     if document.questions:
-        blockers.append("Sea Trials has unresolved QUESTIONS")
+        reported.append("Sea Trials has unresolved QUESTIONS")
 
-    # A staged test kit is a read-only input. At scoring time the artifact under judgment is
-    # fixed, so a substituted asset is reported rather than repaired — repairing it would change
-    # what is being scored.
-    tampered = tampered_build_assets(target_dir, blueprint_dir, build_dir)
-    if tampered:
-        blockers.append("Staged build asset was modified: " + ", ".join(tampered))
-
-    checks = tuple(
-        check
-        for path in sorted(blueprint_dir.glob("*.md"))
-        for check in parse_programmatic_acceptance(path)
-    )
-    _provision_authorized_environment(checks, plan, target_dir, build_dir)
-    acceptance = run_programmatic_acceptance(
-        checks,
-        build_dir=build_dir,
-        target_dir=target_dir,
-        blueprint_dir=blueprint_dir,
-        strict_target=True,
-    )
-    proof_integrity = tuple(analyze_proof(check.code) for check in checks)
-    # Story acceptance is reported, never an input to the release decision. It already gates the
-    # release by construction: a story whose assertions do not close does not build. The release
-    # gate's single input is Sea Trials.
-    outcomes = tally_outcomes(acceptance)
-    failed_acceptance = [check.check_id for check in acceptance if check.outcome == OUTCOME_FAIL]
-    if failed_acceptance:
-        warnings.append("Programmatic acceptance failed: " + ", ".join(failed_acceptance))
-    unverified_acceptance = [check.check_id for check in acceptance if check.unverified]
-    if unverified_acceptance:
-        warnings.append(
-            "Programmatic acceptance was unverified (harness defect, not a build defect): "
-            + ", ".join(unverified_acceptance)
-        )
-    vacuous_proofs = [
-        check.check_id for check, integ in zip(checks, proof_integrity, strict=True) if not integ.ok
-    ]
-    if vacuous_proofs:
-        warnings.append("Programmatic acceptance is vacuous: " + ", ".join(vacuous_proofs))
-    known_trial_ids = {trial.criterion_id for trial in document.trials}
-    manifest_refs = {
-        value
-        for block in executable
-        for value in block.fields.get("accepts", ())
-        if isinstance(value, str)
-    }
-    proof_refs = {value for check in checks for value in check.sea_trials}
-    unknown_refs = sorted((manifest_refs | proof_refs) - known_trial_ids)
-    if unknown_refs:
-        blockers.append("Unknown Sea Trial references: " + ", ".join(unknown_refs))
-    # Guardrails are exempt: no story builds a prohibition, and nothing is obliged to declare
-    # ``Sea Trials: <id>`` for one. A guardrail no proof reaches is reported UNPROVEN and carried
-    # as a manual-verification attestation, not as a coverage failure.
-    traceable_required = {
-        trial.criterion_id
-        for trial in document.trials
-        if trial.required and trial.trial_type in {"technical", "behavioral"}
-    }
-    uncovered = sorted(traceable_required - (manifest_refs | proof_refs))
-    if uncovered:
-        blockers.append(
-            "Required Sea Trials lack implementation/proof coverage: " + ", ".join(uncovered)
-        )
-
-    measurements = tuple(
-        _measure(trial, target_dir=target_dir, build_dir=build_dir) for trial in document.trials
-    )
-    evidence_facts = tuple(
-        fact for trial in document.trials if (fact := _evidence_fact(trial, target_dir)) is not None
-    )
     facts = {
         "target": target,
-        "manifest": {
-            "total_executable": len(executable),
-            "verified": len(executable) - len(incomplete),
-            "incomplete": incomplete,
-        },
+        "build_directory": str(build_dir),
+        "probe_directory": PROBE_DIR,
         "code": {"identity": code_identity, "dirty": dirty},
-        "blueprint": {
-            "files": [path.name for path in sorted(blueprint_dir.glob("*.md"))],
-            "stale": [item.rel_path for item in stale],
-        },
-        "programmatic_acceptance": [asdict(item) for item in acceptance],
-        "story_acceptance": {
-            **outcomes.to_dict(),
-            "note": (
-                "Reported, not gating, by any path. The release gate's only input is Sea "
-                "Trials; Manifest state is the plan for meeting the contract, not the "
-                "contract. UNVERIFIED assertions never reached the code under test and say "
-                "nothing about the build."
-            ),
-        },
-        "traceability": {
-            "manifest_references": sorted(manifest_refs),
-            "proof_references": sorted(proof_refs),
-            "uncovered_required": uncovered,
-            "unknown_references": unknown_refs,
-        },
-        "measurements": [asdict(item) for item in measurements],
-        "evidence_files": evidence_facts,
+        "governed_gate": full_gate.to_dict() if full_gate else None,
+        "observations": [asdict(item) for item in observations],
         "sea_trials": [asdict(item) for item in document.trials],
-        "deterministic_blockers": blockers,
-        "warnings": warnings,
+        "reported": reported,
     }
     prompt = load_prompt("score_release")
     rendered = (
@@ -484,18 +622,26 @@ def score_release(
     )
     assembly = PromptAssembly.single_prompt(rendered)
     run = runner if runner is not None else run_prompt
-    result = run(
-        rendered,
-        target_dir,
-        llm=llm_provider,
-        model=model or prompt.model,
-        command_name="score release",
-        parameters={"target": target},
-        log_dir=log_dir,
-        target=target,
-        on_text=on_text,
-        prompt_assembly=assembly,
-    )
+    probe_root = build_dir / PROBE_DIR
+    try:
+        probe_root.mkdir(parents=True, exist_ok=True)
+        result = run(
+            rendered,
+            build_dir,
+            llm=llm_provider,
+            model=model or prompt.model,
+            command_name="score release",
+            parameters={"target": target},
+            log_dir=log_dir,
+            target=target,
+            on_text=on_text,
+            prompt_assembly=assembly,
+            allow_tools=True,
+        )
+    finally:
+        # The probe is ephemeral by construction. Whatever the grader wrote, and whether or not it
+        # returned at all, the tree it was judging is left as it was found.
+        shutil.rmtree(probe_root, ignore_errors=True)
     if not result.ok or not result.text.strip():
         raise SpecificationError("score release LLM execution failed or returned no output")
     payload = _parse_json(result.text)
@@ -512,142 +658,126 @@ def score_release(
     if set(model_criteria) != set(trial_by_id):
         raise SpecificationError("score release output must judge every Sea Trial exactly once")
 
-    measurements_by_id = {item.criterion_id: item for item in measurements}
-    evidence_by_id = {str(item["criterion_id"]): item for item in evidence_facts}
-    criteria: list[CriterionResult] = []
+    pinned = {item.criterion_id: item for item in observations if item.pinned}
+    rationales: dict[str, str] = {}
+    trial_facts: list[TrialFacts] = []
     for criterion_id, trial in trial_by_id.items():
         item = model_criteria[criterion_id]
-        verdict = str(item.get("verdict", "INCONCLUSIVE")).upper()
-        if verdict not in VALID_VERDICTS:
-            raise SpecificationError(f"score release {criterion_id} has invalid verdict {verdict}")
-        rationale = str(item.get("rationale", "")).strip()
+        graded = _trial_verdict(item.get("verdict"), criterion_id)
+        rationales[criterion_id] = str(item.get("rationale", "")).strip()
         raw_evidence = item.get("evidence", [])
-        evidence = (
+        citations = (
             tuple(str(value) for value in raw_evidence) if isinstance(raw_evidence, list) else ()
         )
-        measured = measurements_by_id[criterion_id]
-        if trial.verification == "measurement":
-            verdict = measured.status if measured.status in VALID_VERDICTS else "INCONCLUSIVE"
-            evidence = tuple(filter(None, (measured.source, measured.detail)))
-        if trial.verification == "proof":
-            referencing = [
-                (result_item, integ)
-                for check, result_item, integ in zip(
-                    checks, acceptance, proof_integrity, strict=True
-                )
-                if criterion_id in check.sea_trials
-            ]
-            valid = [result_item for result_item, integ in referencing if integ.ok]
-            if not referencing:
-                verdict = "INCONCLUSIVE"
-                evidence = ("no code-bound proof references this criterion",)
-            elif not valid:
-                reasons = "; ".join(reason for _, integ in referencing for reason in integ.reasons)
-                evidence = (
-                    "warning: proof passed but failed integrity: "
-                    + (reasons or "no effective failure path"),
-                )
-            else:
-                verdict = "PASS" if all(entry.passed for entry in valid) else "FAIL"
-                evidence = tuple(
-                    f"{entry.source}:{entry.check_id}={'PASS' if entry.passed else 'FAIL'}"
-                    for entry in valid
-                )
-        if trial.verification == "evidence" and "error" in evidence_by_id.get(criterion_id, {}):
-            verdict = "INCONCLUSIVE"
-            evidence = (str(evidence_by_id[criterion_id]["error"]),)
-        criteria.append(CriterionResult(criterion_id, verdict, rationale, evidence))
+        observed = pinned.get(criterion_id)
+        if observed is not None:
+            citations = (observed.detail,) + citations
+        trial_facts.append(
+            TrialFacts(
+                criterion_id=criterion_id,
+                graded=graded,
+                citations=citations,
+                demonstrated_failure=(
+                    observed.detail if observed is not None and observed.pinned == NOT_MET else ""
+                ),
+                governed_pass=observed is not None and observed.pinned == MET,
+                guardrail=trial.trial_type == "guardrail",
+                criterion=trial.criterion,
+            )
+        )
 
-    attestations: list[str] = []
-    for item in criteria:
-        trial = trial_by_id[item.criterion_id]
-        if trial.trial_type == "guardrail":
-            # A guardrail is absolute, and Required does not apply. A breach is a demonstrated
-            # failure and blocks the release. An unproven guardrail is not: no evidence showed
-            # the prohibition violated, and many prohibitions worth writing admit no automated
-            # proof at all. It qualifies the release with an attestation a human must settle.
-            if item.verdict == "FAIL":
-                blockers.append(f"Guardrail {item.criterion_id} is BREACHED: {trial.criterion}")
-            elif item.verdict != "PASS":
-                detail = item.evidence[0] if item.evidence else "no evidence supplied"
-                attestations.append(
-                    f"Guardrail {item.criterion_id} is UNPROVEN ({detail}): {trial.criterion}"
-                )
-            continue
-        if trial.required and item.verdict != "PASS":
-            blockers.append(f"Required Sea Trial {item.criterion_id} is {item.verdict}")
+    outcome = fold(
+        RunFacts(
+            target=target,
+            trials=tuple(trial_facts),
+            kit_faults=tuple(kit_faults),
+            demonstrated_failures=tuple(demonstrated),
+            reported=tuple(reported),
+        )
+    )
+    criteria = tuple(
+        CriterionResult(
+            item.criterion_id,
+            item.verdict,
+            rationales.get(item.criterion_id, "") or item.basis,
+            item.citations or (item.basis,),
+        )
+        for item in outcome.trials
+    )
+    blockers = tuple(
+        f"{item.criterion_id} is NOT MET: {trial_by_id[item.criterion_id].criterion}"
+        for item in outcome.trials
+        if item.verdict == NOT_MET
+    ) + tuple(outcome.demonstrated_failures)
+    attestations = tuple(
+        f"{item.criterion_id} needs manual verification: {trial_by_id[item.criterion_id].criterion}"
+        for item in outcome.trials
+        if item.verdict == MANUAL
+    )
 
     criterion_improvements = [
         f"Resolve {item.criterion_id} ({item.verdict}): {trial_by_id[item.criterion_id].criterion}"
-        for item in criteria
-        if item.verdict != "PASS"
+        for item in outcome.trials
+        if item.verdict != MET
     ]
     raw_improvements = payload.get("improvements", [])
-    proposed = criterion_improvements + [
-        str(item).strip() for item in raw_improvements if str(item).strip()
-    ]
-    improvements = tuple(dict.fromkeys(proposed))
-    complete = not blockers
+    improvements = tuple(
+        dict.fromkeys(
+            criterion_improvements
+            + [str(item).strip() for item in raw_improvements if str(item).strip()]
+        )
+    )
     evidence_path = target_dir / "evidence" / "score-release.json"
     scorecard_path = target_dir / "SCORECARD.md"
     record = {
-        "schema_version": 4,
+        "schema_version": 5,
         "recorded_at": _now(),
         "target": target,
-        "complete": complete,
-        "qualified": complete and bool(attestations),
+        "verdict": outcome.verdict,
+        "verdict_line": outcome.statement.splitlines()[0],
+        "statement": outcome.statement,
+        "complete": outcome.verdict == PASSED,
         "governed_gate": full_gate.to_dict() if full_gate else None,
         "criteria": [asdict(item) for item in criteria],
-        "blockers": blockers,
-        "attestations": attestations,
-        "warnings": warnings,
-        "improvements": improvements,
+        "guardrail_ids": [
+            trial.criterion_id for trial in document.trials if trial.trial_type == "guardrail"
+        ],
+        "observations": [asdict(item) for item in observations],
+        "blockers": list(blockers),
+        "attestations": list(attestations),
+        "kit_faults": list(outcome.kit_faults),
+        "warnings": list(outcome.reported),
+        "improvements": list(improvements),
         "identities": {
             "code": code_identity,
             "sea_trials": _sha(sea_path),
-            "manifest": _sha(manifest_path),
             "blueprint": {path.name: _sha(path) for path in sorted(blueprint_dir.glob("*.md"))},
-        },
-        "measurements": [asdict(item) for item in measurements],
-        "evidence_files": evidence_facts,
-        "programmatic_acceptance": [asdict(item) for item in acceptance],
-        "story_acceptance": {
-            **outcomes.to_dict(),
-            "note": (
-                "Reported, not gating, by any path. The release gate's only input is Sea "
-                "Trials; Manifest state is the plan for meeting the contract, not the "
-                "contract. UNVERIFIED assertions never reached the code under test and say "
-                "nothing about the build."
-            ),
         },
         "execution_id": result.execution_id,
     }
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
     evidence_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
     scorecard_path.write_text(
-        _render_scorecard(
-            target=target,
-            complete=complete,
-            criteria=tuple(criteria),
-            trials=trial_by_id,
-            blockers=tuple(blockers),
-            warnings=tuple(warnings),
-            improvements=improvements,
+        _render_release_scorecard(
+            outcome,
+            trial_by_id,
+            criteria,
             code_identity=code_identity,
-            attestations=tuple(attestations),
+            improvements=improvements,
         ),
         encoding="utf-8",
         newline="\n",
     )
-    return BuildScoreResult(
-        target,
-        tuple(criteria),
-        tuple(blockers),
-        tuple(warnings),
-        improvements,
-        complete,
-        scorecard_path,
-        evidence_path,
-        result.execution_id,
-        tuple(attestations),
+    return ReleaseResult(
+        target=target,
+        verdict=outcome.verdict,
+        statement=outcome.statement,
+        criteria=criteria,
+        blockers=blockers,
+        attestations=attestations,
+        warnings=tuple(outcome.reported),
+        improvements=improvements,
+        scorecard_path=scorecard_path,
+        evidence_path=evidence_path,
+        execution_id=result.execution_id,
     )

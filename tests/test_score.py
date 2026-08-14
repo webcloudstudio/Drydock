@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.score import score_release, verify_acs
+import pytest
+
+from drydock.errors import SpecificationError
+from drydock.gate_policy import ERROR, FAILED, MANUAL, MET, NOT_MET, PASSED
+from drydock.score import PROBE_DIR, score_release, verify_acs
 from drydock.standard_artifacts import load_soundings
 
 
@@ -252,235 +257,6 @@ def test_verify_acs_unknown_step_lists_valid_ids(tmp_path):
         raise AssertionError("expected SpecificationError for unknown step")
 
 
-def test_release_score_completes_and_writes_scorecard(tmp_path):
-    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
-
-    # The model guesses FAIL; the passing code-bound proof overrides it to PASS.
-    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="FAIL"))
-
-    assert result.complete
-    assert result.exit_code() == 0
-    assert result.criteria[0].verdict == "PASS"
-    scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
-    assert "# Build Scorecard: Demo" in scorecard
-    assert (target_dir / "evidence" / "score-release.json").is_file()
-
-
-def test_release_score_fails_on_failing_proof(tmp_path):
-    target_dir, _ = _target(tmp_path, proof=_FAILING_PROOF)
-
-    # The model guesses PASS; the failing proof overrides it and blocks release.
-    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
-
-    assert not result.complete
-    assert result.exit_code() == 1
-    assert result.criteria[0].verdict == "FAIL"
-    assert any("st-proof" in blocker for blocker in result.blockers)
-
-
-def test_release_score_accepts_a_plain_english_criterion(tmp_path):
-    # Notation is not a gate. A criterion written outside the EARS pattern it declares is judged on
-    # what it states, and its notation is handed to the judge as a fact.
-    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
-    sea = target_dir / "SEA_TRIALS.md"
-    sea.write_text(
-        sea.read_text(encoding="utf-8").replace(
-            "Criterion: The built artifact shall contain its marker.",
-            "Criterion: Every built artifact contains its marker.",
-        ),
-        encoding="utf-8",
-    )
-    prompts: list[str] = []
-
-    def runner(prompt_text, *args, **kwargs):
-        prompts.append(prompt_text)
-        return _runner(proof_verdict="PASS")(prompt_text, *args, **kwargs)
-
-    result = score_release("Demo", target_dir, runner=runner)
-
-    assert result.complete
-    assert result.exit_code() == 0
-    assert result.blockers == ()
-    # The evidence facts are the last fenced JSON block; the prompt body carries the reply shape.
-    facts = json.loads(prompts[0].split("```json\n")[-1].split("\n```")[0])
-    assert [trial["notation"] for trial in facts["sea_trials"]] == ["other"]
-
-
-def test_release_score_reports_a_dirty_worktree_and_does_not_block(tmp_path):
-    """Git state is reported, never gating.
-
-    The case: a run passed every Sea Trial and every assertion, then failed the release because
-    Drydock had run the project's own test suite and the suite wrote a database file into the
-    tree. Drydock ran the tests, the tests wrote a file, and Drydock refused the release because
-    a file was there. A gate may only block on a fault domain it can distinguish, and a dirty
-    worktree cannot distinguish a defective product from tidy bookkeeping.
-    """
-    target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF)
-    # Exactly the observed shape: running the project's tests left a database behind.
-    (build_dir / "instance").mkdir()
-    (build_dir / "instance" / "app.sqlite3").write_bytes(b"\x00" * 16)
-
-    result = score_release("Demo", target_dir, runner=_runner())
-
-    assert result.complete
-    assert result.exit_code() == 0
-    assert not any("uncommitted changes" in blocker for blocker in result.blockers)
-    assert any("uncommitted changes" in warning for warning in result.warnings)
-
-
-def _add_proof_guardrail(target_dir: Path, *, linked: bool, breached: bool = False) -> None:
-    """Append a required proof-verified guardrail, optionally linked to a proof.
-
-    ``breached`` links a proof that fails, which is the only way a guardrail reaches BREACHED:
-    a linked proof settles the verdict and the model's opinion is discarded.
-    """
-    sea = target_dir / "SEA_TRIALS.md"
-    sea.write_text(
-        sea.read_text(encoding="utf-8")
-        + """
-## st-never: No side effects
-Type: guardrail
-Required: yes
-Criterion: If the build runs, then the build shall not write outside its directory.
-Verification: proof
-Pattern: unwanted
-""",
-        encoding="utf-8",
-    )
-    if linked:
-        assertion = (
-            'assert Path("side-effect.txt").exists()'
-            if breached
-            else 'assert not Path("side-effect.txt").exists()'
-        )
-        features = target_dir / "blueprint" / "FEATURES.md"
-        features.write_text(
-            features.read_text(encoding="utf-8")
-            + f"""
-### no-side-effects
-Sea Trials: st-never
-Conversion writes nothing.
-
-```python
-from pathlib import Path
-{assertion}
-```
-""",
-            encoding="utf-8",
-        )
-
-
-def _guardrail_runner(*, guardrail_verdict: str = "PASS"):
-    payload = {
-        "criteria": [
-            {"id": "st-proof", "verdict": "PASS", "rationale": "model guess", "evidence": []},
-            {
-                "id": "st-never",
-                "verdict": guardrail_verdict,
-                "rationale": "model guess",
-                "evidence": [],
-            },
-        ],
-        "improvements": ["Broaden coverage."],
-    }
-    return lambda *args, **kwargs: FakeRun(json.dumps(payload))
-
-
-def test_unlinked_proof_guardrail_qualifies_the_release_rather_than_failing_it(tmp_path):
-    """A guardrail no proof references is unproven, and the specification allows that.
-
-    Guardrails require no story or proof reference, so the missing link is not a coverage
-    failure. Nothing showed the prohibition violated either, so the release completes and the
-    criterion is handed to a human. The model cannot rescue it by asserting PASS.
-    """
-    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
-    _add_proof_guardrail(target_dir, linked=False)
-
-    result = score_release("Demo", target_dir, runner=_guardrail_runner())
-
-    blockers = "\n".join(result.blockers)
-    assert "lack implementation/proof coverage" not in blockers
-    assert "st-never" not in blockers
-    attestations = "\n".join(result.attestations)
-    assert "Guardrail st-never is UNPROVEN" in attestations
-    assert "BREACHED" not in attestations
-    assert result.complete is True
-    assert result.qualified is True
-    assert result.exit_code() == 0
-
-
-def test_breached_guardrail_still_fails_the_release(tmp_path):
-    """Softening UNPROVEN must not soften a demonstrated breach."""
-    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
-    _add_proof_guardrail(target_dir, linked=True, breached=True)
-
-    result = score_release("Demo", target_dir, runner=_guardrail_runner())
-
-    assert result.complete is False
-    assert result.exit_code() == 1
-    assert "Guardrail st-never is BREACHED" in "\n".join(result.blockers)
-    assert result.attestations == ()
-
-
-def test_linked_proof_guardrail_holds(tmp_path):
-    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
-    _add_proof_guardrail(target_dir, linked=True)
-
-    result = score_release("Demo", target_dir, runner=_guardrail_runner())
-
-    verdicts = {item.criterion_id: item.verdict for item in result.criteria}
-    assert verdicts["st-never"] == "PASS"
-    assert not any("st-never" in blocker for blocker in result.blockers)
-    assert "| absolute | HELD |" in (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
-
-
-_STAGED_ANALYSIS = """# ANALYSIS
-
-## Source Roles
-
-| Path | Role | Plan disposition | Build disposition |
-|---|---|---|---|
-| sources/spec.txt | normative specification and conformance test suite | context | stage |
-"""
-
-
-def _with_staged_kit(tmp_path, *, build_content: str) -> Path:
-    target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF, committed=False)
-    sources = target_dir / "blueprint" / "sources"
-    sources.mkdir(parents=True)
-    (sources / "spec.txt").write_text("EXAMPLE\n" * 200, encoding="utf-8")
-    (target_dir / "ANALYSIS.md").write_text(_STAGED_ANALYSIS, encoding="utf-8")
-    (build_dir / "sources").mkdir(parents=True, exist_ok=True)
-    (build_dir / "sources" / "spec.txt").write_text(build_content, encoding="utf-8")
-    _git(build_dir, "add", ".")
-    _git(build_dir, "commit", "-m", "build")
-    return target_dir
-
-
-def test_release_score_blocks_when_a_staged_asset_was_substituted(tmp_path):
-    """The 117-byte-suite regression: a build that graded itself against a kit it authored
-    must not be scorable."""
-    target_dir = _with_staged_kit(tmp_path, build_content="# 2 examples\n")
-
-    result = score_release("Demo", target_dir, runner=_runner())
-
-    assert not result.complete
-    assert any("Staged build asset was modified" in b for b in result.blockers)
-    assert any("sources/spec.txt" in b for b in result.blockers)
-    # Scoring reports; it never repairs the artifact under judgment.
-    build_spec = tmp_path / "build" / "Demo" / "sources" / "spec.txt"
-    assert build_spec.read_text(encoding="utf-8") == "# 2 examples\n"
-
-
-def test_release_score_accepts_an_intact_staged_kit(tmp_path):
-    target_dir = _with_staged_kit(tmp_path, build_content="EXAMPLE\n" * 200)
-
-    result = score_release("Demo", target_dir, runner=_runner())
-
-    assert not any("Staged build asset" in b for b in result.blockers)
-    assert result.complete
-
-
 def test_a_prepassed_criterion_is_reported_separately_and_does_not_fail_the_run():
     """Green now and green before its block built. A weaker claim than PASS, but not a defect:
     a criterion measuring a deliverable that already existed reads identically, and only the
@@ -514,57 +290,310 @@ def test_a_prepassed_criterion_is_reported_separately_and_does_not_fail_the_run(
     )
 
 
-# The Manifest is the plan for meeting the contract; Sea Trials are the contract. Blocking the
-# release on Manifest state made story acceptance a release input through the back door: a
-# criterion the model wrote and got wrong closed a story ``closed/failed`` and failed a release
-# whose every Sea Trial passed.
+# --- score release: the gate observes the finished tree ------------------------------------
+#
+# Score observes; it does not read reports. Every record the build left behind is history — an
+# assertion that passed at block 3 is a statement about the tree as it stood at block 3 — so the
+# verdict is assembled from what Drydock can observe now, and from a grader that was handed the
+# tree with tools.
 
 
-def _fail_the_story(target_dir: Path) -> None:
-    manifest = target_dir / "MANIFEST.md"
-    manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            "id: work\nstate: closed/verified",
-            "id: work\nstate: closed/failed",
-        ),
-        encoding="utf-8",
+def _release_runner(verdicts: dict[str, str] | None = None, *, calls: list | None = None):
+    """A grader that returns the supplied verdicts and records how it was invoked."""
+
+    def runner(prompt_text, working_directory, **kwargs):
+        if calls is not None:
+            calls.append({"prompt": prompt_text, "cwd": working_directory, **kwargs})
+        payload = {
+            "criteria": [
+                {"id": key, "verdict": value, "rationale": "observed", "evidence": []}
+                for key, value in (verdicts or {"st-proof": MET}).items()
+            ],
+            "improvements": ["Broaden coverage."],
+        }
+        return FakeRun(json.dumps(payload))
+
+    return runner
+
+
+def _with_command(target_dir: Path, argv: list[str]) -> None:
+    sea = target_dir / "SEA_TRIALS.md"
+    sea.write_text(
+        sea.read_text(encoding="utf-8") + f"Command: {json.dumps(argv)}\n", encoding="utf-8"
     )
 
 
-def test_unclosed_manifest_work_is_reported_but_does_not_block_the_release(tmp_path):
+def test_release_passes_and_writes_the_listing(tmp_path):
     target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
-    _fail_the_story(target_dir)
 
-    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
+    result = score_release("Demo", target_dir, runner=_release_runner())
 
+    assert result.verdict == PASSED
     assert result.complete
     assert result.exit_code() == 0
-    assert not any("closed/verified" in blocker for blocker in result.blockers)
-    assert any("Manifest work is not closed/verified: work" in note for note in result.warnings)
+    assert result.criteria[0].verdict == MET
+    assert result.statement.splitlines()[0] == "Demo: PASSED — 1 of 1"
+    scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+    assert "# Release Scorecard: Demo" in scorecard
+    assert "- Verdict: PASSED" in scorecard
+    record = json.loads(
+        (target_dir / "evidence" / "score-release.json").read_text(encoding="utf-8")
+    )
+    assert record["verdict"] == PASSED
+    assert record["verdict_line"] == "Demo: PASSED — 1 of 1"
 
 
-def test_a_failing_sea_trial_still_blocks_a_release_whose_manifest_is_closed(tmp_path):
-    # The gate did not get looser about the contract, only about the plan.
-    target_dir, _ = _target(tmp_path, proof=_FAILING_PROOF)
-
-    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
-
-    assert not result.complete
-    assert result.exit_code() == 1
-
-
-def test_a_required_sea_trial_without_coverage_still_blocks(tmp_path):
-    # The backstop Manifest closure was standing in for: a contract satisfied by work nobody
-    # did. This tests the contract's coverage directly rather than the plan's state.
+def test_a_criterion_command_is_run_now_and_its_red_exit_pins_not_met(tmp_path):
+    """A trial that names a command is settled by running that command against the final tree.
+    The grader may not argue a red exit into a pass."""
     target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
-    _fail_the_story(target_dir)
+    _with_command(target_dir, [sys.executable, "-c", "raise SystemExit(1)"])
+
+    result = score_release("Demo", target_dir, runner=_release_runner({"st-proof": MET}))
+
+    assert result.verdict == FAILED
+    assert result.exit_code() == 1
+    assert result.criteria[0].verdict == NOT_MET
+    assert any("exited 1" in item for item in result.criteria[0].evidence)
+
+
+def test_a_green_command_pins_met_over_an_unsettled_grade(tmp_path):
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+    _with_command(target_dir, [sys.executable, "-c", "pass"])
+
+    result = score_release("Demo", target_dir, runner=_release_runner({"st-proof": MANUAL}))
+
+    assert result.verdict == PASSED
+    assert result.criteria[0].verdict == MET
+
+
+def test_the_grader_is_handed_the_build_tree_with_tools_and_an_ephemeral_probe_directory(tmp_path):
+    """The probe is the safe place for a model to author a test: it is written after the code
+    exists, against source the grader can read, and it is discarded after one verdict."""
+    target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF)
+    calls: list = []
+    seen: dict = {}
+
+    def runner(prompt_text, working_directory, **kwargs):
+        seen["probe_present"] = (build_dir / PROBE_DIR).is_dir()
+        (build_dir / PROBE_DIR / "probe.py").write_text("print(1)\n", encoding="utf-8")
+        return _release_runner(calls=calls)(prompt_text, working_directory, **kwargs)
+
+    result = score_release("Demo", target_dir, runner=runner)
+
+    assert result.verdict == PASSED
+    assert calls[0]["cwd"] == build_dir
+    assert calls[0]["allow_tools"] is True
+    assert seen["probe_present"] is True
+    assert not (build_dir / PROBE_DIR).exists()
+    facts = json.loads(calls[0]["prompt"].split("```json\n")[-1].split("\n```")[0])
+    assert facts["probe_directory"] == PROBE_DIR
+    assert facts["build_directory"] == str(build_dir)
+
+
+def test_the_probe_directory_is_removed_even_when_the_grader_returns_nothing(tmp_path):
+    target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF)
+
+    with pytest.raises(SpecificationError):
+        score_release("Demo", target_dir, runner=lambda *a, **k: FakeRun("", ok=False))
+
+    assert not (build_dir / PROBE_DIR).exists()
+
+
+def test_no_record_the_build_left_behind_reaches_the_verdict(tmp_path):
+    """A failing story assertion, a failed Manifest block, and a stale proof tag are all history.
+    The release verdict is about the tree as it stands now."""
+    target_dir, _ = _target(tmp_path, proof=_FAILING_PROOF)
+    manifest = target_dir / "MANIFEST.md"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "id: work\nstate: closed/verified", "id: work\nstate: closed/failed"
+        ),
+        encoding="utf-8",
+    )
+    calls: list = []
+
+    result = score_release("Demo", target_dir, runner=_release_runner(calls=calls))
+
+    assert result.verdict == PASSED
+    assert result.blockers == ()
+    facts = json.loads(calls[0]["prompt"].split("```json\n")[-1].split("\n```")[0])
+    assert "programmatic_acceptance" not in facts
+    assert "manifest" not in facts
+
+
+def test_verification_proof_no_longer_selects_a_lookup(tmp_path):
+    """D-016. The grader's verdict used to be discarded and replaced by whether a model-authored
+    assertion happened to carry a `Sea Trials:` tag, which reported five met criteria as blocked.
+    ``Verification: proof`` now selects nothing."""
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
     features = target_dir / "blueprint" / "FEATURES.md"
     features.write_text(
         features.read_text(encoding="utf-8").replace("Sea Trials: st-proof\n", ""),
         encoding="utf-8",
     )
 
-    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
+    result = score_release("Demo", target_dir, runner=_release_runner({"st-proof": MET}))
 
-    assert not result.complete
-    assert any("lack implementation/proof coverage" in blocker for blocker in result.blockers)
+    assert result.verdict == PASSED
+    assert not any("coverage" in blocker for blocker in result.blockers)
+
+
+def test_not_met_without_a_citation_attests_rather_than_failing(tmp_path):
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+
+    result = score_release("Demo", target_dir, runner=_release_runner({"st-proof": NOT_MET}))
+
+    assert result.verdict == PASSED
+    assert result.criteria[0].verdict == MANUAL
+    assert any("st-proof" in item for item in result.attestations)
+
+
+def test_an_observed_absence_fails_the_release(tmp_path):
+    """UC-008 must keep working: a grader that looked and cited what it saw fails the project."""
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+
+    def runner(prompt_text, working_directory, **kwargs):
+        payload = {
+            "criteria": [
+                {
+                    "id": "st-proof",
+                    "verdict": NOT_MET,
+                    "rationale": "no marker",
+                    "evidence": ["probe: marker.txt does not exist"],
+                }
+            ],
+            "improvements": [],
+        }
+        return FakeRun(json.dumps(payload))
+
+    result = score_release("Demo", target_dir, runner=runner)
+
+    assert result.verdict == FAILED
+    assert result.exit_code() == 1
+    assert any("st-proof is NOT MET" in blocker for blocker in result.blockers)
+
+
+def test_release_score_reports_a_dirty_worktree_and_does_not_block(tmp_path):
+    """Git state is reported, never gating.
+
+    The case: a run passed every Sea Trial and every assertion, then failed the release because
+    Drydock had run the project's own test suite and the suite wrote a database file into the
+    tree. A gate may only block on a fault domain it can distinguish, and a dirty worktree cannot
+    distinguish a defective product from tidy bookkeeping.
+    """
+    target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF)
+    (build_dir / "instance").mkdir()
+    (build_dir / "instance" / "app.sqlite3").write_bytes(b"\x00" * 16)
+
+    result = score_release("Demo", target_dir, runner=_release_runner())
+
+    assert result.verdict == PASSED
+    assert result.exit_code() == 0
+    assert not any("uncommitted changes" in blocker for blocker in result.blockers)
+    assert any("uncommitted changes" in warning for warning in result.warnings)
+
+
+def _add_guardrail(target_dir: Path) -> None:
+    sea = target_dir / "SEA_TRIALS.md"
+    sea.write_text(
+        sea.read_text(encoding="utf-8")
+        + """
+## st-never: No side effects
+Type: guardrail
+Required: yes
+Criterion: If the build runs, then the build shall not write outside its directory.
+Verification: proof
+Pattern: unwanted
+""",
+        encoding="utf-8",
+    )
+
+
+def test_a_guardrail_is_graded_like_any_other_criterion(tmp_path):
+    """Type: guardrail is reporting metadata. An unsettleable prohibition attests; it does not
+    acquire a separate vocabulary or fail a release for want of positive proof."""
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+    _add_guardrail(target_dir)
+
+    result = score_release(
+        "Demo", target_dir, runner=_release_runner({"st-proof": MET, "st-never": MANUAL})
+    )
+
+    assert result.verdict == PASSED
+    assert result.exit_code() == 0
+    assert any("st-never needs manual verification" in item for item in result.attestations)
+    scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+    assert "| st-never | guardrail |" in scorecard
+
+
+def test_an_observed_guardrail_breach_fails_the_release(tmp_path):
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+    _add_guardrail(target_dir)
+
+    def runner(prompt_text, working_directory, **kwargs):
+        payload = {
+            "criteria": [
+                {"id": "st-proof", "verdict": MET, "rationale": "ok", "evidence": []},
+                {
+                    "id": "st-never",
+                    "verdict": NOT_MET,
+                    "rationale": "writes outside",
+                    "evidence": ["probe: wrote /tmp/side-effect.txt"],
+                },
+            ],
+            "improvements": [],
+        }
+        return FakeRun(json.dumps(payload))
+
+    result = score_release("Demo", target_dir, runner=runner)
+
+    assert result.verdict == FAILED
+    assert result.exit_code() == 1
+
+
+_STAGED_ANALYSIS = """# ANALYSIS
+
+## Source Roles
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| sources/spec.txt | normative specification and conformance test suite | context | stage |
+"""
+
+
+def _with_staged_kit(tmp_path, *, build_content: str) -> Path:
+    target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF, committed=False)
+    sources = target_dir / "blueprint" / "sources"
+    sources.mkdir(parents=True)
+    (sources / "spec.txt").write_text("EXAMPLE\n" * 200, encoding="utf-8")
+    (target_dir / "ANALYSIS.md").write_text(_STAGED_ANALYSIS, encoding="utf-8")
+    (build_dir / "sources").mkdir(parents=True, exist_ok=True)
+    (build_dir / "sources" / "spec.txt").write_text(build_content, encoding="utf-8")
+    _git(build_dir, "add", ".")
+    _git(build_dir, "commit", "-m", "build")
+    return target_dir
+
+
+def test_a_substituted_staged_asset_is_an_error_not_a_product_failure(tmp_path):
+    """The 117-byte-suite regression. The thing being scored is not the thing that was built, so
+    no verdict about the product is available — and Drydock says exactly that."""
+    target_dir = _with_staged_kit(tmp_path, build_content="# 2 examples\n")
+
+    result = score_release("Demo", target_dir, runner=_release_runner())
+
+    assert result.verdict == ERROR
+    assert result.exit_code() == 1
+    assert result.criteria == ()
+    assert "says nothing about the product" in result.statement
+    # Scoring reports; it never repairs the artifact under judgment.
+    build_spec = tmp_path / "build" / "Demo" / "sources" / "spec.txt"
+    assert build_spec.read_text(encoding="utf-8") == "# 2 examples\n"
+
+
+def test_release_score_accepts_an_intact_staged_kit(tmp_path):
+    target_dir = _with_staged_kit(tmp_path, build_content="EXAMPLE\n" * 200)
+
+    result = score_release("Demo", target_dir, runner=_release_runner())
+
+    assert result.verdict == PASSED

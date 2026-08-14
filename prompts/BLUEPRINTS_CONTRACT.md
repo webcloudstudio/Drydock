@@ -152,7 +152,6 @@ file completes:
 Intent: One sentence stating what the check proves.
 Suite: scoped
 Requires: executable=python3; scope=test
-Sea Trials: st-001
 
 <Python source, verbatim, to the end marker>
 === END AC {check-id} ===
@@ -429,7 +428,6 @@ oracle.
 
 === AC health-check ===
 Intent: The health endpoint returns an OK response.
-Sea Trials: st-001
 
 from app import create_app
 
@@ -460,8 +458,9 @@ assert result.returncode == 0
 such as look-and-feel or subjective workflow acceptance. Do not place deterministic behavior in
 `User Acceptance`.
 
-`Sea Trials:` optionally lists the stable project-acceptance IDs proved by an assertion. It is one
-of the block's declaration lines. Every listed ID exists in `SEA_TRIALS.md`.
+Do not tag an assertion with a project-acceptance ID. Sea Trials flow into planning as context for
+authoring acceptance; nothing points back at them. Project acceptance is settled at `score release`
+by observing the finished tree, never by looking up which assertion claimed which criterion.
 
 **Programmatic acceptance is the story's definition of done, and a deterministic definition of
 done is never sampled.** Drydock builds each block in a single pass with no iterate loop, so the
@@ -491,9 +490,7 @@ Print the captured output for diagnosis, assert `result.returncode == 0`, and st
 holds for both `Suite: scoped` and `Suite: full`.
 
 Place a whole-project deterministic suite on the story that **completes the runnable capability**
-— never on a foundation step that cannot yet run it, where it would fail vacuously — and mirror it
-into `SEA_TRIALS.md` with `Sea Trials:` so it is both the completing block's acceptance and a
-project-acceptance criterion. Naming the suite file or asserting it is staged (`Path(...).is_file()`)
+— never on a foundation step that cannot yet run it, where it would fail vacuously. Naming the suite file or asserting it is staged (`Path(...).is_file()`)
 is staging, not testing: a stubbed or absent definition of done for an available suite is a defect,
 not an acceptable check.
 

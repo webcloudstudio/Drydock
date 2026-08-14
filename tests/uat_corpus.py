@@ -17,15 +17,19 @@ import json
 import re
 from pathlib import Path
 
-from drydock.gate_policy import MET, NOT_MET, PENDING, RunFacts, TrialFacts
+from drydock.gate_policy import MANUAL, MET, NOT_MET, RunFacts, TrialFacts
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LIVE_CORPUS_ROOT = REPO_ROOT / "uat"
 CORPUS_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "uat_corpus.json"
 
-# The recorded grader vocabulary, which V-3 retires in favour of one three-word vocabulary shared
-# by the grader and the guardrail reporter.
-_RECORDED_VERDICTS = {"PASS": MET, "FAIL": NOT_MET, "INCONCLUSIVE": PENDING}
+# The recorded grader vocabulary, retired in favour of one three-word vocabulary shared by the
+# grader and the guardrail reporter. A recorded INCONCLUSIVE said the grader did not settle the
+# criterion, which is MANUAL: a named human check, not a waiting state. Replay cannot recover what
+# an observing grader would have found by looking, so an unbuilt capability that today grades
+# NOT MET reads as MANUAL in the corpus — the one place the frozen evidence is weaker than a live
+# run.
+_RECORDED_VERDICTS = {"PASS": MET, "FAIL": NOT_MET, "INCONCLUSIVE": MANUAL}
 
 # An evidence line that names a check which exhibited the failure. This is the demonstration the
 # asymmetric evidence rule requires before a criterion may be graded NOT MET.

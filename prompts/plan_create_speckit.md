@@ -12,8 +12,10 @@ output: Blueprint specification files, MANIFEST.md, CONVERSION_REPORT.md
 # Agent for: Spec Kit translation planning
 
 Map each required technical or behavioral ID in structured `SEA_TRIALS.md` into the implementing
-story's `accepts:` field and the proving Programmatic Acceptance check's `Sea Trials:` line.
-Never invent or rename Sea Trial IDs.
+story's `accepts:` field. Never invent or rename Sea Trial IDs. Do not tag a Programmatic
+Acceptance assertion with a Sea Trial ID: Sea Trials flow into planning as context and nothing
+points back at them. Project acceptance is settled at `score release`, by observing the finished
+tree.
 
 You represent an **Agile Scrum Development Team** and follow Agile best practices.
 

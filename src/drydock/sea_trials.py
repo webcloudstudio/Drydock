@@ -329,15 +329,26 @@ SEA_TRIALS_DOC = """\
 
 Sea Trials are project-level acceptance: what this project must achieve to be declared
 delivered. `drydock analyze` derives them from the COMPASS and the sources before the work is
-decomposed. `drydock build score` judges every criterion at the end and reports the verdicts in
-`SCORECARD.md`.
+decomposed. `drydock score release` grades every criterion at the end by observing the finished
+build — running the commands they name, reading the files they point at, probing the code for
+behavior nothing else settles — and reports the verdicts in `SCORECARD.md`.
 
 Sea Trials are fixed up front and are not approved. Advancing to the next stage accepts the risk
 these criteria describe. Read them now; they are the terms the finished project is measured
 against.
 
-Stories carry an `accepts:` field naming the criteria they implement, so most criteria are also
-checked during the build. A criterion needs no implementing story to be judged at the end.
+Stories carry an `accepts:` field naming the criteria that motivated them. It is human-readable
+traceability and nothing reads it back: a criterion is graded against the finished project, not
+against which story claimed it.
+
+### Verdicts
+
+Every criterion is graded `MET`, `NOT MET`, or `MANUAL`, and the run is `PASSED`, `FAILED`, or
+`ERROR`. `MET` may be reached by inference over what was observed. `NOT MET` requires the grader
+to have looked and to cite what it saw — including seeing nothing where something was required, so
+an unbuilt criterion is `NOT MET` rather than an open question. `MANUAL` means no machine can
+settle the criterion however finished the product is; it attests, names a human check, and never
+blocks. A large `MANUAL` set is a defect in the criteria, not in the product.
 
 ### Notation
 
@@ -382,25 +393,13 @@ pass.
 ### Guardrails
 
 A guardrail is a permanent *never* — a thing the project may not do regardless of how well it
-scores. Guardrails are reported as `HELD`, `BREACHED`, or `UNPROVEN`. A breach fails the completion
-gate outright, independent of every score.
+scores. `Type: guardrail` is reporting metadata and nothing more: a guardrail is graded by the
+same three verdicts and the same rules as every other criterion.
 
-`UNPROVEN` means no evidence settled the prohibition either way. It does not fail the gate. Nothing
-demonstrated a violation, and many prohibitions worth writing down admit no automated proof at all.
-The gate instead completes as `COMPLETE — MANUAL VERIFICATION REQUIRED` and names every unproven
-guardrail as a check a human owes before release. Binding a proof to a guardrail with a Programmatic
-Acceptance `Sea Trials:` reference settles it mechanically and removes the manual check; it is not
-required.
-
-Guardrails are exempt from `accepts:` coverage and from proof-reference coverage. No story builds a
-prohibition.
-
-They are graded on what you claimed about them. A guardrail you marked `Verification: evidence` or
-`llm` carries no weight in the technical score: you declared it unprovable, and a project is not
-marked down for writing such a prohibition down. A guardrail you marked `Verification: proof` or
-`measurement` is graded like any other assertion, because you declared it provable — leaving it
-unbound scores as model opinion and costs acceptance coverage until a Programmatic Acceptance
-`Sea Trials:` reference reaches it. Neither form fails the gate.
+It acquired special machinery because a prohibition seemed unprovable, so the system demanded
+positive proof and failed the release without it. The asymmetric evidence rule already covers that
+case: a prohibition with no observed counter-example grades `MET`, and one nothing can ever settle
+grades `MANUAL` and attests. No story builds a prohibition, and none is expected to.
 
 """
 

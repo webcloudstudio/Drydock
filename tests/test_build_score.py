@@ -59,7 +59,6 @@ accepts: st-proof
 ## Programmatic Acceptance
 
 ### built-marker
-Sea Trials: st-proof
 The build contains its marker.
 
 ```python
@@ -130,7 +129,7 @@ Evidence: evidence/privacy-scan.md
 
 def _runner(
     *,
-    proof_verdict: str = "FAIL",
+    proof_verdict: str = "PASS",
     measurement: bool = False,
     guardrail_verdict: str | None = None,
 ):
@@ -163,8 +162,16 @@ def _runner(
     return lambda *args, **kwargs: FakeRun(json.dumps(payload))
 
 
-def test_code_bound_proof_overrides_model_and_gate_completes(tmp_path):
+def test_the_graders_verdict_stands_and_no_proof_tag_overrides_it(tmp_path):
+    """Sea Trials are referenced by nothing.
+
+    A criterion used to be settled by looking up which assertion had tagged its id, which moved
+    the judgement to a tag typed hours earlier in a different artifact with no evidence attached.
+    The grader's verdict now stands on its own.
+    """
     target_dir, build_dir = _target(tmp_path)
+
+    assert score_target("Demo", target_dir, runner=_runner(proof_verdict="FAIL")).complete is False
 
     result = score_target("Demo", target_dir, runner=_runner())
 
@@ -188,7 +195,6 @@ def test_vacuous_proof_is_warned_on_but_does_not_block_completion(tmp_path):
     verdict = {item.criterion_id: item for item in result.criteria}["st-proof"]
     assert verdict.verdict == "PASS"
     assert verdict.rationale == "model guess"
-    assert "warning: proof passed but failed integrity" in verdict.evidence[0]
     assert result.complete is True
     assert result.blockers == ()
     assert any("vacuous" in warning for warning in result.warnings)
