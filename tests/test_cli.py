@@ -111,7 +111,10 @@ def test_failure_renderer_shows_agent_summary_story_acceptance_and_progress():
     assert "Process exit code: 1" in rendered
     assert "Error: AssertionError" in rendered
     assert "Recovery" in rendered
-    assert "drydock build commonmark --ungate" in rendered
+    # The plain rebuild continues the build; it is named without the --ungate bypass.
+    assert "Run: drydock build commonmark\n" in rendered
+    assert "to continue the build" in rendered
+    assert "--ungate" not in rendered
     assert "--step inlines" not in rendered
     assert "Nested emphasis remains nonconformant." in rendered
 

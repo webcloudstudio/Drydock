@@ -1186,8 +1186,8 @@ def test_blueprint_programmatic_acceptance_failure_stops_dependents(tmp_path):
     assert result.exit_code() == 1
 
 
-def test_acceptance_failure_recovery_offers_ungate_without_step(tmp_path):
-    # An acceptance failure is bypassed explicitly with --ungate; it does not prescribe a
+def test_acceptance_failure_recovery_offers_plain_rebuild_without_step(tmp_path):
+    # An acceptance failure is recovered by continuing the build; it does not prescribe a
     # step-scoped rerun.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
@@ -1204,7 +1204,8 @@ def test_acceptance_failure_recovery_offers_ungate_without_step(tmp_path):
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
 
     error_text = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
-    assert "drydock build Demo --ungate" in error_text
+    assert "Run: drydock build Demo" in error_text
+    assert "to continue the build" in error_text
     assert "--step foundation" not in error_text
     assert "--step foundation --force" not in error_text
 

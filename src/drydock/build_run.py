@@ -3310,7 +3310,11 @@ def build_target(
             # so recovery is one copy-paste; ``--reset`` discards its work instead of continuing.
             rebuild_cmd = f"drydock build {target} --step {unit.block_id}"
             acceptance_recovery = (
-                f"Use: drydock build {target} --ungate"
+                (
+                    f"Run: drydock build {target}\n"
+                    "  to continue the build. This story resumes where it left off and is "
+                    "retried against the checks it failed."
+                )
                 if failure_state == "Failed"
                 and (error or "").startswith("programmatic acceptance failed")
                 else None

@@ -3838,6 +3838,19 @@ def _quarantine_lines(quarantined) -> list[str]:
     return lines
 
 
+def _acceptance_recovery_lines(target: str, *, indent: str) -> list[str]:
+    """The continue command for an acceptance failure.
+
+    A story that fails acceptance is left ``closed/failed``, which is selectable: a plain
+    ``drydock build <Target>`` continues the build and resumes that story in place.
+    """
+    return [
+        f"{indent}Run: drydock build {target}",
+        f"{indent}  to continue the build. This story resumes where it left off and is",
+        f"{indent}  retried against the checks it failed.",
+    ]
+
+
 def _render_build_failures(
     target: str, steps, *, hint: str, story_recovery: tuple[str, ...] = ()
 ) -> str:
@@ -3900,7 +3913,7 @@ def _render_build_failures(
                 if tally is not None:
                     lines.append(f"      Result tally: {tally[0]} passed, {tally[1]} failed")
             lines.append("    Recovery")
-            lines.append(f"      Use: drydock build {target} --ungate")
+            lines.extend(_acceptance_recovery_lines(target, indent="      "))
         if step.agent_blockers:
             lines += [
                 "    agent blockers:",
@@ -3923,10 +3936,12 @@ def _render_build_failures(
         for step in steps
     )
     lines += ["", "  Next"]
-    next_hint = f"Use: drydock build {target} --ungate" if acceptance_failed else hint
-    lines += textwrap.wrap(
-        next_hint, width=width - 4, initial_indent="    ", subsequent_indent="    "
-    )
+    if acceptance_failed:
+        lines += _acceptance_recovery_lines(target, indent="    ")
+    else:
+        lines += textwrap.wrap(
+            hint, width=width - 4, initial_indent="    ", subsequent_indent="    "
+        )
     if story_recovery and not acceptance_failed:
         lines += ["", "  Story recovery (dependency order)"]
         lines += [
