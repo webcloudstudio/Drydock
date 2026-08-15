@@ -93,6 +93,33 @@ def test_suite_check_gets_the_long_execution_budget(tmp_path):
     assert SUITE_TIMEOUT_SECONDS > TIMEOUT_SECONDS
 
 
+def test_an_undeclared_staged_runner_still_gets_the_suite_budget():
+    """The exact criterion that sank jq run 20260815.004309.
+
+    ``delivery-assets`` shelled out to a 550-case conformance suite without declaring ``Suite:``,
+    drew the story budget, was killed at the limit, and was reported as a non-terminating loop in
+    the product. The budget follows the invocation, not only the marker.
+    """
+    check = _criterion(
+        "import os, subprocess\n"
+        "result = subprocess.run(['sh', 'sources/full_test.sh'], capture_output=True,"
+        " text=True, env={**os.environ, 'JQ': './jq'})\n"
+        "assert result.returncode in (0, 1)\n"
+    )
+
+    assert check.full_suite is False
+    assert check.suite_bound
+    assert check.timeout_seconds == SUITE_TIMEOUT_SECONDS
+
+
+def test_merely_naming_a_staged_path_keeps_the_story_budget():
+    """Reading a staged file is bounded work; only executing one hands off the runtime."""
+    check = _criterion('from pathlib import Path\nassert Path("sources/spec.txt").is_file()\n')
+
+    assert not check.suite_bound
+    assert check.timeout_seconds == TIMEOUT_SECONDS
+
+
 def test_marker_lines_do_not_leak_into_the_stated_intent(tmp_path):
     checks = _checks(tmp_path)
 

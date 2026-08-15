@@ -32,7 +32,7 @@ AC_OPEN_RE = re.compile(r"^===[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", r
 AC_END_RE = re.compile(r"^===[ \t]+END[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", re.MULTILINE)
 #: Leading ``Key: value`` metadata lines inside an AC block, terminated by the first blank line.
 AC_META_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9 _-]*):[ \t]*(?P<value>.*?)[ \t]*$")
-TIMEOUT_SECONDS = 60
+TIMEOUT_SECONDS = 120
 # A suite-bound check runs a complete conformance suite; a story timeout would kill it.
 SUITE_TIMEOUT_SECONDS = 900
 # The three outcomes an assertion can have. Only FAIL is evidence about the product: it means
@@ -340,8 +340,14 @@ class ProgrammaticAcceptance:
 
     @property
     def timeout_seconds(self) -> int:
-        """A suite-bound check runs a whole conformance suite, not a story unit test."""
-        return SUITE_TIMEOUT_SECONDS if self.full_suite else TIMEOUT_SECONDS
+        """A suite-bound check runs a whole conformance suite, not a story unit test.
+
+        The budget follows what the criterion does, not only what it declared. A criterion that
+        executes a staged runner is suite-bound whether or not its author wrote ``Suite:``, and
+        charging it the story budget kills a legitimate run partway and reports the corpse as a
+        non-terminating loop in the product.
+        """
+        return SUITE_TIMEOUT_SECONDS if self.suite_bound else TIMEOUT_SECONDS
 
     @property
     def suite_bound(self) -> bool:
@@ -706,9 +712,45 @@ _CONTRACT_TOKEN_RE = re.compile(r"[A-Za-z0-9_./+-]*\Z")
 _STAGED_PREFIX = "sources/"
 
 
+#: The process-launching callables whose arguments name the thing actually being executed. A
+#: staged path anywhere else in a criterion — read, stat-ed, opened — is not an invocation.
+_RUNNER_NAMES = frozenset({
+    "run",
+    "call",
+    "check_call",
+    "check_output",
+    "Popen",
+    "system",
+    "getoutput",
+    "getstatusoutput",
+})
+
+
 def _invokes_staged_asset(code: str) -> bool:
-    """True when the criterion runs something staged under ``sources/``."""
-    return _STAGED_PREFIX in code
+    """True when the criterion executes something staged under ``sources/``.
+
+    Mentioning a staged path is not executing one: ``Path("sources/spec.txt").is_file()`` is an
+    ordinary bounded assertion, while ``subprocess.run(["sh", "sources/full_test.sh"])`` hands the
+    verdict to a runner whose runtime this criterion does not control. Only the second earns the
+    suite budget, so the staged path must appear in the arguments of a process launch.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        # Not parseable is a separate, already-reported fact. Nothing to classify.
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name not in _RUNNER_NAMES:
+            continue
+        for argument in ast.walk(node):
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                if _STAGED_PREFIX in argument.value:
+                    return True
+    return False
 
 
 def _is_escapable(value: str) -> bool:
