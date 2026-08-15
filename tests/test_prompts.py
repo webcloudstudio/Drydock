@@ -52,6 +52,16 @@ class TestLoadPrompt:
         with pytest.raises(DrydockError, match="prompt not found"):
             load_prompt("does_not_exist")
 
+    def test_uat_diagnostic_is_read_only_and_evidence_first(self):
+        prompt = load_prompt("uat_diagnostic")
+
+        assert prompt.name == "uat_diagnostic"
+        assert "Do not edit code" in prompt.body
+        assert "result.json" in prompt.body
+        assert "evidence/llm.jsonl" in prompt.body
+        assert "LINEAGE.json" in prompt.body
+        assert "exactly two sections" in prompt.body
+
     def test_missing_required_field_raises(self, tmp_path, monkeypatch):
         (tmp_path / "broken.md").write_text("---\nname: broken\n---\nbody", encoding="utf-8")
         monkeypatch.setattr("drydock.prompts.get_prompts_root", lambda: tmp_path)

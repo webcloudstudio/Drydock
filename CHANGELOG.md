@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-15: `prompts/uat_diagnostic.md` provides an evidence-first, read-only investigation
+  contract for the latest run of a named UAT kit. It starts from `result.json` and the evidence
+  manifest, distinguishes expected control-flow exits from the terminal failure, traces implicated
+  model calls through `llm.jsonl` and their exact artifacts, and returns a one-paragraph diagnosis
+  plus one page of prioritized, testable recommendations. It explicitly forbids edits and reruns so
+  diagnosis does not mutate the failing evidence or expand into an unreviewed repair.
+
 - 2026-08-15: The bounds governing an acceptance run are configuration rather than constants.
   `capture_output_limit` (default 8 MB), `repair_attempts` (default 6), and `repair_stall_limit`
   (default 2) join the existing `sandbox_mem_limit` as `drydock config` keys, readable from
