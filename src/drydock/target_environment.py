@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,21 +21,20 @@ def _venv_python(build_dir: Path) -> Path:
     return windows if windows.is_file() else build_dir / ".venv" / "bin" / "python"
 
 
-def is_python_project(build_dir: Path) -> bool:
-    return any((build_dir / name).is_file() for name in ("pyproject.toml", "uv.lock"))
-
-
 def resolve_target_environment(build_dir: Path) -> TargetEnvironment:
-    """Return the Target interpreter without consulting Drydock's ``sys.executable``.
+    """Return the best interpreter available for Target acceptance.
 
-    Python/uv projects are strict: acceptance runs only through their local ``.venv``.
-    The ``python3`` fallback is retained for non-project script fixtures and imported kits.
+    A Target-owned environment is preferred. A new build does not necessarily own one yet, so
+    acceptance otherwise uses the active interpreter that is already running Drydock. Strict
+    acceptance still replaces ``PYTHONPATH`` and therefore does not inherit repository-local
+    modules merely because Drydock can import them.
     """
     interpreter = _venv_python(build_dir)
     if interpreter.is_file():
         return TargetEnvironment(interpreter, "Target .venv selected")
-    if is_python_project(build_dir):
-        return TargetEnvironment(None, "Target Python project has no .venv")
+    active = Path(sys.executable)
+    if active.is_file():
+        return TargetEnvironment(active, "Drydock active Python selected")
     fallback = shutil.which("python3")
     if fallback:
         return TargetEnvironment(Path(fallback), "non-project python3 selected")

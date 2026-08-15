@@ -186,13 +186,22 @@ def _target_python_packages(build_dir: str) -> frozenset[str]:
     venv = Path(build_dir) / ".venv"
     candidates = [*venv.glob("lib/python*/site-packages"), venv / "Lib" / "site-packages"]
     names = []
+    found_target_environment = False
     for root in candidates:
         if not root.is_dir():
             continue
+        found_target_environment = True
         for distribution in importlib.metadata.distributions(path=[str(root)]):
             name = distribution.metadata.get("Name", "")
             if name:
                 names.append(canonicalize_package_name(name))
+    if not found_target_environment:
+        environment = resolve_target_environment(Path(build_dir))
+        if environment.interpreter is not None:
+            for distribution in importlib.metadata.distributions():
+                name = distribution.metadata.get("Name", "")
+                if name:
+                    names.append(canonicalize_package_name(name))
     return frozenset(names)
 
 

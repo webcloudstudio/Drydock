@@ -159,6 +159,16 @@ def test_target_package_inventory_is_reused_until_invalidated(tmp_path, monkeypa
         acceptance_requirements.invalidate_target_environment_inventory()
 
 
+def test_active_python_packages_are_available_without_target_venv(tmp_path):
+    requirement = AcceptanceRequirement("python-package", "pytest", "test")
+
+    acceptance_requirements.invalidate_target_environment_inventory()
+    try:
+        assert acceptance_requirements.requirement_available(requirement, tmp_path)
+    finally:
+        acceptance_requirements.invalidate_target_environment_inventory()
+
+
 def test_uv_provisioning_invalidates_target_package_inventory(tmp_path, monkeypatch):
     class Distribution:
         metadata = {"Name": "httpx"}
@@ -195,7 +205,7 @@ def test_uv_provisioning_invalidates_target_package_inventory(tmp_path, monkeypa
         acceptance_requirements.invalidate_target_environment_inventory()
 
 
-def _authorize(target, answer: str) -> None:
+def _authorize(target, answer: str, package: str = "httpx") -> None:
     """Persist an answered Commander authorization decision in DECISIONS.json."""
     write_decisions(
         target / "DECISIONS.json",
@@ -211,7 +221,7 @@ def _authorize(target, answer: str) -> None:
                 archived=False,
                 title="Authorize health-route test tooling",
                 description=(
-                    "Authorize python-package=httpx for test scope. Affected acceptance check: "
+                    f"Authorize python-package={package} for test scope. Affected acceptance check: "
                     "FEATURE-Health.md#health-route."
                 ),
                 options=(),
@@ -250,7 +260,7 @@ def test_broad_commander_test_harness_guidance_authorizes_later_tools(tmp_path):
     _authorize(target, "Approve all test harnesses")
 
     auth = authorization_for(
-        AcceptanceRequirement("python-package", "playwright", "test"),
+        AcceptanceRequirement("python-package", "future-harness-fixture", "test"),
         target_dir=target,
         build_dir=tmp_path / "build",
     )
@@ -276,20 +286,21 @@ def test_broad_test_guidance_does_not_authorize_runtime_scope(tmp_path):
 def test_narrow_commander_answer_authorizes_only_named_tool_and_scope(tmp_path):
     target = tmp_path / "Demo"
     target.mkdir()
-    _authorize(target, "Approve httpx for test scope only")
+    package = "commander-httpx-fixture"
+    _authorize(target, f"Approve {package} for test scope only", package)
 
     httpx = authorization_for(
-        AcceptanceRequirement("python-package", "httpx", "test"),
+        AcceptanceRequirement("python-package", package, "test"),
         target_dir=target,
         build_dir=tmp_path / "build",
     )
     playwright = authorization_for(
-        AcceptanceRequirement("python-package", "playwright", "test"),
+        AcceptanceRequirement("python-package", "unapproved-harness-fixture", "test"),
         target_dir=target,
         build_dir=tmp_path / "build",
     )
     runtime = authorization_for(
-        AcceptanceRequirement("python-package", "httpx", "runtime"),
+        AcceptanceRequirement("python-package", package, "runtime"),
         target_dir=target,
         build_dir=tmp_path / "build",
     )

@@ -40,6 +40,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-15: Programmatic acceptance no longer rejects a newly generated Python Target solely
+  because it has no `.venv`. Acceptance prefers the Target `.venv` when present and otherwise
+  executes through the active Python interpreter already running Drydock. Strict Target runs
+  still replace `PYTHONPATH`, preventing repository-local Drydock modules from leaking into the
+  check. Dependency availability is inventoried from the same selected interpreter. This repairs
+  UAT builds whose generated `pyproject.toml` was tested successfully before Drydock reclassified
+  every acceptance criterion as `UNVERIFIED` with `Target Python project has no .venv`.
+
 - 2026-08-15: UAT run and project reports replace the five-step verification guide and four-item
   limitation statement with a compact `RUN SUMMARY` linking the input specification, delivered
   code, and external test results, followed by two `RUN NOTES`. A nonzero `drydock status` exit is

@@ -2,7 +2,7 @@
 
 <img src="docs/drydock_logo.png" alt="Drydock" width="160" />
 
-**Drydock turns specifications into working software.**
+**Drydock turns specifications into tested working software.**
 
 Specification driven. Agile. Test driven. Dependency-aware builds. Dedicated web console.
 Enterprise guardrails.
@@ -23,7 +23,8 @@ Enterprise guardrails.
 
 ## Overview
 
-**Drydock turns a long specifications into an ordered build and publishes the tests, prompts, changes, and release verdict as a verifiable receipt.**
+**Drydock turns messy specifications into tested working software.**
+**A repeatable method to build from the specification and evolve with it.**
 
 Drydock imports your source material, creates stories using agile best practices, decomposes your sources into typed blueprints (stories) related using a graph database.  Drydock will run context aware builds.  Each story has deterministic test driven acceptance criteria.
 

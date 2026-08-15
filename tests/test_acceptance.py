@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -181,9 +182,17 @@ def test_malformed_requirements_are_rejected(tmp_path, declaration):
         parse_programmatic_acceptance(path)
 
 
-def test_strict_target_execution_does_not_fall_back_to_drydock_python(tmp_path):
+def test_new_python_target_uses_drydock_active_python_for_acceptance(tmp_path):
     (tmp_path / "pyproject.toml").write_text("[project]\nname='target'\nversion='0'\n")
-    check = ProgrammaticAcceptance("strict", "FEATURE-X.md", "Strict.", "assert True")
+    (tmp_path / "target_module.py").write_text(
+        "import pytest\nVALUE = pytest.__name__\n", encoding="utf-8"
+    )
+    check = ProgrammaticAcceptance(
+        "strict",
+        "FEATURE-X.md",
+        "Strict.",
+        "import target_module\nassert target_module.VALUE == 'pytest'",
+    )
 
     result = run_programmatic_acceptance(
         (check,),
@@ -193,15 +202,8 @@ def test_strict_target_execution_does_not_fall_back_to_drydock_python(tmp_path):
         strict_target=True,
     )[0]
 
-    assert not result.passed
-    assert result.interpreter == ""
-    # No interpreter means no assertion ran, so this is a non-result about the kit rather than
-    # a fleet of product failures.
-    assert result.outcome == acceptance.OUTCOME_UNVERIFIED
-    assert result.error == (
-        "unverified acceptance: acceptance environment unavailable: "
-        "Target Python project has no .venv"
-    )
+    assert result.passed
+    assert result.interpreter == sys.executable
 
 
 def test_target_venv_cannot_import_a_package_available_only_on_drydock_pythonpath(
