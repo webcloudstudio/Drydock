@@ -759,8 +759,10 @@ def test_the_kit_index_tags_a_degraded_run_distinctly(tmp_path: Path) -> None:
 def _stage(case: Path, label: str, argv: list[str], returncode: int) -> None:
     """Add one more executed lifecycle stage to a fixture run, with its captured streams."""
     commands_dir = case / "evidence" / "commands"
-    for stream in ("stdout", "stderr"):
-        (commands_dir / f"{label}.{stream}.log").write_text("", encoding="utf-8")
+    # stdout carries the stage's account of itself; stderr is empty, which is the ordinary case
+    # for a command that succeeded. An empty stream is never linked or given a viewer page.
+    (commands_dir / f"{label}.stdout.log").write_text(f"{label} ran\n", encoding="utf-8")
+    (commands_dir / f"{label}.stderr.log").write_text("", encoding="utf-8")
     record = json.loads((case / "result.json").read_text(encoding="utf-8"))
     record["commands"].append({
         "argv": argv,
@@ -919,3 +921,47 @@ def test_the_uat_page_keeps_its_own_stamp_after_the_renderer_was_shared(tmp_path
 
     assert '<span class="sub">Drydock UAT</span>' in page
     assert "User Acceptance Test — Run Report" in page
+
+
+def _write_stream(case: Path, label: str, stream: str, text: str) -> None:
+    (case / "evidence" / "commands" / f"{label}.{stream}.log").write_text(text, encoding="utf-8")
+
+
+def test_an_empty_artifact_is_listed_but_never_linked_or_given_a_viewer(tmp_path: Path) -> None:
+    """A page reading "This file is empty." wastes a click and misleads on a failed command:
+    the reader goes looking for the failure and is handed a blank stdout while the explanation
+    sits in stderr. Observed in the CommonMark UAT of 2026-08-15."""
+    case = _complete_run(tmp_path / "CommonMark")
+    _write_stream(case, "04-test", "stdout", "")
+    _write_stream(case, "04-test", "stderr", "sh: 0: cannot open full_test.sh: No such file\n")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert not (case / "view" / "evidence" / "commands" / "04-test.stdout.log.html").exists()
+    assert (case / "view" / "evidence" / "commands" / "04-test.stderr.log.html").exists()
+    assert "04-test.stdout.log.html" not in page
+    assert "This file is empty." not in page
+    assert "04-test.stdout.log" in page  # still inventoried, marked empty
+
+
+def test_the_failure_excerpt_quotes_the_first_failing_stage_not_only_the_last(
+    tmp_path: Path,
+) -> None:
+    """The first non-zero stage is where the run diverged; later ones are usually its
+    consequence — a test harness the aborted build never delivered. Quoting only the last hands
+    the reader the symptom and hides the cause."""
+    case = _complete_run(tmp_path / "CommonMark")
+    record = json.loads((case / "result.json").read_text(encoding="utf-8"))
+    for command in record["commands"]:
+        if command["label"] in {"04-test", "06-score-release"}:
+            command["returncode"] = 1
+    (case / "result.json").write_text(json.dumps(record), encoding="utf-8")
+    _write_stream(case, "04-test", "stderr", "cannot open full_test.sh\n")
+    _write_stream(case, "06-score-release", "stderr", "release refused\n")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert "Recorded failure output" in page
+    assert "cannot open full_test.sh" in page
+    assert "release refused" in page
+    assert "where the run diverged" in page

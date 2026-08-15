@@ -105,6 +105,40 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-15: A failed acceptance criterion now reports why it failed everywhere it is reported.
+  `drydock score acceptance` previously printed the last line of the check's traceback, which for
+  `assert result.returncode == 0` is the bare word `AssertionError` — a symbol naming no defect,
+  and one that reads as an internal Drydock fault — while the check's own tally on stdout was
+  discarded. Both the build report and the score report now render one bounded block per failure:
+  the assertion that failed, the process exit code, the exception with its message, and the last
+  twelve lines of what the check itself printed. `SOUNDINGS.md` keeps a one-line cell, now the
+  recovered assertion rather than an exception name. A bare exception is never presented alone.
+
+- 2026-08-15: Acceptance attributes a criterion that dies below its own frame to the criterion
+  rather than to the build. A check that hands `subprocess.run` an `int` in its argv raises
+  `TypeError` several standard-library frames down without the built code running at all;
+  attribution previously required the deepest frame to be the check, so such a criterion was
+  graded a product failure, consumed the whole repair budget, and closed its block `closed/failed`
+  with no implementation able to reopen it. A traceback whose frames are the check and the
+  standard library, with none inside the build tree, is now a `malformed check` — reported,
+  terminal, and never charged to the build. One frame in the built tree still makes it a genuine
+  red, and a `FileNotFoundError` reading a deliverable that does not exist yet remains the
+  expected red baseline.
+
+- 2026-08-15: `drydock status <Target> --check` names the blocks that failed in its one-line
+  reason (`1 closed/failed; failed: block-references`) instead of reporting a bare count.
+
+- 2026-08-15: UAT report pages no longer link empty artifacts or generate viewer pages for them.
+  An empty stdout beside a failed command sent the reader to a page reading "This file is empty."
+  while the explanation sat in the sibling stderr; empty files stay inventoried and are marked
+  `empty`. The recorded failure excerpt now quotes the first stage that exited non-zero as well as
+  the last, since later failures are usually consequences of the first.
+
+- 2026-08-15: `prompts/uat_diagnostic.md` (V3) replaces its one-paragraph diagnosis with five
+  fixed sections — Verdict, Root Cause, Consequences, Reporting Defects, Recommended Actions — in
+  single-line bullets targeting 250 words, so a diagnosis separates the causal defect from its
+  downstream effects and states where the run's own evidence failed to explain itself.
+
 - 2026-08-15: Scoring commands no longer echo Codex's shell command and exit-event stream to the
   operator console. The raw LLM artifact retains those provider events as execution evidence;
   normal output keeps call status, quiet-run heartbeats, and the rendered scoring result.

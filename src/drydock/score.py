@@ -28,6 +28,8 @@ from drydock.acceptance import (
     AcceptanceObservation,
     ProgrammaticAcceptance,
     all_programmatic_acceptance,
+    assertion_summary,
+    failure_detail,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
     read_prepassed_acceptance,
@@ -108,6 +110,10 @@ class AcVerdict:
     # Blueprint file is not claimed by any story in the Manifest.
     story: str = ""
     feature: str = ""
+    # The bounded failure block — assertion, exit code, and the tail of what the check itself
+    # reported. ``evidence`` is one line because SOUNDINGS.md is a table; this is what a reader
+    # needs to act, and it is printed under the criterion rather than hidden in a log file.
+    detail: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -134,19 +140,31 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _observation_verdict(obs: AcceptanceObservation) -> tuple[str, str]:
-    """Map a per-assertion observation to a board ``(status, evidence)`` pair.
+def _observation_verdict(obs: AcceptanceObservation) -> tuple[str, str, tuple[str, ...]]:
+    """Map a per-assertion observation to a board ``(status, evidence, detail)`` triple.
 
     A passing proof that fails integrity analysis is demoted to ``UNVERIFIED`` (vacuous), so a
     green checkmark always reflects a proof that actually exercises behavior.
+
+    A failure reports the assertion that failed and the tail of what the check observed, not the
+    last line of a traceback. The last line of ``assert result.returncode == 0`` is the word
+    ``AssertionError``, which names no defect and reads as an internal fault; the check's own
+    reported output — ``10 passed, 1 failed`` — is the diagnosis, and it is on stdout.
     """
     if not obs.passed:
-        tail = obs.stderr.strip().splitlines()[-1] if obs.stderr.strip() else "FAIL"
-        return FAIL, obs.error or tail
+        summary = assertion_summary(obs.stderr, obs.error, override=obs.error)
+        detail = failure_detail(
+            stderr=obs.stderr,
+            stdout=obs.stdout,
+            return_code=obs.return_code,
+            error=obs.error,
+            override=obs.error,
+        )
+        return FAIL, summary, tuple(detail)
     if not obs.integrity_ok:
         reasons = "; ".join(obs.integrity_reasons)
-        return UNVERIFIED, f"proof failed integrity: {reasons or 'no effective failure path'}"
-    return PASS, ""
+        return UNVERIFIED, f"proof failed integrity: {reasons or 'no effective failure path'}", ()
+    return PASS, "", ()
 
 
 def _resolve_scope_block(plan: BuildPlan, step_id: str):
@@ -269,9 +287,10 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
     verdicts: list[AcVerdict] = []
     rows: list[Sounding] = []
     for obs in observations:
-        status, evidence = _observation_verdict(obs)
+        status, evidence, detail = _observation_verdict(obs)
         if status == PASS and obs.check_id in prepassed:
             status = PREPASSED
+            detail = ()
             evidence = (
                 "green at this block's baseline too, before its code existed — confirm the "
                 "criterion exercises the story's work"
@@ -279,7 +298,9 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
         stamp = verified_at if status != UNVERIFIED else ""
         story, feature = owners.get(obs.source, ("", ""))
         verdicts.append(
-            AcVerdict(obs.check_id, obs.intent, status, evidence, obs.source, story, feature)
+            AcVerdict(
+                obs.check_id, obs.intent, status, evidence, obs.source, story, feature, detail
+            )
         )
         rows.append(
             Sounding(

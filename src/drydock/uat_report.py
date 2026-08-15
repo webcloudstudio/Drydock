@@ -714,22 +714,39 @@ def _render_case(
 
     excerpt = ""
     if failed:
-        last = failed[-1]
-        sections = []
-        for stream in ("stdout_path", "stderr_path"):
-            relative = _relative(last.get(stream), case_root)
-            text = _tail(case_root / relative) if relative else ""
-            if text:
-                sections.append(
-                    f'<p class="note">Tail of <code>{html.escape(relative)}</code>.</p>'
-                    f"<pre>{html.escape(text[-4000:])}</pre>"
-                )
-        if sections:
+        # The first non-zero stage is the one that explains the run; every later failure is
+        # usually its consequence — a test harness the aborted build never delivered, a score
+        # over a tree that was never finished. Quoting only the last stage hands the reader the
+        # symptom and hides the cause, so both ends are quoted when they differ.
+        quoted = [failed[0]] if len(failed) == 1 else [failed[0], failed[-1]]
+        blocks: list[str] = []
+        for position, command in enumerate(quoted):
+            sections = []
+            for stream in ("stdout_path", "stderr_path"):
+                relative = _relative(command.get(stream), case_root)
+                text = _tail(case_root / relative) if relative else ""
+                if text:
+                    sections.append(
+                        f'<p class="note">Tail of <code>{html.escape(relative)}</code>.</p>'
+                        f"<pre>{html.escape(text[-4000:])}</pre>"
+                    )
+            if not sections:
+                continue
+            if len(quoted) == 1:
+                role = "exited nonzero"
+            elif position == 0:
+                role = "is the first stage that exited nonzero, so it is where the run diverged"
+            else:
+                role = "is the last stage that exited nonzero"
+            label = html.escape(str(command.get("label") or ""))
+            blocks.append(
+                f'<p class="note">Stage <code>{label}</code> {role}.</p>' + "".join(sections)
+            )
+        if blocks:
             excerpt = (
                 "<h2>Recorded failure output</h2>"
-                f'<p class="note">Stage <code>{html.escape(str(last.get("label") or ""))}</code> '
-                "exited nonzero. The text below is quoted verbatim from the captured streams.</p>"
-                + "".join(sections)
+                '<p class="note">Quoted verbatim from the captured streams. A stage that wrote '
+                "nothing to a stream is omitted rather than shown empty.</p>" + "".join(blocks)
             )
 
     call_rows = [

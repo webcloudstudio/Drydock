@@ -514,8 +514,6 @@ def _viewer_page(base: Path, relative: str, kind: str, home: str) -> str:
     up = "../" * depth
     markdown = Path(relative).suffix.lower() in _MARKDOWN_SUFFIXES
     body = render_markdown(text) if markdown else f"<pre>{html.escape(text)}</pre>"
-    if not text.strip():
-        body = '<p class="note">This file is empty.</p>'
     return (
         '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
         '<meta charset="utf-8">\n'
@@ -546,6 +544,11 @@ def _write_viewers(base: Path, relatives: Iterable[str], kind: str, home: str) -
     for relative in sorted(set(relatives)):
         source = base / relative
         if not source.is_file() or not _is_viewable(source):
+            continue
+        # An empty artifact has nothing to show. A page reading "This file is empty." wastes a
+        # click and, on a failed command, actively misleads: the reader went looking for the
+        # failure and was handed a blank stdout while the explanation sat in stderr.
+        if source.stat().st_size == 0:
             continue
         page = _viewer_page(base, relative, kind, home)
         if not page:
@@ -781,11 +784,13 @@ def _tree(files: Sequence[FileRecord], root: str, display_root: str) -> str:
     # The tree is rooted at the group's own directory, so its name is the caption row and is
     # not repeated as the first branch.
     for depth, name, record, size in _tree_rows(files, f"{root}/"):
-        cell = (
-            _anchor(record.path, name)
-            if record is not None
-            else f"<strong>{html.escape(name)}</strong>"
-        )
+        # A zero-byte artifact is listed but never linked: there is nothing behind the link.
+        if record is None:
+            cell = f"<strong>{html.escape(name)}</strong>"
+        elif record.bytes == 0:
+            cell = f'{html.escape(name)} <span class="tag">empty</span>'
+        else:
+            cell = _anchor(record.path, name)
         raw = (
             '<span class="tag raw">raw</span>'
             if _is_raw(record.path if record is not None else f"{root}/{name}")

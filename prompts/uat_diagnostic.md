@@ -1,10 +1,10 @@
 ---
 name: uat_diagnostic
 description: Diagnose the latest Drydock UAT run without changing the repository or generated run evidence.
-version: 20260815 V2
-intent: Find the latest requested UAT run, establish its actual failure chain from preserved evidence, summarize it in one paragraph, and recommend bounded corrective work.
+version: 20260815 V3
+intent: Find the latest requested UAT run, establish its actual failure chain from preserved evidence, separate the root cause from its consequences, and recommend bounded corrective work in a form an operator can read at a glance.
 command: operator diagnostic prompt
-output: One-paragraph diagnosis followed by a one-page prioritized recommendation list.
+output: A five-section diagnosis of about 250 words in single-line bullets, ending in a prioritized action list.
 ---
 
 # Diagnose the Latest Drydock UAT Run
@@ -73,22 +73,36 @@ implementation, and acceptance gates. Before blaming implementation or the model
 
 ## Output Contract
 
-Return exactly two sections:
+Return exactly five sections, in this order, under these headings. Every bullet is one short
+sentence on one line. No paragraphs, no run-on sentences, no restated analysis. The whole report
+targets 250 words: a reader who can diagnose the run themselves needs the facts and the file
+paths, not the reasoning that produced them.
 
-### Diagnosis
+### Verdict
 
-One paragraph. Name the run id, terminal failing stage, direct cause, contamination path when
-applicable, contributing conditions, and whether each other non-zero exit or logging anomaly caused
-the failure. Cite repository-relative evidence paths and source locations inline.
+One line: the run id, its status, and the terminal stage with its exit code.
+
+### Root Cause
+
+One-line bullets tracing the first causal defect to the stage that stopped. Name the exact file and
+line where the defect lives. Stop when the cause is stated; do not continue into effects.
+
+### Consequences (not separate defects)
+
+One-line bullets for every other non-zero exit, failed criterion, or anomaly that followed from the
+root cause. State plainly which of these are not independent defects. Any failure that is genuinely
+independent is stated here as such, or belongs under Root Cause.
+
+### Reporting Defects
+
+One-line bullets naming each place the run's own evidence failed to explain itself: discarded
+output, truncated diagnostics, an unlinked or empty artifact, a verdict that contradicts the state
+it reports. Cite the source location that drops the information. Omit the section when the evidence
+was sufficient.
 
 ### Recommended Actions
 
-A prioritized list that fits on one page. For each item state:
-
-1. the proposed change;
-2. why it addresses established evidence;
-3. the narrow regression test or verification;
-4. the risk of making the change.
-
-End with a single recommended implementation boundary: what to fix now and what to defer. Do not
-make changes as part of this diagnostic.
+A numbered list, most important first. Each item is a bold one-line change plus the source location,
+with at most two indented sub-bullets: how it is verified, and its risk when the risk is not low.
+Close with one line stating what to fix now and what to defer, and one line stating any condition
+that must hold before the UAT is rerun. Do not make changes as part of this diagnostic.

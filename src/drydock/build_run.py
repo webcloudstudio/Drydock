@@ -35,6 +35,8 @@ from drydock.acceptance import (
     AcceptanceRequirement,
     AcceptanceRunResult,
     ProgrammaticAcceptance,
+    assertion_summary,
+    failure_detail,
     is_terminal_check_failure,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
@@ -1126,36 +1128,12 @@ def _malformed_verdict(result: AcceptanceRunResult | AcceptanceObservation) -> b
 
 
 def _assertion_summary(result: AcceptanceRunResult) -> str:
-    """The concrete reason a programmatic check failed, in one line.
-
-    A file-backed run's stderr carries the source line and the exception, so the failing
-    assertion is recoverable: ``assert a + b == c`` → ``AssertionError``. Falls back to the
-    check's own error (e.g. a timeout) when no traceback is present.
-
-    A resource verdict outranks the traceback. When the built code exhausted memory or ran
-    past its budget, the bare ``MemoryError`` at the top of the stack names the symptom; the
-    verdict names the defect, and that is what a repair pass has to act on.
-    """
-    if _resource_verdict(result):
-        return str(result.error)
-    lines = [line.rstrip() for line in (result.stderr or "").splitlines() if line.strip()]
-    assertion = next(
-        (line.strip() for line in reversed(lines) if line.strip().startswith("assert ")), ""
+    """The concrete reason a programmatic check failed, in one line."""
+    return assertion_summary(
+        result.stderr,
+        result.error,
+        override=str(result.error) if _resource_verdict(result) else None,
     )
-    exception = next(
-        (line.strip() for line in reversed(lines) if re.match(r"^\w+(Error|Exception)\b", line)),
-        "",
-    )
-    parts = [part for part in (assertion, exception) if part]
-    if parts:
-        return " → ".join(parts)
-    if result.error:
-        return result.error
-    return "failed with no diagnostic output"
-
-
-# Enough of a runner's summary to show its tally without pasting a whole suite log.
-_OBSERVED_OUTPUT_LINES = 12
 
 
 def _render_ac_failure_chain(
@@ -1189,27 +1167,19 @@ def _render_ac_failure_chain(
         for result in by_story[key]:
             intent = result.intent.strip() or result.check_id
             lines.append(f"    - AC {result.check_id} — {intent}")
-            lines.append(f"        assertion: {_assertion_summary(result)}")
-            if result.return_code is not None:
-                lines.append(f"        process exit code: {result.return_code}")
-            if result.stderr.strip():
-                exception = next(
-                    (
-                        line.strip()
-                        for line in reversed(result.stderr.splitlines())
-                        if re.match(r"^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception)\b", line.strip())
-                    ),
-                    "",
-                )
-                if exception:
-                    lines.append(f"        error: {exception}")
             # The assertion alone does not say why it failed. The check prints what it captured
             # before asserting, so the runner's own account of the run is already in stdout —
             # carry its tail into the report rather than making the reader open the evidence file.
-            observed = [line.rstrip() for line in result.stdout.splitlines() if line.strip()]
-            if observed:
-                lines.append("        observed output:")
-                lines.extend(f"          {line}" for line in observed[-_OBSERVED_OUTPUT_LINES:])
+            lines.extend(
+                failure_detail(
+                    stderr=result.stderr,
+                    stdout=result.stdout,
+                    return_code=result.return_code,
+                    error=result.error,
+                    override=str(result.error) if _resource_verdict(result) else None,
+                    indent="        ",
+                )
+            )
     return "\n".join(lines)
 
 

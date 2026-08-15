@@ -367,6 +367,16 @@ class TestCompletionCheck:
         assert check.exit_code() == 1
         assert check.blocked is False
 
+    def test_the_incomplete_reason_names_the_blocks_that_failed(self, tmp_target_root):
+        """A count says a build stopped without saying where. The one line an operator reads
+        after a failed run has to point at the story whose evidence explains it."""
+        tgt = self._target(
+            tmp_target_root, APPROVED_PLAN.replace("state: pending", "state: closed/failed")
+        )
+        check = completion_check("TestTarget", tgt)
+        assert "1 closed/failed" in check.reason
+        assert "failed: core-feature" in check.reason
+
     def test_not_started_is_blocked(self, tmp_target_root):
         tgt = self._target(tmp_target_root, None)
         check = completion_check("TestTarget", tgt)

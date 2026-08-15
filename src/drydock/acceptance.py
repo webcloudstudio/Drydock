@@ -83,6 +83,88 @@ def is_terminal_check_failure(error: str | None) -> bool:
     return bool(error) and error.startswith(TERMINAL_FAILURE_PREFIXES)
 
 
+#: Enough of a runner's summary to show its tally without pasting a whole suite log. A check
+#: prints its own account of what it observed before asserting, and that account is the reason
+#: the assertion failed; a bounded tail carries it without turning a report into a log dump.
+OBSERVED_OUTPUT_LINES = 12
+_EXCEPTION_TAIL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception)\b")
+
+
+def assertion_summary(stderr: str, error: str | None = None, *, override: str | None = None) -> str:
+    """The concrete reason a programmatic check failed, in one line.
+
+    A file-backed run's stderr carries the source line and the exception, so the failing
+    assertion is recoverable: ``assert a + b == c`` → ``AssertionError``. Falls back to the
+    check's own error (e.g. a timeout) when no traceback is present.
+
+    A bare exception name is never returned alone. ``AssertionError`` on its own reads to every
+    operator as an internal Drydock fault rather than as the product missing an expectation, so
+    an exception with neither a message nor a recoverable source line is stated as what it is.
+
+    ``override`` outranks the traceback. When the built code exhausted memory or ran past its
+    budget, the bare ``MemoryError`` at the top of the stack names the symptom; the override
+    names the defect, and that is what a repair pass has to act on.
+    """
+    if override:
+        return override
+    lines = [line.rstrip() for line in (stderr or "").splitlines() if line.strip()]
+    assertion = next(
+        (line.strip() for line in reversed(lines) if line.strip().startswith("assert ")), ""
+    )
+    exception = next(
+        (line.strip() for line in reversed(lines) if _EXCEPTION_TAIL_RE.match(line.strip())),
+        "",
+    )
+    if assertion and exception:
+        return f"{assertion} → {exception}"
+    if assertion:
+        return assertion
+    if exception:
+        # ``AssertionError`` with no message and no recoverable source line. Name the class of
+        # failure instead of the exception, so the reader is not left holding a symbol.
+        if ":" not in exception:
+            return f"the check's expectation was not met ({exception}, no message)"
+        return exception
+    if error:
+        return error
+    return "failed with no diagnostic output"
+
+
+def failure_detail(
+    *,
+    stderr: str,
+    stdout: str,
+    return_code: int | None = None,
+    error: str | None = None,
+    override: str | None = None,
+    indent: str = "",
+) -> list[str]:
+    """Render one failed check as a readable block: the assertion, the exit, what it observed.
+
+    This is the whole diagnostic an operator needs at the point of failure. It is deliberately
+    bounded: the summary line, the exit code, the exception, and the tail of the check's own
+    reported output. The full streams stay in the evidence file for the reader who wants them.
+    """
+    lines = [f"{indent}assertion: {assertion_summary(stderr, error, override=override)}"]
+    if return_code is not None:
+        lines.append(f"{indent}process exit code: {return_code}")
+    exception = next(
+        (
+            line.strip()
+            for line in reversed((stderr or "").splitlines())
+            if _EXCEPTION_TAIL_RE.match(line.strip())
+        ),
+        "",
+    )
+    if exception and ":" in exception:
+        lines.append(f"{indent}error: {exception}")
+    observed = [line.rstrip() for line in (stdout or "").splitlines() if line.strip()]
+    if observed:
+        lines.append(f"{indent}observed output:")
+        lines.extend(f"{indent}  {line}" for line in observed[-OBSERVED_OUTPUT_LINES:])
+    return lines
+
+
 _MEMORY_SIGNATURES = ("MemoryError", "Cannot allocate memory", "std::bad_alloc", "Killed")
 # Exceptions that, when raised by the snippet's own frame, mean the snippet is defective:
 # it reads a name it never bound or does not parse. Neither is a statement about the code
@@ -176,13 +258,40 @@ def _timeout_failure_text(check: ProgrammaticAcceptance) -> str:
     )
 
 
-def _own_frame_exception(return_code: int, stderr: str, script_name: str) -> tuple[str, str] | None:
+def _frame_in_build(frame: str, script_name: str, build_dir: Path) -> bool:
+    """True when a traceback frame names a file inside the built tree."""
+    path = Path(frame)
+    if path.name == script_name:
+        return False
+    # A relative frame is relative to the acceptance cwd, which is the build directory.
+    candidate = path if path.is_absolute() else build_dir / path
+    try:
+        resolved = candidate.resolve()
+        root = build_dir.resolve()
+    except OSError:
+        return False
+    return resolved == root or root in resolved.parents
+
+
+def _own_frame_exception(
+    return_code: int,
+    stderr: str,
+    script_name: str,
+    build_dir: Path | None = None,
+) -> tuple[str, str] | None:
     """Return ``(exception, detail)`` when the check died in its own frame, else ``None``.
 
     Attribution is by traceback frame, not by exception type alone. The same exception means
     opposite things depending on where it was raised: inside the code under test it is a
     genuine red the build must drive green; inside the check's own frame it says the check
     never reached the code under test at all.
+
+    The deepest frame is not always the check's own, even when the check is what is wrong. A
+    criterion that calls ``subprocess.run`` with an ``int`` in its argv dies inside
+    ``subprocess.py``, several stdlib frames below the check, without the built code running
+    at all. Such a traceback is still the check's fault, so it qualifies when the check appears
+    in the traceback and *no* frame belongs to the built tree. One build frame is enough to
+    disqualify it: that means the product ran, and its failure is the build's to fix.
     """
     if return_code == 0:
         return None
@@ -193,9 +302,14 @@ def _own_frame_exception(return_code: int, stderr: str, script_name: str) -> tup
     if match is None:
         return None
     frames = _TRACEBACK_FILE_RE.findall(stderr)
-    if not frames or Path(frames[-1]).name != script_name:
-        # The failure surfaced inside the code under test. That is the build's job to fix.
+    if not frames:
         return None
+    if Path(frames[-1]).name != script_name:
+        if build_dir is None or not any(Path(frame).name == script_name for frame in frames):
+            # The failure surfaced inside the code under test. That is the build's job to fix.
+            return None
+        if any(_frame_in_build(frame, script_name, build_dir) for frame in frames):
+            return None
     return match.group(1).rsplit(".", 1)[-1], match.group(2).strip()
 
 
@@ -210,8 +324,11 @@ def _environment_failure(
     An assertion that fails because it could not read a file, lacked a permission, or found a
     declared tool absent never exercised the code under test. It is not evidence that the
     implementation is wrong; it is evidence that the kit around the implementation is wrong.
-    Only failures raised in the check's own frame qualify — the same exception from inside the
-    built code is a product defect and stays a FAIL.
+    Only failures raised in the check's own top frame qualify — the same exception from inside
+    the built code is a product defect and stays a FAIL. Attribution here is deliberately
+    stricter than :func:`_malformed_failure`: a ``FileNotFoundError`` raised deep in the standard
+    library is usually the *expected* red baseline, where the check reads a deliverable the build
+    has not written yet, and classifying that as a kit fault would erase every red baseline.
     """
     attributed = _own_frame_exception(return_code, stderr, script_name)
     if attributed is None:
@@ -243,7 +360,9 @@ def _environment_failure(
     return None
 
 
-def _malformed_failure(return_code: int, stderr: str, script_name: str) -> str | None:
+def _malformed_failure(
+    return_code: int, stderr: str, script_name: str, build_dir: Path | None = None
+) -> str | None:
     """Classify a non-zero exit as a defective snippet, or ``None`` when it is not.
 
     ``NameError`` raised inside the code under test is a genuine red the build must drive
@@ -251,7 +370,7 @@ def _malformed_failure(return_code: int, stderr: str, script_name: str) -> str |
     nothing binds — most often a name a sibling check defined, which is not in scope because
     every check runs as its own script in its own process.
     """
-    attributed = _own_frame_exception(return_code, stderr, script_name)
+    attributed = _own_frame_exception(return_code, stderr, script_name, build_dir)
     if attributed is None:
         return None
     exception, detail = attributed
@@ -1103,7 +1222,7 @@ def run_programmatic_acceptance(
             verdict = (
                 _resource_failure(return_code, stderr, limit_mb)
                 or _environment_failure(return_code, scrubbed, script.name, check.requirements)
-                or _malformed_failure(return_code, scrubbed, script.name)
+                or _malformed_failure(return_code, scrubbed, script.name, build_dir)
                 or _missing_fixture_failure(return_code, scrubbed, check.code, build_dir)
             )
             # A malformed snippet, a missing fixture, and an environment fault all mean the

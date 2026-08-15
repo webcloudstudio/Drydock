@@ -2207,8 +2207,15 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
             continue
         if verdict.summary.strip():
             print(f"        intent: {verdict.summary.strip()}")
-        for line in (verdict.evidence or "").strip().splitlines() or ["(no detail captured)"]:
-            print(f"        {line}")
+        # The detail block states the assertion, the exit, and what the check itself reported.
+        # It replaces the one-line evidence cell wherever it exists: that cell is a table entry
+        # for SOUNDINGS.md, not a diagnosis an operator can act on.
+        if verdict.detail:
+            for line in verdict.detail:
+                print(f"        {line}")
+        else:
+            for line in (verdict.evidence or "").strip().splitlines() or ["(no detail captured)"]:
+                print(f"        {line}")
         print()
     if report.wrote_soundings:
         print()

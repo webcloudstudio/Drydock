@@ -61,7 +61,8 @@ class TestLoadPrompt:
         assert "evidence/llm.jsonl" in prompt.body
         assert "LINEAGE.json" in prompt.body
         assert "specification-contaminated" in prompt.body
-        assert "exactly two sections" in prompt.body
+        assert "exactly five sections" in prompt.body
+        assert "### Root Cause" in prompt.body
 
     def test_missing_required_field_raises(self, tmp_path, monkeypatch):
         (tmp_path / "broken.md").write_text("---\nname: broken\n---\nbody", encoding="utf-8")

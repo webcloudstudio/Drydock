@@ -265,7 +265,7 @@ def test_a_prepassed_criterion_is_reported_separately_and_does_not_fail_the_run(
     from drydock.score import FAIL, PASS, PREPASSED, AcReport, AcVerdict, _observation_verdict
 
     observation = AcceptanceObservation("leaf-blocks", "FEATURE-Leaf.md", "intent", True, 0, "", "")
-    status, _ = _observation_verdict(observation)
+    status, _, _ = _observation_verdict(observation)
     assert status == PASS
 
     report = AcReport(
@@ -597,3 +597,32 @@ def test_release_score_accepts_an_intact_staged_kit(tmp_path):
     result = score_release("Demo", target_dir, runner=_release_runner())
 
     assert result.verdict == PASSED
+
+
+def test_a_failed_criterion_reports_the_assertion_and_what_the_check_observed():
+    """The score board's one-line cell is a table entry, not a diagnosis.
+
+    Observed in the CommonMark UAT of 2026-08-15: every failing criterion read ``AssertionError``
+    and nothing else, while the tally that explained it sat unused in the check's stdout.
+    """
+    from drydock.acceptance import AcceptanceObservation
+    from drydock.score import FAIL, _observation_verdict
+
+    observation = AcceptanceObservation(
+        "block-input-tabs",
+        "FEATURE-Block-Input.md",
+        "intent",
+        False,
+        1,
+        "10 passed, 1 failed, 0 errored, 644 skipped\n",
+        '  File "block-input-tabs.py", line 11, in <module>\n'
+        "    assert result.returncode == 0\nAssertionError\n",
+    )
+
+    status, evidence, detail = _observation_verdict(observation)
+
+    assert status == FAIL
+    assert evidence == "assert result.returncode == 0 → AssertionError"
+    block = "\n".join(detail)
+    assert "process exit code: 1" in block
+    assert "10 passed, 1 failed" in block

@@ -426,6 +426,11 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
     if remaining:
         counts = Counter(block.state for block in remaining)
         detail = ", ".join(f"{count} {state}" for state, count in sorted(counts.items()))
+        # A count of failures says a build stopped without saying where. Name the blocks so the
+        # one line an operator reads points at the evidence to open next.
+        failures = [block.block_id for block in remaining if block.state.endswith("/failed")]
+        if failures:
+            detail += f"; failed: {', '.join(failures)}"
         return CompletionCheck(target, RETRYABLE, detail, total, verified, len(remaining))
     return CompletionCheck(target, COMPLETE, "all blocks closed/verified", total, verified, 0)
 

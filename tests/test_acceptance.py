@@ -987,3 +987,98 @@ def test_a_transform_expectation_does_not_bind():
 def test_an_unparseable_criterion_reports_no_oracle_finding():
     """The compile gate owns unparseable code; two reports of one fault help nobody."""
     assert _criterion("assert render( ==").retyped_expectations == ()
+
+
+# --- Deep-frame attribution -------------------------------------------------
+#
+# The deepest traceback frame is not always the frame that is wrong. A criterion that hands
+# ``subprocess.run`` an ``int`` in its argv dies several stdlib frames below itself, without
+# the built code running at all. Observed in the CommonMark UAT of 2026-08-15, where such a
+# criterion consumed the whole repair budget and closed its block failed.
+
+
+def test_a_check_that_dies_in_the_stdlib_without_touching_the_build_is_malformed(tmp_path):
+    result = _run_one(
+        "import subprocess, sys\n"
+        "subprocess.run([sys.executable, '-c', 'pass', '--number', 999999])\n",
+        tmp_path,
+    )
+    assert not result.passed
+    assert result.skipped, "a criterion that never reached the build must not be charged to it"
+    assert result.error is not None
+    assert result.error.startswith(acceptance.MALFORMED_FAILURE_PREFIX)
+    assert "TypeError" in result.error
+
+
+def test_a_stdlib_failure_raised_through_built_code_stays_a_genuine_red(tmp_path):
+    """One frame inside the built tree is enough: the product ran, so the build owns it."""
+    (tmp_path / "built_module.py").write_text(
+        "import subprocess, sys\n\n\ndef run():\n"
+        "    return subprocess.run([sys.executable, '-c', 'pass', 7])\n",
+        encoding="utf-8",
+    )
+    result = _run_one("from built_module import run\nassert run().returncode == 0", tmp_path)
+    assert not result.passed
+    assert not result.skipped
+    assert "TypeError" in result.stderr
+    assert result.error is None
+
+
+def test_a_missing_deliverable_read_deep_in_the_stdlib_stays_the_red_baseline(tmp_path):
+    """The expected pre-build red: the check reads a file the build has not written yet.
+
+    ``Path.read_text`` raises ``FileNotFoundError`` inside ``pathlib``, so the traceback has the
+    same shape as a malformed check. It is the opposite verdict, and classifying it would erase
+    every red baseline the build drives green.
+    """
+    result = _run_one(
+        "from pathlib import Path\nassert 'built' in Path('deliverable.txt').read_text()",
+        tmp_path,
+    )
+    assert not result.passed
+    assert not result.skipped
+    assert result.error is None
+
+
+# --- Failure detail ---------------------------------------------------------
+#
+# A bare exception name is not a diagnosis. ``assert result.returncode == 0`` ends its traceback
+# with the word ``AssertionError``, which names no defect and reads as an internal Drydock fault.
+
+
+def test_the_failure_summary_recovers_the_assertion_that_failed():
+    stderr = (
+        'Traceback (most recent call last):\n  File "c.py", line 9, in <module>\n'
+        "    assert result.returncode == 0\nAssertionError\n"
+    )
+    assert acceptance.assertion_summary(stderr) == "assert result.returncode == 0 → AssertionError"
+
+
+def test_a_bare_exception_is_never_reported_as_the_whole_diagnosis():
+    summary = acceptance.assertion_summary("AssertionError\n")
+    assert summary != "AssertionError"
+    assert "AssertionError" in summary
+    assert "not met" in summary
+
+
+def test_the_failure_detail_carries_what_the_check_itself_observed():
+    lines = acceptance.failure_detail(
+        stderr='  File "c.py", line 9, in <module>\n    assert ok\nAssertionError\n',
+        stdout="10 passed, 1 failed, 0 errored\nExample 7 (lines 427-436) Tabs\n",
+        return_code=1,
+    )
+    block = "\n".join(lines)
+    assert "assertion: assert ok → AssertionError" in block
+    assert "process exit code: 1" in block
+    assert "10 passed, 1 failed" in block
+
+
+def test_the_failure_detail_bounds_the_output_it_quotes():
+    lines = acceptance.failure_detail(
+        stderr="AssertionError: nope\n",
+        stdout="\n".join(f"line {index}" for index in range(200)),
+        return_code=1,
+    )
+    quoted = [line for line in lines if line.strip().startswith("line ")]
+    assert len(quoted) == acceptance.OBSERVED_OUTPUT_LINES
+    assert quoted[-1].strip() == "line 199"
