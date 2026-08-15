@@ -859,3 +859,18 @@ def test_the_kit_index_carries_the_latest_run_receipt_with_run_scoped_links(
     assert "It is not a security certification of the delivered code." in page
     assert "Verify this run in five minutes" not in page
     assert all((kit / link).exists() for link in _links(index))
+
+
+def test_the_uat_page_keeps_its_own_stamp_after_the_renderer_was_shared(tmp_path: Path) -> None:
+    """``report_render`` now serves two reports; the UAT stamp must still say UAT.
+
+    The letterhead sub-line is the one piece of chrome that names which report a reader is
+    holding, and it is the only thing the extraction parameterized.
+    """
+    kit = tmp_path / "CommonMark"
+    case = _complete_run(kit)
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert '<span class="sub">Drydock UAT</span>' in page
+    assert "User Acceptance Test — Run Report" in page

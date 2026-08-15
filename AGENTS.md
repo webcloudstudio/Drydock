@@ -212,3 +212,6 @@ unreleased work under `## [Unreleased]`; add a version heading, date, and shippe
 a release is cut. Do not leave a shipped release represented only as `[Unreleased]`, and do not
 describe unreleased work as shipped. Releases are cut with `publish_pypi.sh` after the version is
 updated manually.
+
+# Voice and Responses
+The user does not like wordy responses or over explained ones.  Before emitting output to user questions, reduce the word count so that it ideally fits onto a single screen especially when answering simple questions. If the answers are too long, they are not completely read and errors will enter the code so be precise and short.  Do not omit material information but do not over explain as the user is technical and will understand your responses if they are short.

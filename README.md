@@ -4,8 +4,10 @@
 
 **Drydock turns specifications into working software.**
 
-Specification driven. Agile. Test driven. Dependency-aware builds. A dedicated web console.
-Enterprise guardrails. **No API keys — Drydock runs on your existing Claude or Codex subscription.**
+Specification driven. Agile. Test driven. Dependency-aware builds. Dedicated web console.
+Enterprise guardrails.
+
+**No API keys — Drydock runs on your existing Claude or Codex subscription.**
 
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
@@ -21,7 +23,7 @@ Enterprise guardrails. **No API keys — Drydock runs on your existing Claude or
 
 ## Overview
 
-**Drydock turns specifications into working software.**
+**Drydock turns a long specifications into an ordered build and publishes the tests, prompts, changes, and release verdict as a verifiable receipt.**
 
 Drydock imports your source material, creates stories using agile best practices, decomposes your sources into typed blueprints (stories) related using a graph database.  Drydock will run context aware builds.  Each story has deterministic test driven acceptance criteria.
 
@@ -130,6 +132,7 @@ ai  drydock rigging compact                    # Automanage compaction
     drydock rigging verify                     # Verify rigging compliance
     drydock score ac          MyApp            # Verify Story acceptance criteria
     drydock score build       MyApp            # Post-build report: repairs, tokens, cache
+    drydock score report      MyApp            # Publish the build receipt with its evidence
 ai  drydock score drydock                      # Adversarial self-assessment
 ```
 

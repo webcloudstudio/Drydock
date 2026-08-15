@@ -2260,6 +2260,23 @@ def cmd_score_build(target: str) -> int:
     return 0 if report.blocks and not report.failed_blocks else 1
 
 
+def cmd_score_report(target: str) -> int:
+    """Publish the Target's build receipt. Reads the journals and Target only; runs nothing."""
+    from drydock.config import build_dir_for, get_workspace, require_target_dir
+    from drydock.score_report import ReportError, write_report
+
+    target_dir = require_target_dir(target)
+    build_dir = build_dir_for(target)
+    try:
+        index = write_report(target, get_workspace(), target_dir, build_dir)
+    except ReportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"Receipt: {index}")
+    print(f"Open with: file://{index}")
+    return 0
+
+
 def cmd_score_release(target: str) -> int:
     from drydock.config import (
         get_llm_provider,
@@ -3035,7 +3052,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── score ─────────────────────────────────────────────────────────────────
     # Handles: score spec <Target> (advisory), score ac <Target> (deterministic),
-    # score release <Target> (LLM-assisted),
+    # score release <Target> (LLM-assisted), score report <Target> (deterministic),
     # score drydock (LLM-assisted self-assessment of Drydock itself; no Target).
     p_score = sub.add_parser(
         "score",
@@ -3048,6 +3065,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock score build <Target>             — post-build report: acceptance, repairs, tokens,\n"
             "                                            cache hit rate (deterministic; reads logs only)\n"
             "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n"
+            "drydock score report <Target>            — publish the build receipt to\n"
+            "                                            <build>/<Target>/drydock/index.html with its evidence\n"
             "drydock score drydock                    — adversarial self-assessment of Drydock; writes\n"
             "                                            ranked feature files to docs/drydock_planning/\n\n"
             "--step <id> is accepted only with score ac.\n"
@@ -3056,7 +3075,9 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_score.add_argument(
-        "args", nargs=argparse.REMAINDER, metavar="<spec|ac|build|release|drydock> [<Target>]"
+        "args",
+        nargs=argparse.REMAINDER,
+        metavar="<spec|ac|build|release|report|drydock> [<Target>]",
     )
 
     # ── refit ─────────────────────────────────────────────────────────────────
@@ -3447,8 +3468,10 @@ def _dispatch_score(args: argparse.Namespace) -> int:
 
         record_activity("score release", tokens[1], tokens[1])
         return rc
+    if first == "report" and len(tokens) == 2:
+        return cmd_score_report(tokens[1])
     raise UsageError(
-        "Usage: drydock score <spec|ac|build|release> <Target> | drydock score drydock"
+        "Usage: drydock score <spec|ac|build|release|report> <Target> | drydock score drydock"
     )
 
 
@@ -3587,7 +3610,14 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
 # Commands that are pure reports and are never recorded in history.jsonl.
 # Everything else (including failures) is logged with its return code.
-def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: int) -> None:
+def _log_command_history(
+    args: argparse.Namespace,
+    argv: list[str] | None,
+    rc: int,
+    *,
+    transcript: Path | None = None,
+    elapsed_ms: int | None = None,
+) -> None:
     """Append one history line for any non-report command. Must never raise to the caller."""
     from drydock.logging import command_logging_enabled
 
@@ -3605,9 +3635,29 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
 
     from drydock.config import append_command_history, get_workspace
 
+    workspace = get_workspace()
     tokens = argv if argv is not None else sys.argv[1:]
     cmd_str = "drydock " + " ".join(tokens)
-    append_command_history(get_workspace(), cmd_str, target=_log_target(args), return_code=rc)
+    # The transcript basename is ``<stamp>_<target>_<command>_<llm>``, so its leading component
+    # is the stamp every artifact this command wrote is named from. Recording it makes the
+    # journal joinable to the files on disk without matching on a minute-resolution clock.
+    stamp = transcript.name.partition("_")[0] if transcript is not None else ""
+    relative = ""
+    if transcript is not None:
+        try:
+            relative = transcript.relative_to(workspace).as_posix()
+        except ValueError:
+            relative = transcript.name
+    append_command_history(
+        workspace,
+        cmd_str,
+        target=_log_target(args),
+        return_code=rc,
+        argv=list(tokens),
+        stamp=stamp,
+        transcript=relative,
+        elapsed_ms=elapsed_ms,
+    )
 
 
 def _render_analyze_blockers(target: str, blockers_path) -> str:
@@ -4347,6 +4397,7 @@ def main(argv: list[str] | None = None) -> None:
         pass  # log setup failure must not prevent the command from running
 
     exit_code = 0
+    started = time.monotonic()
     stdout_context = (
         redirect_stdout(command_logging.stdout) if command_logging is not None else nullcontext()
     )
@@ -4399,7 +4450,15 @@ def main(argv: list[str] | None = None) -> None:
                 # command runs. Clear it before recording that top-level command itself.
                 os.environ.pop("DRYDOCK_PARENT_TRANSCRIPT", None)
             try:
-                _log_command_history(args, argv, exit_code)
+                _log_command_history(
+                    args,
+                    argv,
+                    exit_code,
+                    transcript=(
+                        command_logging.transcript_path if command_logging is not None else None
+                    ),
+                    elapsed_ms=int((time.monotonic() - started) * 1000),
+                )
             except Exception:
                 pass  # history logging must never change the command's outcome
     finally:

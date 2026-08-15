@@ -8,6 +8,36 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-08-15: `drydock score report <Target>` publishes the receipt `drydock uat --report` produced
+  for UAT fixtures, for any real Target. It writes `index.html`, `result.json`, and a styled viewer
+  for every artifact to `$DRYDOCK_BUILD_DIRECTORY/<Target>/drydock/`, and copies the evidence the
+  page links: the Target's slice of `logs/` — command transcripts, assembled prompts, model output,
+  provider transcripts, and the `history.jsonl` and `llm.jsonl` records for the run — plus the whole
+  Target workspace. The delivered application is inventoried in place, one level above the report,
+  rather than duplicated inside itself. The run reported is the Target's latest: everything recorded
+  since its most recent `drydock init`.
+
+  The verdict inverts the UAT rule. A UAT run passes when the harness worked, so a product failure
+  Drydock reported correctly is a UAT pass; a build receipt stamps `PASSED` only when the product
+  met its acceptance criteria, `FAILED` on any failed criterion, and `UNPROVEN` when no acceptance
+  board is recorded. `UNVERIFIED` criteria are counted and named but do not fail the run, matching
+  `drydock score ac`. The receipt states five claims — acceptance criteria, build blocks, acceptance
+  score, release score, and clean command exits — each with the artifact that settles it, and never
+  renders an unsettled claim as a pass. No `SHA256SUMS` is written: digests exist so a third party
+  can verify a published kit independently, which a receipt in the operator's own build tree is not
+  for. The command reads only; it executes no proof, calls no model, and rescores nothing, so a
+  stale acceptance board is reported as stale rather than silently refreshed.
+
+  Command execution is now joinable to the files it wrote. `logs/history.jsonl` records `stamp` (the
+  millisecond timestamp its transcript and every LLM evidence file are named from), `transcript`,
+  `argv`, and `elapsed_ms` alongside the existing minute-resolution `time`; records written before
+  those fields still parse, and are joined to their transcript by minute and command name where that
+  is unambiguous. Report rendering shared by both commands — page chrome, inventory trees, artifact
+  viewers, receipt tables, and path portability — moved to `src/drydock/report_render.py`;
+  `uat_report.py` keeps the UAT verdict rule and its kit layout, and its output is unchanged.
+
 ### Changed
 
 - 2026-08-15: UAT run and project reports replace the five-step verification guide and four-item

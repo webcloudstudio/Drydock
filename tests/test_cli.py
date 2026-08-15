@@ -290,6 +290,23 @@ class TestHelpAndVersion:
         assert rc == 2
         assert "ac|build|release" in err
 
+    def test_score_help_shows_report(self):
+        rc, out, _ = run_cli("score", "--help")
+        assert rc == 0
+        assert "score report" in out
+        assert "drydock/index.html" in out
+
+    def test_score_report_without_a_target_is_a_usage_error(self):
+        rc, _, err = run_cli("score", "report")
+        assert rc == 2
+        assert "report" in err
+
+    def test_score_report_for_an_uninitialized_target_fails(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        rc, _, err = run_cli("score", "report", "NoSuchTarget")
+        assert rc == 1
+        assert "NoSuchTarget" in err
+
     def test_score_release_prints_the_listing_and_names_each_manual_check(
         self, tmp_path, monkeypatch, capsys
     ):
@@ -486,6 +503,30 @@ class TestHelpAndVersion:
         assert rc == 0, err
         history = (tmp_workspace / "logs" / "history.jsonl").read_text(encoding="utf-8")
         assert '"command": "drydock config set drydock_workspace' in history
+
+    def test_history_record_can_be_joined_to_the_transcript_it_names(
+        self, tmp_workspace, isolated_config, monkeypatch
+    ):
+        """``time`` is minute-resolution, so the record carries the transcript's own stamp.
+
+        Without it a reader cannot tell which of a minute's transcripts belongs to a command,
+        which is exactly the join ``drydock score report`` needs.
+        """
+        import json
+
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        monkeypatch.setenv("DRYDOCK_TEST_COMMAND_LOGGING", "1")
+
+        rc, _, err = run_cli("config", "set", "drydock_workspace", str(tmp_workspace))
+
+        assert rc == 0, err
+        lines = (tmp_workspace / "logs" / "history.jsonl").read_text(encoding="utf-8").splitlines()
+        record = json.loads(lines[-1])
+        transcript = tmp_workspace / record["transcript"]
+        assert transcript.is_file()
+        assert transcript.name.startswith(record["stamp"])
+        assert record["argv"] == ["config", "set", "drydock_workspace", str(tmp_workspace)]
+        assert isinstance(record["elapsed_ms"], int)
 
     def test_pytest_fixture_command_does_not_write_workspace_logs(
         self, tmp_workspace, isolated_config, monkeypatch

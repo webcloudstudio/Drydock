@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -513,11 +514,22 @@ def append_command_history(
     command: str,
     target: str = "",
     return_code: int | None = None,
+    *,
+    argv: Sequence[str] = (),
+    stamp: str = "",
+    transcript: str = "",
+    elapsed_ms: int | None = None,
 ) -> None:
     """Append one timestamped command record to the workspace command-execution log.
 
     All drydock CLI invocations that touch a named target pass ``target``; workspace-only
     commands (e.g. ``drydock config show``) omit it.
+
+    ``time`` is minute-resolution and therefore cannot identify which of a minute's transcripts
+    belongs to this record. ``stamp`` carries the millisecond timestamp the transcript and every
+    LLM evidence file for this command are named from, so a reader joining this journal to the
+    files on disk has an exact key rather than a timestamp guess. Every field beyond ``command``
+    and ``time`` is optional: records written before they existed still parse.
     """
     history_path = workspace / "logs" / _HISTORY_FILENAME
     history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -527,6 +539,14 @@ def append_command_history(
         record["target"] = target
     if return_code is not None:
         record["return_code"] = return_code
+    if argv:
+        record["argv"] = list(argv)
+    if stamp:
+        record["stamp"] = stamp
+    if transcript:
+        record["transcript"] = transcript
+    if elapsed_ms is not None:
+        record["elapsed_ms"] = elapsed_ms
     with history_path.open("a", encoding="utf-8", newline="\n") as fh:
         fh.write(json.dumps(record) + "\n")
 
