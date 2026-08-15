@@ -316,6 +316,11 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
             isinstance(item, str) and item.strip() for item in raw_updates
         ):
             raise SpecificationError(f"UAT fixture updates must be a list of paths: {config_path}")
+        acceptance = contract_from_config(raw_acceptance, where=str(config_path))
+        # The scoring entry point and the run's test command are the same command by construction;
+        # a fixture only states it twice when it wants them to differ.
+        if raw_test_command is None:
+            raw_test_command = list(acceptance.full)
         if (
             not isinstance(raw_test_command, list)
             or not raw_test_command
@@ -358,6 +363,15 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
             )
         if not target:
             raise SpecificationError(f"UAT fixture target is empty: {directory}")
+        # A fixture without a governed full gate has no oracle the build cannot author, so
+        # ``score release`` grades it on the LLM's judgement alone — and a criterion the grader
+        # cannot settle is MANUAL, which never blocks. That is how a Target with four of sixteen
+        # stories built recorded PASSED. The declaration is therefore required, not optional.
+        if not acceptance.full:
+            raise SpecificationError(
+                "UAT fixture must declare acceptance.full, the governed scoring entry point: "
+                f"{config_path}"
+            )
         fixtures.append(
             UATFixture(
                 directory.name,
@@ -368,7 +382,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 tuple(raw_test_command),
                 _fixture_stack(declared_stack),
                 _fixture_sea_trials(declared_sea_trials),
-                contract_from_config(raw_acceptance, where=str(config_path)),
+                acceptance,
                 expected_verdict,
             )
         )
@@ -896,6 +910,16 @@ def run_fixture(
     def execute_test() -> None:
         if not fixture.test_command:
             return
+        nonlocal test_skipped
+        if degraded:
+            # Final validation waits for the build to finish. Running the scoring command against
+            # a build that stopped part way measures the harness, not the product: the entry point
+            # the last stories deliver is simply not there yet, and the resulting nonzero exit
+            # would be recorded as a product failure. The shortfall is already named in
+            # ``degraded``; adding a fabricated acceptance FAIL on top of it hides the real cause.
+            degraded.append("test not run: the build did not complete")
+            test_skipped = True
+            return
         nonlocal sequence
         sequence += 1
         if on_event:
@@ -911,12 +935,9 @@ def run_fixture(
         if result.returncode == 0:
             return
         # The scoring command is the run's headline measurement, and the scores that follow it
-        # describe the same application. Record the verdict and let them run: a degraded build
-        # is expected to fail here, and a clean build that fails here still fails the run.
-        if degraded:
-            degraded.append(f"test exited {result.returncode}")
-        else:
-            test_failures.append(f"{fixture.name}: test exited {result.returncode}")
+        # describe the same application. Record the verdict and let them run: a clean build that
+        # fails here fails the run.
+        test_failures.append(f"{fixture.name}: test exited {result.returncode}")
 
     def capture_status(stage: str) -> None:
         """Preserve all supported status views without turning a snapshot into a gate."""
@@ -934,6 +955,7 @@ def run_fixture(
         continues to scoring.
         """
         nonlocal build_passes
+        entry_degraded = len(degraded)
         stage_passes = 0
         while True:
             ready = execute(("status", fixture.target, "--ready"), f"{stage}-ready", required=False)
@@ -963,6 +985,13 @@ def run_fixture(
         # ``--check`` records Manifest verification completeness; it does not control the build
         # loop and does not grade the product. ``--ready`` already established that the frontier
         # is empty, and ``score release`` observes the finished tree independently below.
+        #
+        # It is a completion record, so it is only taken when the stage completed. A stage that
+        # broke off already knows it is incomplete; asking again adds a stage whose INCOMPLETE is
+        # a restatement of the shortfall rather than a new observation. The partial views —
+        # ``--ready``, ``build status``, and ``capture_status`` — still run either way.
+        if len(degraded) > entry_degraded:
+            return
         execute(
             ("status", fixture.target, "--check"),
             f"{stage}-complete",
@@ -973,6 +1002,7 @@ def run_fixture(
     status = "passed"
     degraded: list[str] = []
     test_failures: list[str] = []
+    test_skipped = False
     try:
         if start <= stage_index("init"):
             execute(("init", fixture.target), "init")
@@ -1032,6 +1062,11 @@ def run_fixture(
     execution_status = "ERROR" if (status == "failed" or degraded) else "PASS"
     if test_failures:
         acceptance_status = "FAIL"
+    elif test_skipped:
+        # The build did not finish, so the product was never put to its governed acceptance. That
+        # is NOT_RUN, and it must not fall through to a PASS the fallback below would infer from a
+        # release gate exiting zero over a tree that is missing its last stories.
+        acceptance_status = "NOT_RUN"
     elif scores.get("release") is None:
         acceptance_status = "NOT_RUN"
     elif release_verdict == "ERROR":

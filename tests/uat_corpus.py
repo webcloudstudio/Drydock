@@ -29,7 +29,19 @@ CORPUS_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "uat_corpus.json
 # an observing grader would have found by looking, so an unbuilt capability that today grades
 # NOT MET reads as MANUAL in the corpus — the one place the frozen evidence is weaker than a live
 # run.
-_RECORDED_VERDICTS = {"PASS": MET, "FAIL": NOT_MET, "INCONCLUSIVE": MANUAL}
+#
+# Runs recorded after the vocabulary change already carry the current three words, so extraction
+# accepts both spellings. The corpus spans every version that ever wrote a record, and a reader
+# that rejects the current one turns a fresh run into an extraction crash.
+_RECORDED_VERDICTS = {
+    "PASS": MET,
+    "FAIL": NOT_MET,
+    "INCONCLUSIVE": MANUAL,
+    MET: MET,
+    NOT_MET: NOT_MET,
+    NOT_MET.replace(" ", "_"): NOT_MET,
+    MANUAL: MANUAL,
+}
 
 # An evidence line that names a check which exhibited the failure. This is the demonstration the
 # asymmetric evidence rule requires before a criterion may be graded NOT MET.

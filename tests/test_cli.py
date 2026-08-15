@@ -2914,6 +2914,21 @@ class TestStatus:
         assert rc == 1, err
         assert out.startswith("INCOMPLETE: TestTarget")
 
+    def test_status_never_creates_or_commits_the_target_git_store(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        """A query must not mutate what it reports on.
+
+        Initializing and checkpointing the store also prints two banner lines onto stdout, which
+        is the machine-readable contract ``--check`` and ``--ready`` hand to a calling script.
+        """
+        self._setup(tmp_target_root, monkeypatch)
+        target = tmp_target_root / "TestTarget"
+
+        for argv in (("status", "TestTarget"), ("status", "TestTarget", "--check")):
+            run_cli(*argv)
+            assert not (target / ".git").exists(), argv
+
     def test_status_check_unknown_target_exits_2(
         self, tmp_target_root, isolated_config, monkeypatch
     ):

@@ -220,14 +220,22 @@ def test_uc008_without_the_defect_passes():
     reason="uat/*/runs is not committed; the frozen corpus is authoritative here",
 )
 def test_frozen_corpus_matches_the_live_corpus():
+    """Freeze integrity: extraction reads every live run, and shared runs agree with the freeze.
+
+    The two sets are deliberately not required to be equal. ``uat/*/runs`` is a working directory
+    that rotates and is not committed, so a live-only key is a new run not yet folded in and a
+    frozen-only key is a run that has since been cleaned up. Neither says the freeze is wrong, and
+    asserting equality would make the suite fail on any machine that actually runs UAT — and would
+    invite a regeneration that discards the frozen runs rather than refreshing them.
+    """
     live = {
         (fixture, run_id): (None if record is None else extract_run_facts(record, target=fixture))
         for fixture, run_id, record in iter_live_runs()
     }
     frozen = {(entry["fixture"], entry["run_id"]): entry["facts"] for entry in CORPUS}
-    assert set(live) == set(frozen), "regenerate with: python tests/uat_corpus.py"
-    for key, facts in live.items():
+    for key in sorted(set(live) & set(frozen)):
+        facts = live[key]
         if facts is None:
-            assert frozen[key] is None
+            assert frozen[key] is None, key
         else:
-            assert facts_to_dict(facts) == facts_to_dict(frozen[key])
+            assert facts_to_dict(facts) == facts_to_dict(frozen[key]), key

@@ -4442,8 +4442,16 @@ def _command_log_name(args: argparse.Namespace) -> str:
     return " ".join(parts)
 
 
+#: Commands that only observe a Target. They neither create its Git store nor checkpoint it: a
+#: query must not mutate what it reports on, and the store's one-line banners would corrupt the
+#: machine-readable stdout of ``status --check``/``--ready`` that scripts consume verbatim.
+_READ_ONLY_COMMANDS = frozenset({"status"})
+
+
 def _target_repository(args: argparse.Namespace) -> Path | None:
     """Resolve an existing Target workspace for invocation-level Git checkpoints."""
+    if getattr(args, "command", None) in _READ_ONLY_COMMANDS:
+        return None
     target = _log_target(args)
     if not target:
         return None

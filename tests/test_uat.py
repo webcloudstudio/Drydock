@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,6 +39,7 @@ def _fixture(root: Path, name: str = "ReadingList", *, updated: bool = True) -> 
             "sources": ["sources/reading-list.md"],
             "updates": updates,
             "test_command": ["sh", "bin/test.sh"],
+            "acceptance": {"full": ["sh", "sources/full_test.sh"]},
         }),
         encoding="utf-8",
     )
@@ -229,6 +231,7 @@ def test_discover_fixture_loads_nested_local_source(tmp_path: Path) -> None:
             "sources": ["sources/reading-list.md", "kit/suite.py"],
             "updates": [],
             "test_command": ["sh", "full_test.sh"],
+            "acceptance": {"full": ["sh", "sources/full_test.sh"]},
         }),
         encoding="utf-8",
     )
@@ -240,6 +243,34 @@ def test_discover_fixture_loads_nested_local_source(tmp_path: Path) -> None:
         source.resolve(),
     )
     assert found.test_command == ("sh", "full_test.sh")
+
+
+def test_discover_fixture_rejects_a_kit_with_no_governed_scoring_entry_point(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path, updated=False)
+    config = json.loads((fixture / "uat.json").read_text(encoding="utf-8"))
+    del config["acceptance"]
+    (fixture / "uat.json").write_text(json.dumps(config), encoding="utf-8")
+
+    with pytest.raises(SpecificationError, match="must declare acceptance.full"):
+        discover_fixtures(tmp_path)
+
+
+def test_discover_fixture_defaults_the_test_command_to_the_scoring_entry_point(
+    tmp_path: Path,
+) -> None:
+    # The two are the same command by construction, so a kit only states both when it wants
+    # them to differ.
+    fixture = _fixture(tmp_path, updated=False)
+    config = json.loads((fixture / "uat.json").read_text(encoding="utf-8"))
+    del config["test_command"]
+    (fixture / "uat.json").write_text(json.dumps(config), encoding="utf-8")
+
+    found = discover_fixtures(tmp_path)[0]
+
+    assert found.test_command == ("sh", "sources/full_test.sh")
+    assert found.acceptance.full == ("sh", "sources/full_test.sh")
 
 
 def test_discover_fixture_rejects_source_outside_fixture(tmp_path: Path) -> None:
@@ -555,6 +586,7 @@ def test_run_uat_flattens_sources_and_tests_completed_build(tmp_path: Path) -> N
             "sources": ["sources/reading-list.md", "test/spec_tests.py"],
             "updates": [],
             "test_command": ["sh", "full_test.sh"],
+            "acceptance": {"full": ["sh", "sources/full_test.sh"]},
         }),
         encoding="utf-8",
     )
@@ -906,7 +938,8 @@ def test_resume_into_a_stage_with_no_input_names_the_producing_stage(tmp_path: P
         now=datetime(2026, 8, 9, tzinfo=UTC),
     )
     target = fixtures_root / "ReadingList" / "runs" / run_id / "workspace" / "targets"
-    (target / "ReadingList").mkdir(parents=True)
+    # ``init`` seeds the governed acceptance contract, so the Target directory already exists.
+    (target / "ReadingList").mkdir(parents=True, exist_ok=True)
     (target / "ReadingList" / "ANALYSIS.md").write_text("# analysis\n", encoding="utf-8")
 
     calls: list[tuple[str, ...]] = []
@@ -945,9 +978,28 @@ def test_shipped_kits_declare_every_asset_their_score_command_runs() -> None:
         declared = set(config["sources"])
         for source in declared:
             assert (config_path.parent / source).is_file(), f"{config_path}: missing {source}"
-        for argument in config["test_command"]:
+        commands = [config["acceptance"]["full"], config.get("test_command") or []]
+        for argument in [item for command in commands for item in command]:
             if argument.startswith("sources/"):
                 assert argument in declared, f"{config_path}: {argument} is not a declared source"
+
+
+def test_every_shipped_kit_is_graded_by_a_staged_commander_owned_harness() -> None:
+    """Each kit's release gate must run an oracle the build cannot author.
+
+    Without a governed full gate the release verdict rests entirely on the grader's judgement,
+    and a criterion the grader cannot settle is MANUAL, which never blocks — so an unbuilt
+    project reads as PASSED. One staged ``sources/full_test.sh`` per kit closes that path.
+    """
+    uat_root = Path(__file__).resolve().parents[1] / "uat"
+    configs = sorted(uat_root.glob("*/uat.json"))
+    assert configs
+    for config_path in configs:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        assert config["acceptance"]["full"] == ["sh", "sources/full_test.sh"], config_path
+        harness = config_path.parent / "sources" / "full_test.sh"
+        assert harness.is_file(), f"{config_path}: no staged sources/full_test.sh"
+        assert subprocess.run(["sh", "-n", str(harness)]).returncode == 0, harness
 
 
 def test_run_ids_are_readable_and_stay_chronological_across_the_format_change() -> None:
@@ -1010,7 +1062,15 @@ def test_a_failed_build_degrades_the_run_and_the_lifecycle_continues(tmp_path: P
 
     result = results[0]
     assert result.status == "degraded"
-    assert result.degraded == ("initial-build-1 exited 1",)
+    assert result.degraded == (
+        "initial-build-1 exited 1",
+        "test not run: the build did not complete",
+    )
+    # Final validation waits for the build. The completion check restates a shortfall the run
+    # already recorded, and the scoring command exercises an entry point the last stories have
+    # not delivered yet, so a nonzero exit there would be the harness, not the product.
+    assert not any(label.endswith("initial-complete") for label in seen)
+    assert not any(label.endswith("-test") for label in seen)
     # The measurement the run exists to take still happened.
     assert any("score-acceptance" in label for label in seen)
     assert any("score-release" in label for label in seen)
@@ -1044,12 +1104,12 @@ def test_incomplete_status_snapshot_does_not_gate_an_empty_frontier(tmp_path: Pa
     assert not result.degraded
 
 
-def test_a_degraded_run_records_its_test_verdict_without_becoming_a_failure(
+def test_a_degraded_run_does_not_put_a_partial_build_to_final_validation(
     tmp_path: Path,
 ) -> None:
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
-    runner, _ = _staged_runner(tmp_path, failing=("initial-build", "test"))
+    runner, seen = _staged_runner(tmp_path, failing=("initial-build", "test"))
 
     _, results = run_uat(
         tmp_path,
@@ -1061,10 +1121,15 @@ def test_a_degraded_run_records_its_test_verdict_without_becoming_a_failure(
         now=datetime(2026, 8, 10, tzinfo=UTC),
     )
 
-    # A degraded build is expected to fail the scoring command; that is the measurement, not a
-    # second, separate failure.
-    assert results[0].status == "degraded"
-    assert "test exited 1" in results[0].degraded
+    # The scoring command is the terminal story's deliverable, so a build that stopped early has
+    # nothing to run it against. Running it anyway records a missing harness as a product
+    # failure, which is the one thing the run must not claim.
+    result = results[0]
+    assert result.status == "degraded"
+    assert "test not run: the build did not complete" in result.degraded
+    assert not any(label.endswith("-test") for label in seen)
+    # Never observed, therefore never graded — not passed, and not failed.
+    assert result.acceptance_status == "NOT_RUN"
 
 
 def test_a_clean_build_that_fails_its_test_command_still_fails_the_run(tmp_path: Path) -> None:
@@ -1323,7 +1388,9 @@ def test_commonmark_has_one_deterministic_blocking_proof_criterion():
     assert trial.testability == "deterministic"
     assert trial.consequence == "blocks"
     assert trial.verification == "proof"
-    assert trial.criterion == ("The completed parser shall pass every test run by sh full_test.sh.")
+    assert trial.criterion == (
+        "The completed parser shall pass every test run by sh sources/full_test.sh."
+    )
 
 
 def test_a_fixture_contract_is_seeded_into_the_target(tmp_path):

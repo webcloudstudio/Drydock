@@ -105,6 +105,34 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-15: Every UAT kit is now graded by a staged, Commander-owned scoring entry point.
+  `discover_fixtures` requires each `uat/<Kit>/uat.json` to declare `acceptance.full`, and
+  `test_command` defaults to it when omitted, since the two are the same command by construction.
+  `uat/CommonMark/` and `uat/ReadingList/` previously declared no governed gate at all, so
+  `score release` ran no oracle and graded them on the LLM's judgement alone — and a criterion the
+  grader cannot settle is `MANUAL`, which never blocks. That is how a CommonMark run with four of
+  sixteen stories built recorded `verdict: PASSED`. Both kits now stage `sources/full_test.sh`
+  alongside Toml and jq: CommonMark's drives the unfiltered 655-example conformance suite against
+  the delivered `./commonmark` and rejects the runner's `exit(failed + errored)` status when a
+  multiple of 256 failures would truncate to zero; ReadingList's dispatches to the `bin/test.sh`
+  its source prose makes a product requirement and fails loudly when it is absent. The CommonMark
+  build instructions and `st-001` now name the supplied harness as read-only and hash-verified
+  rather than instructing the build to author its own.
+
+- 2026-08-15: `drydock uat` no longer puts a partial build to final validation. When a build stage
+  ends degraded, the run skips both the terminal `status --check` completion record and the
+  fixture's scoring command, records `test not run: the build did not complete`, and reports
+  acceptance as `NOT_RUN` instead of `FAIL`. The scoring command is the terminal story's
+  deliverable, so running it against a build that stopped early measured the absent harness and
+  recorded it as a product failure. Partial views — `status --ready`, `build status`, and the
+  per-stage status snapshots — are unaffected, and `score ac`, `score build`, and `score release`
+  still run over the partial tree.
+
+- 2026-08-15: `drydock status` no longer creates or checkpoints a Target's Git store. A query must
+  not mutate what it reports on, and the store's setup and commit summary lines were being written
+  onto the machine-readable stdout that `status --check` and `status --ready` hand to a calling
+  script, ahead of the `COMPLETE:`/`INCOMPLETE:` token.
+
 - 2026-08-15: A failed acceptance criterion now reports why it failed everywhere it is reported.
   `drydock score acceptance` previously printed the last line of the check's traceback, which for
   `assert result.returncode == 0` is the bare word `AssertionError` — a symbol naming no defect,
