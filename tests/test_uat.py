@@ -1363,3 +1363,17 @@ def test_an_unparseable_fixture_contract_is_refused_at_discovery(tmp_path):
 
     with pytest.raises(SpecificationError, match="Invalid UAT fixture Sea Trials"):
         _fixture_sea_trials(tmp_path / "SEA_TRIALS.md")
+
+
+def test_the_environment_records_the_package_version_without_installed_metadata(monkeypatch):
+    from importlib import metadata
+
+    from drydock import __version__
+    from drydock.uat import _environment
+
+    def missing(name):
+        raise metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(metadata, "version", missing)
+
+    assert _environment("model", "provider", None)["drydock_version"] == __version__

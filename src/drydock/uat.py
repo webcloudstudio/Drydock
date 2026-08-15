@@ -19,7 +19,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import IO
 
-from drydock import sea_trials, technology_stack
+from drydock import __version__, sea_trials, technology_stack
 from drydock.acceptance_contract import AcceptanceContract, contract_from_config, write_contract
 from drydock.build_report import build_score_report
 from drydock.config import DEFAULT_REPAIR_ATTEMPTS
@@ -161,7 +161,7 @@ def _environment(model: str, provider: str, effort: str | None) -> dict[str, str
     try:
         version = metadata.version("drydock")
     except metadata.PackageNotFoundError:  # editable checkout without installed metadata
-        version = "unknown"
+        version = __version__
     commit = ""
     try:
         commit = subprocess.run(
