@@ -1,11 +1,88 @@
-# UAT Kit Setup Instructions
+# UAT Kits
 
-How to build a well-formed UAT kit under `uat/<Kit>/`.
+`drydock uat <kits>` runs encapsulated. It does not write to the ordinary output directory or
+logs; every artifact lands under `uat/<Kit>/`. Because `uat/` is ignored by the Drydock
+repository and each kit is published as its own repository, this file is the tracked home for
+how kits are defined, authored, run, and read.
+
+## Layout
+
+```text
+uat/
+  README.md              pointer to this file
+  <Kit>/                 one kit, publishable as its own repository
+    README.md            what the kit builds and how to run it
+    uat.json             source bundle, updates, and the governed scoring entry point
+    index.html           project page: documents, input bundles, and every run
+    view/                generated viewer per linked artifact; mirrors the kit's paths
+    assets/kit.css       generated stylesheet shared by every viewer
+    inputs/              optional lifecycle decisions seeded before analysis
+    sources/             Blueprint inputs and supplied build assets
+      full_test.sh       required scoring entry point; supplied, never authored
+    updates/             replacement sources that drive incremental rebuilds
+    runs/<run-id>/       one complete unattended run
+```
+
+Each kit has an `index.html` project page for navigation. It carries the latest verdict, one row
+per recorded run linking that run's own `index.html`, the governed documents at the kit root, and
+the `inputs/`, `sources/`, and `updates/` bundles the runs were built from. It is written at the
+end of every run and rebuilt in full by `drydock uat --report`.
+
+Every linked text artifact — Markdown, logs, transcripts, delivered source — is reached through a
+generated viewer under `view/`, which carries the report's own styling: Markdown is rendered, and
+anything else is shown as source. Each viewer links the raw file, and `SHA256SUMS` covers the raw
+files, never the viewers. `view/` and `assets/` are generated output, rewritten on every rebuild.
+
+## Running
+
+```bash
+drydock uat                      # every kit under uat/
+drydock uat Toml                 # one kit
+drydock uat --report             # rebuild proof kits from completed runs
+drydock uat --report Toml        # rebuild one kit's proof kits
+```
+
+| Flag | Effect |
+|---|---|
+| `--uat-root <path>` | Directory holding the kits (default `<workspace>/uat`) |
+| `--max-build-passes <n>` | Repair passes allowed per build before the kit fails |
+| `--llm-provider`, `--model`, `--effort` | Provider and model selection for the whole run |
+
+A run is long and consumes subscription quota. The `Toml` kit takes roughly thirty minutes and
+eighteen LLM calls.
+
+## Kit definition
+
+`uat.json` declares:
+
+- `target` — the Target name created by `init`.
+- `sources` — kit-local files imported before the initial lifecycle. Required and nonempty. Paths
+  are relative to the kit root; the bundle is flattened to `sources/<basename>` in the build, so
+  basenames must be unique.
+- `updates` — files that replace an imported basename to drive
+  `import --update` → `refit --sources` → incremental build, once each, in order.
+- `sea_trials` — optional kit-local Sea Trials path, seeded after `init` and before `analyze`.
+- `technology_stack` — optional kit-local technology-stack path, seeded at the same point. Named
+  Rigging files are validated against the catalog during discovery.
+- `acceptance.full` — **required.** The governed scoring entry point, always
+  `["sh", "sources/full_test.sh"]`. Discovery rejects a kit without it.
+- `acceptance.stages` — optional per-story gates, keyed by story id.
+- `test_command` — argv run from the completed application root after the build. Defaults to
+  `acceptance.full`; state it only when the two must differ. A nonzero exit fails the kit.
+
+Both lifecycle inputs are explicit. Root-level magic filenames are ignored. When either key is
+omitted, `analyze` creates that artifact inside the run Target.
+
+Every non-Markdown source is an artifact for the build to use — a test harness, a fixture corpus,
+a tool — and is staged verbatim into the build directory's `sources/`. Markdown is specification
+prose and becomes Blueprint input instead.
+
+## Building a new kit
 
 A kit is an exam. The build agent sits the exam; it must not also write it, mark it, or decide
-when it is over. Every rule here keeps those roles apart.
+when it is over. Every rule below keeps those roles apart.
 
-## 1. Every kit stages `sources/full_test.sh`
+### 1. Every kit stages `sources/full_test.sh`
 
 One file, one name, in every kit. It is the single scoring entry point, and it is *supplied, not
 authored*: it ships in the kit, is declared in `sources`, is staged verbatim into the build
@@ -18,9 +95,6 @@ Declare it, and nothing else:
 "acceptance": { "full": ["sh", "sources/full_test.sh"] }
 ```
 
-`test_command` defaults to `acceptance.full`; state it only when the two must differ.
-`discover_fixtures` rejects a kit that declares no `acceptance.full`.
-
 **Why this is mandatory.** Without a governed gate, `score release` has no oracle and falls back
 to the grader's judgement. A criterion the grader cannot settle is `MANUAL`, and `MANUAL` never
 blocks — so a project that built a quarter of its stories grades `PASSED`. That is not
@@ -31,7 +105,7 @@ application provides a POSIX-compatible `bin/test.sh`" a requirement, so its har
 three-line dispatcher — but it is still Commander-owned, so an undelivered suite is a reported
 failure instead of a missing gate.
 
-## 2. The Harness Exit Status Standard
+### 2. The harness exit-status standard
 
 The harness's exit status is the verdict. Drydock reads it through
 `acceptance_contract.run_gate`, which sorts it into three fault domains. A harness that does not
@@ -89,7 +163,7 @@ A runner that already returns a boolean needs no guard. jq's `run_conformance.py
 `return 0 if tally[FAIL] == 0 and tally[ERROR] == 0 else 1`, and Toml execs `toml-test`, which
 exits `1` rather than a count.
 
-## 3. Separate "could not run" from "ran and failed"
+### 3. Separate "could not run" from "ran and failed"
 
 Check the deliverable's entry point before invoking the suite, and fail with a diagnostic naming
 what was expected:
@@ -106,13 +180,13 @@ fi
 Two failures that look alike in a tally are different verdicts in the record. The check has to be
 a distinct step for the evidence to distinguish them.
 
-## 4. Run the suite unfiltered
+### 4. Run the suite unfiltered
 
 No `--pattern`, no `--number`, no selector, no skip list. A tally reading `10 passed, 1 failed,
 644 skipped` measures almost nothing, which is why `0 skipped` is worth asserting alongside
 `0 failed`. Scoped per-story checks belong in `acceptance.stages`, never in `full_test.sh`.
 
-## 5. State the harness contract in `INSTRUCTIONS.md`
+### 5. State the harness contract in `INSTRUCTIONS.md`
 
 The build agent reads this prose and will otherwise write its own scorer. Say plainly:
 
@@ -126,7 +200,7 @@ The build agent reads this prose and will otherwise write its own scorer. Say pl
 
 Keep `st-001` in `inputs/SEA_TRIALS.md` naming the same command, character for character.
 
-## Checklist
+### Checklist
 
 | | |
 |---|---|
@@ -140,7 +214,36 @@ Keep `st-001` in `inputs/SEA_TRIALS.md` naming the same command, character for c
 | Exactly one story runs the full suite, asserting only the exit code | required |
 | `sh -n sources/full_test.sh` parses | enforced by `tests/test_uat.py` |
 
-## Kit definition reference
+## Reading a run
 
-`uat/README.md` documents the kit layout, the remaining `uat.json` keys, and how to read a
-completed run.
+```text
+runs/<run-id>/
+  README.md             run verdict, elapsed time, token and cost accounting
+  index.html            linked proof kit
+  result.json           every child command, argv, exit code, elapsed time
+  SHA256SUMS            integrity manifest
+  inputs/               exact declared lifecycle inputs for this run
+  sources/              the exact bundle imported for this run
+  workspace/            the isolated Drydock workspace, including targets/<target>/
+  build/<target>/       the delivered application
+  evidence/
+    commands/           stdout and stderr of every child command
+    prompts/            the assembled prompt for every LLM call
+    prompt_outputs/     the parsed model output
+    provider_raw/       the unmodified provider transcript
+    llm.jsonl           one record per call: tokens, elapsed time, execution id
+    manifest.json       evidence index
+```
+
+When a build fails, the authoritative diagnosis is
+`workspace/targets/<target>/evidence/<block-id>.md`: the pre-build acceptance observation, the
+stacked context, the build-directory changes, and the post-build result for every criterion.
+
+Verify a kit with:
+
+```bash
+cd runs/<run-id> && sha256sum -c SHA256SUMS
+```
+
+Absolute paths are rewritten to run-relative paths when the kit is sealed, so a run stays readable
+on any machine.
