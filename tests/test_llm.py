@@ -829,7 +829,9 @@ def test_debug_details_are_not_persisted_or_printed_without_debug(tmp_path, monk
     # Run telemetry is progress, not a diagnostic: it belongs on stdout.
     assert "Completed CLAUDE" not in captured.err
     assert "Completed CLAUDE" in captured.out
-    assert "elapsed=" in captured.out
+    # Token and cost accounting is neither: it is written to the LLM log alone.
+    assert "elapsed=" not in captured.out
+    assert "elapsed=" not in captured.err
 
 
 def test_run_telemetry_is_recorded_in_the_llm_log(tmp_path, monkeypatch, capsys):
@@ -851,6 +853,8 @@ def test_run_telemetry_is_recorded_in_the_llm_log(tmp_path, monkeypatch, capsys)
     recorded = logs[0].read_text(encoding="utf-8")
     assert "Calling CLAUDE" in recorded
     assert "Completed CLAUDE" in recorded
+    # The accounting line the console no longer shows is preserved here.
+    assert "elapsed=" in recorded
     # A stderr artifact still means the provider reported something on stderr.
     assert sorted((tmp_path / "logs").glob("*.stderr.log")) == []
 

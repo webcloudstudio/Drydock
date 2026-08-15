@@ -43,6 +43,7 @@ from drydock.report_render import (
     _exit_state,
     _letterhead,
     _llm_calls,
+    _llm_log_cell,
     _make_portable,
     _meta,
     _page,
@@ -355,6 +356,31 @@ def _transcript_index(logs: Sequence[Path]) -> dict[tuple[str, str], str]:
     return index
 
 
+def _command_llm_logs(
+    commands: Sequence[Mapping[str, object]], calls: Sequence[Mapping[str, object]]
+) -> tuple[tuple[str, ...], ...]:
+    """Attach each recorded LLM activity log to the command that produced it.
+
+    Drydock runs one command at a time, so a call belongs to the last command that started at
+    or before it. A call that predates every command — a record carried over from an earlier
+    window — is attached to nothing rather than to the wrong row.
+    """
+    starts = [str(command.get("stamp") or "") for command in commands]
+    logs: list[list[str]] = [[] for _ in commands]
+    for call in calls:
+        path = str(call.get("llm_log") or "")
+        if not path:
+            continue
+        stamp = str(call.get("execution_id") or "").split("-")[0]
+        owner = max(
+            (index for index, start in enumerate(starts) if start and start <= stamp),
+            default=None,
+        )
+        if owner is not None:
+            logs[owner].append(path)
+    return tuple(tuple(paths) for paths in logs)
+
+
 def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
     """Assemble the Target's latest run as the record a receipt renders.
 
@@ -395,6 +421,9 @@ def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
             "stdout_path": f"{_LOGS_DIR}/{name}" if name in log_names else "",
             "stderr_path": "",
             "time": record.get("time") or "",
+            # The sortable stamp is carried into the record so the receipt can attach each
+            # model call's activity log to the command that made it.
+            "stamp": _stamp_key(record),
         })
 
     llm_records = _llm_records(logs_dir / _RECORDS_NAME, target, start_key)
@@ -763,8 +792,11 @@ def _render(
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
     checks = _receipt_checks(report_root, result)
 
+    calls = _llm_calls(report_root / _LOGS_DIR / _RECORDS_NAME, report_root)
+    command_logs = _command_llm_logs(commands, calls)
+
     command_rows: list[list[str]] = []
-    for index, command in enumerate(commands, start=1):
+    for index, (command, logs) in enumerate(zip(commands, command_logs, strict=True), start=1):
         stdout = str(command.get("stdout_path") or "")
         command_rows.append([
             _cell(index, css="num"),
@@ -773,8 +805,9 @@ def _render(
             _status_cell(command.get("returncode"), command.get("argv") or []),
             _cell(f"{int(command.get('elapsed_ms') or 0) / 1000:.1f}s", css="num"),
             _stream_link(report_root, stdout, "transcript"),
+            _llm_log_cell(report_root, logs),
         ])
-    commands_table = _table(("#", "When", "Command", "Result", "Elapsed", ""), command_rows)
+    commands_table = _table(("#", "When", "Command", "Result", "Elapsed", "", "llm"), command_rows)
 
     failed = [
         command
@@ -797,7 +830,6 @@ def _render(
                 f"<pre>{html.escape(text[-4000:])}</pre>"
             )
 
-    calls = _llm_calls(report_root / _LOGS_DIR / _RECORDS_NAME, report_root)
     call_rows = [
         [
             _cell(call["command"]),

@@ -648,6 +648,28 @@ def _stream_link(base: Path, relative: str, label: str) -> str:
     return f"<td>{_anchor(relative, label)}</td>"
 
 
+def _llm_log_cell(base: Path, logs: Sequence[str]) -> str:
+    """Link every LLM activity log one command produced, beside its stdout and stderr.
+
+    Token and cost accounting is written to these logs instead of the command's streams, so a
+    receipt that shows stdout and stderr without them is missing the run's billing evidence.
+    A command that called no model, or whose logs the kit did not publish, renders as a dash.
+    """
+    linked = [path for path in logs if path and (base / path).is_file()]
+    if not linked:
+        return '<td class="dash">—</td>'
+    labels = (
+        ("llm",)
+        if len(linked) == 1
+        else tuple(f"llm {index}" for index in range(1, len(linked) + 1))
+    )
+    return (
+        "<td>"
+        + " · ".join(_anchor(path, label) for path, label in zip(linked, labels, strict=True))
+        + "</td>"
+    )
+
+
 def _cell(text: object, *, css: str = "") -> str:
     attribute = f' class="{css}"' if css else ""
     return f"<td{attribute}>{html.escape(str(text))}</td>"

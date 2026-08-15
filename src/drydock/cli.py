@@ -110,7 +110,6 @@ def _stream_build_summary(text: str) -> None:
         "  regression gates:",
         "  call:",
         "  failing:",
-        "  tokens:",
     )):
         _stream_build(text)
     elif text.startswith("acceptance:"):
@@ -4415,6 +4414,39 @@ def _command_log_name(args: argparse.Namespace) -> str:
     return " ".join(parts)
 
 
+def _target_repository(args: argparse.Namespace) -> Path | None:
+    """Resolve an existing Target workspace for invocation-level Git checkpoints."""
+    target = _log_target(args)
+    if not target:
+        return None
+    from drydock.config import get_target_directory
+
+    target_dir = get_target_directory() / target
+    return target_dir if target_dir.is_dir() else None
+
+
+def _prepare_target_repository(args: argparse.Namespace) -> None:
+    """Upgrade an existing Target before commands that may need Git history."""
+    target_dir = _target_repository(args)
+    if target_dir is None:
+        return
+    from drydock.target_git import commit_target, setup_target
+
+    if setup_target(target_dir):
+        commit_target(target_dir, "Initialize project workspace")
+
+
+def _commit_target_repository(args: argparse.Namespace) -> None:
+    """Checkpoint all Target workspace changes made by one command."""
+    target_dir = _target_repository(args)
+    if target_dir is None:
+        return
+    from drydock.target_git import commit_target
+
+    command = _command_log_name(args)
+    commit_target(target_dir, f"Complete drydock {command}")
+
+
 def main(argv: list[str] | None = None) -> None:
     from drydock.console import configure_stdio
 
@@ -4495,7 +4527,9 @@ def main(argv: list[str] | None = None) -> None:
             if not _is_machine_readable_query(args):
                 print(f"Drydock {__version__}  {__copyright__}")
             try:
+                _prepare_target_repository(args)
                 exit_code = _dispatch(args, parser)
+                _commit_target_repository(args)
             except UsageError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 exit_code = 2

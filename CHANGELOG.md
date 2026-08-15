@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-15: Every Target workspace is now initialized as its own quiet Git store. Existing
+  Targets are upgraded before their next Target command so `drydock refit` always has repository
+  history available for diffing, and each command checkpoints pending Target changes on
+  completion. Successful setup and commit operations emit one stable summary line each; Git's
+  implementation output remains captured and failures are reported through Drydock's error
+  contract.
+
 - 2026-08-15: The shipped `/drydock-uat <Target>` skill loads the current versioned
   `prompts/uat_diagnostic.md` contract at invocation time and diagnoses the latest completed run
   without rerunning it or editing evidence. The prompt treats incorrect Sea Trials and acceptance
@@ -30,12 +37,24 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
-- 2026-08-15: `drydock status <Target> --ready` writes healthy `READY TO BUILD` and
-  `BUILD COMPLETE` states to stdout; stderr is reserved for blocked and inconsistent Targets. UAT
-  evidence now preserves each model execution's `.llm.log`, and UAT/build receipt LLM tables link
-  it beside the prompt, output, and provider transcript. UAT lifecycle command rows also associate
-  every recorded call banner with its `.llm.log`, rendering `stdout`, `stderr`, and `llm` links
-  together even when one command made multiple model calls.
+- 2026-08-15: `drydock status` writes every verdict to stdout. `--check` (`COMPLETE`,
+  `INCOMPLETE`, `BLOCKED`) and `--ready` (`READY TO BUILD`, `BUILD COMPLETE`, `NOT READY`) both
+  reported some outcomes on stderr, so a build loop reading stderr as a failure signal saw a
+  successful status report as an error. The exit code carries the verdict — `--check` exits 0, 1,
+  or 2; `--ready` exits 0 while a build can advance — and stderr now means only that a command
+  failed. UAT evidence now preserves each model execution's `.llm.log`, and UAT/build receipt LLM
+  tables link it beside the prompt, output, and provider transcript. UAT lifecycle command rows
+  also associate every recorded call banner with its `.llm.log`, rendering `stdout`, `stderr`, and
+  `llm` links together even when one command made multiple model calls.
+
+- 2026-08-15: Token and cost accounting no longer prints to a command's stdout. An LLM call's
+  `elapsed`/`cached`/`uncached`/`out`/`tps` detail line, and the per-block `tokens:` line
+  `drydock build` echoed, are written to that execution's `<stem>.llm.log` alone; the console keeps
+  the call banner and the `Completed <provider>/<model> rc=<n>` headline, which are progress. A
+  command transcript is therefore the command's own output, and accounting is read as accounting.
+  `drydock score report` gained an `llm` column joining each recorded call's activity log to the
+  command that made it, so every receipt page showing `stdout` and `stderr` also links where the
+  accounting went.
 
 - 2026-08-15: A governed acceptance gate can no longer end the process grading it. `run_gate`
   captured child output with `subprocess.run(capture_output=True)` and applied none of the bounds a

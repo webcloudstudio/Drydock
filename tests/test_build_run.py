@@ -145,6 +145,7 @@ class FakeResult:
         execution_id="exec-1",
         stderr="",
         stats=None,
+        artifacts=None,
     ):
         self.ok = ok
         self.text = text
@@ -152,6 +153,8 @@ class FakeResult:
         self.stderr = stderr
         if stats is not None:
             self.stats = stats
+        if artifacts is not None:
+            self.artifacts = artifacts
 
 
 @pytest.fixture(autouse=True)
@@ -171,7 +174,9 @@ def _success_report(*, changed: tuple[str, ...], summary: str = "Built it.") -> 
     )
 
 
-def make_runner(*, ok=True, text: str | None = None, write_files=True, stderr="", stats=None):
+def make_runner(
+    *, ok=True, text: str | None = None, write_files=True, stderr="", stats=None, artifacts=None
+):
     calls: list[dict] = []
 
     def runner(prompt, working_directory, **kwargs):
@@ -184,7 +189,11 @@ def make_runner(*, ok=True, text: str | None = None, write_files=True, stderr=""
             )
         calls.append({"prompt": prompt, "wd": working_directory, **kwargs})
         return FakeResult(
-            ok=ok, text=text or _success_report(changed=changed), stderr=stderr, stats=stats
+            ok=ok,
+            text=text or _success_report(changed=changed),
+            stderr=stderr,
+            stats=stats,
+            artifacts=artifacts,
         )
 
     runner.calls = calls  # type: ignore[attr-defined]
@@ -695,9 +704,18 @@ def test_build_emits_step_progress_lines(tmp_path):
     assert any(line == "evidence: evidence/foundation.md" for line in log)
 
 
-def test_build_emits_token_accounting_when_the_provider_reports_it(tmp_path):
+def test_build_records_token_accounting_in_the_llm_log_not_the_console(tmp_path):
+    """Token accounting is billing evidence, so it goes to the execution's LLM log only."""
     from drydock.llm import LlmStats
 
+    class Recorder:
+        def __init__(self):
+            self.lines: list[str] = []
+
+        def record_activity(self, line: str) -> None:
+            self.lines.append(line)
+
+    recorder = Recorder()
     target_dir, build_dir = _setup(tmp_path)
     log: list[str] = []
     runner = make_runner(
@@ -707,7 +725,8 @@ def test_build_emits_token_accounting_when_the_provider_reports_it(tmp_path):
             cache_creation_input_tokens=40,
             output_tokens=50,
             cost_usd=0.25,
-        )
+        ),
+        artifacts=recorder,
     )
 
     build_target(
@@ -719,9 +738,9 @@ def test_build_emits_token_accounting_when_the_provider_reports_it(tmp_path):
         llm_provider="claude",
     )
 
-    assert log.index("returned: ok · exec-1") + 1 == log.index(
-        "  tokens: cached=900 (90% hit) · uncached=100 · write 40 · out=50 · cost=$0.2500"
-    )
+    expected = "  tokens: cached=900 (90% hit) · uncached=100 · write 40 · out=50 · cost=$0.2500"
+    assert expected in recorder.lines
+    assert not any(line.startswith("  tokens:") for line in log)
 
 
 def test_feature_step_with_no_future_consumer_does_not_request_compaction(tmp_path):

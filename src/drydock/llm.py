@@ -401,14 +401,17 @@ def _wall_time() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
-def _announce(artifacts: ExecutionArtifacts, line: str) -> None:
-    """Report one line of run telemetry to the console and to the execution's LLM log.
+def _announce(artifacts: ExecutionArtifacts, line: str, *, console: bool = True) -> None:
+    """Record one line of run telemetry, and show it on the console when it is progress.
 
-    Call banners and token accounting are progress, not diagnostics. They stay on stdout so
-    the command transcript keeps them, and they are recorded in ``<stem>.llm.log`` so a
-    ``.stderr.log`` alongside an execution still means something went wrong.
+    Every line reaches ``<stem>.llm.log``, so a ``.stderr.log`` alongside an execution still
+    means something went wrong. Only progress reaches stdout: a call starting and finishing is
+    what an operator watches a long command for. Token and cost accounting is not progress —
+    it is billing evidence, read from the LLM log after the fact, so ``console=False`` keeps it
+    out of the command's own output.
     """
-    print(line, flush=True)
+    if console:
+        print(line, flush=True)
     artifacts.record_activity(line)
 
 
@@ -609,17 +612,20 @@ def _print_performance_summary(
     stats: LlmStats,
     requested_model: str | None = None,
 ) -> None:
-    _announce(
-        artifacts,
-        _performance_summary(
-            llm=llm,
-            command_name=command_name,
-            execution_id=execution_id,
-            returncode=returncode,
-            stats=stats,
-            requested_model=requested_model,
-        ),
+    summary = _performance_summary(
+        llm=llm,
+        command_name=command_name,
+        execution_id=execution_id,
+        returncode=returncode,
+        stats=stats,
+        requested_model=requested_model,
     )
+    # The headline states that the call finished and with what exit code — progress. The
+    # detail line below it is token and cost accounting, which is written to the LLM log only.
+    headline, _, accounting = summary.partition("\n")
+    _announce(artifacts, headline)
+    if accounting:
+        _announce(artifacts, accounting, console=False)
 
 
 def _print_prompt_breakdown(

@@ -380,6 +380,27 @@ def test_write_report_carries_the_evidence_the_page_links(published):
     assert (root / "workspace" / "SOUNDINGS.md").is_file()
 
 
+def test_the_command_row_links_the_llm_log_beside_its_transcript(published):
+    """Token accounting no longer prints to stdout, so the receipt links where it does live."""
+    html = published.read_text(encoding="utf-8")
+    row = html[html.index("<th>When</th>") : html.index("</table>", html.index("<th>When</th>"))]
+    assert "<th>llm</th>" in row
+    assert "20260101.090000.000Z_widget_build_codex.llm.log" in row
+
+
+def test_a_command_that_called_no_model_shows_a_dash_for_its_llm_log(
+    workspace, target_dir, tmp_path
+):
+    _soundings(target_dir, [VERIFIED_PASS])
+    _history(workspace, [_record("init widget", stamp="20260101.090000.000Z")])
+    build_dir = tmp_path / "build" / "widget"
+    build_dir.mkdir(parents=True)
+    index = write_report("widget", workspace, target_dir, build_dir)
+    html = index.read_text(encoding="utf-8")
+    row = html[html.index("<th>When</th>") : html.index("</table>", html.index("<th>When</th>"))]
+    assert ".llm.log" not in row
+
+
 def test_write_report_writes_no_checksum_file(published):
     """Digests exist to let a third party verify a published kit; a build receipt is not that."""
     assert not (published.parent / "SHA256SUMS").exists()

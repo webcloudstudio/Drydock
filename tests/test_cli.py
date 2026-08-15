@@ -197,6 +197,7 @@ class TestHelpAndVersion:
             "  stories: Block Parsing [block-parsing], Inline Parsing [inline-parsing]"
         )
         _stream_build_summary("  call: 2 of up to 4 · automatic repair 1 of 3 · codex/gpt")
+        # Token accounting is written to the execution's .llm.log, never to build progress.
         _stream_build_summary("  tokens: in=1,000 · fresh 100 · cached 900 (90% hit) · out=50")
         _stream_build_summary("  failing: block-conformance (240/260 cases)")
         _stream_build_summary(
@@ -208,7 +209,6 @@ class TestHelpAndVersion:
             capsys.readouterr().out == "\nLLM BUILD: Markdown Parsing [feature-parsing]\n"
             "  stories: Block Parsing [block-parsing], Inline Parsing [inline-parsing]\n"
             "  call: 2 of up to 4 · automatic repair 1 of 3 · codex/gpt\n"
-            "  tokens: in=1,000 · fresh 100 · cached 900 (90% hit) · out=50\n"
             "  failing: block-conformance (240/260 cases)\n"
             "acceptance: call 2 · 2/3 AC passed · "
             "failed: block-conformance (240/260 cases)\n"
@@ -1388,8 +1388,8 @@ state: pending
         assert re.search(r"elapsed: ", out)
         assert "built: foundation — closed/verified · execution exec-fake" in out
         assert "foundation" in out
-        # The build performs no git operations, so it prints no git status lines.
-        assert "git" not in out.lower()
+        assert "Target - setup project workspace git store" in out
+        assert "Target - committed project workspace git store" in out
         assert (target / "evidence" / "foundation.md").is_file()
 
     def test_build_reports_failed_block_as_resume_frontier(
@@ -2321,7 +2321,7 @@ class TestRefit:
         assert rc == 2
         assert "mutually exclusive" in (out + err).lower()
 
-    def test_relineage_without_a_target_repository_exits_1(self, tmp_path, monkeypatch):
+    def test_relineage_upgrades_a_target_without_a_repository(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
         target = tmp_path / "targets" / "MyProject"
         (target / "blueprint" / "sources").mkdir(parents=True)
@@ -2329,8 +2329,10 @@ class TestRefit:
             "# MANIFEST: MyProject\nstate: approved\n", encoding="utf-8"
         )
         rc, out, err = run_cli("refit", "MyProject", "--relineage")
-        assert rc == 1
-        assert "no git repository" in (out + err).lower()
+        assert rc == 0, err
+        assert (target / ".git").is_dir()
+        assert "Target - setup project workspace git store" in out
+        assert "Target - committed project workspace git store" in out
 
     def test_sources_with_no_pending_versions_exits_0(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))

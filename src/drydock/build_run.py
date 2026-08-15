@@ -2669,9 +2669,13 @@ def build_target(
             if execution_id:
                 execution_bits.append(execution_id)
             _emit(on_text, "returned: " + " · ".join(execution_bits))
+            # Token accounting is not build progress. The execution's own ``.llm.log`` already
+            # carries it, and the receipt links that log beside the command's streams.
             token_line = format_token_summary(getattr(result, "stats", None), llm=llm_provider)
             if token_line:
-                _emit(on_text, f"  tokens: {token_line}")
+                artifacts = getattr(result, "artifacts", None)
+                if artifacts is not None and hasattr(artifacts, "record_activity"):
+                    artifacts.record_activity(f"  tokens: {token_line}")
             state, status, error, failure_detail = _build_outcome(
                 summary,
                 ok=ok,

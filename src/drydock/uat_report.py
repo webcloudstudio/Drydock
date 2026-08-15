@@ -44,6 +44,7 @@ from drydock.report_render import (
     _letterhead,
     _link,
     _llm_calls,
+    _llm_log_cell,
     _make_portable,
     _md_link,
     _meta,
@@ -113,19 +114,6 @@ def _command_llm_logs(
                 logs.append(path)
         joined.append(tuple(logs))
     return tuple(joined)
-
-
-def _llm_log_cell(logs: Sequence[str]) -> str:
-    if not logs:
-        return '<td class="dash">—</td>'
-    labels = (
-        ("llm",) if len(logs) == 1 else tuple(f"llm {index}" for index in range(1, len(logs) + 1))
-    )
-    return (
-        "<td>"
-        + " · ".join(_anchor(path, label) for path, label in zip(logs, labels, strict=True))
-        + "</td>"
-    )
 
 
 # A run drives a Drydock workspace, and that workspace keeps its own copy of every prompt,
@@ -415,6 +403,14 @@ def _render_case_markdown(
         "- [`evidence/commands/`](evidence/commands) — stdout and stderr of every command",
         "- [`evidence/prompts/`](evidence/prompts) — the assembled prompt for every LLM call",
         "- [`evidence/provider_raw/`](evidence/provider_raw) — unmodified provider transcripts",
+    ]
+    # Runs recorded before activity logs were collected have no such directory, and a receipt
+    # never links a path the run did not write.
+    if (case_root / "evidence" / "llm_logs").is_dir():
+        lines.append(
+            "- [`evidence/llm_logs/`](evidence/llm_logs) — call banners and token accounting"
+        )
+    lines += [
         "- [`result.json`](result.json) — the machine-readable record of this run",
         "",
     ]
@@ -709,7 +705,7 @@ def _render_case(
             _cell(f"{elapsed / 1000:.1f}s", css="num"),
             _stream_link(case_root, stdout, "stdout"),
             _stream_link(case_root, stderr, "stderr"),
-            _llm_log_cell(logs),
+            _llm_log_cell(case_root, logs),
         ])
     commands_table = _table(
         ("#", "Stage", "Command", "Result", "Elapsed", "stdout", "stderr", "llm"),
