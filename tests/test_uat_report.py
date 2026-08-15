@@ -390,6 +390,22 @@ def test_case_kit_stamps_each_command_result_rather_than_printing_an_exit_code(
     assert '<span class="tag fail" title="exit 1">FAIL 1</span>' in page
 
 
+def test_case_kit_never_labels_a_drydock_status_exit_as_a_failure(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    _stage(
+        case,
+        "03-complete",
+        ["/opt/venv/bin/python", "-m", "drydock", "status", "commonmark", "--check"],
+        1,
+    )
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert '<span class="tag unknown" title="exit 1">EXIT 1</span>' in page
+    assert 'Target completion check passed</td><td><span class="tag unknown">UNPROVEN' in page
+    assert 'drydock status commonmark</code></td><td><span class="tag fail"' not in page
+
+
 def test_case_kit_reports_usage_as_cached_and_uncached(tmp_path: Path) -> None:
     case = _case(tmp_path / "run")
     (case / "evidence" / "llm.jsonl").write_text(
@@ -718,6 +734,7 @@ def _complete_run(kit: Path) -> Path:
     (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
     (kit / "uat.json").write_text("{}\n", encoding="utf-8")
     case = _case(kit)
+    (case / "sources" / "toml-v1.0.0.md").write_text("# TOML 1.0.0\n", encoding="utf-8")
     _stage(
         case,
         "03-initial-complete",
@@ -767,7 +784,7 @@ def test_the_receipt_states_six_claims_in_fixed_order_with_their_recorded_outcom
     assert [verdict for _, _, verdict in claims] == [
         "PASS",
         "PASS",
-        "FAIL",
+        "UNPROVEN",
         "PASS",
         "PASS",
         "PASS",
@@ -806,18 +823,19 @@ def test_the_run_readme_leads_with_the_receipt_before_any_drydock_internals(
         for heading in (
             "## Receipt",
             "## Run facts",
-            "## Verify this run in five minutes",
-            "## What this does not prove",
+            "## RUN SUMMARY",
+            "## RUN NOTES:",
             "## Commands",
         )
     ]
     assert order == sorted(order)
     assert "5 of 6 receipt claims proven" in readme
-    assert "| Target completion check passed | FAIL |" in readme
-    assert "[`sources/spec.txt`](sources/spec.txt)" not in readme  # not a prose specification
-    assert "(workspace/targets/commonmark/MANIFEST.md)" in readme
+    assert "| Target completion check passed | UNPROVEN |" in readme
+    assert "[`sources/toml-v1.0.0.md`](sources/toml-v1.0.0.md)" in readme
     assert "(build/commonmark)" in readme
     assert "One run is evidence of one run. It is not a benchmark." in readme
+    assert "It states no general success rate" not in readme
+    assert "LLM execution is not deterministic" not in readme
 
 
 def test_the_kit_index_carries_the_latest_run_receipt_with_run_scoped_links(
@@ -833,6 +851,11 @@ def test_the_kit_index_carries_the_latest_run_receipt_with_run_scoped_links(
     assert "5 of 6 claims proven" in page
     assert f'href="runs/{run_id}/view/evidence/commands/04-test.stdout.log.html"' in page
     assert f'href="runs/{run_id}/build/commonmark/"' in page
-    assert "Verify this run in five minutes" in page
+    assert "RUN SUMMARY" in page
+    assert "Input specification" in page
+    assert "Delivered Code" in page
+    assert "Test Results" in page
+    assert "RUN NOTES:" in page
     assert "It is not a security certification of the delivered code." in page
+    assert "Verify this run in five minutes" not in page
     assert all((kit / link).exists() for link in _links(index))

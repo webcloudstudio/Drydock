@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-15: UAT run and project reports replace the five-step verification guide and four-item
+  limitation statement with a compact `RUN SUMMARY` linking the input specification, delivered
+  code, and external test results, followed by two `RUN NOTES`. A nonzero `drydock status` exit is
+  rendered as its neutral `EXIT <code>` state signal rather than `FAIL <code>`; an unmet Target
+  completion receipt claim is `UNPROVEN`, because `drydock status --check` did not itself fail.
+
 - 2026-08-14: A programmatic acceptance criterion's execution budget now follows what it executes
   rather than only what it declared. A criterion that launches a staged runner under `sources/`
   is suite-bound whether or not its author wrote a `Suite:` marker, and draws

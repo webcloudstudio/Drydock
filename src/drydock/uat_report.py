@@ -773,9 +773,19 @@ def _cell(text: object, *, css: str = "") -> str:
     return f"<td{attribute}>{html.escape(str(text))}</td>"
 
 
-def _status_cell(returncode: object) -> str:
-    """Stamp a recorded exit code as the verdict it is, keeping the code on a failure."""
+def _is_status_command(argv: Sequence[object]) -> bool:
+    """Return whether argv invokes Drydock's informational ``status`` command."""
+    return _command_text(argv).split()[:2] == ["drydock", "status"]
+
+
+def _status_cell(returncode: object, argv: Sequence[object] = ()) -> str:
+    """Stamp a recorded exit code without calling a status-state signal a failure."""
     ok = returncode == 0
+    if not ok and _is_status_command(argv):
+        return (
+            f'<td><span class="tag unknown" title="exit {html.escape(str(returncode))}">'
+            f"EXIT {html.escape(str(returncode))}</span></td>"
+        )
     label = "OK" if ok else f"FAIL {returncode}"
     state = "pass" if ok else "fail"
     return (
@@ -965,12 +975,6 @@ def _md_link(case_root: Path, relative: str, label: str = "") -> str:
     return f"[`{label or relative}`]({trimmed})"
 
 
-def _md_links(case_root: Path, candidates: Sequence[str]) -> str:
-    """Link every candidate present on disk, falling back to the first that exists."""
-    links = [_md_link(case_root, path) for path in candidates if (case_root / path).exists()]
-    return " · ".join(links) if links else "not recorded for this run."
-
-
 def _render_case_markdown(case_root: Path, result: dict) -> str:
     """Render the run report a forge shows when a reader opens the run directory.
 
@@ -990,7 +994,6 @@ def _render_case_markdown(case_root: Path, result: dict) -> str:
     test = _command_by_suffix(commands, "-test")
     source, _ = _primary_source(case_root, "")
     target = str(result.get("target") or case_root.name)
-    workspace = f"workspace/targets/{target}"
     lines = [
         f"# {fixture}: {str(result.get('status') or '').upper()}",
         "",
@@ -1033,24 +1036,17 @@ def _render_case_markdown(case_root: Path, result: dict) -> str:
         "- Advisory scores: "
         + (", ".join(f"{name}=exit {code}" for name, code in scores.items()) or "none recorded"),
         "",
-        "## Verify this run in five minutes",
+        "## RUN SUMMARY",
         "",
-        "No Drydock installation is required. Every step opens a file this run wrote.",
-        "",
-        f"1. Read the input specification — what was asked for: {_md_link(case_root, source)}",
-        "2. Inspect the generated Blueprint and Manifest — what Drydock planned: "
-        + _md_links(case_root, (f"{workspace}/MANIFEST.md", f"{workspace}/blueprint")),
-        "3. Inspect the delivered code — what was built: "
-        + _md_link(case_root, _delivered_directory(case_root, target)),
-        "4. Inspect the external test result — what an independent suite said about it: "
+        f"- Input specification: {_md_link(case_root, source)}",
+        f"- Delivered Code: {_md_link(case_root, _delivered_directory(case_root, target))}",
+        "- Test Results: "
         + _md_link(case_root, _relative(test.get("stdout_path"), case_root) if test else ""),
-        "5. Verify the bytes you just read are the bytes this run produced: "
-        "`sha256sum -c SHA256SUMS`",
         "",
-        "## What this does not prove",
+        "## RUN NOTES:",
         "",
     ]
-    lines += [f"- {item}" for item in _LIMITS]
+    lines += [f"- {item}" for item in _RUN_NOTES]
     if result.get("degraded"):
         # A degraded run completed its lifecycle with a named shortfall. Labelling it a failure
         # would misreport a measurement that was taken.
@@ -1199,10 +1195,16 @@ def _receipt_checks(case_root: Path, result: dict) -> tuple[Check, ...]:
             checks.append(Check(name, "unknown", absent))
             continue
         argv = _command_text(command.get("argv") or []) or str(command.get("label") or "")
+        state = _exit_state(command.get("returncode"))
+        if suffix == "-complete" and state == "fail":
+            # ``drydock status --check`` reports Manifest state through its exit code. An
+            # incomplete Target has not made the receipt claim, but the status command itself
+            # did not fail.
+            state = "unknown"
         checks.append(
             Check(
                 name,
-                _exit_state(command.get("returncode")),
+                state,
                 f"{argv} exited {command.get('returncode')}.",
                 _relative(command.get("stdout_path"), case_root),
             )
@@ -1355,69 +1357,34 @@ def _delivered_directory(case_root: Path, target: str) -> str:
     return "build/" if root.is_dir() else ""
 
 
-def _guided_path(case_root: Path, result: dict, prefix: str = "") -> str:
-    """Render the five-minute path a reader walks to check the run without installing Drydock."""
+def _run_summary(case_root: Path, result: dict, prefix: str = "") -> str:
+    """Render the three artifacts that summarize the run."""
     target = str(result.get("target") or case_root.name)
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
     test = _command_by_suffix(commands, "-test")
     test_log = _relative(test.get("stdout_path"), case_root) if test else ""
     source, _ = _primary_source(case_root, prefix)
-    workspace = f"workspace/targets/{target}"
     delivered = _delivered_directory(case_root, target)
-
-    def item(text: str, link: str) -> str:
-        trailer = link or "not recorded for this run."
-        return f'<li>{text}<span class="what">{trailer}</span></li>'
-
-    steps = [
-        item(
-            "Read the input specification — what was asked for.",
-            _evidence_link(case_root, source, prefix),
-        ),
-        item(
-            "Inspect the generated Blueprint and Manifest — what Drydock planned.",
-            " · ".join(
-                link
-                for link in (
-                    _evidence_link(case_root, f"{workspace}/MANIFEST.md", prefix),
-                    _evidence_link(case_root, f"{workspace}/blueprint/ARCHITECTURE.md", prefix),
-                )
-                if link
-            ),
-        ),
-        item(
-            "Inspect the delivered code — what was built.",
-            _evidence_link(case_root, delivered, prefix),
-        ),
-        item(
-            "Inspect the external test result — what an independent suite said about it.",
-            _evidence_link(case_root, test_log, prefix),
-        ),
-        item(
-            "Verify the bytes you just read are the bytes this run produced.",
-            f"<code>sha256sum -c {_SUMS_NAME}</code>",
-        ),
-    ]
-    return (
-        "<h2>Verify this run in five minutes</h2>"
-        '<p class="note">No Drydock installation is required. Every step opens a file this run '
-        'wrote.</p><ol class="steps">' + "".join(steps) + "</ol>"
+    facts = (
+        ("Input specification", _evidence_link(case_root, source, prefix)),
+        ("Delivered Code", _evidence_link(case_root, delivered, prefix)),
+        ("Test Results", _evidence_link(case_root, test_log, prefix)),
     )
+    return "<h2>RUN SUMMARY</h2>" + _meta([
+        (label, value or "not recorded for this run.") for label, value in facts
+    ])
 
 
-_LIMITS = (
+_RUN_NOTES = (
     "One run is evidence of one run. It is not a benchmark.",
-    "It states no general success rate for Drydock, this model, or this class of project.",
     "It is not a security certification of the delivered code.",
-    "LLM execution is not deterministic; a rerun of the same inputs produces different "
-    "intermediate output and may produce a different verdict.",
 )
 
 
-def _limits() -> str:
+def _run_notes() -> str:
     return (
-        '<h2>What this does not prove</h2><ul class="limits">'
-        + "".join(f"<li>{html.escape(item)}</li>" for item in _LIMITS)
+        '<h2>RUN NOTES:</h2><ul class="limits">'
+        + "".join(f"<li>{html.escape(item)}</li>" for item in _RUN_NOTES)
         + "</ul>"
     )
 
@@ -1431,7 +1398,12 @@ def _render_case(
     target = str(result.get("target") or case_root.name)
     fixture = str(result.get("fixture") or case_root.name)
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
-    failed = [item for item in commands if item.get("returncode") not in (0, None)]
+    failed = [
+        item
+        for item in commands
+        if item.get("returncode") not in (0, None)
+        and not _is_status_command(item.get("argv") or ())
+    ]
     status = str(result.get("status") or ("passed" if not failed else "failed"))
     passed = status == "passed"
 
@@ -1493,7 +1465,7 @@ def _render_case(
             _cell(index, css="num"),
             _cell(label),
             f"<td><code>{html.escape(_command_text(argv))}</code></td>",
-            _status_cell(command.get("returncode")),
+            _status_cell(command.get("returncode"), argv),
             _cell(f"{elapsed / 1000:.1f}s", css="num"),
             _stream_link(case_root, stdout, "stdout"),
             _stream_link(case_root, stderr, "stderr"),
@@ -1625,8 +1597,8 @@ def _render_case(
             _verdict(passed, verdict, detail),
             _receipt(case_root, result),
             meta,
-            _guided_path(case_root, result),
-            _limits(),
+            _run_summary(case_root, result),
+            _run_notes(),
             "<h2>Run detail</h2>",
             '<p class="note">Everything below is the underlying record: the commands Drydock '
             "executed, the model calls they made, and every file this run wrote.</p>",
@@ -1770,8 +1742,8 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
                     prefix + _delivered_directory(latest_root, str(latest.get("target") or "")),
                 )
             ),
-            _guided_path(latest_root, latest, prefix),
-            _limits(),
+            _run_summary(latest_root, latest, prefix),
+            _run_notes(),
         ])
     else:
         summary = ""
