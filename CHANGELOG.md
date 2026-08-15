@@ -10,6 +10,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-14: A UAT report leads with a receipt instead of an evidence index. The run receipt
+  (`runs/<id>/index.html` and its `README.md`) and the project page (`index.html`) now open with
+  six fixed claims — lifecycle completed, external conformance suite passed, target completion
+  check passed, acceptance score passed, release score passed, integrity verification passed —
+  each carrying the recorded outcome that decided it and a link to the artifact that proves it.
+  A claim the run never recorded renders `UNPROVEN`, never as a pass, and a passing run whose
+  receipt is incomplete states the shortfall in its verdict line rather than letting `PASSED`
+  imply the unproven claims. Below the receipt the report states run provenance (Drydock
+  version and commit, provider, model, platform, Python, elapsed time, LLM calls, token use,
+  build passes, repair budget, conformance result), a five-step guided path that a reader
+  without Drydock installed can walk in five minutes — specification, Blueprint and Manifest,
+  delivered code, external test result, `sha256sum -c SHA256SUMS` — and an explicit statement of
+  what one run does not prove. Command tables, LLM executions, and the file inventory follow as
+  supporting detail. The project page summarizes the newest run specifically and links it by run
+  id. Every receipt link is emitted only when the artifact exists on disk.
+
 - 2026-08-14: LLM run telemetry is no longer written to stderr. The call banner, the prompt
   breakdown, and the token accounting line (`Completed CODEX/gpt-5.6-luna (plan) rc=0
   elapsed=1m 21.4s cached=... uncached=... out=...`) describe a healthy execution, so they now
