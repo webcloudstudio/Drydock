@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import ast
+import builtins
 import json
 import os
 import re
 import signal
 import subprocess
+import symtable
 import tempfile
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
+from drydock.acceptance_taxonomy import load_acceptance_failure_taxonomy
 from drydock.build_plan import BuildPlan, PlanBlock
 from drydock.child_sandbox import child_limits, kill_process_group
 from drydock.config import get_sandbox_mem_limit_mb
@@ -178,23 +181,9 @@ _MEMORY_SIGNATURES = ("MemoryError", "Cannot allocate memory", "std::bad_alloc",
 # avoided — an interface returning ``None`` where the criterion expected a value — stops gating too.
 # That case is visible as a reported defective criterion rather than silent, and the alternative
 # spends the whole repair budget on a check no implementation can turn green.
-_MALFORMED_EXCEPTIONS = frozenset({
-    "NameError",
-    "UnboundLocalError",
-    "SyntaxError",
-    "IndentationError",
-    "TabError",
-    "TypeError",
-})
 # Exceptions that, raised in the snippet's own frame, mean the check never reached the code
 # under test: the filesystem or the environment refused it. ``ConnectionError`` and friends are
 # deliberately absent — a refused connection to the service under test is a product defect.
-_ENVIRONMENT_EXCEPTIONS = frozenset({
-    "FileNotFoundError",
-    "IsADirectoryError",
-    "NotADirectoryError",
-    "PermissionError",
-})
 _MISSING_MODULE_RE = re.compile(
     r"(?:ModuleNotFoundError|ImportError): No module named ['\"]([^'\"]+)"
 )
@@ -334,7 +323,8 @@ def _environment_failure(
     if attributed is None:
         return None
     exception, detail = attributed
-    if exception in _ENVIRONMENT_EXCEPTIONS:
+    taxonomy = load_acceptance_failure_taxonomy()
+    if exception in taxonomy.environment_exceptions:
         return (
             f"{UNVERIFIED_FAILURE_PREFIX}: the assertion raised {exception}"
             f"{f' ({detail})' if detail else ''} in its own frame, before reaching the code "
@@ -379,7 +369,8 @@ def _malformed_failure(
     # before the code under test is written, and nothing in the traceback distinguishes that
     # from a typo'd import. Classifying it would block builds that should proceed, so it is
     # left to the build.
-    if exception in _MALFORMED_EXCEPTIONS:
+    taxonomy = load_acceptance_failure_taxonomy()
+    if exception in taxonomy.malformed_exceptions:
         return (
             f"{MALFORMED_FAILURE_PREFIX}: the assertion itself raised {exception}"
             f"{f' ({detail})' if detail else ''} in its own frame, before reaching the code "
@@ -1033,6 +1024,48 @@ def syntax_defect(code: str) -> str | None:
         # Source containing a null byte raises ValueError rather than SyntaxError.
         return f"criterion is not valid Python: {exc}"
     return None
+
+
+_IMPLICIT_SCRIPT_GLOBALS = frozenset({
+    "__builtins__",
+    "__cached__",
+    "__file__",
+    "__loader__",
+    "__name__",
+    "__package__",
+    "__spec__",
+})
+
+
+def unresolved_globals(code: str) -> tuple[str, ...]:
+    """Return names read by a standalone assertion but never imported or assigned.
+
+    Acceptance criteria execute as isolated scripts. A global supplied by another criterion or
+    by the process invoking Drydock therefore does not exist. Python's symbol table handles nested
+    scopes and comprehensions without guessing from source text; builtins and interpreter-provided
+    script globals remain valid.
+    """
+    try:
+        root = symtable.symtable(code, "<acceptance>", "exec")
+    except (SyntaxError, ValueError):
+        return ()
+    module_bindings = {
+        symbol.get_name()
+        for symbol in root.get_symbols()
+        if symbol.is_assigned() or symbol.is_imported() or symbol.is_namespace()
+    }
+    available = module_bindings | frozenset(dir(builtins)) | _IMPLICIT_SCRIPT_GLOBALS
+    unresolved: set[str] = set()
+
+    def inspect(table: symtable.SymbolTable) -> None:
+        for symbol in table.get_symbols():
+            if symbol.is_referenced() and symbol.is_global() and symbol.get_name() not in available:
+                unresolved.add(symbol.get_name())
+        for child in table.get_children():
+            inspect(child)
+
+    inspect(root)
+    return tuple(sorted(unresolved))
 
 
 #: Where a build records criteria that were already green at their block's baseline — before that

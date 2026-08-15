@@ -314,6 +314,32 @@ Blocks resolve before inlines.
         result = self._validate(target_dir, code)
         assert "Acceptance snippets" not in [f.section for f in result.failures()]
 
+    def test_unresolved_global_fails_before_the_assertion_runs(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        result = self._validate(
+            target_dir,
+            "import subprocess\n"
+            "result = subprocess.run(['true'], capture_output=True, text=True)\n"
+            "print(result.stderr, file=sys.stderr)\n"
+            "assert result.returncode == 0",
+        )
+
+        messages = [finding.message for finding in result.failures()]
+        assert any("reads undefined global name(s): `sys`" in message for message in messages)
+
+    def test_imported_globals_builtins_and_script_globals_pass(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        result = self._validate(
+            target_dir,
+            "import sys\n"
+            "def report():\n"
+            "    print(__file__, file=sys.stderr)\n"
+            "report()\n"
+            "assert len('ok') == 2",
+        )
+
+        assert "Acceptance snippets" not in [finding.section for finding in result.failures()]
+
     def test_corrected_invocation_passes_validation(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
         code = (

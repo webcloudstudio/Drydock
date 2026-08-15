@@ -355,7 +355,7 @@ def validate_specification(
     # of its own traceback, which is a sounder authority than a prediction. A snippet that fails
     # to parse is still a hard failure: that is a fact about the file, not a judgement.
     section = "Acceptance snippets"
-    from drydock.acceptance import parse_programmatic_acceptance, syntax_defect
+    from drydock.acceptance import parse_programmatic_acceptance, syntax_defect, unresolved_globals
 
     snippet_defects = 0
     snippet_advisories = 0
@@ -375,6 +375,15 @@ def validate_specification(
             # malformed check, settles UNVERIFIED, and costs the story nothing.
             if (reason := syntax_defect(check.code)) is not None:
                 f(section, f"{md_file.name} [{check.check_id}]: {reason}")
+                snippet_defects += 1
+                continue
+            if names := unresolved_globals(check.code):
+                rendered = ", ".join(f"`{name}`" for name in names)
+                f(
+                    section,
+                    f"{md_file.name} [{check.check_id}]: reads undefined global name(s): "
+                    f"{rendered}; import or assign each name inside this acceptance criterion",
+                )
                 snippet_defects += 1
                 continue
             for literal in check.retyped_expectations:

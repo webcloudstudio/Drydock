@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "malformed_exceptions": [
+    "IndentationError",
+    "NameError",
+    "SyntaxError",
+    "TabError",
+    "TypeError",
+    "UnboundLocalError"
+  ],
+  "environment_exceptions": [
+    "FileNotFoundError",
+    "IsADirectoryError",
+    "NotADirectoryError",
+    "PermissionError"
+  ]
+}

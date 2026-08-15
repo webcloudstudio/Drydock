@@ -43,6 +43,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-15: `drydock score ac` preserves an acceptance observation already classified as
+  `UNVERIFIED` instead of relabeling every non-passing process as `FAIL`. Blueprint validation now
+  rejects acceptance scripts that read unresolved standalone globals, such as `sys` without an
+  import, before build or scoring can execute them. Runtime exception attribution remains the
+  fallback for defects static validation cannot establish, with its exception categories loaded
+  from the packaged `Rigging/acceptance_failure_taxonomy.json`; Drydock never injects imports or
+  otherwise rewrites governed assertions.
+
 - 2026-08-15: `drydock status` writes every verdict to stdout. `--check` (`COMPLETE`,
   `INCOMPLETE`, `BLOCKED`) and `--ready` (`READY TO BUILD`, `BUILD COMPLETE`, `NOT READY`) both
   reported some outcomes on stderr, so a build loop reading stderr as a failure signal saw a
@@ -450,13 +458,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 - 2026-08-11: A criterion that raises `TypeError` in its own frame reports UNVERIFIED and is not
   charged to the build. `TypeError` joins `NameError`, `SyntaxError`, and their neighbors in
-  `acceptance._MALFORMED_EXCEPTIONS`: a criterion that dies on argument passing never reached the
-  code under test, so grading it FAIL closed a block that no implementation could reopen. A build
-  measures pass and fail verdicts; an exception in the harness is charged to the harness, stated
-  by id in the block evidence and the build summary. Attribution remains by traceback frame — the
-  same `TypeError` raised inside the built code is still a genuine red. The known trade: a
-  `TypeError` a correct implementation would have avoided also stops gating, visibly rather than
-  silently.
+  the malformed category now stored in `Rigging/acceptance_failure_taxonomy.json`: a criterion
+  that dies on argument passing never reached the code under test, so grading it FAIL closed a
+  block that no implementation could reopen. A build measures pass and fail verdicts; an exception
+  in the harness is charged to the harness, stated by id in the block evidence and the build
+  summary. Attribution remains by traceback frame — the same `TypeError` raised inside the built
+  code is still a genuine red. The known trade: a `TypeError` a correct implementation would have
+  avoided also stops gating, visibly rather than silently.
 
 - 2026-08-12: Sea Trials are the sole input to the completion gate. `score` and `score release`
   report unclosed Manifest work as a warning instead of a blocker, so a release whose every

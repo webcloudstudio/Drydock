@@ -626,3 +626,34 @@ def test_a_failed_criterion_reports_the_assertion_and_what_the_check_observed():
     block = "\n".join(detail)
     assert "process exit code: 1" in block
     assert "10 passed, 1 failed" in block
+
+
+def test_a_malformed_criterion_is_unverified_and_does_not_fail_scoring():
+    from drydock.acceptance import MALFORMED_FAILURE_PREFIX, AcceptanceObservation
+    from drydock.score import UNVERIFIED, AcReport, AcVerdict, _observation_verdict
+
+    error = f"{MALFORMED_FAILURE_PREFIX}: assertion raised NameError before testing the product"
+    observation = AcceptanceObservation(
+        "complete-conformance",
+        "FEATURE-Conformance.md",
+        "intent",
+        False,
+        1,
+        "655 passed, 0 failed, 0 errored, 0 skipped\n",
+        "NameError: name 'sys' is not defined\n",
+        error=error,
+        skipped=True,
+    )
+
+    status, evidence, detail = _observation_verdict(observation)
+    report = AcReport(
+        target="commonmark",
+        verdicts=(AcVerdict(observation.check_id, observation.intent, status, evidence),),
+        soundings_path=Path("SOUNDINGS.md"),
+        verified_at="",
+    )
+
+    assert status == UNVERIFIED
+    assert error in evidence
+    assert "655 passed, 0 failed" in "\n".join(detail)
+    assert report.exit_code() == 0

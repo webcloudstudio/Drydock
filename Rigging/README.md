@@ -12,6 +12,7 @@
 | `BUSINESS_RULES.md` | Master source for agent behavior rules — edit here, regenerate CLAUDE_RULES.md |
 | `CLAUDE_RULES.md` | Generated agent behavior contract — injected into every project's AGENTS.md |
 | `BRANDING.md` | Color variables, typography, and layout standards for documentation |
+| `acceptance_failure_taxonomy.json` | Runtime acceptance exception categories; traceback attribution remains in code |
 
 ## Subdirectories
 

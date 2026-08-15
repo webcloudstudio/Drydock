@@ -151,6 +151,16 @@ def _observation_verdict(obs: AcceptanceObservation) -> tuple[str, str, tuple[st
     ``AssertionError``, which names no defect and reads as an internal fault; the check's own
     reported output — ``10 passed, 1 failed`` — is the diagnosis, and it is on stdout.
     """
+    if obs.skipped:
+        summary = assertion_summary(obs.stderr, obs.error, override=obs.error)
+        detail = failure_detail(
+            stderr=obs.stderr,
+            stdout=obs.stdout,
+            return_code=obs.return_code,
+            error=obs.error,
+            override=obs.error,
+        )
+        return UNVERIFIED, summary, tuple(detail)
     if not obs.passed:
         summary = assertion_summary(obs.stderr, obs.error, override=obs.error)
         detail = failure_detail(
