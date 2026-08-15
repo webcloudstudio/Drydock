@@ -459,6 +459,28 @@ table.tree td.name strong { font-weight: 700; }
 .tag.fail { color: var(--fail); }
 .tag.degraded { color: var(--warn); }
 .tag.raw { color: var(--muted); font-weight: 400; }
+.tag.unknown { color: var(--warn); }
+
+/* ── receipt ────────────────────────────────────────────────── */
+.receipt { border: 1px solid var(--hard); margin: 0 0 1.25rem; }
+.receipt > .caption {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap;
+  background: var(--hard); color: var(--paper); padding: .35rem .6rem;
+  font-size: .74rem; text-transform: uppercase; letter-spacing: .18em; font-weight: 700;
+}
+.receipt > .caption .tally { letter-spacing: .1em; }
+.receipt .scroll { border: none; }
+.receipt table td:first-child { white-space: nowrap; font-weight: 700; }
+.receipt tbody tr.fail td:first-child { color: var(--fail); }
+.receipt tbody tr.unknown td:first-child { color: var(--warn); }
+.receipt td.detail { color: var(--muted); }
+
+/* ── guided path and limits ─────────────────────────────────── */
+ol.steps { margin: 0 0 1.25rem; padding-left: 1.5rem; font-size: .84rem; }
+ol.steps li { margin: .3rem 0; }
+ol.steps li .what { display: block; color: var(--muted); font-size: .8rem; }
+ul.limits { margin: 0 0 1.25rem; padding-left: 1.3rem; font-size: .82rem; color: var(--muted); }
+ul.limits li { margin: .2rem 0; }
 footer { margin-top: 2.5rem; padding-top: .75rem; border-top: 3px double var(--hard); color: var(--muted); font-size: .78rem; }
 
 /* ── artifact viewer ────────────────────────────────────────── */
@@ -935,7 +957,21 @@ def _local_time(value: object) -> str:
     return moment.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
-def _render_case_markdown(result: dict) -> str:
+def _md_link(case_root: Path, relative: str, label: str = "") -> str:
+    """Link a run artifact in Markdown, or say plainly that the run did not write one."""
+    if not relative or not (case_root / relative).exists():
+        return "not recorded for this run."
+    trimmed = relative.rstrip("/")
+    return f"[`{label or relative}`]({trimmed})"
+
+
+def _md_links(case_root: Path, candidates: Sequence[str]) -> str:
+    """Link every candidate present on disk, falling back to the first that exists."""
+    links = [_md_link(case_root, path) for path in candidates if (case_root / path).exists()]
+    return " · ".join(links) if links else "not recorded for this run."
+
+
+def _render_case_markdown(case_root: Path, result: dict) -> str:
     """Render the run report a forge shows when a reader opens the run directory.
 
     Markdown, not HTML: a published kit is read on GitHub, which renders the README of whatever
@@ -948,32 +984,84 @@ def _render_case_markdown(result: dict) -> str:
         result.get("score_exit_codes") if isinstance(result.get("score_exit_codes"), dict) else {}
     )
     environment = result.get("environment") if isinstance(result.get("environment"), dict) else {}
+    commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
+    checks = _receipt_checks(case_root, result)
+    proven = sum(check.state == "pass" for check in checks)
+    test = _command_by_suffix(commands, "-test")
+    source, _ = _primary_source(case_root, "")
+    target = str(result.get("target") or case_root.name)
+    workspace = f"workspace/targets/{target}"
     lines = [
         f"# {fixture}: {str(result.get('status') or '').upper()}",
         "",
-        "Open `index.html` for the linked proof kit; verify it with `sha256sum -c SHA256SUMS`.",
+        f"{proven} of {len(checks)} receipt claims proven. Open `index.html` for the linked "
+        "proof kit; verify it with `sha256sum -c SHA256SUMS`.",
         "",
+        "## Receipt",
+        "",
+        "| Claim | Verdict | Recorded outcome | Proof |",
+        "|---|---|---|---|",
+    ]
+    lines += [
+        f"| {check.name} | {_CHECK_TAGS[check.state]} | {check.detail} "
+        f"| {f'[{check.evidence}]({check.evidence})' if check.evidence else '—'} |"
+        for check in checks
+    ]
+    lines += [
+        "",
+        "## Run facts",
+        "",
+        f"- Drydock: `{environment.get('drydock_version') or 'not recorded'}` "
+        f"(commit `{environment.get('git_commit') or 'not recorded'}`)",
+        f"- Provider and model: `{environment.get('provider', '')}` / "
+        f"`{environment.get('model', '')}`",
+        f"- Platform: `{environment.get('platform') or 'not recorded'}` on Python "
+        f"`{environment.get('python_version') or 'not recorded'}`",
         f"- Target: `{result.get('target') or ''}`",
         f"- Run: `{result.get('run_id') or ''}`",
         f"- Ran: {local_run_window(environment)}",
-        f"- Provider and model: `{environment.get('provider', '')}` / "
-        f"`{environment.get('model', '')}`",
         f"- Elapsed: {int(result.get('elapsed_ms') or 0) / 1000:.1f}s",
-        f"- Build passes: {result.get('build_passes', 0)}",
         f"- LLM calls: {usage.get('calls', 0)}",
         f"- Tokens: cached {usage.get('cached_input_tokens', 0):,}; "
         f"uncached {usage.get('fresh_input_tokens', 0):,}; "
         f"output {usage.get('output_tokens', 0):,}",
         f"- LLM elapsed: {int(usage.get('llm_elapsed_ms') or 0) / 1000:.1f}s",
+        f"- Build passes: {result.get('build_passes', 0)}; repairs: {_repair_budget(commands)}",
+        f"- Conformance: {_conformance_result(commands)}",
+        f"- Verdict: expected {result.get('expected_verdict') or ''}, "
+        f"observed {result.get('observed_verdict') or ''}",
         "- Advisory scores: "
         + (", ".join(f"{name}=exit {code}" for name, code in scores.items()) or "none recorded"),
+        "",
+        "## Verify this run in five minutes",
+        "",
+        "No Drydock installation is required. Every step opens a file this run wrote.",
+        "",
+        f"1. Read the input specification — what was asked for: {_md_link(case_root, source)}",
+        "2. Inspect the generated Blueprint and Manifest — what Drydock planned: "
+        + _md_links(case_root, (f"{workspace}/MANIFEST.md", f"{workspace}/blueprint")),
+        "3. Inspect the delivered code — what was built: "
+        + _md_link(case_root, _delivered_directory(case_root, target)),
+        "4. Inspect the external test result — what an independent suite said about it: "
+        + _md_link(case_root, _relative(test.get("stdout_path"), case_root) if test else ""),
+        "5. Verify the bytes you just read are the bytes this run produced: "
+        "`sha256sum -c SHA256SUMS`",
+        "",
+        "## What this does not prove",
+        "",
     ]
+    lines += [f"- {item}" for item in _LIMITS]
     if result.get("degraded"):
         # A degraded run completed its lifecycle with a named shortfall. Labelling it a failure
         # would misreport a measurement that was taken.
-        lines.append("- Degraded: " + "; ".join(str(item) for item in result["degraded"] or ()))
+        lines += [
+            "",
+            "## Shortfall",
+            "",
+            "- Degraded: " + "; ".join(str(item) for item in result["degraded"] or ()),
+        ]
     elif result.get("error"):
-        lines.append(f"- Failure: {result['error']}")
+        lines += ["", "## Shortfall", "", f"- Failure: {result['error']}"]
     attestations = _attestations(result)
     if attestations:
         # The run passed. These are prohibitions the release gate could not settle either way,
@@ -1026,6 +1114,314 @@ def _attestations(result: dict) -> tuple[str, ...]:
     return tuple(str(item) for item in items) if isinstance(items, list) else ()
 
 
+# ── receipt ──────────────────────────────────────────────────────────────────────────
+#
+# A reader who did not run the build cannot be asked to reconstruct a verdict from eighteen
+# exit codes. The receipt states the six claims a run either earned or did not, each with the
+# artifact that settles it, above every explanation of how Drydock works. A claim the record
+# does not settle is rendered as unproven, never as a pass.
+
+
+@dataclass(frozen=True)
+class Check:
+    """One receipt claim: what was asserted, whether the record supports it, and the proof."""
+
+    name: str
+    state: str  # "pass", "fail", or "unknown"
+    detail: str
+    evidence: str = ""
+
+
+_CHECK_TAGS = {"pass": "PASS", "fail": "FAIL", "unknown": "UNPROVEN"}
+
+
+def _exit_state(code: object) -> str:
+    if code is None or code == "":
+        return "unknown"
+    return "pass" if code == 0 else "fail"
+
+
+def _command_by_suffix(commands: Sequence[dict], suffix: str) -> dict | None:
+    """Find the last lifecycle command whose label ends in ``suffix``.
+
+    Labels are sequence-prefixed (``16-score-acceptance``), and a stage can run more than once,
+    so the receipt reports the final occurrence: the one that decided the run.
+    """
+    matches = [item for item in commands if str(item.get("label") or "").endswith(suffix)]
+    return matches[-1] if matches else None
+
+
+def _sums_detail(case_root: Path) -> tuple[str, str]:
+    """Report what ``SHA256SUMS`` covers, as the count of digests actually written."""
+    path = case_root / _SUMS_NAME
+    try:
+        lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except OSError:
+        return "unknown", "No SHA256SUMS is present in this run directory."
+    if not lines:
+        return "fail", "SHA256SUMS is empty."
+    return "pass", f"{len(lines):,} files digested; verify with sha256sum -c SHA256SUMS."
+
+
+def _receipt_checks(case_root: Path, result: dict) -> tuple[Check, ...]:
+    """Derive the six receipt claims from the recorded run, in fixed order."""
+    commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
+    scores = (
+        result.get("score_exit_codes") if isinstance(result.get("score_exit_codes"), dict) else {}
+    )
+    status = str(result.get("status") or "")
+
+    lifecycle_state = {"passed": "pass", "degraded": "pass"}.get(status, "fail")
+    last = str(commands[-1].get("label") or "") if commands else ""
+    lifecycle_detail = (
+        f"{len(commands)} lifecycle commands executed; the run ended at {last}."
+        if commands
+        else "No lifecycle commands were recorded."
+    )
+    if status == "degraded":
+        lifecycle_detail += " Completed with a named shortfall; see the verdict above."
+
+    checks = [Check("Lifecycle completed", lifecycle_state, lifecycle_detail, "result.json")]
+    for name, suffix, absent in (
+        (
+            "External conformance suite passed",
+            "-test",
+            "No external test command is defined for this project.",
+        ),
+        (
+            "Target completion check passed",
+            "-complete",
+            "No completion check was recorded for this run.",
+        ),
+    ):
+        command = _command_by_suffix(commands, suffix)
+        if command is None:
+            checks.append(Check(name, "unknown", absent))
+            continue
+        argv = _command_text(command.get("argv") or []) or str(command.get("label") or "")
+        checks.append(
+            Check(
+                name,
+                _exit_state(command.get("returncode")),
+                f"{argv} exited {command.get('returncode')}.",
+                _relative(command.get("stdout_path"), case_root),
+            )
+        )
+    for name, score in (
+        ("Acceptance score passed", "acceptance"),
+        ("Release score passed", "release"),
+    ):
+        command = _command_by_suffix(commands, f"-score-{score}")
+        code = scores.get(score, command.get("returncode") if command else None)
+        evidence = _relative(command.get("stdout_path"), case_root) if command else ""
+        detail = (
+            f"drydock score {score} exited {code}."
+            if code is not None
+            else f"No {score} score was recorded for this run."
+        )
+        checks.append(Check(name, _exit_state(code), detail, evidence))
+    integrity_state, integrity_detail = _sums_detail(case_root)
+    checks.append(
+        Check("Integrity verification passed", integrity_state, integrity_detail, _SUMS_NAME)
+    )
+    return tuple(checks)
+
+
+def _repair_budget(commands: Sequence[dict]) -> str:
+    """Report the repair allowance the build ran under, as recorded on its own command line."""
+    build = _command_by_suffix(commands, "-build-1") or _command_by_suffix(commands, "build")
+    argv = [str(part) for part in (build or {}).get("argv") or []]
+    if "--repair-attempts" in argv:
+        index = argv.index("--repair-attempts")
+        if index + 1 < len(argv):
+            return f"{argv[index + 1]} attempts allowed"
+    return "not recorded"
+
+
+def _conformance_result(commands: Sequence[dict]) -> str:
+    test = _command_by_suffix(commands, "-test")
+    if test is None:
+        return "no external suite defined"
+    code = test.get("returncode")
+    return "passed" if code == 0 else f"failed (exit {code})"
+
+
+def _run_facts(
+    case_root: Path,
+    result: dict,
+    environment: Mapping[str, object],
+    usage: Mapping[str, object],
+    delivered: str = "",
+) -> list[tuple[str, str]]:
+    """The provenance a reader needs before reading anything else the run wrote."""
+    commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
+    status = str(result.get("status") or "").upper()
+    observed = str(result.get("observed_verdict") or "")
+    verdict = f"{status} · verdict {observed}" if observed and observed != status else status
+    tokens = _tokens(dict(usage))
+    _, _, tokens = tokens.partition(" · ")  # the call count is already its own field
+
+    def recorded(key: str) -> str:
+        return html.escape(str(environment.get(key) or "not recorded"))
+
+    return [
+        ("Verdict", html.escape(verdict)),
+        ("Target", f"<code>{html.escape(str(result.get('target') or case_root.name))}</code>"),
+        ("Run", f"<code>{html.escape(str(result.get('run_id') or ''))}</code>"),
+        ("Ran", html.escape(local_run_window(environment))),
+        ("Drydock", recorded("drydock_version")),
+        ("Commit", f"<code>{recorded('git_commit')}</code>"),
+        ("Provider", recorded("provider")),
+        ("Model", recorded("model")),
+        ("Platform", recorded("platform")),
+        ("Python", recorded("python_version")),
+        ("Elapsed", f"{int(result.get('elapsed_ms') or 0) / 1000:.1f}s"),
+        ("LLM calls", html.escape(str(usage.get("calls", "not recorded")))),
+        ("Tokens", html.escape(tokens)),
+        ("Build passes", html.escape(str(result.get("build_passes", "not recorded")))),
+        ("Repairs", html.escape(_repair_budget(commands))),
+        ("Conformance", html.escape(_conformance_result(commands))),
+        ("Code", f"<code>{html.escape(delivered)}</code>" if delivered else ""),
+    ]
+
+
+def _evidence_link(case_root: Path, relative: str, prefix: str, label: str = "") -> str:
+    """Link a run artifact from the run receipt, or from the project page one level above it.
+
+    The run receipt routes through :func:`_anchor`, which reaches the generated viewer. The
+    project page has no viewer map for another directory's files, so it addresses that run's
+    viewer by its known path and falls back to the raw artifact.
+    """
+    # A receipt links only artifacts that are on disk: a dead link in a proof kit is a claim
+    # the kit cannot support.
+    if not relative or not (case_root / relative).exists():
+        return ""
+    if not prefix:
+        return _anchor(relative, label or relative)
+    viewer = case_root / _VIEW_DIR / f"{relative}.html"
+    href = f"{prefix}{_VIEW_DIR}/{relative}.html" if viewer.is_file() else f"{prefix}{relative}"
+    return (
+        f'<a class="mono" href="{html.escape(href)}" target="_blank" rel="noopener">'
+        f"{html.escape(label or relative)}</a>"
+    )
+
+
+def _receipt(case_root: Path, result: dict, prefix: str = "") -> str:
+    """Render the receipt table: one row per claim, its verdict, and the artifact proving it."""
+    checks = _receipt_checks(case_root, result)
+    passed = sum(check.state == "pass" for check in checks)
+    rows = [
+        [
+            _cell(check.name),
+            f'<td><span class="tag {check.state}">{_CHECK_TAGS[check.state]}</span></td>',
+            _cell(check.detail, css="detail"),
+            f"<td>{_evidence_link(case_root, check.evidence, prefix) or '—'}</td>",
+        ]
+        for check in checks
+    ]
+    tally = f"{passed} of {len(checks)} claims proven"
+    return (
+        '<section class="receipt">'
+        f'<div class="caption"><span>Receipt</span><span class="tally">{html.escape(tally)}</span>'
+        "</div>" + _table(("Claim", "Verdict", "Recorded outcome", "Proof"), rows) + "</section>"
+    )
+
+
+# ── guided verification path ─────────────────────────────────────────────────────────
+
+
+def _primary_source(case_root: Path, prefix: str) -> tuple[str, str]:
+    """Name the specification the run was built from: the largest prose file in ``sources/``."""
+    directory = case_root / "sources"
+    if not directory.is_dir():
+        return "", ""
+    documents = [
+        path
+        for path in sorted(directory.iterdir())
+        if path.is_file() and path.suffix.lower() in _MARKDOWN_SUFFIXES
+    ]
+    named = [path for path in documents if path.name != "INSTRUCTIONS.md"] or documents
+    if not named:
+        return "", ""
+    chosen = max(named, key=lambda path: path.stat().st_size)
+    return f"sources/{chosen.name}", f"{prefix}sources/{chosen.name}"
+
+
+def _delivered_directory(case_root: Path, target: str) -> str:
+    """Name the delivered-code directory from the run tree, without needing its inventory."""
+    root = case_root / "build"
+    if (root / target).is_dir():
+        return f"build/{target}/"
+    return "build/" if root.is_dir() else ""
+
+
+def _guided_path(case_root: Path, result: dict, prefix: str = "") -> str:
+    """Render the five-minute path a reader walks to check the run without installing Drydock."""
+    target = str(result.get("target") or case_root.name)
+    commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
+    test = _command_by_suffix(commands, "-test")
+    test_log = _relative(test.get("stdout_path"), case_root) if test else ""
+    source, _ = _primary_source(case_root, prefix)
+    workspace = f"workspace/targets/{target}"
+    delivered = _delivered_directory(case_root, target)
+
+    def item(text: str, link: str) -> str:
+        trailer = link or "not recorded for this run."
+        return f'<li>{text}<span class="what">{trailer}</span></li>'
+
+    steps = [
+        item(
+            "Read the input specification — what was asked for.",
+            _evidence_link(case_root, source, prefix),
+        ),
+        item(
+            "Inspect the generated Blueprint and Manifest — what Drydock planned.",
+            " · ".join(
+                link
+                for link in (
+                    _evidence_link(case_root, f"{workspace}/MANIFEST.md", prefix),
+                    _evidence_link(case_root, f"{workspace}/blueprint/ARCHITECTURE.md", prefix),
+                )
+                if link
+            ),
+        ),
+        item(
+            "Inspect the delivered code — what was built.",
+            _evidence_link(case_root, delivered, prefix),
+        ),
+        item(
+            "Inspect the external test result — what an independent suite said about it.",
+            _evidence_link(case_root, test_log, prefix),
+        ),
+        item(
+            "Verify the bytes you just read are the bytes this run produced.",
+            f"<code>sha256sum -c {_SUMS_NAME}</code>",
+        ),
+    ]
+    return (
+        "<h2>Verify this run in five minutes</h2>"
+        '<p class="note">No Drydock installation is required. Every step opens a file this run '
+        'wrote.</p><ol class="steps">' + "".join(steps) + "</ol>"
+    )
+
+
+_LIMITS = (
+    "One run is evidence of one run. It is not a benchmark.",
+    "It states no general success rate for Drydock, this model, or this class of project.",
+    "It is not a security certification of the delivered code.",
+    "LLM execution is not deterministic; a rerun of the same inputs produces different "
+    "intermediate output and may produce a different verdict.",
+)
+
+
+def _limits() -> str:
+    return (
+        '<h2>What this does not prove</h2><ul class="limits">'
+        + "".join(f"<li>{html.escape(item)}</li>" for item in _LIMITS)
+        + "</ul>"
+    )
+
+
 def _render_case(
     case_root: Path,
     result: dict,
@@ -1065,6 +1461,16 @@ def _render_case(
         detail = (
             f"{len(commands)} lifecycle commands ran; every required command exited 0. "
             "Each row below links to its own captured output."
+        )
+    # A run status of PASSED is decided by the required commands. It does not settle the
+    # advisory claims the receipt reports, so the page never lets the verdict imply them.
+    unproven = [check for check in _receipt_checks(case_root, result) if check.state != "pass"]
+    if unproven:
+        names = ", ".join(check.name.lower() for check in unproven)
+        detail += (
+            f" {len(unproven)} receipt "
+            f"{'claim is' if len(unproven) == 1 else 'claims are'} not proven ({names}); "
+            "see the receipt below."
         )
     if passed and attestations:
         count = len(attestations)
@@ -1148,23 +1554,9 @@ def _render_case(
         if not environment.get(key) and calls:
             environment[key] = str(calls[0][field] or "")
     run_prefix = f"runs/{result.get('run_id') or case_root.name}/"
-    meta = _meta([
-        ("Target", f"<code>{html.escape(target)}</code>"),
-        ("Run", f"<code>{html.escape(str(result.get('run_id') or ''))}</code>"),
-        ("Code", f"<code>{html.escape(_delivered_root(groups, run_prefix))}</code>"),
-        ("Elapsed", f"{int(result.get('elapsed_ms') or 0) / 1000:.1f}s"),
-        ("Build passes", str(result.get("build_passes", ""))),
-        ("Provider", html.escape(str(environment.get("provider") or "not recorded"))),
-        ("Model", html.escape(str(environment.get("model") or "not recorded"))),
-        ("Drydock", html.escape(str(environment.get("drydock_version") or "not recorded"))),
-        (
-            "Commit",
-            f"<code>{html.escape(str(environment.get('git_commit') or 'not recorded'))}</code>",
-        ),
-        ("Python", html.escape(str(environment.get("python_version") or "not recorded"))),
-        ("Platform", html.escape(str(environment.get("platform") or "not recorded"))),
-        ("LLM usage", html.escape(_tokens(usage))),
-    ])
+    meta = _meta(
+        _run_facts(case_root, result, environment, usage, _delivered_root(groups, run_prefix))
+    )
 
     scores = (
         result.get("score_exit_codes") if isinstance(result.get("score_exit_codes"), dict) else {}
@@ -1231,7 +1623,13 @@ def _render_case(
                 "Approved" if passed else "Rejected",
             ),
             _verdict(passed, verdict, detail),
+            _receipt(case_root, result),
             meta,
+            _guided_path(case_root, result),
+            _limits(),
+            "<h2>Run detail</h2>",
+            '<p class="note">Everything below is the underlying record: the commands Drydock '
+            "executed, the model calls they made, and every file this run wrote.</p>",
             _tabs([
                 ("steps", "Steps", steps_panel),
                 ("error", "Error", excerpt),
@@ -1344,13 +1742,39 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
             _cell(_tokens(usage)),
         ])
 
-    # The newest run is what a reader almost always wants, so it is reachable above the table.
+    # The newest run is what a reader almost always wants, so it is reachable above the table,
+    # and the summary below reports that run specifically rather than the project in general.
     latest_link = (
-        f'<p class="note">Latest run: '
-        f"{_anchor(f'runs/{results[0][0]}/index.html', results[0][0])}</p>"
+        f'<p class="note">This page summarizes the newest recorded run, '
+        f"{_anchor(f'runs/{results[0][0]}/index.html', results[0][0])}. Its own receipt carries "
+        "the full command-by-command record.</p>"
         if results
         else '<p class="note">No runs have been recorded for this project yet.</p>'
     )
+    if results:
+        run_id = results[0][0]
+        latest_root = kit_root / "runs" / run_id
+        prefix = f"runs/{run_id}/"
+        environment = (
+            latest.get("environment") if isinstance(latest.get("environment"), dict) else {}
+        )
+        usage = latest.get("usage") if isinstance(latest.get("usage"), dict) else {}
+        summary = "\n".join([
+            _receipt(latest_root, latest, prefix),
+            _meta(
+                _run_facts(
+                    latest_root,
+                    latest,
+                    environment,
+                    usage,
+                    prefix + _delivered_directory(latest_root, str(latest.get("target") or "")),
+                )
+            ),
+            _guided_path(latest_root, latest, prefix),
+            _limits(),
+        ])
+    else:
+        summary = ""
 
     return _page(
         f"Drydock UAT kit {kit_root.name}",
@@ -1364,6 +1788,7 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
             ),
             _verdict(passed, verdict, html.escape(detail)),
             latest_link,
+            summary,
             "<h2>Runs</h2>",
             '<p class="note">Every unattended build of this project, each a complete, '
             "self-verifying record of the commands Drydock executed. Open a run to reach its "
@@ -1417,7 +1842,7 @@ def build_case_kit(case_root: Path) -> Path:
         groups = _rehash(case_root, groups, _MANIFEST_PATH)
     _write_sums(case_root, groups)
 
-    (case_root / "README.md").write_text(_render_case_markdown(result), encoding="utf-8")
+    (case_root / "README.md").write_text(_render_case_markdown(case_root, result), encoding="utf-8")
     # Viewers are written before the receipt so every link it emits can point at one. They are
     # generated output: excluded from the inventory above, and replaced on every rebuild.
     viewers = _write_viewers(

@@ -500,7 +500,7 @@ def test_kit_index_is_a_project_page_over_the_documents_and_bundles_on_disk(
     index = build_kit_index(kit)
     page = index.read_text(encoding="utf-8")
 
-    assert "Latest run:" in page
+    assert "newest recorded run" in page
     for link in (
         "runs/20260103T000000.000000Z/index.html",
         "view/inputs/SEA_TRIALS.md.html",
@@ -693,3 +693,146 @@ def test_the_kit_index_tags_a_degraded_run_distinctly(tmp_path: Path) -> None:
     page = build_kit_index(kit).read_text(encoding="utf-8")
 
     assert '<span class="tag degraded">DEGRADED</span>' in page
+
+
+def _stage(case: Path, label: str, argv: list[str], returncode: int) -> None:
+    """Add one more executed lifecycle stage to a fixture run, with its captured streams."""
+    commands_dir = case / "evidence" / "commands"
+    for stream in ("stdout", "stderr"):
+        (commands_dir / f"{label}.{stream}.log").write_text("", encoding="utf-8")
+    record = json.loads((case / "result.json").read_text(encoding="utf-8"))
+    record["commands"].append({
+        "argv": argv,
+        "label": label,
+        "returncode": returncode,
+        "elapsed_ms": 10,
+        "cwd": str(case / "workspace"),
+        "stdout_path": str(commands_dir / f"{label}.stdout.log"),
+        "stderr_path": str(commands_dir / f"{label}.stderr.log"),
+    })
+    (case / "result.json").write_text(json.dumps(record), encoding="utf-8")
+
+
+def _complete_run(kit: Path) -> Path:
+    """A run that executed every stage the receipt reports on."""
+    (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    case = _case(kit)
+    _stage(
+        case,
+        "03-initial-complete",
+        ["/opt/venv/bin/python", "-m", "drydock", "status", "commonmark", "--check"],
+        1,
+    )
+    _stage(case, "04-test", ["sh", "sources/full_test.sh"], 0)
+    _stage(
+        case,
+        "05-score-acceptance",
+        ["/opt/venv/bin/python", "-m", "drydock", "score", "ac", "commonmark"],
+        0,
+    )
+    _stage(
+        case,
+        "06-score-release",
+        ["/opt/venv/bin/python", "-m", "drydock", "score", "release", "commonmark"],
+        0,
+    )
+    (case / "workspace" / "targets" / "commonmark" / "MANIFEST.md").write_text(
+        "# manifest\n", encoding="utf-8"
+    )
+    return case
+
+
+def test_the_receipt_states_six_claims_in_fixed_order_with_their_recorded_outcomes(
+    tmp_path: Path,
+) -> None:
+    case = _complete_run(tmp_path / "CommonMark")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+    claims = re.findall(
+        r"<td>(Lifecycle completed|External conformance suite passed|Target completion check "
+        r"passed|Acceptance score passed|Release score passed|Integrity verification passed)"
+        r'</td><td><span class="tag (pass|fail|unknown)">(\w+)</span>',
+        page,
+    )
+
+    assert [claim for claim, _, _ in claims] == [
+        "Lifecycle completed",
+        "External conformance suite passed",
+        "Target completion check passed",
+        "Acceptance score passed",
+        "Release score passed",
+        "Integrity verification passed",
+    ]
+    assert [verdict for _, _, verdict in claims] == [
+        "PASS",
+        "PASS",
+        "FAIL",
+        "PASS",
+        "PASS",
+        "PASS",
+    ]
+    # The receipt reports the tally rather than letting the run status stand for every claim.
+    assert "5 of 6 claims proven" in page
+    assert "1 receipt claim is not proven (target completion check passed)" in page
+
+
+def test_the_receipt_marks_a_claim_the_run_never_recorded_as_unproven(tmp_path: Path) -> None:
+    kit = tmp_path / "CommonMark"
+    (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    case = _case(kit)
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert page.count('<span class="tag unknown">UNPROVEN</span>') == 3
+    assert "No external test command is defined for this project." in page
+    assert "No completion check was recorded for this run." in page
+    assert "No release score was recorded for this run." in page
+    # An unproven claim is never dressed up as a pass by the run status above it.
+    assert "3 receipt claims are not proven" in page
+
+
+def test_the_run_readme_leads_with_the_receipt_before_any_drydock_internals(
+    tmp_path: Path,
+) -> None:
+    case = _complete_run(tmp_path / "CommonMark")
+
+    build_case_kit(case)
+    readme = (case / "README.md").read_text(encoding="utf-8")
+
+    order = [
+        readme.index(heading)
+        for heading in (
+            "## Receipt",
+            "## Run facts",
+            "## Verify this run in five minutes",
+            "## What this does not prove",
+            "## Commands",
+        )
+    ]
+    assert order == sorted(order)
+    assert "5 of 6 receipt claims proven" in readme
+    assert "| Target completion check passed | FAIL |" in readme
+    assert "[`sources/spec.txt`](sources/spec.txt)" not in readme  # not a prose specification
+    assert "(workspace/targets/commonmark/MANIFEST.md)" in readme
+    assert "(build/commonmark)" in readme
+    assert "One run is evidence of one run. It is not a benchmark." in readme
+
+
+def test_the_kit_index_carries_the_latest_run_receipt_with_run_scoped_links(
+    tmp_path: Path,
+) -> None:
+    kit = tmp_path / "CommonMark"
+    case = _complete_run(kit)
+    run_id = case.name
+
+    index = build_kit_index(kit)
+    page = index.read_text(encoding="utf-8")
+
+    assert "5 of 6 claims proven" in page
+    assert f'href="runs/{run_id}/view/evidence/commands/04-test.stdout.log.html"' in page
+    assert f'href="runs/{run_id}/build/commonmark/"' in page
+    assert "Verify this run in five minutes" in page
+    assert "It is not a security certification of the delivered code." in page
+    assert all((kit / link).exists() for link in _links(index))
