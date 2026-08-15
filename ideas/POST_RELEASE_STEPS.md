@@ -1,183 +1,318 @@
-# Post-Release Steps — Visibility and Adoption
+# Drydock Launch Readiness and Adoption Plan
 
 **Status:** Working plan. Check items off in place.
-**Date:** 2026-07-30
+
+**Updated:** 2026-08-14
+
 **Owner:** Ed Barlow
-**Goal:** Move Drydock from "published" to "used by people who are not me."
+
+**Goal:** Launch Drydock with one credible promise, one independently inspectable proof, and a
+short path from interest to a successful first run.
 
 ---
 
-## 0. Diagnosis
+## 0. Decision
 
-Several posts to r/SpecDrivenDevelopment produced few hard hits. Three causes, in order of
-impact:
+Drydock does not need more product surface before launch. It needs a smaller public story and a
+cleaner proof surface.
 
-1. **Channel.** A small subreddit is a low-traffic venue, and repeated self-posts into one small
-   venue is the lowest-yield distribution pattern available. The audience there already believes
-   in specification-driven development; the people with the pain do not know the category name.
-2. **Pitch.** "The missing process layer for specification-driven development" is a category
-   claim. A reader needs a pain claim: their agent forgets, contradicts itself, and cannot prove
-   what it built.
-3. **Activation cliff.** The old README asked for four configuration commands and nine
-   subcommands before anything happened, plus eight pieces of new vocabulary. Evaluation stops
-   long before value appears.
+The weak response in r/SpecDrivenDevelopment is not evidence that Drydock is too small. The venue
+is small, and the posts asked readers to understand a large methodology before showing one result.
+The useful signal in the discussion was that readers immediately asked how execution works and
+whether subscription CLI use is supported. The launch must answer those questions directly and
+then lead to evidence.
 
-**Governing rule:** fix the front door before spending another post. Traffic to a page that does
-not convert is wasted twice — the post and the audience.
+Use this public promise:
 
----
+> **Drydock turns a long specification into an ordered agent build and publishes the tests,
+> prompts, changes, and release verdict as a verifiable receipt.**
 
-## 1. Phase 1 — Front Door
+Everything else — SAIL, QuarterDeck, Rigging, Soundings, Sea Trials, enterprise governance,
+document generation, and the full command surface — supports that promise. It is not the opening
+pitch.
 
-Nothing else in this plan may start until this phase is complete.
-
-- [x] Benefit-first tagline replacing the category claim.
-- [x] Whole-command-surface graphic (`docs/drydock_process.svg` / `.png`) at the top of the README.
-- [x] Collapse the duplicated quickstart; hero install is two lines.
-- [x] Link the Product Comparison Matrix from `Why It Is Different`.
-- [ ] Put the process graphic on webcloudstudio.com in place of the autoplay video. Video below
-      the fold, as a secondary option, never as the primary explanation.
-- [ ] Record a 60–90 second asciinema or terminal GIF of one real run. Place it directly under
-      the process graphic in the README. No music, no titles, no editing beyond trimming dead
-      time.
-- [ ] Read the README top-to-bottom as a stranger. Delete every sentence that does not earn its
-      place before the reader has decided to try it.
-- [ ] Move the vocabulary (Blueprint, QuarterDeck, Rigging, Soundings, Sea Trials, Commander)
-      below the first call to action. The metaphor is an asset after commitment and a tax before
-      it.
-- [ ] Verify a clean install on a machine with no Drydock configuration:
-      `uv tool install drydock-sdd && drydock init MyApp`. Every prompt, error, and missing
-      prerequisite the new user hits gets fixed or documented. This is the highest-value
-      engineering work in the plan.
-
-**Exit criterion:** a stranger can state what Drydock does for them after ten seconds on the
-README.
+**Launch rule:** do not add another example or major feature until one existing example has a
+boringly consistent verdict, a five-minute guided tour, and a successful clean-room reproduction.
 
 ---
 
-## 2. Phase 2 — Proof Assets
+## 1. Current Position
 
-Drydock's structural advantage over every competitor is that it produces receipts. Nobody in
-this space shows them. Show them.
+### Completed since the first plan
 
-- [ ] Choose the reference project. Small, real, comprehensible in one sitting, not a to-do app.
-      The CommonMark work (`c3.sh`) or a scoped slice of Marina are candidates.
-- [ ] Build it end to end with Drydock. Do not hand-correct; if it fails, fix Drydock.
-- [ ] Publish as a public repository, `drydock-example-<name>`, containing the generated
-      application **and** the Blueprint, `MANIFEST.md`, `SOUNDINGS.md`, `SCORECARD.md`, and the
-      run logs.
-- [ ] Write the `README` of that repo as a guided tour: here is the specification, here is the
-      graph, here is the step that built this file, here is the evidence it was verified.
-- [ ] Link it from the Drydock README hero. This is the single strongest asset in the plan.
-- [ ] Optional and high-value: the **rework experiment**. Build the same small application three
-      ways — unstructured agent prompting, Spec Kit, Drydock. Measure something honest: rework
-      rate, steps to green tests, time to first correct build. Publish the numbers even where
-      Drydock loses. Credibility from an unfavorable number exceeds any favorable claim.
+- [x] Updated the overview video.
+- [x] Implemented `drydock uat` as a repeatable, end-to-end scored build.
+- [x] Published separate evidence repositories for
+      [CommonMark](https://github.com/webcloudstudio/drydock-example-commonmark),
+      [Reading List](https://github.com/webcloudstudio/drydock-example-readinglist), and
+      [TOML](https://github.com/webcloudstudio/drydock-example-toml).
+- [x] Built nontrivial CommonMark and TOML conformance examples.
+- [x] Built the small Reading List example, including an incremental-specification update path.
+- [ ] Complete the jq build. This is useful depth, but it is not a launch prerequisite.
 
----
+### Launch blockers visible today
 
-## 3. Phase 3 — Content That Is Not An Announcement
+- [ ] Make one proof repo internally consistent. The current public receipts invite avoidable
+      skepticism:
+  - CommonMark is headed `PASSED`, but `score ac` and `score release` exit 1.
+  - TOML is headed `PASSED`, but `status --check` and `score ac` exit 1.
+  - Reading List is headed `FAILED` because the refit update exits 1.
+- [ ] Explain the distinction between the UAT verdict and advisory command results, or change the
+      verdict contract so a reader never has to infer it. A launch artifact cannot say both
+      “passed” and “release failed” without an explicit, credible explanation.
+- [ ] Put proof above documentation in the main README. The current README has no worked-example
+      link, repeats the tagline, presents seven capabilities at once, and still requires several
+      configuration commands before first value.
+- [ ] Make each proof kit browsable without cloning. Enable GitHub Pages for the selected repo and
+      set its repository homepage to the rendered `index.html`.
+- [ ] Audit every published receipt for credentials, personal paths, private source, provider
+      tokens, licensing, and unexpectedly large raw artifacts.
 
-"Check out my tool" is ignored. Artifacts are not. Each item below is a standalone piece of
-value that mentions Drydock as a footnote.
-
-- [ ] **Publish the comparison matrix publicly.** `docs/Product_Comparison_Matrix.md` is
-      currently inert. Drydock vs. GitHub Spec Kit vs. Kiro vs. BMAD vs. a plain `CLAUDE.md`,
-      explicit about where each one wins. Highest-traffic content type in this niche, ranks in
-      search, gets linked by others, and does not read as promotion when it is honest.
-- [ ] **"Roast my specification format."** Post the Typed Specification and ask for
-      destruction. Asking for critique outperforms asking for adoption by roughly an order of
-      magnitude, and the people who show up to criticize are the first real users.
-- [ ] **"Why I made my agent write acceptance criteria before code."** Teachable post, tool as
-      a footnote.
-- [ ] **Convert the video assets to text.** The 10-minute overview and the tutorial become
-      written posts with embedded stills. Text indexes in search; video does not, and nobody on
-      Reddit or HN clicks a video from a stranger.
-- [ ] **Cut 30–60 second vertical clips** from the existing videos for LinkedIn and X.
-- [ ] **Syndicate** each written post: webcloudstudio.com canonical, then dev.to and Hashnode
-      with canonical tags pointing home.
+The public evidence repositories are the strongest work completed since the first plan. They are
+also now the highest-risk credibility surface. Fix them before sending more traffic.
 
 ---
 
-## 4. Phase 4 — Channels
+## 2. Phase 1 — Establish One Golden Proof
 
-Ordered by expected yield. Do not open a channel before Phase 1 is complete.
+Use **TOML as the initial candidate** because its build and release score pass and its external
+conformance suite is easy to explain. If CommonMark reaches a fully consistent verdict first, use
+it instead. Do not present all examples with equal weight.
 
-| Channel | Post type | Notes |
+- [ ] Resolve every contradictory exit in the selected run. The final receipt must show:
+  - lifecycle completed;
+  - external conformance suite passed;
+  - target completion check passed;
+  - acceptance score passed;
+  - release score passed;
+  - integrity verification passed.
+- [ ] Rerun from a clean machine or clean VM using the published PyPI release, not the source tree.
+- [ ] Record the exact Drydock version, provider, model, platform, elapsed time, LLM calls, token
+      use, repair count, conformance result, and final verdict at the top of the example README.
+- [ ] Add a five-minute guided path to the example README:
+  1. read the input specification;
+  2. inspect the generated Blueprint and Manifest;
+  3. inspect the delivered code;
+  4. inspect the external test result;
+  5. verify `SHA256SUMS`.
+- [ ] Add a compact result table before any explanation of UAT internals.
+- [ ] Link the exact successful run, not merely the repository root.
+- [ ] Publish the generated HTML through GitHub Pages and populate the repository description,
+      homepage, and topics. TOML currently has no description; none of the three repos has a
+      homepage or topics.
+- [ ] State what the example does **not** prove: one run is evidence of one run, not a benchmark,
+      general success rate, security certification, or deterministic LLM output.
+
+**Exit criterion:** a skeptical engineer can verify what was built, how it was tested, and why the
+verdict is `PASSED` in five minutes without installing Drydock.
+
+### Supporting examples
+
+- **CommonMark:** publish second as the scale/conformance example after its release and acceptance
+  results agree with the headline verdict.
+- **Reading List:** keep as the fast onboarding and refit example. Do not promote it while its
+  published latest run is failed. Once fixed, it should become the clean-install quickstart because
+  a four-hour CommonMark run is not an activation path.
+- **jq:** use as a post-launch engineering diary and stress test. Its value is the difficult
+  generator/backtracking model and the honest failure progression, not another green badge.
+
+---
+
+## 3. Phase 2 — Rebuild the Front Door Around the Proof
+
+The README currently describes the whole product before proving any part of it. Reverse that
+order.
+
+- [ ] Replace the hero copy with the public promise from Section 0 and one sentence identifying the
+      user: engineers using Claude Code or Codex to deliver projects too large for one prompt.
+- [ ] Put three actions immediately below it:
+  1. **Inspect a verified build** — the golden proof;
+  2. **Try the small example** — Reading List after it passes;
+  3. **Understand the method** — documentation or updated video.
+- [ ] Add one screenshot of the golden receipt showing the verdict, external test count, elapsed
+      time, model, and integrity check. Use the updated video as secondary depth, not the only proof.
+- [ ] Reduce the first screen to three differentiators:
+  - dependency-ordered work with bounded context;
+  - deterministic acceptance against external tests;
+  - inspectable build receipts.
+- [ ] Move SAIL and nautical vocabulary below the first proof and installation action.
+- [ ] Remove duplicated overview copy and correct visible prose errors before launch, including
+      `Methedology`, `datbase`, `questionaires`, and agreement errors.
+- [ ] Replace the configuration wall with one copyable quickstart. If configuration cannot be
+      inferred or prompted safely, provide a bootstrap command or a checked example config.
+- [ ] Add a prominent beta/status statement and a support route with a response expectation.
+- [ ] Add direct links to all public examples in a small “Build receipts” table, with only the
+      golden proof labelled recommended.
+- [ ] Keep the comparison matrix available, but do not make it the primary call to action.
+
+**Exit criterion:** after ten seconds, a reader knows the problem Drydock solves and can open a
+real successful receipt with one click.
+
+---
+
+## 4. Phase 3 — Release Hygiene
+
+Do this once, immediately before launch. Freeze non-blocking feature work while it runs.
+
+- [ ] Cut a release candidate and run the complete test, lint, format, package, and installed-wheel
+      verification contracts.
+- [ ] Test clean installation and the small example on Linux, macOS, and Windows/WSL, or publish an
+      explicit tested-platform matrix with unsupported combinations named.
+- [ ] Test both supported subscription providers. Publish observed compatibility; do not infer
+      terms-of-service conclusions or promise that subscription policies will remain unchanged.
+- [ ] Verify every README, PyPI, project-site, video, comparison-matrix, issue, and example link.
+- [ ] Confirm package and project naming is unambiguous. Another active package uses the
+      `drydock-cli` name; use `drydock-sdd` consistently in search-facing copy and metadata.
+- [ ] Verify that the PyPI description shows the same promise, quickstart, proof link, supported
+      Python versions, license, repository, issue tracker, and documentation links as GitHub.
+- [ ] Review open issues and known failures. Publish a short `KNOWN_LIMITATIONS.md` or equivalent;
+      hiding normal beta limitations costs more trust than naming them.
+- [ ] Tag the release, publish it, install that exact artifact in a blank environment, and run the
+      Reading List smoke path again.
+- [ ] Freeze the successful proof receipt. Never silently replace it; publish later runs alongside
+      it with their Drydock versions.
+
+**Exit criterion:** the artifact a stranger installs is the artifact used by the quickstart and
+the proof can be reproduced from published inputs.
+
+---
+
+## 5. Phase 4 — Five Design-Partner Runs
+
+Do this before a broad Show HN launch. The next required evidence is not another self-run; it is a
+stranger completing a run.
+
+- [ ] Recruit five senior engineers who already use Claude Code or Codex and have a specification,
+      PRD, migration plan, or substantial issue set.
+- [ ] Ask each person to bring their own project. Do not lead with the Drydock terminology.
+- [ ] Observe the first install and import silently. Record:
+  - time to first useful output;
+  - first confusing screen or term;
+  - first command failure;
+  - whether they reached a completed build;
+  - whether they returned for a second run;
+  - whether they trusted the receipt.
+- [ ] Fix any repeated activation failure before recruiting the next cohort.
+- [ ] Ask for permission to publish one anonymized case study, including failure and repair history.
+- [ ] Obtain three externally authored issue reports or discussion threads before broad launch.
+
+Recruit directly from former colleagues, senior engineering contacts, and people who engaged
+substantively on Reddit. A personal request for a 45-minute observed trial is more likely to
+produce evidence than another general announcement.
+
+**Exit criterion:** three of five partners finish the small path, one tries a real project, and the
+same onboarding defect does not stop two consecutive participants.
+
+---
+
+## 6. Phase 5 — Publish Useful Artifacts, Then Launch
+
+The next posts should be technical artifacts with Drydock as the implementation, not repeated
+announcements.
+
+### Publication order
+
+- [ ] **Anatomy of a verifiable agent build receipt.** Walk through the golden proof from source
+      specification to external test and checksum. This is the new canonical article.
+- [ ] **The failed Reading List refit.** Explain what failed, how the receipt exposed it, and what
+      changed. A concrete failure analysis demonstrates the evidence claim better than a flawless
+      demo.
+- [ ] **Building a CommonMark parser from the specification.** Lead with the conformance result and
+      exact cost/time, then show where planning and repair mattered.
+- [ ] **Building jq: where the one-value execution model broke.** Publish the progression even if
+      jq does not reach full conformance.
+- [ ] **Comparison matrix update.** Keep it factual, date-stamped, linked to primary sources, and
+      explicit about where alternatives win.
+- [ ] **Show HN.** Update `ideas/SHOW_HN_POST.md` around `drydock uat` and the golden proof before
+      submission. Remove claims that no longer match the implementation or provider policies.
+
+### Channel order
+
+| Channel | Use | Gate |
 |---|---|---|
-| **Hacker News (Show HN)** | Launch | One shot. Draft prepared in `ideas/SHOW_HN_POST.md`. Tue–Thu, 08:00–10:00 ET. Block the whole day. |
-| **r/ClaudeAI, r/ChatGPTCoding** | Problem post | Far larger than r/SpecDrivenDevelopment and directly on the pain. Lead with the problem. |
-| **r/ExperiencedDevs** | Teachable post | Hostile to promotion, receptive to hard-won process. Never link-drop. |
-| **LinkedIn** | Case study, clips | Underused given your profile. Engineering leadership is the buyer persona and your credentials carry there. |
-| **Lobste.rs** | Launch | Requires an invite. Worth acquiring. |
-| **r/programming, r/LocalLLaMA** | Comparison, experiment | Data-driven posts only; announcements die. |
-| **Discords/forums for agent tooling** | Participation | Contribute value for weeks before ever mentioning Drydock. |
-| **r/SpecDrivenDevelopment** | Continued presence | Keep it, but it is a secondary venue, not the strategy. |
+| Direct outreach | Observed design-partner runs | Golden proof live |
+| LinkedIn | Receipt walkthrough and engineering case study | One external run |
+| r/SpecDrivenDevelopment | Failure analysis or conformance result | Artifact published |
+| r/ClaudeAI / relevant Codex community | Provider-specific workflow and result | Tested provider matrix |
+| Hacker News | Show HN linking the repository and golden proof | Three completed external trials |
+| Lobste.rs / r/programming | Deep technical post only | Measured result and reproducible repo |
 
-Rules for all channels:
-
-- [ ] Never post the same text to two venues. Rewrite for each audience.
-- [ ] Never respond to criticism with defense. Concede, ask a question, thank them.
-- [ ] Never link-drop into a competitor's issue tracker or community. Answer the question that
-      was asked; mention Drydock only if it is directly responsive.
+Do not cross-post identical copy. Do not lead with “specification-driven development” outside its
+own community; lead with the observable failure: long agent builds lose decisions, redo work, and
+cannot prove completion.
 
 ---
 
-## 5. Phase 5 — Cadence
+## 7. Six-Week Operating Cadence
 
-One artifact per week for six weeks, each pointing back to the worked example. Sustained
-presence beats any single launch.
+Ship one product correction and one public artifact per week. Do not make six announcements.
 
-- [ ] Week 1 — Comparison matrix published.
-- [ ] Week 2 — Worked-example repository announced.
-- [ ] Week 3 — "Roast my specification format."
-- [ ] Week 4 — Show HN.
-- [ ] Week 5 — Tutorial written up as text.
-- [ ] Week 6 — Rework-rate experiment with numbers.
-- [ ] Week 7 — Review the measurements below and decide whether to continue, change the pitch,
-      or stop.
-
----
-
-## 6. Measurement
-
-Stars are vanity. Track these instead, weekly, in one place.
-
-| Metric | Source | Meaning |
+| Week | Product evidence | Public artifact |
 |---|---|---|
-| PyPI downloads | `pypistats recent drydock-sdd` | Did anyone install it |
-| Unique repo clones | GitHub Insights → Traffic | Did anyone look at the source |
-| README referrers | GitHub Insights → Referring sites | Which channel actually works |
-| Issues and discussions opened by strangers | GitHub | **The only metric that matters.** A stranger filing an issue used the tool. |
-| Second-run rate | Manual, from issue and discussion content | Did anyone run `drydock build` twice |
+| 1 | Coherent golden proof and GitHub Pages | Proof-receipt walkthrough |
+| 2 | Reading List clean install and passing refit | Failed-refit postmortem |
+| 3 | First two observed partner runs | CommonMark case study |
+| 4 | Onboarding corrections and third partner run | Updated comparison matrix |
+| 5 | Five partner runs complete | jq engineering diary |
+| 6 | Release candidate reproduced from PyPI | Show HN |
 
-- [ ] Set up the weekly measurement note. One file, one table, appended weekly.
-- [ ] Decide on opt-in anonymous telemetry: implement, or explicitly decide against it and stop
-      reconsidering.
-
----
-
-## 7. Not Doing
-
-Recorded so these do not get relitigated:
-
-- Paid advertising. The audience is too small and too ad-blind for it to pay back.
-- Renaming the nautical vocabulary. It is a genuine identity asset; the fix is sequencing, not
-  removal.
-- Chasing star counts.
-- A Discord or community server before there are users. An empty server is negative signal.
-- Changing the subscription-CLI-only stance to court a wider audience. It is a real
-  differentiator and the economics behind it are sound.
+Delay the public launch if the proof or clean install fails. Do not delay it merely to finish jq,
+add another command, polish every document, or obtain a larger benchmark suite.
 
 ---
 
-## 8. The Uncomfortable Step
+## 8. Measurement
 
-Cheaper and more informative than the next ten posts:
+Track the funnel weekly in one append-only table. Raw stars and impressions are context, not the
+goal.
 
-- [ ] Get **five senior engineers** to run the quickstart while you watch — screen share,
-      silent, no help offered. Write down the exact second each one gets confused and the exact
-      thing they were looking at.
+| Stage | Metric | Source | Initial target |
+|---|---|---|---|
+| Reach | Qualified visits to proof and quickstart | GitHub Insights / site analytics | Establish baseline |
+| Interest | Proof-kit opens or Pages visits | Pages analytics or server logs | 20 |
+| Activation | Clean installs started | Direct trials / issue template | 10 |
+| First value | Successful Reading List runs by others | Submitted receipt or issue | 5 |
+| Real use | User-owned projects imported | Interview / discussion | 3 |
+| Retention | A second run or refit by the same user | Interview / submitted receipt | 2 |
+| Advocacy | External issue, write-up, or referral | GitHub / web | 1 |
 
-If the confusion is consistently in the same place, that is the whole marketing problem and no
-amount of distribution will route around it.
+- [ ] Create the weekly measurement note before the first artifact is published.
+- [ ] Add optional “share this receipt” instructions instead of anonymous telemetry for the first
+      cohort.
+- [ ] Decide on telemetry only after observed trials show which event would change a decision.
+
+**Launch success is not a front page or star count.** It is one engineer using Drydock on their own
+project, returning for a second run, and being able to explain why they trusted or rejected the
+receipt.
+
+---
+
+## 9. Not Doing Before Launch
+
+- More UAT targets after jq.
+- A Discord server.
+- Paid advertising.
+- A broad benchmark claiming superiority from one run per tool.
+- Renaming the nautical vocabulary.
+- Rewriting the product around Reddit feedback from people who did not run it.
+- Adding providers without a design partner who needs one.
+- Posting the same announcement repeatedly in a small subreddit.
+- Claiming enterprise readiness before external users have completed the workflow.
+
+---
+
+## 10. Exact Next Order
+
+1. Finish the current jq run only far enough to capture its result and lessons; do not make full jq
+   conformance a launch gate.
+2. Select TOML or CommonMark as the golden proof and eliminate every verdict contradiction.
+3. Publish that proof through GitHub Pages with a result-first README and exact-run link.
+4. Rewrite the main README first screen around the proof and repair the clean-install path.
+5. Fix and republish Reading List until its initial build and refit both pass from the PyPI package.
+6. Run the release-hygiene checklist and cut the release candidate.
+7. Conduct five observed design-partner trials.
+8. Publish the proof walkthrough, then the failure postmortem, then launch broadly.
+
+The strategic shift is from **“explain the methodology to a large audience”** to **“let a small
+number of qualified engineers inspect one result and reproduce it.”** Drydock is already large
+enough. The launch surface must become smaller than the product.
