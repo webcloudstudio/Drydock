@@ -152,6 +152,9 @@ ai  drydock rigging compact                    # Automanage compaction
 ai  drydock score drydock                      # Adversarial self-assessment
 ```
 
+Each selected `uat/<Project>/` directory is an independent Git repository. `drydock uat`, resume
+stages, and `drydock uat --report` initialize it when absent and commit all kit changes before exit.
+
 ## The QuarterDeck Web Server
 
 QuarterDeck is the Agile web surface between the Commander (product owner) and Crew (LLM agents).

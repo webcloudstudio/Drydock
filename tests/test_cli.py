@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -309,6 +310,79 @@ class TestHelpAndVersion:
         rc, _, err = run_cli("uat", "--report", "--uat-root", "/nonexistent/uat")
         assert rc == 2
         assert "No UAT kits found" in err
+
+    def test_uat_report_initializes_and_commits_selected_kit(self, tmp_path, monkeypatch):
+        import drydock.cli as cli_module
+
+        monkeypatch.setenv("GIT_AUTHOR_NAME", "Drydock Test")
+        monkeypatch.setenv("GIT_AUTHOR_EMAIL", "drydock@example.test")
+        monkeypatch.setenv("GIT_COMMITTER_NAME", "Drydock Test")
+        monkeypatch.setenv("GIT_COMMITTER_EMAIL", "drydock@example.test")
+        kit = tmp_path / "uat" / "ReadingList"
+        kit.mkdir(parents=True)
+        (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+
+        def fake_report(kits):
+            (kits[0] / "index.html").write_text("report\n", encoding="utf-8")
+            return 0
+
+        monkeypatch.setattr(cli_module, "_uat_report", fake_report)
+
+        rc, _, err = run_cli("uat", "--report", "ReadingList", "--uat-root", str(tmp_path / "uat"))
+
+        assert rc == 0, err
+        assert (kit / ".git").is_dir()
+        assert (
+            subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=kit,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            == ""
+        )
+        assert (
+            subprocess.run(
+                ["git", "show", "HEAD:index.html"],
+                cwd=kit,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            == "report\n"
+        )
+
+    def test_uat_usage_exit_still_commits_selected_kit(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GIT_AUTHOR_NAME", "Drydock Test")
+        monkeypatch.setenv("GIT_AUTHOR_EMAIL", "drydock@example.test")
+        monkeypatch.setenv("GIT_COMMITTER_NAME", "Drydock Test")
+        monkeypatch.setenv("GIT_COMMITTER_EMAIL", "drydock@example.test")
+        kit = tmp_path / "uat" / "ReadingList"
+        kit.mkdir(parents=True)
+        (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+
+        rc, _, err = run_cli(
+            "uat",
+            "ReadingList",
+            "--run",
+            "run-1",
+            "--uat-root",
+            str(tmp_path / "uat"),
+        )
+
+        assert rc == 2
+        assert "--run requires --stage" in err
+        assert (
+            subprocess.run(
+                ["git", "show", "HEAD:uat.json"],
+                cwd=kit,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            == "{}\n"
+        )
 
     def test_score_help_shows_ac_and_release(self):
         rc, out, _ = run_cli("score", "--help")

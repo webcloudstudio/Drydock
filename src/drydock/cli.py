@@ -385,15 +385,15 @@ def cmd_config_set(args: argparse.Namespace) -> int:
     return 0
 
 
-def _uat_report(uat_root: Path, selected: str) -> int:
-    """Rebuild the proof kits for one kit, or for every kit when asked for all."""
-    from drydock.uat_report import build_kit_index
-
+def _uat_kit_roots(
+    uat_root: Path, selected: str | None, *, report: bool = False
+) -> tuple[Path, ...]:
+    """Resolve and validate the direct kit repositories selected by a UAT command."""
     if not uat_root.is_dir():
         raise UsageError(f"No UAT kits found under {uat_root}")
-    if selected and selected != "all":
+    if selected and not (report and selected == "all"):
         candidate = Path(selected)
-        kits = [candidate if candidate.is_absolute() else uat_root / selected]
+        kits = [candidate if report and candidate.is_absolute() else uat_root / selected]
     else:
         kits = sorted(path for path in uat_root.iterdir() if (path / "uat.json").is_file())
     if not kits:
@@ -401,6 +401,14 @@ def _uat_report(uat_root: Path, selected: str) -> int:
     for kit_root in kits:
         if not (kit_root / "uat.json").is_file():
             raise UsageError(f"Not a UAT kit directory: {kit_root}")
+    return tuple(kits)
+
+
+def _uat_report(kits: tuple[Path, ...]) -> int:
+    """Rebuild the proof kits for the selected repositories."""
+    from drydock.uat_report import build_kit_index
+
+    for kit_root in kits:
         index = build_kit_index(kit_root)
         print(f"Proof kit: {index}")
     return 0
@@ -491,44 +499,52 @@ def cmd_uat(args: argparse.Namespace) -> int:
 
     workspace = get_workspace().resolve()
     uat_root = args.uat_root.resolve() if args.uat_root is not None else workspace / "uat"
-    if args.report is not None:
-        return _uat_report(uat_root, args.report)
-    if args.max_build_passes < 1:
-        raise UsageError("--max-build-passes must be at least 1")
-    if args.repair_attempts is not None and args.repair_attempts < 0:
-        raise UsageError("--repair-attempts must be zero or greater")
-    if args.run is not None and args.stage is None:
-        raise UsageError("--run requires --stage")
-    _apply_bound_overrides(args)
-    repair_attempts = _resolved_repair_attempts(args)
-    step_console = StepConsole(sys.stdout, quiet=args.quiet)
-    _, results = run_uat(
-        workspace,
-        selected=args.Project,
-        uat_root=uat_root,
-        model=get_model(getattr(args, "model", None)),
-        provider=get_llm_provider(getattr(args, "llm_provider", None)),
-        effort=get_effort(getattr(args, "effort", None)),
-        max_build_passes=args.max_build_passes,
-        repair_attempts=repair_attempts,
-        runner=make_streaming_runner(step_console),
-        on_event=step_console.event,
-        start_stage=args.stage or "init",
-        run=args.run,
-    )
-    if not args.quiet:
-        print()
-        print(render_summary(results, uat_root))
-    passed = sum(result.status == "passed" for result in results)
-    print(f"UAT: {passed}/{len(results)} kit(s) passed")
-    # A passing kit can still owe a manual test. Print it after the tally, where it survives
-    # --quiet: a prohibition nobody was told about is a prohibition nobody checks.
-    for result in results:
-        for attestation in result.attestations:
-            print(f"  MANUAL TEST REQUIRED: {result.fixture}: {attestation}")
-    for result in results:
-        print(f"Report: {Path(result.output_dir) / 'README.md'}")
-    return 0 if passed == len(results) else 1
+    report = args.report is not None
+    kits = _uat_kit_roots(uat_root, args.report if report else args.Project, report=report)
+    from drydock.uat_git import checkpoint_kit_repositories, ensure_kit_repositories
+
+    ensure_kit_repositories(kits)
+    try:
+        if report:
+            return _uat_report(kits)
+        if args.max_build_passes < 1:
+            raise UsageError("--max-build-passes must be at least 1")
+        if args.repair_attempts is not None and args.repair_attempts < 0:
+            raise UsageError("--repair-attempts must be zero or greater")
+        if args.run is not None and args.stage is None:
+            raise UsageError("--run requires --stage")
+        _apply_bound_overrides(args)
+        repair_attempts = _resolved_repair_attempts(args)
+        step_console = StepConsole(sys.stdout, quiet=args.quiet)
+        _, results = run_uat(
+            workspace,
+            selected=args.Project,
+            uat_root=uat_root,
+            model=get_model(getattr(args, "model", None)),
+            provider=get_llm_provider(getattr(args, "llm_provider", None)),
+            effort=get_effort(getattr(args, "effort", None)),
+            max_build_passes=args.max_build_passes,
+            repair_attempts=repair_attempts,
+            runner=make_streaming_runner(step_console),
+            on_event=step_console.event,
+            start_stage=args.stage or "init",
+            run=args.run,
+        )
+        if not args.quiet:
+            print()
+            print(render_summary(results, uat_root))
+        passed = sum(result.status == "passed" for result in results)
+        print(f"UAT: {passed}/{len(results)} kit(s) passed")
+        # A passing kit can still owe a manual test. Print it after the tally, where it survives
+        # --quiet: a prohibition nobody was told about is a prohibition nobody checks.
+        for result in results:
+            for attestation in result.attestations:
+                print(f"  MANUAL TEST REQUIRED: {result.fixture}: {attestation}")
+        for result in results:
+            print(f"Report: {Path(result.output_dir) / 'README.md'}")
+        return 0 if passed == len(results) else 1
+    finally:
+        checkpoint_kit_repositories(kits)
 
 
 def _sync_workspace_skills(workspace: Path) -> None:
@@ -2842,7 +2858,9 @@ def _build_parser() -> argparse.ArgumentParser:
             "Each child command's output streams to the console as it runs; --quiet reports\n"
             "only stage names. Complete output is preserved as evidence either way.\n"
             "The required test_command runs from the completed application directory.\n"
-            "Acceptance and release scores are advisory and are recorded with token and time data."
+            "Acceptance and release scores are advisory and are recorded with token and time data.\n"
+            "Each selected uat/<Project> repository is initialized when absent and committed "
+            "before exit."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

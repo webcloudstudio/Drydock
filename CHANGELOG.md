@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-15: Every `drydock uat` invocation verifies that each selected `uat/<Kit>/` directory is
+  an independent Git repository, initializes it when absent, and commits all pending kit changes
+  before exit, including report rebuilds, resumed stages, failures, and usage exits reached after
+  kit selection. Target Git stores used during execution are removed from `runs/` before staging,
+  and stale gitlinks are expanded into ordinary tracked run files.
+
 - 2026-08-15: Every Target workspace is now initialized as its own quiet Git store. Existing
   Targets are upgraded before their next Target command so `drydock refit` always has repository
   history available for diffing, and each command checkpoints pending Target changes on
