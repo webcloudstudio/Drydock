@@ -2047,6 +2047,36 @@ def test_covered_analyzed_stories_pass_without_warning(tmp_path):
     assert (tmp_path / "Example" / "MANIFEST.md").exists()
 
 
+def test_governed_stage_without_a_story_is_a_repairable_topology_defect(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "ACCEPTANCE.json").write_text(
+        '{"stages":{"parser-strings":["sh","sources/stage_test.sh","valid/string/**"]}}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="governed acceptance stages are not matched by any Manifest story: parser-strings",
+    )
+
+
+def test_governed_stage_matching_a_story_id_passes_plan_integrity(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "ACCEPTANCE.json").write_text(
+        '{"stages":{"story-status":["sh","sources/stage_test.sh","status"]}}\n',
+        encoding="utf-8",
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert result.plan.by_id()["story-status"].block_id == "story-status"
+
+
 def test_analyzed_story_claimed_twice_warns(tmp_path):
     # Two stories owning one analyzed story destroys failure attribution. The plan
     # still writes — the work graph is sound — but the shared ownership is surfaced.
@@ -3092,6 +3122,27 @@ def test_assemble_prompt_reorders_when_tokens_reordered(tmp_path):
         input_tokens=("ANALYSIS.md", "COMPASS.md"),
     )
     assert result.index('filename="ANALYSIS.md"') < result.index('filename="COMPASS.md"')
+
+
+def test_assemble_prompt_includes_commander_owned_acceptance_contract(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "ACCEPTANCE.json").write_text(
+        '{"stages":{"parser-strings":["sh","sources/stage_test.sh","valid/string/**"]}}\n',
+        encoding="utf-8",
+    )
+
+    result = _assemble_prompt(
+        "BODY",
+        target_dir,
+        target_dir / "blueprint",
+        _ANALYSIS,
+        "2026-08-14",
+        input_tokens=("ACCEPTANCE.json",),
+    )
+
+    assert 'filename="ACCEPTANCE.json"' in result
+    assert 'role="governed acceptance contract"' in result
+    assert '"parser-strings"' in result
 
 
 def test_assemble_prompt_injects_resolved_blocker_history(tmp_path):
@@ -4177,6 +4228,29 @@ def test_a_compiling_criterion_reports_nothing():
     assert (
         _malformed_acceptance_defects({"FEATURE-Example.md": _spec_with_criterion("assert 1 == 1")})
         == ()
+    )
+
+
+def test_plan_normalizes_subprocess_import_inside_each_standalone_ac():
+    from drydock.planning_session import _normalize_standalone_subprocess_imports
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "import subprocess\n\nsubprocess.run(['true'], check=True)\n"
+            "=== END AC first ===\n\n"
+            "=== AC second ===\nIntent: Second.\n\n"
+            "result = subprocess.run(['false'])\nassert result.returncode != 0\n"
+            "=== END AC second ===\n"
+        )
+    }
+
+    warnings = _normalize_standalone_subprocess_imports(blocks)
+
+    assert blocks["FEATURE-Example.md"].count("import subprocess") == 2
+    assert warnings == (
+        "FEATURE-Example.md [second]: added the required standalone import subprocess",
     )
 
 

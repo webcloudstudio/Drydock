@@ -73,6 +73,25 @@ def test_stage_lookup_falls_back_through_the_story_ids_a_block_delivers(tmp_path
     assert contract.stage_for("parser-keys", "PARSER-003") is None
 
 
+def test_stable_coverage_selector_takes_precedence_over_generated_story_id(tmp_path):
+    target, _ = _target(
+        tmp_path,
+        {
+            "stages": {
+                "LEXICAL-001": ["sh", "stable.sh"],
+                "lexical-strings": ["sh", "generated.sh"],
+            }
+        },
+    )
+
+    contract = load_contract(target)
+
+    assert contract.stage_for("LEXICAL-001", "lexical-strings") == (
+        "LEXICAL-001",
+        ("sh", "stable.sh"),
+    )
+
+
 @pytest.mark.parametrize(
     "payload",
     [

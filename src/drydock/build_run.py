@@ -2341,7 +2341,7 @@ def build_target(
             covered = sum(
                 1
                 for block in unit.steps
-                if acceptance_contract.stage_for(block.block_id, *_story_ids(block))
+                if acceptance_contract.stage_for(*_story_ids(block), block.block_id)
             )
             _emit(
                 on_text,
@@ -3027,7 +3027,7 @@ def build_target(
             gate_results = {}
             for gated_block in unit.steps:
                 stage = acceptance_contract.stage_for(
-                    gated_block.block_id, *_story_ids(gated_block)
+                    *_story_ids(gated_block), gated_block.block_id
                 )
                 if stage is None:
                     continue

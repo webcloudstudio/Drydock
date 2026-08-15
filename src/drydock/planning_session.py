@@ -14,6 +14,7 @@ Tests inject a fake runner and never spend API credits.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from collections import Counter
@@ -27,11 +28,14 @@ from typing import Protocol, cast
 
 from drydock import technology_stack
 from drydock.acceptance import (
+    AC_END_RE,
+    AC_OPEN_RE,
     MalformedAcceptance,
     ProgrammaticAcceptance,
     parse_programmatic_acceptance_text,
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
+from drydock.acceptance_contract import load_contract as load_acceptance_contract
 from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
     recommend_external_declarations,
@@ -1628,6 +1632,23 @@ def _assemble_prompt_assembly(
             )
         )
 
+    def acceptance_contract_parts() -> list:
+        """Expose Commander-owned stage boundaries without making them model-editable."""
+        path = target_dir / ACCEPTANCE_CONTRACT_FILENAME
+        text = _read_if(path)
+        if not text:
+            return []
+        return list(
+            contextual_fenced_parts(
+                ACCEPTANCE_CONTRACT_FILENAME,
+                text.rstrip(),
+                filename=ACCEPTANCE_CONTRACT_FILENAME,
+                fence="json",
+                role="governed acceptance contract",
+                path=path,
+            )
+        )
+
     def questionnaire_parts() -> list:
         answered = [(p, _answered_discovery(p)) for p in _collect_discoveries(target_dir)]
         answered = [(p, data) for p, data in answered if data is not None]
@@ -1757,6 +1778,7 @@ def _assemble_prompt_assembly(
         "PLAN_COMPASS.md": plan_compass_parts,
         "ANALYSIS.md": analysis_parts,
         "SEA_TRIALS.md": sea_trials_parts,
+        ACCEPTANCE_CONTRACT_FILENAME: acceptance_contract_parts,
         "SOUNDINGS.md": soundings_parts,
         "QUESTIONNAIRES": questionnaire_parts,
         "TYPED_SPEC": typed_spec_parts,
@@ -2127,6 +2149,26 @@ def _integrity_check(
                 "each governed specification has exactly one owning story"
             )
 
+    # A Commander-owned stage that matches no story can never run. Catch the mismatch while the
+    # topology is still repairable instead of letting every affected story close implemented and
+    # discovering the missing authority only after the full build.
+    acceptance_contract = load_acceptance_contract(blueprint_dir.parent)
+    if acceptance_contract.stages:
+        governed_selectors = set(ids)
+        for block in plan.blocks:
+            if block.block_type not in {"story", "spike"}:
+                continue
+            covers = block.fields.get("covers", ())
+            values = covers if isinstance(covers, tuple) else (covers,)
+            governed_selectors.update(str(value) for value in values if value)
+        unmatched = sorted(set(acceptance_contract.stages) - governed_selectors)
+        if unmatched:
+            fatal.append(
+                "governed acceptance stages are not matched by any Manifest story: "
+                + ", ".join(unmatched)
+                + " — preserve each stage key as a story id or stable covers: selector"
+            )
+
     # Sea Trials flow *into* planning as context for authoring acceptance criteria. Nothing points
     # back. Three integrity checks used to live here — every ``accepts:`` names a known trial,
     # every ``Sea Trials:`` proof tag names a known trial, and every required trial has one of the
@@ -2248,6 +2290,82 @@ def _malformed_acceptance_defects(blocks: dict[str, str]) -> tuple[MalformedAcce
             continue
         defects.extend(malformed_criteria(checks))
     return tuple(defects)
+
+
+def _normalize_standalone_subprocess_imports(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Give each AC that reads ``subprocess`` its own explicit module import.
+
+    This is deliberately one exact normalization, not a general undefined-name predictor. A
+    qualified ``subprocess`` read is unambiguous, the module is in Python's standard library, and
+    the Blueprint contract already requires this import in every independently executed block.
+    """
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            continue
+        text = blocks[name]
+        for check in checks:
+            try:
+                tree = ast.parse(check.code)
+            except SyntaxError:
+                continue
+            reads_subprocess = any(
+                isinstance(node, ast.Name)
+                and node.id == "subprocess"
+                and isinstance(node.ctx, ast.Load)
+                for node in ast.walk(tree)
+            )
+            binds_subprocess = any(
+                (
+                    isinstance(node, ast.Import)
+                    and any(
+                        alias.name == "subprocess" and alias.asname in {None, "subprocess"}
+                        for alias in node.names
+                    )
+                )
+                or (
+                    isinstance(node, ast.Name)
+                    and node.id == "subprocess"
+                    and isinstance(node.ctx, ast.Store)
+                )
+                for node in ast.walk(tree)
+            )
+            if not reads_subprocess or binds_subprocess:
+                continue
+            replacement = "import subprocess\n\n" + check.code
+            opening = next(
+                (
+                    match
+                    for match in AC_OPEN_RE.finditer(text)
+                    if match.group("id").strip() == check.check_id
+                ),
+                None,
+            )
+            closing = next(
+                (
+                    match
+                    for match in AC_END_RE.finditer(text, opening.end() if opening else 0)
+                    if match.group("id").strip() == check.check_id
+                ),
+                None,
+            )
+            if opening is not None and closing is not None:
+                body = text[opening.end() : closing.start()]
+                offset = body.find(check.code)
+            else:
+                offset = -1
+            if offset >= 0:
+                start = opening.end() + offset
+                text = text[:start] + replacement + text[start + len(check.code) :]
+                normalized.append(
+                    f"{name} [{check.check_id}]: added the required standalone import subprocess"
+                )
+        blocks[name] = text
+    return tuple(normalized)
 
 
 #: The plan-create output contract, measured deterministically by :mod:`drydock.plan_shape`.
@@ -2634,6 +2752,7 @@ def _validate_plan_output(
     # story. Interactively that asks the Commander whether the criterion is salvageable before
     # the story builds; under ``--override`` the run continues and the record survives for
     # review. Either way the pipeline processes the criterion cleanly instead of stopping on it.
+    standalone_import_warnings = _normalize_standalone_subprocess_imports(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
     malformed_warnings = tuple(
         f"{defect.rendered} — recorded as a blocking decision; this criterion gates nothing"
@@ -2696,7 +2815,8 @@ def _validate_plan_output(
     # Malformed criteria lead: they change what the operator must answer before the story
     # builds, so they must not sit below advisory graph notes.
     warnings = (
-        malformed_warnings
+        standalone_import_warnings
+        + malformed_warnings
         + declaration_warnings
         + usage_recommendations
         + tuple(defect.rendered() for defect in advisory_plan_shape(emitted_files))
@@ -3175,7 +3295,10 @@ def _repair_declaration_coverage(
 
 #: Plan integrity defects a topology re-emission alone can repair: each is stated entirely in a
 #: field the declaration owns, so the authored Blueprint artifacts stay valid and untouched.
-_TOPOLOGY_FIELD_DEFECTS = ("analyzed stories are not delivered by any Manifest story:",)
+_TOPOLOGY_FIELD_DEFECTS = (
+    "analyzed stories are not delivered by any Manifest story:",
+    "governed acceptance stages are not matched by any Manifest story:",
+)
 
 
 def _is_repairable_topology_defect(exc: Exception) -> bool:

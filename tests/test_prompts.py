@@ -130,6 +130,7 @@ class TestInputTokens:
             "PLAN_COMPASS.md",
             "ANALYSIS.md",
             "SEA_TRIALS.md",
+            "ACCEPTANCE.json",
             "SOUNDINGS.md",
             "BLOCKERS.md",
             "QUESTIONNAIRES",
@@ -138,6 +139,21 @@ class TestInputTokens:
             "BLUEPRINTS_CONTRACT.md",
             "TYPED_SPEC",
         )
+
+    def test_plan_create_makes_each_acceptance_check_repeat_its_imports(self):
+        body = load_prompt("plan_create").body
+
+        assert "Every `=== AC <id> ===` block is a standalone Python script" in body
+        assert (
+            "every block that calls `subprocess.run` contains its own `import subprocess`" in body
+        )
+
+    def test_plan_create_preserves_commander_owned_governed_stage_ids(self):
+        body = " ".join(load_prompt("plan_create").body.split())
+
+        assert "Each key in `stages` is an exact story id" in body
+        assert "Preserve those ids verbatim in `TOPOLOGY.md`" in body
+        assert "Do not emit or amend `ACCEPTANCE.json`" in body
 
     def test_plan_create_declares_the_graph_and_leaves_ordering_to_drydock(self):
         body = load_prompt("plan_create").body

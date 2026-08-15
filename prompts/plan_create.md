@@ -1,11 +1,11 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20260802 V32
+version: 20260814 V33
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 model: sonnet
-inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
+inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
 output: TOPOLOGY.md, DECISIONS.json
 ---
 
@@ -27,6 +27,13 @@ that stages or implements the capability exercised by a final Sea Trial still na
 `accepts:` even when the Sea Trial command itself must not run during the story. `TOPOLOGY.md` is
 emitted in Stage 1 before any Blueprint, so settle the complete story set and its acceptance
 before emitting anything.
+
+When `ACCEPTANCE.json` is present, it is the Commander-owned governed stage topology. Each key in
+`stages` is an exact story id and each argv is the authoritative gate for that story. Preserve
+those ids verbatim in `TOPOLOGY.md` and shape each story around the scope its command exercises;
+merge related analyzed Story IDs into that story's `covers:` field when one governed stage owns
+their combined slice. Do not emit or amend `ACCEPTANCE.json`. The optional `full` command is the
+finished-project release gate, not an ordinary story id.
 
 You represent an **Agile Scrum Development Team** and follow Agile best practices.
 
@@ -271,6 +278,10 @@ source material genuinely leaves an item open; then put it under `## Questions`.
 
 Rules:
 
+- Every `=== AC <id> ===` block is a standalone Python script. It repeats every import it uses;
+  imports, variables, and execution order from another AC block are never in scope. Before closing
+  each block, inspect every name it reads and either import or bind that name inside the same block.
+  In particular, every block that calls `subprocess.run` contains its own `import subprocess`.
 - Treat this as writing the failing tests first. For every story, the specs it implements together
   carry **several** executable assertions — generally one per distinct observable behavior, route,
   invariant, or error mode described in that spec. A single assertion for a multi-behavior spec is

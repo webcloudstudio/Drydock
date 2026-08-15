@@ -123,8 +123,9 @@ class AcceptanceContract:
     def stage_for(self, *story_ids: str) -> tuple[str, tuple[str, ...]] | None:
         """Return the first declared stage gate among ``story_ids``, or ``None``.
 
-        A block may deliver several stories; the first with a governed gate owns the block's
-        verdict. Order follows the caller's, which is Manifest order.
+        A block may expose its generated story id plus stable analyzed ids from ``covers:``;
+        the first selector with a governed gate owns the block's verdict. Callers put stable
+        selectors first so a Commander-owned identity wins over a generated implementation id.
         """
         for story_id in story_ids:
             argv = self.stages.get(story_id)
@@ -155,7 +156,7 @@ def load_contract(target_dir: Path) -> AcceptanceContract:
     full = _argv(payload["full"], where="full") if payload.get("full") is not None else ()
     raw_stages = payload.get("stages") or {}
     if not isinstance(raw_stages, dict):
-        raise SpecificationError(f"{FILENAME}: stages must be an object keyed by story id")
+        raise SpecificationError(f"{FILENAME}: stages must be an object keyed by story selector")
     stages = {
         str(story_id): _argv(argv, where=f"stages.{story_id}")
         for story_id, argv in raw_stages.items()

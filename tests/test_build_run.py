@@ -3937,6 +3937,29 @@ def test_a_passing_governed_gate_closes_the_story_verified(tmp_path):
     assert _state(target_dir, "foundation") == "closed/verified"
 
 
+def test_a_gate_keyed_by_stable_coverage_id_closes_the_story_verified(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    manifest = target_dir / "MANIFEST.md"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "implements: DATABASE.md", "implements: DATABASE.md\ncovers: FOUNDATION-001", 1
+        ),
+        encoding="utf-8",
+    )
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    _governed(
+        target_dir,
+        stages={"FOUNDATION-001": (sys.executable, "-c", "raise SystemExit(0)")},
+    )
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+
+
 def test_a_failing_governed_gate_fails_the_story_however_the_criteria_went(tmp_path):
     """The oracle outranks the criteria. Green model checks cannot talk over a red gate."""
     target_dir, build_dir = _setup(tmp_path)

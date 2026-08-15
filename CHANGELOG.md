@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-14: `drydock plan` now receives Commander-owned `ACCEPTANCE.json` as read-only planning
+  context, so governed stage boundaries can shape the story topology instead of being compared
+  only after implementation. Stable analyzed identifiers from Manifest `covers:` take precedence
+  over generated story ids during stage-gate lookup; existing story-id contracts remain valid.
+  The Plan authoring contract also states at the point of AC generation that every delimited
+  acceptance block is a standalone script and must repeat every import it uses, including
+  `import subprocess` in each block that calls `subprocess.run`. Plan deterministically inserts
+  that standard-library import when a generated AC reads the qualified `subprocess` name without
+  binding it locally, and reports the normalization; it does not reinstate general undefined-name
+  prediction.
+
 - 2026-08-14: A UAT report leads with a receipt instead of an evidence index. The run receipt
   (`runs/<id>/index.html` and its `README.md`) and the project page (`index.html`) now open with
   six fixed claims — lifecycle completed, external conformance suite passed, target completion
