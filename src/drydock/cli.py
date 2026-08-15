@@ -124,12 +124,15 @@ def _stream_build_summary(text: str) -> None:
 
 
 def _stream_status_only(text: str) -> None:
-    """Stream Drydock progress lines and drop model text.
+    """Stream Drydock progress lines and drop model text and provider tool activity.
 
     Scoring commands consume the model's output as a JSON payload: Drydock parses it,
     renders the Scorecard, and prints the summary itself. Echoing the raw deltas dumps
-    that JSON into the console, so only Drydock's own status lines pass through here.
+    that JSON into the console. Codex command events are preserved in the raw LLM
+    artifact; they are implementation evidence rather than scoring progress.
     """
+    if text.startswith(("  $ ", "  -> exit ")):
+        return
     if text.startswith(_STREAM_STATUS_PREFIXES):
         _stream_stdout(text)
 

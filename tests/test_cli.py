@@ -227,12 +227,17 @@ class TestHelpAndVersion:
         )
 
     def test_stream_status_only_drops_model_json_payload(self, capsys):
-        """Scoring commands parse the model's JSON; the console must not echo it."""
+        """Scoring output omits parsed JSON and provider command evidence."""
         _stream_stdout._at_line_start = True  # type: ignore[attr-defined]
         _stream_status_only('{"dimensions": {"build_quality": 0}}')
+        _stream_status_only("  $ /bin/bash -lc 'pytest -q'")
+        _stream_status_only("  -> exit 0")
+        _stream_status_only("  [running] 30s elapsed, no provider output for 30s")
         _stream_status_only("AUTO-COMPACT: fresh")
 
-        assert capsys.readouterr().out == "AUTO-COMPACT: fresh\n"
+        assert capsys.readouterr().out == (
+            "  [running] 30s elapsed, no provider output for 30s\nAUTO-COMPACT: fresh\n"
+        )
 
     def test_help_shows_copyright(self):
         rc, out, err = run_cli("--help")

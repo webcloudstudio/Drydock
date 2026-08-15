@@ -99,6 +99,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-15: Scoring commands no longer echo Codex's shell command and exit-event stream to the
+  operator console. The raw LLM artifact retains those provider events as execution evidence;
+  normal output keeps call status, quiet-run heartbeats, and the rendered scoring result.
+
 - 2026-08-15: Programmatic acceptance no longer rejects a newly generated Python Target solely
   because it has no `.venv`. Acceptance prefers the Target `.venv` when present and otherwise
   executes through the active Python interpreter already running Drydock. Strict Target runs
