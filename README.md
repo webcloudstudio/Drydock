@@ -76,6 +76,21 @@ drydock config set drydock_workspace "$PROJECTS/drydock"
 drydock config set drydock_build_directory "$PROJECTS"
 drydock config show
 ```
+
+Bounds on a build's acceptance runs are configurable, and each is also a `drydock build` and
+`drydock uat` flag that overrides the configured value for one run.
+
+| Key | Default | Bounds |
+|---|---|---|
+| `repair_attempts` | 6 | Repair passes a failed block may spend (0 disables repair) |
+| `repair_stall_limit` | 2 | Consecutive passes without acceptance progress before a block stops |
+| `sandbox_mem_limit` | 4096 MB | Address space for an acceptance run and everything it spawns |
+| `capture_output_limit` | 8 MB | Output held from one acceptance command before it fails the gate |
+
+```bash
+drydock config set repair_attempts 12           # a target that converges slowly
+drydock build MyApp --capture-output-limit 64   # a legitimately loud conformance suite
+```
 ## Build workflow
 
 `init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`

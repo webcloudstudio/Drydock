@@ -10,6 +10,32 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-15: The bounds governing an acceptance run are configuration rather than constants.
+  `capture_output_limit` (default 8 MB), `repair_attempts` (default 6), and `repair_stall_limit`
+  (default 2) join the existing `sandbox_mem_limit` as `drydock config` keys, readable from
+  `DRYDOCK_CAPTURE_OUTPUT_LIMIT`, `DRYDOCK_REPAIR_ATTEMPTS`, and `DRYDOCK_REPAIR_STALL_LIMIT`.
+  `drydock build` and `drydock uat` both accept `--repair-attempts`, `--repair-stall-limit`,
+  `--capture-output-limit`, and `--sandbox-mem-limit`, in that precedence: flag, environment,
+  config file, shipped default. `repair_attempts` and `repair_stall_limit` were previously
+  unreachable module constants, so a target that converged slowly could not be given a longer
+  budget without editing the source. An unset `--repair-attempts` is now distinct from one set to
+  the default value, and the echoed running command names only flags the operator actually typed.
+
+### Fixed
+
+- 2026-08-15: A governed acceptance gate can no longer end the process grading it. `run_gate`
+  captured child output with `subprocess.run(capture_output=True)` and applied none of the bounds a
+  build-time acceptance check already got, so a target that emitted without end was held whole in
+  memory: a jq build missing an upstream `"Repeat string result too long"` guard emitted 2.1 GB on
+  one line, and `drydock score release` was killed by the kernel at 14.7 GB resident after the
+  build itself had passed the same command under a 4 GB ceiling. Gates now run through
+  `drydock/child_sandbox.py`, which both paths share, so the address-space ceiling and the new
+  output ceiling apply identically wherever Drydock hands control to the code under test. Output
+  past the ceiling is discarded rather than buffered, the child's process group is killed, and the
+  truncated head is kept as evidence. Exceeding the ceiling is classified `FAIL`, not `ERROR`: a
+  product that emits without end is a defective product, and calling it a kit fault would excuse
+  the build from a failure it caused.
+
 - 2026-08-15: `drydock score report <Target>` publishes the receipt `drydock uat --report` produced
   for UAT fixtures, for any real Target. It writes `index.html`, `result.json`, and a styled viewer
   for every artifact to `$DRYDOCK_BUILD_DIRECTORY/<Target>/drydock/`, and copies the evidence the

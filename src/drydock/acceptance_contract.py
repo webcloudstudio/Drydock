@@ -36,6 +36,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from drydock.child_sandbox import CaptureOverflow, run_bounded
+from drydock.config import get_capture_output_limit_mb, get_sandbox_mem_limit_mb
 from drydock.errors import SpecificationError
 
 #: The Commander-owned contract, in the Target root beside ``SEA_TRIALS.md``.
@@ -247,15 +249,36 @@ def run_gate(
             build_identity=identity,
         )
     started = time.monotonic()
+    capture_limit_mb = get_capture_output_limit_mb()
     try:
-        completed = subprocess.run(
+        # A gate hands control to the code under test, so it gets the same bounds a build-time
+        # acceptance check gets: an address-space ceiling the child cannot escape, and a ceiling
+        # on what Drydock will hold from it. Without the second one a target that emits without
+        # end kills the process grading it instead of failing its own gate.
+        completed = run_bounded(
             list(argv),
             cwd=build_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=timeout,
+            limit_mb=get_sandbox_mem_limit_mb(),
+            capture_limit_bytes=capture_limit_mb * 1024 * 1024,
+        )
+    except CaptureOverflow as exc:
+        # A verdict, not a kit fault. The gate ran and the product under it produced unbounded
+        # output, which is a defect in the product exactly as a wrong answer would be. Calling
+        # it ERROR would excuse the build from a failure it caused.
+        return GateResult(
+            name,
+            OUTCOME_FAIL,
+            argv,
+            stdout=exc.stdout,
+            stderr=exc.stderr,
+            duration_ms=round((time.monotonic() - started) * 1000),
+            detail=(
+                f"gate produced more than {capture_limit_mb} MB on {exc.stream} and was stopped "
+                "— raise with 'drydock config set capture_output_limit <MB>' if the gate is "
+                "legitimately this loud"
+            ),
+            build_identity=identity,
         )
     except subprocess.TimeoutExpired as exc:
         return GateResult(

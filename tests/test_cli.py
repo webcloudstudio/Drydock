@@ -37,7 +37,9 @@ def test_build_running_command_includes_explicit_flags():
         normalize_order=False,
         dry_run=False,
         show_prompt=False,
-        repair_attempts=6,
+        # Unset, not "happens to equal the default": the budget is configurable, so the echoed
+        # command must not freeze this run's value into a flag the operator never typed.
+        repair_attempts=None,
         escalate_model=None,
         model=None,
         llm_provider=None,
@@ -45,6 +47,30 @@ def test_build_running_command_includes_explicit_flags():
     )
 
     assert _build_running_command(args) == "drydock build Marina --ungate"
+
+
+def test_build_running_command_echoes_an_explicit_repair_budget():
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(
+        Target="Marina",
+        build_dir=None,
+        step=None,
+        story=None,
+        continue_=False,
+        reset=False,
+        ungate=False,
+        normalize_order=False,
+        dry_run=False,
+        show_prompt=False,
+        repair_attempts=12,
+        escalate_model=None,
+        model=None,
+        llm_provider=None,
+        effort=None,
+    )
+
+    assert _build_running_command(args) == "drydock build Marina --repair-attempts 12"
 
 
 def run_cli(*args: str) -> tuple[int, str, str]:
@@ -3495,3 +3521,56 @@ class TestBuildScoreRendering:
         assert _compact_clock(430_000) == "7m 10s"
         assert _compact_clock(3_780_000) == "1h 03m"
         assert _compact_clock(-5) == "0s"
+
+
+class TestExecutionBoundFlags:
+    """A bound flag overrides the configured value for one run, and only for that run."""
+
+    def test_a_flag_overrides_the_configured_bound(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from drydock.cli import _apply_bound_overrides
+        from drydock.config import get_capture_output_limit_mb, max_consecutive_stalls
+
+        monkeypatch.setenv("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "8")
+        monkeypatch.setenv("DRYDOCK_REPAIR_STALL_LIMIT", "2")
+        _apply_bound_overrides(
+            SimpleNamespace(capture_output_limit=64, repair_stall_limit=5, sandbox_mem_limit=None)
+        )
+
+        assert get_capture_output_limit_mb() == 64
+        assert max_consecutive_stalls() == 5
+
+    def test_an_unset_flag_leaves_the_configured_bound_alone(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from drydock.cli import _apply_bound_overrides
+        from drydock.config import get_capture_output_limit_mb
+
+        monkeypatch.setenv("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "16")
+        _apply_bound_overrides(SimpleNamespace(capture_output_limit=None, repair_stall_limit=None))
+
+        assert get_capture_output_limit_mb() == 16
+
+    def test_the_repair_budget_falls_back_to_configuration(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from drydock.cli import _resolved_repair_attempts
+
+        monkeypatch.setenv("DRYDOCK_REPAIR_ATTEMPTS", "12")
+        assert _resolved_repair_attempts(SimpleNamespace(repair_attempts=None)) == 12
+        # An explicit flag still wins over the configured budget.
+        assert _resolved_repair_attempts(SimpleNamespace(repair_attempts=3)) == 3
+
+    def test_both_build_and_uat_accept_every_bound(self):
+        for command in ("build", "uat"):
+            code, out, err = run_cli(command, "--help")
+            text = out + err
+            assert code == 0
+            for flag in (
+                "--repair-attempts",
+                "--repair-stall-limit",
+                "--capture-output-limit",
+                "--sandbox-mem-limit",
+            ):
+                assert flag in text, f"{flag} missing from drydock {command} --help"

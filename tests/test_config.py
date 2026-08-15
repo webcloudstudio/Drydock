@@ -495,3 +495,136 @@ def test_every_build_tolerates_one_flat_repair_pass():
     from drydock.config import max_consecutive_stalls
 
     assert max_consecutive_stalls() == 2
+
+
+# -- execution bounds ---------------------------------------------------------
+
+
+class TestExecutionBounds:
+    """Each bound is readable from the environment, from the config file, or defaulted."""
+
+    def test_defaults_are_the_shipped_values(self, monkeypatch):
+        from drydock.config import (
+            DEFAULT_CAPTURE_OUTPUT_LIMIT_MB,
+            DEFAULT_REPAIR_ATTEMPTS,
+            MAX_CONSECUTIVE_REPAIR_STALLS,
+            get_capture_output_limit_mb,
+            get_repair_attempts,
+            max_consecutive_stalls,
+        )
+
+        for name in (
+            "DRYDOCK_CAPTURE_OUTPUT_LIMIT",
+            "DRYDOCK_REPAIR_ATTEMPTS",
+            "DRYDOCK_REPAIR_STALL_LIMIT",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        assert get_capture_output_limit_mb() == DEFAULT_CAPTURE_OUTPUT_LIMIT_MB
+        assert get_repair_attempts() == DEFAULT_REPAIR_ATTEMPTS
+        assert max_consecutive_stalls() == MAX_CONSECUTIVE_REPAIR_STALLS
+
+    def test_the_environment_overrides_each_default(self, monkeypatch):
+        from drydock.config import (
+            get_capture_output_limit_mb,
+            get_repair_attempts,
+            max_consecutive_stalls,
+        )
+
+        monkeypatch.setenv("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "32")
+        monkeypatch.setenv("DRYDOCK_REPAIR_ATTEMPTS", "12")
+        monkeypatch.setenv("DRYDOCK_REPAIR_STALL_LIMIT", "3")
+        assert get_capture_output_limit_mb() == 32
+        assert get_repair_attempts() == 12
+        assert max_consecutive_stalls() == 3
+
+    def test_zero_disables_the_bounds_that_allow_it(self, monkeypatch):
+        from drydock.config import get_capture_output_limit_mb, get_repair_attempts
+
+        monkeypatch.setenv("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "0")
+        monkeypatch.setenv("DRYDOCK_REPAIR_ATTEMPTS", "0")
+        assert get_capture_output_limit_mb() == 0
+        assert get_repair_attempts() == 0
+
+    def test_a_stall_limit_below_one_is_refused(self, monkeypatch):
+        from drydock.config import max_consecutive_stalls
+
+        # Zero would stop a block before it could take the flat pass every build tolerates.
+        monkeypatch.setenv("DRYDOCK_REPAIR_STALL_LIMIT", "0")
+        with pytest.raises(ConfigurationError, match="repair_stall_limit"):
+            max_consecutive_stalls()
+
+    @pytest.mark.parametrize(
+        ("env_var", "getter_name", "key"),
+        [
+            ("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "get_capture_output_limit_mb", "capture_output_limit"),
+            ("DRYDOCK_REPAIR_ATTEMPTS", "get_repair_attempts", "repair_attempts"),
+            ("DRYDOCK_SANDBOX_MEM_LIMIT", "get_sandbox_mem_limit_mb", "sandbox_mem_limit"),
+        ],
+    )
+    def test_a_malformed_value_names_the_key_the_operator_typed(
+        self, monkeypatch, env_var, getter_name, key
+    ):
+        import drydock.config as config_module
+
+        monkeypatch.setenv(env_var, "lots")
+        with pytest.raises(ConfigurationError, match=key):
+            getattr(config_module, getter_name)()
+
+    @pytest.mark.parametrize(
+        ("env_var", "getter_name"),
+        [
+            ("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "get_capture_output_limit_mb"),
+            ("DRYDOCK_REPAIR_ATTEMPTS", "get_repair_attempts"),
+            ("DRYDOCK_SANDBOX_MEM_LIMIT", "get_sandbox_mem_limit_mb"),
+        ],
+    )
+    def test_a_negative_value_is_refused(self, monkeypatch, env_var, getter_name):
+        import drydock.config as config_module
+
+        monkeypatch.setenv(env_var, "-1")
+        with pytest.raises(ConfigurationError):
+            getattr(config_module, getter_name)()
+
+    def test_every_new_bound_is_settable_with_config_set(self):
+        from drydock.config import settable_config_keys
+
+        keys = settable_config_keys()
+        assert "capture_output_limit" in keys
+        assert "repair_attempts" in keys
+        assert "repair_stall_limit" in keys
+
+
+class TestSettingExecutionBounds:
+    """``config set`` stores a bound as a count, never as a path."""
+
+    @pytest.mark.parametrize(
+        ("key", "value"),
+        [
+            ("capture_output_limit", "4"),
+            ("repair_attempts", "12"),
+            ("repair_stall_limit", "3"),
+            ("sandbox_mem_limit", "8192"),
+        ],
+    )
+    def test_a_bound_round_trips_through_the_config_file(self, isolated_config, key, value):
+        from drydock.config import config_set
+
+        config_set(key, value)
+        rows = {row[0]: (row[1], row[2]) for row in config_show()}
+        assert rows[key] == (value, "config file")
+
+    @pytest.mark.parametrize(
+        ("key", "value"),
+        [
+            # A megabyte figure must never be resolved as a relative directory name.
+            ("capture_output_limit", "lots"),
+            ("repair_attempts", "-1"),
+            ("repair_stall_limit", "0"),
+            ("sandbox_mem_limit", "big"),
+        ],
+    )
+    def test_a_malformed_bound_is_refused_by_name(self, isolated_config, key, value):
+        from drydock.config import config_set
+
+        with pytest.raises(ConfigurationError, match=key):
+            config_set(key, value)

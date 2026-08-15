@@ -282,3 +282,112 @@ def test_the_evidence_record_carries_the_whole_execution(tmp_path):
     assert payload["return_code"] == 1
     assert "out" in payload["stdout"]
     assert payload["build_identity"]
+
+
+# -- bounded execution --------------------------------------------------------
+#
+# A gate hands control to the code under test, so the code under test must not be able to end the
+# process grading it. These cover the two ways it could: unbounded output and unbounded memory.
+
+
+def test_a_gate_that_floods_stdout_fails_instead_of_exhausting_memory(tmp_path, monkeypatch):
+    monkeypatch.setenv("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "1")
+    _, build = _target(tmp_path)
+
+    gate = run_gate(
+        "full",
+        (
+            sys.executable,
+            "-c",
+            "import sys\nwhile True: sys.stdout.write('x' * 65536)",
+        ),
+        build_dir=build,
+        timeout=60,
+    )
+
+    # A product that emits without end is a defective product, not a broken harness.
+    assert gate.outcome == OUTCOME_FAIL
+    assert gate.blocks
+    assert "more than 1 MB on stdout" in gate.detail
+    # The captured evidence is bounded, and a little slack is allowed for the chunk in flight
+    # when the ceiling was crossed.
+    assert len(gate.stdout) <= 1 * 1024 * 1024 + 65536
+
+
+def test_a_gate_that_floods_stderr_is_also_bounded(tmp_path, monkeypatch):
+    monkeypatch.setenv("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "1")
+    _, build = _target(tmp_path)
+
+    gate = run_gate(
+        "full",
+        (
+            sys.executable,
+            "-c",
+            "import sys\nwhile True: sys.stderr.write('x' * 65536)",
+        ),
+        build_dir=build,
+        timeout=60,
+    )
+
+    assert gate.outcome == OUTCOME_FAIL
+    assert "on stderr" in gate.detail
+
+
+def test_a_capture_limit_of_zero_lifts_the_output_bound(tmp_path, monkeypatch):
+    monkeypatch.setenv("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "0")
+    _, build = _target(tmp_path)
+
+    gate = run_gate(
+        "full",
+        (sys.executable, "-c", "print('x' * 200000)"),
+        build_dir=build,
+        timeout=60,
+    )
+
+    assert gate.outcome == OUTCOME_PASS
+    assert len(gate.stdout) > 100000
+
+
+def test_ordinary_gate_output_is_captured_whole(tmp_path):
+    _, build = _target(tmp_path)
+
+    gate = run_gate(
+        "full",
+        (sys.executable, "-c", "import sys\nprint('ok out')\nsys.stderr.write('ok err')"),
+        build_dir=build,
+    )
+
+    assert gate.outcome == OUTCOME_PASS
+    assert "ok out" in gate.stdout
+    assert "ok err" in gate.stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="RLIMIT_AS is POSIX-only")
+def test_a_gate_inherits_the_sandbox_memory_ceiling(tmp_path, monkeypatch):
+    monkeypatch.setenv("DRYDOCK_SANDBOX_MEM_LIMIT", "256")
+    _, build = _target(tmp_path)
+
+    # Allocating far past the ceiling must fail inside the child, not in Drydock.
+    gate = run_gate(
+        "full",
+        (sys.executable, "-c", "x = bytearray(2 * 1024 * 1024 * 1024)"),
+        build_dir=build,
+        timeout=120,
+    )
+
+    assert gate.outcome == OUTCOME_FAIL
+    assert gate.return_code != 0
+
+
+def test_a_gate_still_times_out_under_the_bounded_runner(tmp_path):
+    _, build = _target(tmp_path)
+
+    gate = run_gate(
+        "full",
+        (sys.executable, "-c", "import time; time.sleep(30)"),
+        build_dir=build,
+        timeout=1,
+    )
+
+    assert gate.outcome == OUTCOME_ERROR
+    assert gate.timed_out

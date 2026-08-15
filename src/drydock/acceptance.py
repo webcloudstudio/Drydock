@@ -9,12 +9,13 @@ import re
 import signal
 import subprocess
 import tempfile
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
+from drydock.child_sandbox import child_limits, kill_process_group
 from drydock.config import get_sandbox_mem_limit_mb
 from drydock.proof_integrity import analyze_proof
 from drydock.target_environment import resolve_target_environment
@@ -128,43 +129,6 @@ def _timeout_output_text(value: bytes | str | None) -> str:
     if isinstance(value, bytes):
         return value.decode(errors="replace")
     return value
-
-
-def _child_limits(limit_mb: int) -> Callable[[], None] | None:
-    """A ``preexec_fn`` capping the child's address space, or ``None`` when unavailable.
-
-    ``RLIMIT_AS`` is inherited across ``fork``/``exec``, so the bound also covers every
-    process the check spawns — the runner, the built program under it, and so on. That is
-    the point: the runaway is never the acceptance snippet itself, it is the built code the
-    snippet invokes.
-    """
-    if limit_mb <= 0 or os.name != "posix":
-        return None
-    try:
-        import resource
-    except ImportError:  # pragma: no cover - non-POSIX
-        return None
-
-    ceiling = limit_mb * 1024 * 1024
-
-    def apply() -> None:
-        resource.setrlimit(resource.RLIMIT_AS, (ceiling, ceiling))
-        # A multi-GB core dump from a bounded runaway helps nobody and costs the disk.
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-
-    return apply
-
-
-def _kill_process_group(process: subprocess.Popen[str]) -> None:
-    """Kill the check's whole process group, not just the process Drydock started.
-
-    A check that shells out leaves grandchildren. Killing only the direct child orphans
-    them, and a runaway grandchild then survives the timeout that was meant to stop it.
-    """
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, AttributeError, OSError):
-        process.kill()
 
 
 def _resource_failure(return_code: int, stderr: str, limit_mb: int) -> str | None:
@@ -1090,7 +1054,7 @@ def run_programmatic_acceptance(
         "PYTHONPATH": pythonpath,
     }
     limit_mb = get_sandbox_mem_limit_mb()
-    preexec = _child_limits(limit_mb)
+    preexec = child_limits(limit_mb)
     for check in checks:
         # Run from a real file, never ``python -c``: a ``-c`` traceback reports
         # ``File "<string>", line N`` with no source text, so a failing assertion names
@@ -1116,7 +1080,7 @@ def run_programmatic_acceptance(
             try:
                 stdout, stderr = process.communicate(timeout=check.timeout_seconds)
             except subprocess.TimeoutExpired:
-                _kill_process_group(process)
+                kill_process_group(process)
                 stdout, stderr = process.communicate()
                 results.append(
                     AcceptanceRunResult(

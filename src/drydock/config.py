@@ -26,6 +26,31 @@ _KEY_MAP = {
     "quarterdeck_port": "QUARTERDECK_PORT",
     "diagnose": "DRYDOCK_DIAGNOSE",
     "sandbox_mem_limit": "DRYDOCK_SANDBOX_MEM_LIMIT",
+    "capture_output_limit": "DRYDOCK_CAPTURE_OUTPUT_LIMIT",
+    "repair_attempts": "DRYDOCK_REPAIR_ATTEMPTS",
+    "repair_stall_limit": "DRYDOCK_REPAIR_STALL_LIMIT",
+}
+
+#: Keys whose value is a plain count, with the smallest value each accepts and the wording used
+#: when one is rejected. Every other key in ``_KEY_MAP`` that is not handled explicitly is a
+#: directory, so a numeric key omitted here is silently resolved as a path.
+_NUMERIC_BOUND_KEYS = {
+    "DRYDOCK_SANDBOX_MEM_LIMIT": (
+        0,
+        "megabytes as a non-negative integer (0 disables the bound)",
+    ),
+    "DRYDOCK_CAPTURE_OUTPUT_LIMIT": (
+        0,
+        "megabytes as a non-negative integer (0 disables the bound)",
+    ),
+    "DRYDOCK_REPAIR_ATTEMPTS": (
+        0,
+        "a non-negative integer count of repair passes (0 disables repair)",
+    ),
+    "DRYDOCK_REPAIR_STALL_LIMIT": (
+        1,
+        "a positive integer count of consecutive flat repair passes",
+    ),
 }
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -50,6 +75,10 @@ MAX_CONSECUTIVE_REPAIR_STALLS = 2
 # a Go toolchain, or a sanitizer build reserves far more virtual address space than it uses;
 # raise this or set it to 0 to lift the bound entirely.
 DEFAULT_SANDBOX_MEM_LIMIT_MB = 4096
+# Output ceiling, in MB, for a single child command Drydock captures into memory. Nothing Drydock
+# runs legitimately emits more than a few megabytes; past that the child is not reporting, it is
+# allocating on Drydock's behalf. Set to 0 to lift the bound.
+DEFAULT_CAPTURE_OUTPUT_LIMIT_MB = 8
 
 
 def _config_path() -> Path:
@@ -324,6 +353,23 @@ def settable_config_keys() -> tuple[str, ...]:
     return tuple(_KEY_MAP)
 
 
+def _bounded_int(key: str, env_var: str, default: int, *, minimum: int, units: str) -> int:
+    """Read one integer setting from environment or config, or raise a naming error.
+
+    Every numeric bound Drydock exposes is read the same way, so a malformed value reports the
+    key the operator actually typed rather than the internal variable it maps to.
+    """
+    value, _source = _get(env_var, str(default))
+    message = f"Invalid {key}: {value!r}\n  Expected {units}."
+    try:
+        parsed = int(value) if value not in (None, "") else default
+    except ValueError:
+        raise ConfigurationError(message) from None
+    if parsed < minimum:
+        raise ConfigurationError(message)
+    return parsed
+
+
 def max_consecutive_stalls() -> int:
     """Consecutive flat repair passes tolerated before a block is stopped.
 
@@ -332,9 +378,31 @@ def max_consecutive_stalls() -> int:
     is what ends it.
 
     One flat pass can be noise between two productive ones, so every build tolerates it. Two flat
-    passes in a row mean the model has stopped moving the deterministic score.
+    passes in a row mean the model has stopped moving the deterministic score. A project whose
+    repairs are genuinely noisy can raise the tolerance with ``repair_stall_limit``.
     """
-    return MAX_CONSECUTIVE_REPAIR_STALLS
+    return _bounded_int(
+        "repair_stall_limit",
+        "DRYDOCK_REPAIR_STALL_LIMIT",
+        MAX_CONSECUTIVE_REPAIR_STALLS,
+        minimum=1,
+        units="a positive integer count of consecutive flat repair passes",
+    )
+
+
+def get_repair_attempts() -> int:
+    """Repair passes a failed block may spend before the budget ends it.
+
+    This is the budget, not the stop condition: a block that keeps improving still ends here, so
+    a target that converges slowly needs this raised rather than the stall tolerance.
+    """
+    return _bounded_int(
+        "repair_attempts",
+        "DRYDOCK_REPAIR_ATTEMPTS",
+        DEFAULT_REPAIR_ATTEMPTS,
+        minimum=0,
+        units="a non-negative integer count of repair passes (0 disables repair)",
+    )
 
 
 def get_sandbox_mem_limit_mb() -> int:
@@ -344,20 +412,29 @@ def get_sandbox_mem_limit_mb() -> int:
     built code under test, not just the check. ``RLIMIT_AS`` caps *virtual* address space:
     a JVM or Go runtime reserves far more than it uses, so those stacks may need it raised.
     """
-    value, _source = _get("DRYDOCK_SANDBOX_MEM_LIMIT", str(DEFAULT_SANDBOX_MEM_LIMIT_MB))
-    try:
-        limit = int(value or DEFAULT_SANDBOX_MEM_LIMIT_MB)
-    except ValueError:
-        raise ConfigurationError(
-            f"Invalid sandbox_mem_limit: {value!r}\n"
-            "  Expected megabytes as a non-negative integer (0 disables the bound)."
-        ) from None
-    if limit < 0:
-        raise ConfigurationError(
-            f"Invalid sandbox_mem_limit: {value!r}\n"
-            "  Expected megabytes as a non-negative integer (0 disables the bound)."
-        )
-    return limit
+    return _bounded_int(
+        "sandbox_mem_limit",
+        "DRYDOCK_SANDBOX_MEM_LIMIT",
+        DEFAULT_SANDBOX_MEM_LIMIT_MB,
+        minimum=0,
+        units="megabytes as a non-negative integer (0 disables the bound)",
+    )
+
+
+def get_capture_output_limit_mb() -> int:
+    """Output ceiling in MB for one captured child command; ``0`` lifts the bound.
+
+    Bounds what Drydock will hold in memory from a child, which is a separate question from what
+    the child is allowed to allocate for itself: a target can stay inside its address-space
+    ceiling and still emit output without end.
+    """
+    return _bounded_int(
+        "capture_output_limit",
+        "DRYDOCK_CAPTURE_OUTPUT_LIMIT",
+        DEFAULT_CAPTURE_OUTPUT_LIMIT_MB,
+        minimum=0,
+        units="megabytes as a non-negative integer (0 disables the bound)",
+    )
 
 
 def config_show() -> list[tuple[str, str, str]]:
@@ -390,6 +467,17 @@ def config_show() -> list[tuple[str, str, str]]:
             "sandbox_mem_limit",
             "DRYDOCK_SANDBOX_MEM_LIMIT",
             str(DEFAULT_SANDBOX_MEM_LIMIT_MB),
+        ),
+        (
+            "capture_output_limit",
+            "DRYDOCK_CAPTURE_OUTPUT_LIMIT",
+            str(DEFAULT_CAPTURE_OUTPUT_LIMIT_MB),
+        ),
+        ("repair_attempts", "DRYDOCK_REPAIR_ATTEMPTS", str(DEFAULT_REPAIR_ATTEMPTS)),
+        (
+            "repair_stall_limit",
+            "DRYDOCK_REPAIR_STALL_LIMIT",
+            str(MAX_CONSECUTIVE_REPAIR_STALLS),
         ),
     ):
         value, source = _get(key_upper, default)
@@ -472,13 +560,13 @@ def config_set(key: str, value: str) -> Path:
                 f"Invalid diagnose: {value!r}\n"
                 f"  Valid values: {', '.join(sorted(_TRUE_VALUES | _FALSE_VALUES))}"
             )
-    elif upper == "DRYDOCK_SANDBOX_MEM_LIMIT":
+    elif upper in _NUMERIC_BOUND_KEYS:
+        # The execution bounds are counts, not paths. Without this they fall through to the
+        # directory branch below and a megabyte figure is resolved as a relative directory name.
+        minimum, units = _NUMERIC_BOUND_KEYS[upper]
         stripped = value.strip()
-        if not stripped.isdigit():
-            raise ConfigurationError(
-                f"Invalid sandbox_mem_limit: {value!r}\n"
-                "  Expected megabytes as a non-negative integer (0 disables the bound)."
-            )
+        if not stripped.isdigit() or int(stripped) < minimum:
+            raise ConfigurationError(f"Invalid {key.lower()}: {value!r}\n  Expected {units}.")
         stored_value = stripped
     elif upper == "QUARTERDECK_PORT":
         try:

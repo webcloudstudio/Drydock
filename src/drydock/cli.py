@@ -404,6 +404,83 @@ def _uat_report(uat_root: Path, selected: str) -> int:
     return 0
 
 
+def _add_bound_arguments(parser: argparse.ArgumentParser) -> None:
+    """Attach the execution bounds shared by every command that runs the code under test.
+
+    ``drydock build`` and ``drydock uat`` both hand control to a target, so both expose the same
+    three bounds under the same names. A default of ``None`` means "unset": the configured value
+    stands, and the flag is an override for one run rather than a second source of truth.
+    """
+    from drydock.config import (
+        DEFAULT_CAPTURE_OUTPUT_LIMIT_MB,
+        DEFAULT_SANDBOX_MEM_LIMIT_MB,
+        MAX_CONSECUTIVE_REPAIR_STALLS,
+    )
+
+    parser.add_argument(
+        "--repair-stall-limit",
+        dest="repair_stall_limit",
+        type=int,
+        default=None,
+        metavar="<n>",
+        help=(
+            "Consecutive repair passes without acceptance progress before a block is stopped "
+            f"(default: {MAX_CONSECUTIVE_REPAIR_STALLS}, or "
+            "'drydock config set repair_stall_limit <n>')."
+        ),
+    )
+    parser.add_argument(
+        "--capture-output-limit",
+        dest="capture_output_limit",
+        type=int,
+        default=None,
+        metavar="<MB>",
+        help=(
+            "Output Drydock will hold from one acceptance command before stopping it and "
+            f"failing the gate (default: {DEFAULT_CAPTURE_OUTPUT_LIMIT_MB} MB, 0 disables; or "
+            "'drydock config set capture_output_limit <MB>')."
+        ),
+    )
+    parser.add_argument(
+        "--sandbox-mem-limit",
+        dest="sandbox_mem_limit",
+        type=int,
+        default=None,
+        metavar="<MB>",
+        help=(
+            "Address-space ceiling for an acceptance run and everything it spawns "
+            f"(default: {DEFAULT_SANDBOX_MEM_LIMIT_MB} MB, 0 disables; or "
+            "'drydock config set sandbox_mem_limit <MB>')."
+        ),
+    )
+
+
+def _apply_bound_overrides(args: argparse.Namespace) -> None:
+    """Let a command-line bound override the configured one for this process only.
+
+    The bounds are read where they are enforced, several call layers below the parser, so a flag
+    is published into the environment rather than threaded through every signature between here
+    and the child process. The precedence an operator sees is the usual one: flag, then
+    environment, then ``drydock config``, then the shipped default.
+    """
+    for attribute, env_var in (
+        ("repair_stall_limit", "DRYDOCK_REPAIR_STALL_LIMIT"),
+        ("capture_output_limit", "DRYDOCK_CAPTURE_OUTPUT_LIMIT"),
+        ("sandbox_mem_limit", "DRYDOCK_SANDBOX_MEM_LIMIT"),
+    ):
+        value = getattr(args, attribute, None)
+        if value is not None:
+            os.environ[env_var] = str(value)
+
+
+def _resolved_repair_attempts(args: argparse.Namespace) -> int:
+    """The repair budget for this run: the flag when given, otherwise the configured value."""
+    from drydock.config import get_repair_attempts
+
+    value = getattr(args, "repair_attempts", None)
+    return get_repair_attempts() if value is None else int(value)
+
+
 def cmd_uat(args: argparse.Namespace) -> int:
     """Run known project fixtures through an isolated unattended lifecycle."""
     from drydock.config import get_effort, get_llm_provider, get_model, get_workspace
@@ -416,10 +493,12 @@ def cmd_uat(args: argparse.Namespace) -> int:
         return _uat_report(uat_root, args.report)
     if args.max_build_passes < 1:
         raise UsageError("--max-build-passes must be at least 1")
-    if args.repair_attempts < 0:
+    if args.repair_attempts is not None and args.repair_attempts < 0:
         raise UsageError("--repair-attempts must be zero or greater")
     if args.run is not None and args.stage is None:
         raise UsageError("--run requires --stage")
+    _apply_bound_overrides(args)
+    repair_attempts = _resolved_repair_attempts(args)
     step_console = StepConsole(sys.stdout, quiet=args.quiet)
     _, results = run_uat(
         workspace,
@@ -429,7 +508,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
         provider=get_llm_provider(getattr(args, "llm_provider", None)),
         effort=get_effort(getattr(args, "effort", None)),
         max_build_passes=args.max_build_passes,
-        repair_attempts=args.repair_attempts,
+        repair_attempts=repair_attempts,
         runner=make_streaming_runner(step_console),
         on_event=step_console.event,
         start_stage=args.stage or "init",
@@ -1780,9 +1859,10 @@ def cmd_build(args: argparse.Namespace) -> int:
         escalate_conflict = provider_model_conflict(llm_provider, escalate_model)
         if escalate_conflict is not None:
             raise UsageError(f"escalate model: {escalate_conflict}")
-    repair_attempts = int(getattr(args, "repair_attempts", DEFAULT_REPAIR_ATTEMPTS) or 0)
-    if repair_attempts < 0:
+    if getattr(args, "repair_attempts", None) is not None and args.repair_attempts < 0:
         raise UsageError("--repair-attempts must be zero or greater.")
+    _apply_bound_overrides(args)
+    repair_attempts = _resolved_repair_attempts(args)
     build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
     log_dir = get_workspace() / "logs"
 
@@ -1981,7 +2061,7 @@ def _build_running_command(args: argparse.Namespace) -> str:
         (
             "--repair-attempts",
             "value",
-            getattr(args, "repair_attempts", DEFAULT_REPAIR_ATTEMPTS),
+            getattr(args, "repair_attempts", None),
         ),
         ("--escalate-model", "value", getattr(args, "escalate_model", None)),
         ("--model", "value", getattr(args, "model", None)),
@@ -1992,8 +2072,10 @@ def _build_running_command(args: argparse.Namespace) -> str:
         if kind == "flag" and value:
             command.append(option)
         elif kind == "value" and value is not None:
-            if option == "--repair-attempts" and value == DEFAULT_REPAIR_ATTEMPTS:
-                continue
+            # An unset ``--repair-attempts`` is ``None`` and is omitted here, so the echoed
+            # command names only what the operator actually chose. The configured budget is not
+            # echoed as a flag: it would freeze this run's value into a command that should keep
+            # following the configuration.
             command.extend((option, str(value)))
     return " ".join(command)
 
@@ -2601,12 +2683,14 @@ def _add_build_options(parser: argparse.ArgumentParser) -> None:
         "--repair-attempts",
         dest="repair_attempts",
         type=int,
-        default=DEFAULT_REPAIR_ATTEMPTS,
+        default=None,
         metavar="<n>",
         help=(
-            f"Repair passes after a failed block (0 disables; default {DEFAULT_REPAIR_ATTEMPTS})."
+            "Repair passes after a failed block (0 disables; default "
+            f"{DEFAULT_REPAIR_ATTEMPTS}, or 'drydock config set repair_attempts <n>')."
         ),
     )
+    _add_bound_arguments(parser)
     parser.add_argument(
         "--escalate-model",
         dest="escalate_model",
@@ -2788,14 +2872,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--repair-attempts",
         dest="repair_attempts",
         type=int,
-        default=DEFAULT_REPAIR_ATTEMPTS,
+        default=None,
         metavar="<n>",
         help=(
             "Repairs one build block may spend "
-            f"(default: {DEFAULT_REPAIR_ATTEMPTS}). Two consecutive passes without "
-            "acceptance progress end a block before this bound."
+            f"(default: {DEFAULT_REPAIR_ATTEMPTS}, or 'drydock config set repair_attempts <n>'). "
+            "Consecutive passes without acceptance progress end a block before this bound."
         ),
     )
+    _add_bound_arguments(p_uat)
     p_uat.add_argument(
         "--quiet",
         action="store_true",
