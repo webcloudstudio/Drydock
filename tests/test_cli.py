@@ -2857,8 +2857,9 @@ class TestStatus:
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
         rc, out, err = run_cli("status", "Unplanned", "--check")
         assert rc == 2
-        assert "BLOCKED: Unplanned" in err
-        assert "drydock plan" in err
+        assert "BLOCKED: Unplanned" in out
+        assert "drydock plan" in out
+        assert err == ""
 
     def test_status_ready_exits_0_while_buildable(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -2866,9 +2867,9 @@ class TestStatus:
         self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "TestTarget", "--ready")
         assert rc == 0, err
-        assert out == ""
+        assert "READY TO BUILD: TestTarget" in out
         assert __copyright__ not in out
-        assert "READY TO BUILD: TestTarget" in err
+        assert err == ""
 
     def test_status_ready_exits_1_when_complete(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -2882,8 +2883,9 @@ class TestStatus:
             encoding="utf-8",
         )
         rc, out, err = run_cli("status", "TestTarget", "--ready")
-        assert rc == 1, err
-        assert "BUILD COMPLETE: TestTarget" in err
+        assert rc == 1
+        assert "BUILD COMPLETE: TestTarget" in out
+        assert err == ""
 
     def test_status_ready_exits_1_when_incomplete_but_frontier_is_empty(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -2900,8 +2902,8 @@ class TestStatus:
 
         assert check_rc == 1
         assert ready_rc == 1
-        assert out == ""
-        assert "NOT READY: TestTarget  (no buildable frontier)" in err
+        assert err == ""
+        assert "NOT READY: TestTarget  (no buildable frontier)" in out
 
     def test_status_ready_exits_1_when_blocked(self, tmp_target_root, isolated_config, monkeypatch):
         from drydock.init_specification import init_specification
@@ -2911,7 +2913,8 @@ class TestStatus:
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
         rc, out, err = run_cli("status", "Unplanned", "--ready")
         assert rc == 1
-        assert "NOT READY: Unplanned" in err
+        assert "NOT READY: Unplanned" in out
+        assert err == ""
 
     def test_status_check_and_ready_mutually_exclusive(
         self, tmp_target_root, isolated_config, monkeypatch

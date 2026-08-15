@@ -124,10 +124,11 @@ uv tool install "drydock-sdd[pdf]"
 playwright install chromium
 ```
 
-## Optional: Claude Code Skills
+## Optional: Agent Skills
 
-Drydock includes `/refit` and `/apply-refit` skills for the Loop phase. Install them in
-`~/.claude/skills/`:
+Drydock includes `/refit`, `/apply-refit`, and `/drydock-uat` skills. `drydock init`
+provisions them into managed workspaces for Claude Code and Codex. To install them globally for
+Claude Code, copy them into `~/.claude/skills/`:
 
 ```bash
 python -c "import shutil, pathlib; from drydock.paths import get_rigging_root; \
@@ -135,8 +136,6 @@ dest = pathlib.Path.home() / '.claude' / 'skills'; \
 [shutil.copytree(s, dest / s.name, dirs_exist_ok=True) \
 for s in (get_rigging_root() / 'skills').iterdir()]"
 ```
-
-See [Drydock Skills](Drydock_SKILLS.md) for usage.
 
 ## Upgrade or Remove Drydock
 

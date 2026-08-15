@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
@@ -76,6 +77,55 @@ __all__ = [
 ]
 
 _MANIFEST_PATH = "evidence/manifest.json"
+_LLM_CALL_RE = re.compile(r"\bCalling\s+[^\s/]+/\S+\s+\(([^)]+)\)\.\.\.")
+
+
+def _command_llm_logs(
+    case_root: Path,
+    commands: Sequence[Mapping[str, object]],
+    calls: Sequence[Mapping[str, object]],
+) -> tuple[tuple[str, ...], ...]:
+    """Join LLM activity logs to lifecycle commands through captured call banners.
+
+    A lifecycle command can make many calls. Its stdout records those calls in order, and
+    ``llm.jsonl`` records their artifacts in the same order. This also reconstructs associations
+    for old UAT runs whose immutable result records predate explicit LLM-log links.
+    """
+    pending: dict[str, list[Mapping[str, object]]] = {}
+    for call in calls:
+        pending.setdefault(str(call.get("command") or ""), []).append(call)
+
+    joined: list[tuple[str, ...]] = []
+    for command in commands:
+        relative = _relative(command.get("stdout_path"), case_root)
+        try:
+            text = (case_root / relative).read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            text = ""
+        logs: list[str] = []
+        for name in _LLM_CALL_RE.findall(text):
+            queue = pending.get(name, [])
+            if not queue:
+                continue
+            call = queue.pop(0)
+            path = str(call.get("llm_log") or "")
+            if path and (case_root / path).is_file():
+                logs.append(path)
+        joined.append(tuple(logs))
+    return tuple(joined)
+
+
+def _llm_log_cell(logs: Sequence[str]) -> str:
+    if not logs:
+        return '<td class="dash">—</td>'
+    labels = (
+        ("llm",) if len(logs) == 1 else tuple(f"llm {index}" for index in range(1, len(logs) + 1))
+    )
+    return (
+        "<td>"
+        + " · ".join(_anchor(path, label) for path, label in zip(logs, labels, strict=True))
+        + "</td>"
+    )
 
 
 # A run drives a Drydock workspace, and that workspace keeps its own copy of every prompt,
@@ -241,7 +291,9 @@ def _delivered_root(groups: Sequence[ArtifactGroup], run_prefix: str) -> str:
     return f"{run_prefix}{common or 'build'}/"
 
 
-def _render_case_markdown(case_root: Path, result: dict) -> str:
+def _render_case_markdown(
+    case_root: Path, result: dict, redirect: Mapping[str, str] | None = None
+) -> str:
     """Render the run report a forge shows when a reader opens the run directory.
 
     Markdown, not HTML: a published kit is read on GitHub, which renders the README of whatever
@@ -344,13 +396,17 @@ def _render_case_markdown(case_root: Path, result: dict) -> str:
         "| # | Command | Exit | Elapsed | Output |",
         "|---|---|---|---|---|",
     ]
-    for item in (entry for entry in result.get("commands") or [] if isinstance(entry, dict)):
+    calls = _llm_calls(case_root / "evidence" / "llm.jsonl", case_root, redirect)
+    command_logs = _command_llm_logs(case_root, commands, calls)
+    for item, logs in zip(commands, command_logs, strict=True):
         argv = " ".join(str(part) for part in item.get("argv") or [])
         stdout = str(item.get("stdout_path") or "")
+        links = [f"[stdout]({stdout})", f"[stderr]({item.get('stderr_path') or ''})"]
+        links.extend(f"[llm]({path})" for path in logs)
         lines.append(
             f"| {item.get('label', '')} | `{argv}` | {item.get('returncode', '')} "
             f"| {int(item.get('elapsed_ms') or 0) / 1000:.1f}s "
-            f"| [stdout]({stdout}) · [stderr]({item.get('stderr_path') or ''}) |"
+            f"| {' · '.join(links)} |"
         )
     lines += [
         "",
@@ -632,8 +688,14 @@ def _render_case(
         )
     verdict = f"{fixture}: {status.upper()}"
 
+    inventory = inventory_panels(
+        groups, f"runs/{result.get('run_id') or case_root.name}/", _INVENTORY_TABS
+    )
+    calls = _llm_calls(case_root / "evidence" / "llm.jsonl", case_root, redirect)
+    command_logs = _command_llm_logs(case_root, commands, calls)
+
     command_rows: list[list[str]] = []
-    for index, command in enumerate(commands, start=1):
+    for index, (command, logs) in enumerate(zip(commands, command_logs, strict=True), start=1):
         argv = command.get("argv") or []
         label = command.get("label") or f"step-{index:02d}"
         stdout = _relative(command.get("stdout_path"), case_root)
@@ -647,8 +709,12 @@ def _render_case(
             _cell(f"{elapsed / 1000:.1f}s", css="num"),
             _stream_link(case_root, stdout, "stdout"),
             _stream_link(case_root, stderr, "stderr"),
+            _llm_log_cell(logs),
         ])
-    commands_table = _table(("#", "Stage", "Command", "Result", "Elapsed", "", ""), command_rows)
+    commands_table = _table(
+        ("#", "Stage", "Command", "Result", "Elapsed", "stdout", "stderr", "llm"),
+        command_rows,
+    )
 
     excerpt = ""
     if failed:
@@ -670,11 +736,6 @@ def _render_case(
                 + "".join(sections)
             )
 
-    inventory = inventory_panels(
-        groups, f"runs/{result.get('run_id') or case_root.name}/", _INVENTORY_TABS
-    )
-
-    calls = _llm_calls(case_root / "evidence" / "llm.jsonl", case_root, redirect)
     call_rows = [
         [
             _cell(call["command"]),
@@ -690,11 +751,24 @@ def _render_case(
             _link(str(call["prompt"]), "prompt"),
             _link(str(call["output"]), "output"),
             _link(str(call["raw"]), "transcript"),
+            _stream_link(case_root, str(call["llm_log"]), "llm"),
         ]
         for call in calls
     ]
     calls_table = _table(
-        ("Command", "Model", "Result", "Elapsed", "Cached", "Uncached", "Output", "", "", ""),
+        (
+            "Command",
+            "Model",
+            "Result",
+            "Elapsed",
+            "Cached",
+            "Uncached",
+            "Output",
+            "prompt",
+            "output",
+            "transcript",
+            "llm",
+        ),
         call_rows,
     )
 
@@ -995,7 +1069,9 @@ def build_case_kit(case_root: Path) -> Path:
         groups = _rehash(case_root, groups, _MANIFEST_PATH)
     _write_sums(case_root, groups)
 
-    (case_root / "README.md").write_text(_render_case_markdown(case_root, result), encoding="utf-8")
+    (case_root / "README.md").write_text(
+        _render_case_markdown(case_root, result, unpublished), encoding="utf-8"
+    )
     # Viewers are written before the receipt so every link it emits can point at one. They are
     # generated output: excluded from the inventory above, and replaced on every rebuild.
     viewers = _write_viewers(

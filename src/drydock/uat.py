@@ -491,7 +491,8 @@ def _collect_evidence(
     prompts_dir = evidence_dir / "prompts"
     outputs_dir = evidence_dir / "prompt_outputs"
     raw_dir = evidence_dir / "provider_raw"
-    for path in (prompts_dir, outputs_dir, raw_dir):
+    activity_dir = evidence_dir / "llm_logs"
+    for path in (prompts_dir, outputs_dir, raw_dir, activity_dir):
         path.mkdir(parents=True, exist_ok=True)
 
     llm_artifacts: list[dict[str, object]] = []
@@ -499,6 +500,7 @@ def _collect_evidence(
         ("prompt", "*.prompt.md", prompts_dir),
         ("prompt_output", "*.output.txt", outputs_dir),
         ("provider_raw", "*.raw.jsonl", raw_dir),
+        ("llm_log", "*.llm.log", activity_dir),
     )
     if llm_logs.is_dir():
         for kind, pattern, destination in artifact_groups:
@@ -550,6 +552,7 @@ def _collect_evidence(
         f"- Prompts: {sum(item['kind'] == 'prompt' for item in llm_artifacts)}",
         f"- Prompt outputs: {sum(item['kind'] == 'prompt_output' for item in llm_artifacts)}",
         f"- Provider raw transcripts: {sum(item['kind'] == 'provider_raw' for item in llm_artifacts)}",
+        f"- LLM activity logs: {sum(item['kind'] == 'llm_log' for item in llm_artifacts)}",
         "- Machine index: `manifest.json`",
         "",
     ]

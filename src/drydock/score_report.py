@@ -816,6 +816,7 @@ def _render(
             _stream_link(report_root, str(call["prompt"]), "prompt"),
             _stream_link(report_root, str(call["output"]), "output"),
             _stream_link(report_root, str(call["raw"]), "transcript"),
+            _stream_link(report_root, str(call["llm_log"]), "llm"),
         ]
         for call in calls
     ]
@@ -836,6 +837,7 @@ def _render(
                     "",
                     "",
                     "",
+                    "llm",
                 ),
                 call_rows,
             ),

@@ -502,6 +502,7 @@ def test_uat_collects_llm_prompts_outputs_and_raw_transcripts(tmp_path: Path) ->
         (logs / "call.prompt.md").write_text("prompt", encoding="utf-8")
         (logs / "call.output.txt").write_text("answer", encoding="utf-8")
         (logs / "call.raw.jsonl").write_text("{}\n", encoding="utf-8")
+        (logs / "call.llm.log").write_text("tokens: 10\n", encoding="utf-8")
         (logs / "llm.jsonl").write_text("", encoding="utf-8")
         parts = tuple(argv)
         returncode = 1 if parts[3:5] == ("status", "ReadingList") and "--ready" in parts else 0
@@ -522,10 +523,12 @@ def test_uat_collects_llm_prompts_outputs_and_raw_transcripts(tmp_path: Path) ->
     assert (evidence / "prompts" / "call.prompt.md").read_text() == "prompt"
     assert (evidence / "prompt_outputs" / "call.output.txt").read_text() == "answer"
     assert (evidence / "provider_raw" / "call.raw.jsonl").read_text() == "{}\n"
+    assert (evidence / "llm_logs" / "call.llm.log").read_text() == "tokens: 10\n"
     assert {item["kind"] for item in manifest["llm_artifacts"]} == {
         "prompt",
         "prompt_output",
         "provider_raw",
+        "llm_log",
         "llm_execution_records",
     }
     labels = [command["label"] for command in manifest["commands"]]

@@ -318,6 +318,8 @@ def published(workspace: Path, target_dir: Path) -> Path:
     """A published receipt for a Target with one command, evidence, and delivered code."""
     (workspace / "logs" / "20260101.090000.000Z_widget_build_codex.log").write_text("built\n")
     (workspace / "logs" / "20260101.090000.000Z_widget_build_codex.prompt.md").write_text("# ask\n")
+    llm_log = workspace / "logs" / "20260101.090000.000Z_widget_build_codex.llm.log"
+    llm_log.write_text("tokens: 10\n")
     (workspace / "logs" / "llm.jsonl").write_text(
         json.dumps({
             "execution_id": "20260101.090000.000Z-aaaa",
@@ -333,6 +335,7 @@ def published(workspace: Path, target_dir: Path) -> Path:
                     workspace / "logs" / "20260101.090000.000Z_widget_build_codex.prompt.md"
                 ),
                 "output": str(workspace / "logs" / "gone.output.txt"),
+                "llm_log": str(llm_log),
             },
             "result": {"returncode": 0, "stats": {"input_tokens": 10, "output_tokens": 2}},
         })
@@ -370,6 +373,7 @@ def test_write_report_carries_the_evidence_the_page_links(published):
     assert (root / "result.json").is_file()
     assert (root / "logs" / "20260101.090000.000Z_widget_build_codex.log").is_file()
     assert (root / "logs" / "20260101.090000.000Z_widget_build_codex.prompt.md").is_file()
+    assert (root / "logs" / "20260101.090000.000Z_widget_build_codex.llm.log").is_file()
     assert (root / "logs" / "history.jsonl").is_file()
     assert (root / "logs" / "llm.jsonl").is_file()
     assert (root / "workspace" / "MANIFEST.md").is_file()
@@ -392,6 +396,12 @@ def test_the_page_links_nothing_it_did_not_carry(published):
     }
     assert hrefs
     assert [href for href in hrefs if not (root / href).exists()] == []
+
+
+def test_the_page_links_the_llm_activity_log(published):
+    html = published.read_text(encoding="utf-8")
+    assert "20260101.090000.000Z_widget_build_codex.llm.log.html" in html
+    assert ">llm</a>" in html
 
 
 def test_the_page_states_no_absolute_path_from_the_generating_machine(published, workspace):

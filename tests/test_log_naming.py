@@ -109,7 +109,7 @@ def test_transcript_omits_absent_components(tmp_path):
 
 
 def test_empty_transcript_is_pruned_on_close(tmp_path):
-    """A command that prints nothing — ``status --ready`` — leaves no zero-byte log behind."""
+    """A command that prints nothing to stdout leaves no zero-byte log behind."""
     logs = tmp_path / "logs"
     logging = setup_command_logging(logs, "status", stdout=sys.stdout, target="commonmark_2")
     logging.close()

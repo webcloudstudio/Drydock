@@ -17,7 +17,7 @@ from pathlib import Path
 
 from drydock.paths import get_rigging_root
 
-_VERSION_RE = re.compile(r"^version:\s*(.+?)\s*$", re.MULTILINE)
+_VERSION_RE = re.compile(r"^\s*version:\s*(.+?)\s*$", re.MULTILINE)
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 # Relative skills directory per agent: Claude Code reads .claude/skills; Codex CLI reads

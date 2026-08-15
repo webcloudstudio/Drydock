@@ -155,10 +155,16 @@ def _relative(value: object, base: Path) -> str:
     text = str(value or "")
     if not text:
         return ""
-    try:
-        return Path(text).relative_to(base).as_posix()
-    except ValueError:
-        return text
+    path = Path(text)
+    # Report entry points normally pass an absolute root, but direct rebuilds and callers using a
+    # project-relative UAT root are valid too. Recorded execution artifacts are absolute, so try
+    # both forms before preserving a genuinely external path.
+    for candidate in (base, base.resolve()):
+        try:
+            return path.relative_to(candidate).as_posix()
+        except ValueError:
+            continue
+    return text
 
 
 def _tail(path: Path, limit: int = _MAX_EXCERPT_BYTES) -> str:
@@ -199,6 +205,13 @@ def _llm_calls(
         stats = result.get("stats") if isinstance(result.get("stats"), dict) else {}
         artifacts = record.get("artifacts") if isinstance(record.get("artifacts"), dict) else {}
         total, cached, output = normalize_tokens(str(job.get("llm") or ""), stats)
+        prompt_artifact = artifacts.get("prompt")
+        llm_log_artifact = artifacts.get("llm_log")
+        # Runs created during the telemetry migration may have written the sibling .llm.log
+        # before execution records started naming it. Derive that conventional sibling; renderers
+        # still verify that the file exists before linking it.
+        if not llm_log_artifact and str(prompt_artifact or "").endswith(".prompt.md"):
+            llm_log_artifact = str(prompt_artifact)[: -len(".prompt.md")] + ".llm.log"
         calls.append({
             "execution_id": str(record.get("execution_id") or ""),
             "command": str(job.get("command_name") or ""),
@@ -210,9 +223,10 @@ def _llm_calls(
             "input_tokens": total,
             "cached_input_tokens": cached,
             "output_tokens": output,
-            "prompt": _artifact(artifacts.get("prompt")),
+            "prompt": _artifact(prompt_artifact),
             "output": _artifact(artifacts.get("output")),
             "raw": _artifact(artifacts.get("raw")),
+            "llm_log": _artifact(llm_log_artifact),
         })
     return tuple(calls)
 

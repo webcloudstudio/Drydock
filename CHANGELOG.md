@@ -10,12 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-08-15: `prompts/uat_diagnostic.md` provides an evidence-first, read-only investigation
-  contract for the latest run of a named UAT kit. It starts from `result.json` and the evidence
-  manifest, distinguishes expected control-flow exits from the terminal failure, traces implicated
-  model calls through `llm.jsonl` and their exact artifacts, and returns a one-paragraph diagnosis
-  plus one page of prioritized, testable recommendations. It explicitly forbids edits and reruns so
-  diagnosis does not mutate the failing evidence or expand into an unreviewed repair.
+- 2026-08-15: The shipped `/drydock-uat <Target>` skill loads the current versioned
+  `prompts/uat_diagnostic.md` contract at invocation time and diagnoses the latest completed run
+  without rerunning it or editing evidence. The prompt treats incorrect Sea Trials and acceptance
+  criteria as specification contamination and traces governed criteria through planning,
+  implementation, and acceptance evidence before blaming generated code or the model. `drydock
+  init` installs the skill for Claude Code and Codex alongside `/refit` and `/apply-refit`.
 
 - 2026-08-15: The bounds governing an acceptance run are configuration rather than constants.
   `capture_output_limit` (default 8 MB), `repair_attempts` (default 6), and `repair_stall_limit`
@@ -29,6 +29,13 @@ command surface and Typed Specification contract are unstable and may change bet
   the default value, and the echoed running command names only flags the operator actually typed.
 
 ### Fixed
+
+- 2026-08-15: `drydock status <Target> --ready` writes healthy `READY TO BUILD` and
+  `BUILD COMPLETE` states to stdout; stderr is reserved for blocked and inconsistent Targets. UAT
+  evidence now preserves each model execution's `.llm.log`, and UAT/build receipt LLM tables link
+  it beside the prompt, output, and provider transcript. UAT lifecycle command rows also associate
+  every recorded call banner with its `.llm.log`, rendering `stdout`, `stderr`, and `llm` links
+  together even when one command made multiple model calls.
 
 - 2026-08-15: A governed acceptance gate can no longer end the process grading it. `run_gate`
   captured child output with `subprocess.run(capture_output=True)` and applied none of the bounds a

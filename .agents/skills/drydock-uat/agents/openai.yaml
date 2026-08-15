@@ -1,0 +1,4 @@
+interface:
+  display_name: "Drydock UAT"
+  short_description: "Diagnose the latest Drydock UAT failure"
+  default_prompt: "Use $drydock-uat to diagnose the latest UAT run for ReadingList."

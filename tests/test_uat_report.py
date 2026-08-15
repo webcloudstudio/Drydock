@@ -7,12 +7,23 @@ from pathlib import Path
 
 import pytest
 
+from drydock.report_render import _relative
 from drydock.uat_report import (
     build_case_kit,
     build_kit_index,
     prune_generated,
     write_kit_index,
 )
+
+
+def test_recorded_absolute_artifact_is_relative_to_a_project_relative_report_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = Path("uat/ReadingList/runs/run-1")
+    artifact = tmp_path / root / "workspace/logs/call.llm.log"
+
+    assert _relative(artifact, root) == "workspace/logs/call.llm.log"
 
 
 def _case(
@@ -99,6 +110,8 @@ def _mirror(case: Path, name: str = "call.prompt.md", body: str = "assembled pro
     (case / "evidence" / "prompts").mkdir(exist_ok=True)
     (case / "evidence" / "prompts" / name).write_text(body, encoding="utf-8")
     (case / "workspace" / "logs" / name).write_text(body, encoding="utf-8")
+    llm_log = case / "workspace" / "logs" / "call.llm.log"
+    llm_log.write_text("tokens: 5\n", encoding="utf-8")
     (case / "evidence" / "llm.jsonl").write_text(
         json.dumps({
             "execution_id": "exec-1",
@@ -106,7 +119,10 @@ def _mirror(case: Path, name: str = "call.prompt.md", body: str = "assembled pro
             "job": {"command_name": "build", "llm": "codex", "model": "test-model"},
             "result": {"returncode": 0, "stats": {"elapsed_ms": 10, "input_tokens": 5}},
             # The run records where it wrote the file, which is its own workspace.
-            "artifacts": {"prompt": str(case / "workspace" / "logs" / name)},
+            "artifacts": {
+                "prompt": str(case / "workspace" / "logs" / name),
+                "llm_log": str(llm_log),
+            },
         })
         + "\n",
         encoding="utf-8",
@@ -237,6 +253,35 @@ def test_case_kit_links_a_stream_only_when_it_captured_output(tmp_path: Path) ->
     steps = page.split('id="panel-evidence"')[0]
     assert "evidence/commands/01-init.stderr.log" not in steps
     assert "evidence/commands/02-build.stderr.log" in steps
+
+
+def test_case_kit_links_llm_activity_beside_the_command_streams(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    _mirror(case)
+    stdout = case / "evidence" / "commands" / "02-build.stdout.log"
+    stdout.write_text("2026-01-01  Calling CODEX/test-model (build)...\n", encoding="utf-8")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+    steps = page.split('id="panel-llm"')[0]
+
+    assert "<th>stdout</th><th>stderr</th><th>llm</th>" in steps
+    assert "view/workspace/logs/call.llm.log.html" in steps
+    assert ">llm</a>" in steps
+
+
+def test_case_kit_derives_a_legacy_sibling_llm_activity_log(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    _mirror(case)
+    records = case / "evidence" / "llm.jsonl"
+    record = json.loads(records.read_text(encoding="utf-8"))
+    del record["artifacts"]["llm_log"]
+    records.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    stdout = case / "evidence" / "commands" / "02-build.stdout.log"
+    stdout.write_text("2026-01-01  Calling CODEX/test-model (build)...\n", encoding="utf-8")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert "view/workspace/logs/call.llm.log.html" in page
 
 
 def test_case_kit_opens_every_evidence_link_in_its_own_tab(tmp_path: Path) -> None:

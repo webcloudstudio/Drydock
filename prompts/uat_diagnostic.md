@@ -1,7 +1,7 @@
 ---
 name: uat_diagnostic
 description: Diagnose the latest Drydock UAT run without changing the repository or generated run evidence.
-version: 20260815 V1
+version: 20260815 V2
 intent: Find the latest requested UAT run, establish its actual failure chain from preserved evidence, summarize it in one paragraph, and recommend bounded corrective work.
 command: operator diagnostic prompt
 output: One-paragraph diagnosis followed by a one-page prioritized recommendation list.
@@ -41,6 +41,22 @@ defect, a UAT-kit defect, a provider/model failure, and an expected control-flow
 8. Use Git history only to identify a regression or changed contract. Do not infer causation from a
    commit subject; verify it against the run evidence and current code.
 
+## Audit Specification Integrity First
+
+Treat incorrect Sea Trials and acceptance criteria as specification contamination, not ordinary
+test failures. They are governed inputs that planning can turn into Blueprints, Manifest stories,
+implementation, and acceptance gates. Before blaming implementation or the model:
+
+1. Compare every Sea Trial and acceptance criterion with the imported source, Compass, declared
+   update sequence, and intended project boundary.
+2. Identify behavior introduced only by Sea Trials and determine whether it verifies source intent
+   or adds an unauthorized requirement.
+3. Check whether a later update requirement entered the initial plan through a Sea Trial.
+4. Trace each suspect criterion through `ANALYSIS.md`, Blueprints, `MANIFEST.md`, generated acceptance
+   code, delivered code, and scoring evidence. State the contamination path explicitly.
+5. If a governed criterion is wrong, classify the run as specification-contaminated. Recommend
+   correcting the governed input and starting a clean UAT; do not repair generated code to satisfy it.
+
 ## Required Analysis
 
 - Identify the first causal defect and the terminal failure separately from preceding incidental or
@@ -61,9 +77,9 @@ Return exactly two sections:
 
 ### Diagnosis
 
-One paragraph. Name the run id, terminal failing stage, direct cause, contributing conditions, and
-whether each other non-zero exit or logging anomaly caused the failure. Cite repository-relative
-evidence paths and source locations inline.
+One paragraph. Name the run id, terminal failing stage, direct cause, contamination path when
+applicable, contributing conditions, and whether each other non-zero exit or logging anomaly caused
+the failure. Cite repository-relative evidence paths and source locations inline.
 
 ### Recommended Actions
 

@@ -1666,11 +1666,9 @@ def _resolve_check_target(target: str):
 def cmd_status_check(target: str) -> int:
     """Print one line and exit 0 complete, 1 buildable work remains, 2 blocked."""
     check = _resolve_check_target(target)
-    stream = sys.stderr if check.blocked else sys.stdout
-    print(
-        f"{check.label}: {target}  {check.verified}/{check.total} verified  ({check.reason})",
-        file=stream,
-    )
+    # Every outcome here — complete, incomplete, blocked — is a successful status report.
+    # The exit code carries the verdict; stderr stays reserved for command failures.
+    print(f"{check.label}: {target}  {check.verified}/{check.total} verified  ({check.reason})")
     return check.exit_code()
 
 
@@ -1698,7 +1696,9 @@ def cmd_status_ready(target: str) -> int:
         headline = "BUILD COMPLETE"
     else:
         headline = "NOT READY"
-    print(f"{headline}: {target}  ({reason})", file=sys.stderr)
+    # Ready, complete, and not-ready are all healthy build-loop verdicts reported by a
+    # command that succeeded. The exit code carries the verdict; stderr means an error.
+    print(f"{headline}: {target}  ({reason})")
     return 0 if ready else 1
 
 

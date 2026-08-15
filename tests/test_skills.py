@@ -7,6 +7,35 @@ from pathlib import Path
 from drydock.skills import AGENT_SKILLS_DIRS, sync_skills
 
 
+def test_shipped_drydock_uat_skill_loads_versioned_diagnostic_prompt():
+    skill = Path("Rigging/skills/drydock-uat/SKILL.md").read_text(encoding="utf-8")
+
+    assert "name: drydock-uat" in skill
+    assert "load_prompt('uat_diagnostic')" in skill
+    assert "do not reconstruct the prompt from memory" in skill
+    assert "Do not edit files or rerun the UAT" in skill
+
+
+def test_metadata_version_upgrades_a_skill(tmp_path):
+    source = tmp_path / "src"
+    skill_dir = source / "diagnose"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: diagnose\nmetadata:\n  version: '2.0.0'\n---\nnew\n", encoding="utf-8"
+    )
+    project = tmp_path / "ws"
+    for relative in AGENT_SKILLS_DIRS.values():
+        installed = project / relative / "diagnose"
+        installed.mkdir(parents=True)
+        (installed / "SKILL.md").write_text(
+            "---\nname: diagnose\nversion: 1.0.0\n---\nold\n", encoding="utf-8"
+        )
+
+    results = sync_skills(project, source_root=source)
+
+    assert all(result.updated == ["diagnose"] for result in results.values())
+
+
 def _make_skill(root: Path, name: str, version: str, body: str = "body") -> Path:
     skill_dir = root / name
     skill_dir.mkdir(parents=True)
