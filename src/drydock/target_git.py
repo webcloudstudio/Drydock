@@ -4,9 +4,8 @@ Every git invocation against a Target Workspace goes through this module. Keepin
 execution in its own contract lets the lineage, refit, and import capabilities stay testable
 without shelling out, and gives one place to enforce the rules a Target repository must obey:
 
-- A Target may or may not have its own repository. ``init_target`` creates one only when the
-  workspace is itself a repository that ignores ``targets/``, so every entry point here degrades
-  to a no-op rather than raising when ``.git`` is absent.
+- Every initialized Target is its own repository. Existing Targets are upgraded before command
+  execution so refit and lineage operations always have a local history to inspect.
 - Failures are reported as ``None`` or an empty result, never as ``CalledProcessError`` escaping
   into a command. A missing or broken git installation must not abort an import.
 - Drydock never pushes. Amending the tip commit is therefore safe: the commit being rewritten is
@@ -56,6 +55,19 @@ def _run(target_dir: Path, *args: str, timeout: int = _TIMEOUT) -> tuple[int, st
     return completed.returncode, output
 
 
+def setup_target(target_dir: Path) -> bool:
+    """Quietly initialize ``target_dir`` as a Git repository when needed."""
+    if is_repo(target_dir):
+        return False
+    code, out = _run(target_dir, "init", "-q")
+    if code != 0 or not is_repo(target_dir):
+        raise SpecificationError(
+            f"Cannot setup Target project workspace Git store: {out.strip() or 'git failed'}"
+        )
+    print("Target - setup project workspace git store")
+    return True
+
+
 def head_commit(target_dir: Path) -> str | None:
     """Short sha of the Target's current tip, or ``None`` when there is no repository or commit."""
     if not is_repo(target_dir):
@@ -81,7 +93,6 @@ def commit_target(target_dir: Path, message: str) -> str | None:
         raise SpecificationError(f"Cannot inspect Target Git status: {out.strip() or 'git failed'}")
     if not out.strip():
         return None
-    pending = len([line for line in out.splitlines() if line.strip()])
     code, out = _run(target_dir, "add", "-A", timeout=15)
     if code != 0:
         raise SpecificationError(
@@ -92,15 +103,10 @@ def commit_target(target_dir: Path, message: str) -> str | None:
         raise SpecificationError(
             f"Cannot commit Target Git checkpoint: {out.strip() or 'git failed'}"
         )
-    code, out = _run(target_dir, "log", "-1", "--format=%h %s")
-    if code != 0 or not out.strip():
-        raise SpecificationError(
-            f"Cannot verify Target Git checkpoint: {out.strip() or 'git failed'}"
-        )
     commit = head_commit(target_dir)
     if commit is None:
         raise SpecificationError("Cannot resolve Target Git checkpoint after commit")
-    print(f"Git checkpoint: {out.strip()} ({pending} pending Target file(s))")
+    print("Target - committed project workspace git store")
     return commit
 
 

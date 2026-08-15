@@ -24,6 +24,8 @@ def test_init_target_creates_specification_independent_baseline(tmp_target_root)
     assert "display_name: Example" in metadata
     assert (result.target_dir / "blueprint" / "sources").is_dir()
     assert (result.target_dir / "blueprint" / "changes").is_dir()
+    assert (result.target_dir / ".git").is_dir()
+    assert result.repository_created is True
     assert "Commanders Chair" in (result.target_dir / "QuarterDeck" / "console.yaml").read_text(
         encoding="utf-8"
     )

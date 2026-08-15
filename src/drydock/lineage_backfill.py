@@ -59,9 +59,7 @@ def require_target_repo(target_dir: Path) -> None:
         raise SpecificationError(
             f"No git repository in {target_dir}.\n"
             "  --relineage replays source history from the Target repository.\n"
-            f"  Initialize one with: git -C {target_dir} init\n"
-            "  (drydock init creates one only when the workspace is a repository "
-            "that ignores targets/.)"
+            f"  Initialize one with: git -C {target_dir} init"
         )
 
 

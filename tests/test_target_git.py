@@ -14,6 +14,7 @@ from drydock.target_git import (
     file_versions,
     head_commit,
     is_repo,
+    setup_target,
     show,
     tracked_sources,
 )
@@ -51,6 +52,16 @@ def test_is_repo_and_head_commit_on_a_bare_directory(tmp_path):
     assert head_commit(plain) is None
 
 
+def test_setup_target_initializes_quietly_and_reports_one_summary(tmp_path, capsys):
+    target = tmp_path / "Demo"
+    target.mkdir()
+
+    assert setup_target(target) is True
+    assert setup_target(target) is False
+    assert capsys.readouterr().out.splitlines() == ["Target - setup project workspace git store"]
+    assert is_repo(target)
+
+
 def test_commit_target_reports_one_line_checkpoint(tmp_path, capsys):
     target = _repo(tmp_path)
     _write(target, "a.md", "a\n")
@@ -59,9 +70,7 @@ def test_commit_target_reports_one_line_checkpoint(tmp_path, capsys):
     sha = commit_target(target, "Refresh imported source snapshot")
 
     lines = capsys.readouterr().out.splitlines()
-    assert lines == [
-        f"Git checkpoint: {sha} Refresh imported source snapshot (2 pending Target file(s))"
-    ]
+    assert lines == ["Target - committed project workspace git store"]
     assert sha == head_commit(target)
 
 
