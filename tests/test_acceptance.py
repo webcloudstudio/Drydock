@@ -366,6 +366,35 @@ def test_a_hung_check_is_reported_as_a_non_terminating_failure(tmp_path, monkeyp
     assert not result.passed
     assert result.error is not None and result.error.startswith(TIMEOUT_FAILURE_PREFIX)
     assert "did not terminate" in result.error
+    assert "non-terminating loop" in result.error
+
+
+def test_a_story_timeout_names_the_loop_as_the_first_thing_to_look_for():
+    """Bounded work that overran its own budget is good evidence of a loop that never exits."""
+    check = _criterion("while True:\n    pass\n")
+    error = acceptance._timeout_failure_text(check)
+
+    assert error.startswith(TIMEOUT_FAILURE_PREFIX)
+    assert "Look first for a non-terminating loop" in error
+    assert "not a missed expectation" in error
+
+
+def test_a_suite_timeout_does_not_invent_a_cause():
+    """The claim that sank jq run 20260815.004309.
+
+    ``delivery-assets`` was killed running a staged corpus that in fact completes in 50s, and the
+    harness reported a non-terminating loop in the product. A kill at the budget cannot tell a
+    hung case from a slow suite from a loaded host, so it must not name one.
+    """
+    check = _criterion(
+        "import subprocess\nsubprocess.run(['sh', 'sources/full_test.sh'], check=False)\n"
+    )
+    error = acceptance._timeout_failure_text(check)
+
+    assert error.startswith(TIMEOUT_FAILURE_PREFIX)
+    assert "cause is not established" in error
+    assert "non-terminating loop" not in error
+    assert str(acceptance.SUITE_TIMEOUT_SECONDS) in error
 
 
 @pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX-only")

@@ -1581,15 +1581,16 @@ def _render_repair_feedback(
     exhausted = tuple(result for result in failed_checks if _resource_verdict(result))
     if exhausted:
         # State the resource fact before the check list. A pass that reads only "the check
-        # failed" tunes behavior; the defect is that the code never terminates or never
-        # stops allocating, and no expectation can be satisfied until that is fixed.
+        # failed" tunes behavior, and no expectation is reachable while the code is being
+        # killed. Each check's own error carries what the kill established; the heading must
+        # not upgrade that into a diagnosis the harness cannot support from a timeout alone.
         lines.extend([
             "### Resource exhaustion — fix this first",
             "",
             "The following checks did not fail an expectation. The code under test was",
-            "stopped by the harness for exhausting memory or time, which means it does not",
-            "terminate on some input. Find the unbounded loop or allocation and fix it;",
-            "tuning output to match an expectation will not clear this.",
+            "stopped by the harness for exhausting memory or time. Read each error below for",
+            "what that establishes; where it points at an unbounded loop or allocation, fix",
+            "that first. Tuning output to match an expectation will not clear this.",
             "",
         ])
         for result in exhausted:

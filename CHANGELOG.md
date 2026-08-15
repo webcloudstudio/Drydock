@@ -10,6 +10,21 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-14: A programmatic acceptance criterion's execution budget now follows what it executes
+  rather than only what it declared. A criterion that launches a staged runner under `sources/`
+  is suite-bound whether or not its author wrote a `Suite:` marker, and draws
+  `SUITE_TIMEOUT_SECONDS` instead of the story budget; detection requires the staged path to
+  appear in the arguments of a process launch, so reading or stat-ing a staged file remains
+  bounded work. The story budget rises from 60s to 120s. A timeout no longer asserts a cause it
+  cannot establish: a suite-bound kill reports that the staged runner did not finish and that a
+  hung case, a slow suite, and a loaded host are indistinguishable, while a story kill still
+  names a non-terminating loop as the first thing to look for. The repair-feedback heading
+  likewise states the resource fact and defers to each check's own error instead of declaring
+  that the code does not terminate on some input. The prior behavior failed a jq build whose
+  delivery criterion shells out to a 550-case conformance suite that completes in 50s: it drew
+  the 60s story budget, was killed under load, and was reported as a non-terminating loop in the
+  product, which routed the block to an unrepairable kit fault after one call.
+
 - 2026-08-14: `drydock plan` now receives Commander-owned `ACCEPTANCE.json` as read-only planning
   context, so governed stage boundaries can shape the story topology instead of being compared
   only after implementation. Stable analyzed identifiers from Manifest `covers:` take precedence

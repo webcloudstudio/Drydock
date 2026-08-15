@@ -187,6 +187,31 @@ def _resource_failure(return_code: int, stderr: str, limit_mb: int) -> str | Non
     return None
 
 
+def _timeout_failure_text(check: ProgrammaticAcceptance) -> str:
+    """State what a timeout establishes, which is not the same for every criterion.
+
+    A story check is bounded work the criterion itself defines, so overrunning its budget by an
+    order of magnitude is good evidence of a loop that never exits. A suite-bound check hands its
+    runtime to a staged runner over a whole corpus: there, "slow suite", "hung case", and "loaded
+    host" produce the identical kill, and naming one of them invents a cause. The jq run of
+    20260815.004309 was reported as a non-terminating loop in the product when the suite in fact
+    completes in 50s. Say what was observed and let the repair pass reason from that.
+    """
+    budget = f"{TIMEOUT_FAILURE_PREFIX} after {check.timeout_seconds}s"
+    if check.suite_bound:
+        return (
+            f"{budget}: the staged runner did not finish within its budget and was stopped by "
+            f"the harness. The cause is not established — a hung case, a suite slower than its "
+            f"budget, and a loaded host are indistinguishable here. This is not a missed "
+            f"expectation."
+        )
+    return (
+        f"{budget}: the built code did not terminate within its budget and was stopped by the "
+        f"harness. Look first for a non-terminating loop or unbounded work in the code under "
+        f"test. This is not a missed expectation."
+    )
+
+
 def _own_frame_exception(return_code: int, stderr: str, script_name: str) -> tuple[str, str] | None:
     """Return ``(exception, detail)`` when the check died in its own frame, else ``None``.
 
@@ -1102,12 +1127,7 @@ def run_programmatic_acceptance(
                         return_code=None,
                         stdout=_timeout_output_text(stdout),
                         stderr=_scrub_script_path(_timeout_output_text(stderr), script),
-                        error=(
-                            f"{TIMEOUT_FAILURE_PREFIX} after {check.timeout_seconds}s: the built "
-                            f"code did not terminate within its budget. This is a "
-                            f"non-terminating loop or unbounded work in the code under test, "
-                            f"not a missed expectation."
-                        ),
+                        error=_timeout_failure_text(check),
                         interpreter=str(environment.interpreter),
                         provisioning_result=environment.provisioning_result,
                         binding=check.binding,
