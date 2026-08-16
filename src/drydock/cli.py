@@ -2257,6 +2257,12 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
     if prepassed:
         counts += f"   PREPASSED {prepassed}"
     print(f"{counts}   ({len(report.verdicts)} AC)")
+    # Above the board, not below it: these files produced no verdicts, so nothing further down
+    # the report mentions them at all.
+    if report.defects:
+        print()
+        for message in report.defects:
+            print(f"  WARNING  {message}")
     if not report.verdicts:
         print("  No programmatic acceptance assertions in scope.")
     else:

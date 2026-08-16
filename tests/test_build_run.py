@@ -4261,3 +4261,18 @@ def test_a_red_governed_gate_drives_the_repair_loop(tmp_path):
     assert result.steps[0].calls_used == 2, "the red gate must buy a repair pass"
     assert result.steps[0].status == "built"
     assert _state(target_dir, "foundation") == "closed/verified"
+
+
+def test_build_warns_when_a_specs_acceptance_cannot_be_read(tmp_path):
+    """The criteria are gone from the unit's grading either way; the reason must not be."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "# DATABASE\n\n## Programmatic Acceptance\n\n"
+        "=== AC db-exists ===\nIntent: First.\n\nassert 1 == 1\n",
+        encoding="utf-8",
+    )
+    log: list[str] = []
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append)
+
+    assert any("DATABASE.md: acceptance criteria could not be read" in line for line in log)

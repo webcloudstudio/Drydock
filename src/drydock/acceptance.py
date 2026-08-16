@@ -1149,6 +1149,49 @@ def parse_programmatic_acceptance_text(
     return tuple(checks)
 
 
+def unreadable_acceptance_warning(source: str, exc: Exception) -> str:
+    """The one wording every surface uses when a spec's criteria could not be read."""
+    return (
+        f"{source}: acceptance criteria could not be read and are not graded "
+        f"— {exc}. Repair the Blueprint specification."
+    )
+
+
+def acceptance_checks_from_text(
+    text: str, *, source: str, defects: list[str] | None
+) -> tuple[ProgrammaticAcceptance, ...]:
+    """Parse criteria from spec text, degrading an unreadable container to a reported defect.
+
+    A malformed acceptance container is an authoring defect in one file. Raising here costs the
+    caller everything it was doing — at plan time, an entire generated plan — over a criterion
+    that gates nothing either way. So the file simply carries no criteria and the fact is
+    reported instead.
+
+    ``defects`` is required rather than defaulted because dropping criteria silently is the one
+    outcome that must not be reachable by omission: unreported, the gap looks like a spec with
+    no acceptance and nobody ever fixes it. Pass a list to collect the warning, or ``None`` only
+    where the same file is already reported by another pass.
+    """
+    try:
+        return parse_programmatic_acceptance_text(text, source=source)
+    except ValueError as exc:
+        if defects is not None:
+            defects.append(unreadable_acceptance_warning(source, exc))
+        return ()
+
+
+def acceptance_checks_from_file(
+    path: Path, *, defects: list[str] | None
+) -> tuple[ProgrammaticAcceptance, ...]:
+    """File-reading form of :func:`acceptance_checks_from_text`; same contract for ``defects``."""
+    try:
+        return parse_programmatic_acceptance(path)
+    except ValueError as exc:
+        if defects is not None:
+            defects.append(unreadable_acceptance_warning(path.name, exc))
+        return ()
+
+
 @dataclass(frozen=True)
 class MalformedAcceptance:
     """One acceptance criterion that does not compile, and so can never execute."""
@@ -1304,21 +1347,24 @@ def malformed_criteria(
 
 
 def programmatic_acceptance_for_step(
-    block: PlanBlock, blueprint_dir: Path
+    block: PlanBlock, blueprint_dir: Path, *, defects: list[str] | None
 ) -> tuple[ProgrammaticAcceptance, ...]:
-    """Load programmatic assertions from the Blueprint files a step implements."""
+    """Load programmatic assertions from the Blueprint files a step implements.
+
+    See :func:`acceptance_checks_from_text` for the ``defects`` contract.
+    """
     checks: list[ProgrammaticAcceptance] = []
     for name in block.fields.get("implements", ()):
         if not isinstance(name, str):
             continue
         path = blueprint_dir / name
         if path.is_file():
-            checks.extend(parse_programmatic_acceptance(path))
+            checks.extend(acceptance_checks_from_file(path, defects=defects))
     return tuple(checks)
 
 
 def all_programmatic_acceptance(
-    plan: BuildPlan, blueprint_dir: Path
+    plan: BuildPlan, blueprint_dir: Path, *, defects: list[str] | None
 ) -> tuple[ProgrammaticAcceptance, ...]:
     """Every Blueprint assertion the plan implements, deduped by ``(source, check_id)``.
 
@@ -1336,7 +1382,7 @@ def all_programmatic_acceptance(
             path = blueprint_dir / name
             if not path.is_file():
                 continue
-            for check in parse_programmatic_acceptance(path):
+            for check in acceptance_checks_from_file(path, defects=defects):
                 key = (check.source, check.check_id)
                 if key in seen:
                     continue

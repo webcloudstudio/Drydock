@@ -148,6 +148,10 @@ class AcReport:
     scope: str | None = None
     scope_name: str = ""
     wrote_soundings: bool = True
+    # Blueprint files whose acceptance could not be read, and so produced no verdicts at all.
+    # Reported, never gating: the criteria are missing from the board either way, and a board
+    # that hides why is how an unreadable spec survives a release.
+    defects: tuple[str, ...] = ()
 
     def exit_code(self) -> int:
         # A FAIL is a hard failure; UNVERIFIED is surfaced but does not fail the run, since not
@@ -270,7 +274,7 @@ def _resolve_scope_block(plan: BuildPlan, step_id: str):
     raise SpecificationError(f"unknown --step '{step_id}'. Valid ids: {valid}")
 
 
-def _scoped_checks(plan: BuildPlan, blueprint_dir: Path, block) -> tuple:
+def _scoped_checks(plan: BuildPlan, blueprint_dir: Path, block, *, defects: list[str]) -> tuple:
     """Every Blueprint assertion owned by ``block`` — its own if a story, its stories' if a
     feature — deduped by ``(source, check_id)``."""
     if block.block_type == "feature":
@@ -284,7 +288,7 @@ def _scoped_checks(plan: BuildPlan, blueprint_dir: Path, block) -> tuple:
     checks: list = []
     seen: set[tuple[str, str]] = set()
     for story in stories:
-        for check in programmatic_acceptance_for_step(story, blueprint_dir):
+        for check in programmatic_acceptance_for_step(story, blueprint_dir, defects=defects):
             key = (check.source, check.check_id)
             if key in seen:
                 continue
@@ -352,11 +356,15 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
 
     verified_at = _now()
     scope_block = None
+    # A spec whose acceptance container cannot be read contributes no verdicts, which on a board
+    # that is a pure projection of every Blueprint assertion reads as a spec with no acceptance.
+    # The report carries the reason so the gap is visible rather than merely absent.
+    acceptance_defects: list[str] = []
     if step_id is None:
-        checks = all_programmatic_acceptance(plan, blueprint_dir)
+        checks = all_programmatic_acceptance(plan, blueprint_dir, defects=acceptance_defects)
     else:
         scope_block = _resolve_scope_block(plan, step_id)
-        checks = _scoped_checks(plan, blueprint_dir, scope_block)
+        checks = _scoped_checks(plan, blueprint_dir, scope_block, defects=acceptance_defects)
     _provision_authorized_environment(checks, plan, target_dir, build_dir)
     observations = observe_programmatic_acceptance(
         checks,
@@ -416,6 +424,7 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
         scope=scope_block.block_id if scope_block else None,
         scope_name=scope_block.name if scope_block else "",
         wrote_soundings=wrote_soundings,
+        defects=tuple(dict.fromkeys(acceptance_defects)),
     )
 
 

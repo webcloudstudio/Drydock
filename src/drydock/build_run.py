@@ -2358,12 +2358,21 @@ def build_target(
         story_by_check: dict[str, PlanBlock] = {}
         story_by_source_check: dict[tuple[str, str], PlanBlock] = {}
         gathered_checks: list[ProgrammaticAcceptance] = []
+        # A spec whose acceptance container cannot be read grades nothing. That silently lowers
+        # the criterion count for the unit, so it is announced on every build that touches the
+        # file rather than left for the operator to notice as an absence.
+        acceptance_defects: list[str] = []
         graded_blocks = (*unit.steps, *unit.already_verified)
         for block in graded_blocks:
-            for check in programmatic_acceptance_for_step(block, blueprint_dir):
+            for check in programmatic_acceptance_for_step(
+                block, blueprint_dir, defects=acceptance_defects
+            ):
                 gathered_checks.append(check)
                 story_by_check[check.check_id] = block
                 story_by_source_check[(check.source, check.check_id)] = block
+        if acceptance_defects and on_text is not None:
+            for message in dict.fromkeys(acceptance_defects):
+                on_text(f"[build] WARNING {message}\n")
         checks = tuple(gathered_checks)
         # Criteria this unit does not grade itself. Re-run after the block builds; never
         # injected into the prompt unless one of them goes red, because telling a model about

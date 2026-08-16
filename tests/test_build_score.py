@@ -489,3 +489,21 @@ def test_unclosed_manifest_work_is_reported_but_does_not_block_the_gate(tmp_path
     assert result.exit_code() == 0
     assert not any("closed/verified" in blocker for blocker in result.blockers)
     assert any("Manifest work is not closed/verified" in note for note in result.warnings)
+
+
+def test_an_unreadable_acceptance_container_warns_and_does_not_stop_the_release(tmp_path):
+    """The release gate is Sea Trials. An unreadable spec lowers the tally, so it is named."""
+    target_dir, _ = _target(tmp_path)
+    (target_dir / "blueprint" / "FEATURE-Broken.md").write_text(
+        "# FEATURE: Broken\n\n## Programmatic Acceptance\n\n"
+        "=== AC broken-first ===\nIntent: First.\n\nassert 1 == 1\n",
+        encoding="utf-8",
+    )
+
+    result = score_target("Demo", target_dir, runner=_runner())
+
+    assert any(
+        "FEATURE-Broken.md: acceptance criteria could not be read" in warning
+        for warning in result.warnings
+    )
+    assert result.complete is True

@@ -792,3 +792,33 @@ def test_the_failure_emitter_states_the_headline_and_its_details(capsys):
     assert captured.err == (
         "error: release gate FAILED for Demo\n  criterion-1 not met\n  criterion-2 not met\n"
     )
+
+
+def test_verify_acs_reports_the_spec_whose_acceptance_it_could_not_read(
+    tmp_path, capsys, monkeypatch
+):
+    """A board that is a pure projection shows an unreadable spec as no rows at all.
+
+    Reported, never gating: the criteria are absent either way, and an absence with no stated
+    reason is how a broken container survives to a release.
+    """
+    from drydock import cli
+
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+    (target_dir / "blueprint" / "FEATURES.md").write_text(
+        "# Features\n\n## Programmatic Acceptance\n\n"
+        "=== AC built-marker ===\nIntent: First.\n\nassert 1 == 1\n",
+        encoding="utf-8",
+    )
+
+    report = verify_acs("Demo", target_dir)
+
+    assert report.verdicts == ()
+    assert report.exit_code() == 0
+    assert len(report.defects) == 1
+    assert report.defects[0].startswith("FEATURES.md: acceptance criteria could not be read")
+
+    monkeypatch.setattr("drydock.config.require_target_dir", lambda target: target_dir)
+    assert cli.cmd_score_ac("Demo") == 0
+    out = capsys.readouterr().out
+    assert "WARNING  FEATURES.md: acceptance criteria could not be read" in out

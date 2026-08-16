@@ -14,7 +14,7 @@ from typing import Protocol
 
 from drydock.acceptance import (
     OUTCOME_FAIL,
-    parse_programmatic_acceptance,
+    acceptance_checks_from_file,
     run_programmatic_acceptance,
     tally_outcomes,
 )
@@ -443,11 +443,16 @@ def score_target(
     if document.questions:
         blockers.append("Sea Trials has unresolved QUESTIONS")
 
+    # An unreadable acceptance container lowers the tally silently, which on a release report is
+    # indistinguishable from a specification that simply carries no criteria. Warn, never block:
+    # the release gate is Sea Trials, and this tally is a fact beside it.
+    acceptance_defects: list[str] = []
     checks = tuple(
         check
         for path in sorted(blueprint_dir.glob("*.md"))
-        for check in parse_programmatic_acceptance(path)
+        for check in acceptance_checks_from_file(path, defects=acceptance_defects)
     )
+    warnings.extend(dict.fromkeys(acceptance_defects))
     acceptance = run_programmatic_acceptance(
         checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
     )

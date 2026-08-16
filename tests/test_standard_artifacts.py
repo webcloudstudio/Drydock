@@ -160,7 +160,7 @@ def test_all_programmatic_acceptance_gathers_implemented_specs_deduped(tmp_path)
         encoding="utf-8",
     )
 
-    checks = all_programmatic_acceptance(parse_build_plan(plan_path), blueprint)
+    checks = all_programmatic_acceptance(parse_build_plan(plan_path), blueprint, defects=None)
 
     assert [(c.source, c.check_id) for c in checks] == [
         ("FEATURE-Catalog.md", "catalog-responds"),

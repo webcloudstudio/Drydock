@@ -4312,6 +4312,62 @@ def test_a_marker_inside_a_string_literal_is_not_treated_as_a_boundary():
         parse_programmatic_acceptance_text(text, source="FEATURE-Example.md")
 
 
+def test_an_unrepairable_acceptance_container_keeps_the_plan(tmp_path):
+    """The jq failure: one unreadable container discarded six accepted batches.
+
+    The container cannot be repaired — its body does not tokenize, so no boundary is
+    inferable — and it must not cost the plan. It settles as a warning plus a blocking
+    decision against the story that owns it.
+    """
+    from drydock.planning_session import (
+        _malformed_acceptance_defects,
+        _validate_plan_output,
+        malformed_acceptance_decisions,
+    )
+
+    broken = (
+        "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
+        "=== AC status-compiles ===\nIntent: First.\n\n"
+        'sample = """\n'
+        "=== AC status-runs ===\nIntent: Second.\n\nassert 2 == 2\n=== END AC status-runs ===\n"
+    )
+    manifest = _manifest()
+    blocks = {
+        "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
+        "FEATURE-Status.md": broken,
+        "MANIFEST.md": manifest,
+    }
+
+    plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    assert plan.blocks
+    assert any("acceptance block is never closed" in warning for warning in warnings)
+    assert any("recorded as a blocking decision" in warning for warning in warnings)
+    decisions = malformed_acceptance_decisions(_malformed_acceptance_defects(blocks))
+    assert [item.id for item in decisions] == ["acceptance-FEATURE-Status.md-container-malformed"]
+    assert decisions[0].severity == "blocking"
+
+
+def test_unreadable_acceptance_declares_no_tooling_instead_of_raising(tmp_path):
+    """The second unguarded reader on the plan path, reached after validation succeeds."""
+    from drydock.acceptance_requirements import project_plan_requirement_decisions
+
+    blocks = {
+        "FEATURE-Status.md": (
+            "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
+            "=== AC status-compiles ===\nIntent: First.\n\nassert 1 == 1\n"
+            "=== AC status-runs ===\nIntent: Second.\n\nassert 2 == 2\n"
+        )
+    }
+
+    assert (
+        project_plan_requirement_decisions(
+            blocks, target_dir=tmp_path, build_dir=tmp_path / "build"
+        )
+        == ()
+    )
+
+
 def test_an_ambiguous_terminator_defect_is_left_to_the_hard_error():
     """A mismatched end id has no single right answer, so nothing is inserted."""
     from drydock.planning_session import _normalize_unterminated_acceptance_blocks

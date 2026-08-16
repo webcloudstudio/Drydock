@@ -306,14 +306,19 @@ def tooling_decision(
 def project_plan_requirement_decisions(
     blocks: dict[str, str], *, target_dir: Path, build_dir: Path
 ) -> tuple[Decision, ...]:
-    """Return deterministic blocking decisions for unavailable tooling."""
+    """Return deterministic blocking decisions for unavailable tooling.
+
+    A spec whose acceptance container cannot be read declares no tooling. It is reported by
+    ``_malformed_acceptance_defects`` on the same plan path, as a warning and a blocking
+    decision, so raising here would only trade that report for a discarded plan.
+    """
     added: list[Decision] = []
     for source, text in tuple(blocks.items()):
         if not source.lower().endswith(".md"):
             continue
-        from drydock.acceptance import parse_programmatic_acceptance_text
+        from drydock.acceptance import acceptance_checks_from_text
 
-        checks = parse_programmatic_acceptance_text(text, source=source)
+        checks = acceptance_checks_from_text(text, source=source, defects=None)
         for check in checks:
             missing = [
                 requirement

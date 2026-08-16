@@ -1324,3 +1324,81 @@ def test_the_failure_detail_bounds_the_output_it_quotes():
     quoted = [line for line in lines if line.strip().startswith("line ")]
     assert len(quoted) == acceptance.OBSERVED_OUTPUT_LINES
     assert quoted[-1].strip() == "line 199"
+
+
+_UNREADABLE_SPEC = (
+    "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+    "=== AC example-first ===\nIntent: First.\n\nassert 1 == 1\n"
+)
+
+
+def test_an_unreadable_container_yields_no_criteria_and_one_reported_defect():
+    """Dropping the criteria is the cheap outcome; dropping them silently is not.
+
+    An unreported gap is indistinguishable from a specification that never carried acceptance,
+    which is how a broken container survives to a release.
+    """
+    defects: list[str] = []
+
+    checks = acceptance.acceptance_checks_from_text(
+        _UNREADABLE_SPEC, source="FEATURE-Example.md", defects=defects
+    )
+
+    assert checks == ()
+    assert len(defects) == 1
+    assert defects[0].startswith("FEATURE-Example.md: acceptance criteria could not be read")
+    assert "acceptance block is never closed" in defects[0]
+    assert "Repair the Blueprint specification." in defects[0]
+
+
+def test_a_readable_container_reports_nothing_and_reads_as_before():
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC example-first ===\nIntent: First.\n\nassert 1 == 1\n=== END AC example-first ===\n"
+    )
+    defects: list[str] = []
+
+    checks = acceptance.acceptance_checks_from_text(
+        text, source="FEATURE-Example.md", defects=defects
+    )
+
+    assert [check.check_id for check in checks] == ["example-first"]
+    assert defects == []
+
+
+def test_the_file_reader_names_the_file_it_could_not_read(tmp_path):
+    path = tmp_path / "FEATURE-Example.md"
+    path.write_text(_UNREADABLE_SPEC, encoding="utf-8")
+    defects: list[str] = []
+
+    assert acceptance.acceptance_checks_from_file(path, defects=defects) == ()
+    assert defects[0].startswith("FEATURE-Example.md: acceptance criteria could not be read")
+
+
+def test_a_step_keeps_the_criteria_of_its_readable_specs(tmp_path):
+    """One unreadable file costs its own criteria and nothing else's."""
+    from drydock.build_plan import parse_build_plan
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "FEATURE-Broken.md").write_text(_UNREADABLE_SPEC, encoding="utf-8")
+    (blueprint / "FEATURE-Good.md").write_text(
+        "# FEATURE: Good\n\n## Programmatic Acceptance\n\n"
+        "=== AC good-first ===\nIntent: First.\n\nassert 1 == 1\n=== END AC good-first ===\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "MANIFEST.md"
+    manifest.write_text(
+        "# MANIFEST: Demo\nstate: draft\n\n"
+        "## story 1: Both\nid: both\nimplements: FEATURE-Broken.md, FEATURE-Good.md\n"
+        "state: pending\n",
+        encoding="utf-8",
+    )
+    block = parse_build_plan(manifest).by_id()["both"]
+    defects: list[str] = []
+
+    checks = acceptance.programmatic_acceptance_for_step(block, blueprint, defects=defects)
+
+    assert [check.check_id for check in checks] == ["good-first"]
+    assert len(defects) == 1
+    assert defects[0].startswith("FEATURE-Broken.md")

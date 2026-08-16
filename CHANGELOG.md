@@ -10,6 +10,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-16: A Blueprint specification whose acceptance container cannot be read no longer
+  discards the work around it. An unclosed `=== AC <id> ===` block that `plan`'s terminator repair
+  declines to close — its body does not tokenize, so no boundary is inferable — used to raise out
+  of an advisory declaration pass in `_validate_plan_output` and out of
+  `project_plan_requirement_decisions`, throwing away a complete generated plan (in the observed
+  `jq` run, six accepted batches and ten LLM calls) over one criterion. Both readers now degrade
+  the file to zero criteria; the defect is already reported as a plan warning and as a blocking
+  decision against the story that owns it, so the criterion gates nothing and nothing else stops.
+  The same degradation applies at execution time, where `build`, `drydock score acceptance`, and
+  `score_target` previously raised on the file that `plan` had written: each now warns and
+  continues. The warning is mandatory by construction — the shared readers `acceptance_checks_from_text`
+  and `acceptance_checks_from_file` take a required `defects` collector, so criteria cannot be
+  dropped silently, and `AcReport` carries a `defects` tuple rendered above the board. `drydock
+  validate` still fails hard on the file, and the terminator repair is unchanged: it will not
+  insert a boundary into a body that does not tokenize.
+
 - 2026-08-16: A blank line between an acceptance criterion's declarations no longer discards them.
   `=== AC ===` metadata parsing ended the declaration run at the first blank line, so a criterion
   that spaced `Intent:` away from `Suite:` and `Requires:` lost both into the proof body: it drew

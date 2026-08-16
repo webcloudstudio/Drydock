@@ -34,6 +34,7 @@ from drydock.acceptance import (
     AC_OPEN_RE,
     MalformedAcceptance,
     ProgrammaticAcceptance,
+    acceptance_checks_from_text,
     escape_defects,
     parse_programmatic_acceptance_text,
 )
@@ -1863,10 +1864,9 @@ def _acceptance_checks(text: str, *, source: str = "spec") -> tuple[Programmatic
     message naming the file and the block, so here a spec that cannot be parsed simply carries
     no criteria and the caller's own defect is reported instead of a duplicate.
     """
-    try:
-        return parse_programmatic_acceptance_text(text, source=source)
-    except ValueError:
-        return ()
+    # ``defects=None``: an unreadable container in an emitted spec is already reported by
+    # ``_malformed_acceptance_defects`` as a warning and a blocking decision against its story.
+    return acceptance_checks_from_text(text, source=source, defects=None)
 
 
 def _acceptance_status(text: str) -> tuple[int, bool]:
@@ -2903,11 +2903,15 @@ def _validate_plan_output(
         )
 
     emitted_files = {name: text for name, text in blocks.items() if name not in _RESERVED_BLOCKS}
+    # Advisory pass. Reading it strictly discarded a whole plan — six accepted batches, ten LLM
+    # calls — because one emitted spec carried an unclosed acceptance container, a defect this
+    # function has already recorded above as a warning and a blocking decision. The declaration
+    # recommendation is worth nothing beside that, so the unreadable file contributes no checks.
     declared_checks = tuple(
         check
         for name, text in emitted_files.items()
         if name.lower().endswith(".md")
-        for check in parse_programmatic_acceptance_text(text, source=name)
+        for check in _acceptance_checks(text, source=name)
     )
     # Tooling declaration is a recommendation, never a gate. The gate it replaces asked whether
     # the model had written a ``Requires:`` line beside a check, not whether the tool was
