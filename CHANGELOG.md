@@ -49,6 +49,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-16: Baseline-green (`prepassed`) is recorded only for criteria owned by the stories a
+  block is building. A criterion carried in from an earlier block is green because that block
+  proved it, which is the opposite of the claim `prepassed` makes; recording it inflated the count
+  and would have flagged the entire proven set once the regression sweep began observing it.
+
 - 2026-08-15: UAT proof kits report `drydock status` steps as states rather than grades. A status
   row's Result column carries the state the command printed — `READY TO BUILD`, `NOT READY`,
   `BUILD COMPLETE`, `INCOMPLETE` — with no pass/fail styling and no `EXIT n` stamp, and shows
