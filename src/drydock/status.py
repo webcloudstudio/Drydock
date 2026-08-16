@@ -49,6 +49,10 @@ class TargetInfo:
     authored_blueprints: int = 0
     analysis: AnalysisSummary | None = None
     blockers_present: bool = False
+    #: Open, unarchived blocking entries in ``DECISIONS.json``. Reported separately from
+    #: ``blockers_present``, which means ``BLOCKERS.md`` exists and drives phase routing back to
+    #: Arrange. A blocking decision gates its own story at build and must not reroute the phase.
+    decision_blocker_count: int = 0
     questionnaire_count: int = 0
     plan_summary: PlanSummary | None = None
     frontier: tuple = ()
@@ -164,6 +168,22 @@ def _count_questionnaires(target_dir: Path) -> int:
     return sum(1 for path in questionnaires_dir.glob("*.json") if path.is_file())
 
 
+def _count_decision_blockers(target_dir: Path) -> int:
+    """Count open blocking decisions awaiting a Commander answer.
+
+    Status reported ``No blockers`` while a blocking decision sat open, because the Review line
+    read only ``BLOCKERS.md`` and the questionnaire directory. A malformed or absent file loads as
+    no decisions, so this can never turn a readable status into an error.
+    """
+    from drydock.decisions import load_decisions
+
+    return sum(
+        1
+        for decision in load_decisions(target_dir / "DECISIONS.json")
+        if decision.severity == "blocking" and decision.status == "open" and not decision.archived
+    )
+
+
 def _read_workspace_history(history_path: Path, target: str, limit: int = 5) -> list[dict]:
     """Return the most-recent *limit* records for *target* from the workspace history log."""
     if not history_path.exists():
@@ -216,6 +236,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
 
     active_error = read_error_record(target_dir)
     questionnaire_count = _count_questionnaires(target_dir)
+    decision_blocker_count = _count_decision_blockers(target_dir)
 
     logger.debug("Reading %s", blueprint_dir)
     has_content = _has_blueprint_content(blueprint_dir)
@@ -254,6 +275,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
                 authored_blueprints=authored_blueprints,
                 analysis=analysis,
                 blockers_present=blockers_present,
+                decision_blocker_count=decision_blocker_count,
                 questionnaire_count=questionnaire_count,
                 plan_summary=plan_summary,
                 frontier=frontier,
@@ -329,6 +351,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
         authored_blueprints=authored_blueprints,
         analysis=analysis,
         blockers_present=blockers_present,
+        decision_blocker_count=decision_blocker_count,
         questionnaire_count=questionnaire_count,
         plan_summary=plan_summary,
         frontier=frontier,

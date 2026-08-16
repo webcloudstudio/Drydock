@@ -843,7 +843,16 @@ _AC_META_KEYS = frozenset({"intent", "suite", "requires", "sea trials", "encodin
 
 
 def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcceptance:
-    """Split one AC block into its declarations and its verbatim proof body."""
+    """Split one AC block into its declarations and its verbatim proof body.
+
+    A blank line does not end the metadata run. The run ends at the first line that is not a
+    recognized declaration, and only that line's content decides where the code begins. A blank
+    line used to terminate the run, so an author who spaced ``Intent:`` away from ``Suite:`` and
+    ``Requires:`` lost both declarations into the proof body: the criterion then reported a
+    ``full`` suite as a story-scoped check, declared none of its tooling, and — because
+    ``Suite: full`` is itself valid Python — was reported as a snippet reading undefined globals
+    named after its own directives.
+    """
     lines = body.splitlines()
     # The slice begins at the end of the opening marker's text, so the first element is that
     # line's terminator rather than content. Dropping it keeps the metadata run at the top.
@@ -851,16 +860,20 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
         lines = lines[1:]
     meta: dict[str, list[str]] = {}
     index = 0
+    # Blank lines are consumed only when a declaration still follows them; the code must keep
+    # any blank line that precedes its first statement, so the cursor advances to the declaration
+    # rather than past the blanks.
     while index < len(lines):
-        line = lines[index]
-        if not line.strip():
-            index += 1
+        cursor = index
+        while cursor < len(lines) and not lines[cursor].strip():
+            cursor += 1
+        if cursor >= len(lines):
             break
-        match = AC_META_RE.match(line)
+        match = AC_META_RE.match(lines[cursor])
         if match is None or match.group("key").strip().lower() not in _AC_META_KEYS:
             break
         meta.setdefault(match.group("key").strip().lower(), []).append(match.group("value"))
-        index += 1
+        index = cursor + 1
     # The proof body is whatever follows, character for character. Only the trailing blank lines
     # the author left before the end marker are dropped.
     code = "\n".join(lines[index:]).strip("\n")

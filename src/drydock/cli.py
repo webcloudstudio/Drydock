@@ -1619,8 +1619,13 @@ def _render_status(result) -> None:
             if analysis.screen_count:
                 analysis_detail += f" · {counted(analysis.screen_count, 'screen')}"
             print(f"  {'Analysis':<{col}}  {quality} · {analysis_detail}")
-        if info.questionnaire_count or info.blockers_present:
-            blockers = "Blockers present" if info.blockers_present else "No blockers"
+        if info.questionnaire_count or info.blockers_present or info.decision_blocker_count:
+            if info.blockers_present:
+                blockers = "Blockers present"
+            elif info.decision_blocker_count:
+                blockers = counted(info.decision_blocker_count, "open blocking decision")
+            else:
+                blockers = "No blockers"
             print(
                 f"  {'Review':<{col}}  {blockers}"
                 f" · {counted(info.questionnaire_count, 'questionnaire')}"
@@ -1841,12 +1846,14 @@ def _render_workspace_status(ws) -> None:
                 f" · {info.plan_summary.verified}/{info.plan_summary.total} verified"
                 f" · {info.plan_summary.pending} pending"
             )
-        if info.blockers_present or info.questionnaire_count:
-            print(
-                f"   {'Review:':<{label_width}} "
+        if info.blockers_present or info.questionnaire_count or info.decision_blocker_count:
+            review = (
                 f"BLOCKERS.md {'present' if info.blockers_present else 'none'}"
                 f" · {info.questionnaire_count} questionnaires"
             )
+            if info.decision_blocker_count:
+                review += f" · {info.decision_blocker_count} open blocking decisions"
+            print(f"   {'Review:':<{label_width}} {review}")
         print(f"   {'Next Step:':<{label_width}} {info.next_operation}")
         if info.compact_recs:
             print(

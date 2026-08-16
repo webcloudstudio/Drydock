@@ -2796,6 +2796,110 @@ class TestStatus:
         assert "1 questions" not in out
         assert "1 questionnaires" not in out
 
+    def test_status_reports_open_blocking_decisions_in_the_review_line(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        """jq run 20260816.160223 printed ``No blockers`` with a blocking decision open.
+
+        The decision gates its own story at build; the Review line has to say so. Phase routing is
+        deliberately untouched — ``BLOCKERS.md`` is absent, so the target stays in Implement rather
+        than being sent back to Arrange to answer a file that does not exist.
+        """
+        import json
+
+        self._setup(tmp_target_root, monkeypatch)
+        target_dir = tmp_target_root / "TestTarget"
+        (target_dir / "DECISIONS.json").write_text(
+            json.dumps([
+                {
+                    "id": "acceptance-FEATURE-A.md-a-malformed",
+                    "type": "text",
+                    "severity": "blocking",
+                    "origin": "plan",
+                    "blueprint": "FEATURE-A.md",
+                    "story": "core-feature",
+                    "status": "open",
+                    "archived": False,
+                    "title": "Acceptance criterion a cannot execute",
+                    "description": "criterion is not valid Python",
+                    "options": [],
+                    "system_choice": "",
+                },
+                {
+                    "id": "plan-001",
+                    "type": "choice",
+                    "severity": "material",
+                    "origin": "plan",
+                    "blueprint": "ARCHITECTURE.md",
+                    "story": None,
+                    "status": "recommended",
+                    "archived": False,
+                    "title": "Numeric representation",
+                    "description": "",
+                    "options": [],
+                    "system_choice": "decimal",
+                },
+            ]),
+            encoding="utf-8",
+        )
+
+        rc, out, err = run_cli("status", "TestTarget")
+
+        assert rc == 0, err
+        assert "1 open blocking decision" in out
+        assert "No blockers" not in out
+        assert "Implement" in out
+        assert "Edit BLOCKERS.md" not in out
+
+    def test_status_ignores_answered_and_archived_blocking_decisions(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        import json
+
+        self._setup(tmp_target_root, monkeypatch)
+        target_dir = tmp_target_root / "TestTarget"
+        questionnaire_dir = target_dir / "QuarterDeck" / "questionnaires"
+        questionnaire_dir.mkdir(parents=True)
+        (questionnaire_dir / "discovery-one.json").write_text("{}\n", encoding="utf-8")
+        (target_dir / "DECISIONS.json").write_text(
+            json.dumps([
+                {
+                    "id": "answered",
+                    "type": "text",
+                    "severity": "blocking",
+                    "origin": "plan",
+                    "blueprint": "FEATURE-A.md",
+                    "story": "core-feature",
+                    "status": "answered",
+                    "archived": False,
+                    "title": "Answered",
+                    "description": "",
+                    "options": [],
+                    "system_choice": "",
+                },
+                {
+                    "id": "archived",
+                    "type": "text",
+                    "severity": "blocking",
+                    "origin": "plan",
+                    "blueprint": "FEATURE-A.md",
+                    "story": "core-feature",
+                    "status": "open",
+                    "archived": True,
+                    "title": "Archived",
+                    "description": "",
+                    "options": [],
+                    "system_choice": "",
+                },
+            ]),
+            encoding="utf-8",
+        )
+
+        rc, out, err = run_cli("status", "TestTarget")
+
+        assert rc == 0, err
+        assert "No blockers · 1 questionnaire" in out
+
     def test_status_target_without_manifest_reports_preplan_state(
         self, tmp_target_root, isolated_config, monkeypatch
     ):

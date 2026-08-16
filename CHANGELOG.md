@@ -8,6 +8,27 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Fixed
+
+- 2026-08-16: A blank line between an acceptance criterion's declarations no longer discards them.
+  `=== AC ===` metadata parsing ended the declaration run at the first blank line, so a criterion
+  that spaced `Intent:` away from `Suite:` and `Requires:` lost both into the proof body: it drew
+  the story execution budget instead of the suite budget, declared none of its tooling to
+  `project_plan_requirement_decisions`, and — because `Suite: full` is itself valid Python — was
+  reported by `drydock status` as a snippet reading undefined globals named after its own
+  directives. The run now ends at the first line that is not a recognized declaration. Criteria
+  whose first statement is an annotated assignment are unaffected, and a blank line preceding the
+  first statement stays in the proof body. Recovering the declarations means a criterion's tooling
+  requirements are now gated as designed, so a plan may raise an authorization decision where the
+  requirement was previously invisible.
+
+- 2026-08-16: `drydock status` reports open blocking decisions. The Review line read only
+  `BLOCKERS.md` and the questionnaire directory, so a target with an unanswered blocking entry in
+  `DECISIONS.json` — the record that gates its story at build — printed `No blockers`. It now
+  prints `<n> open blocking decisions`. Phase selection is unchanged: only `BLOCKERS.md` routes a
+  target back to Arrange, so a planned target holding a blocking decision stays in Implement rather
+  than being directed to edit a file that does not exist.
+
 ### Added
 
 - 2026-08-16: A block is now swept against everything earlier blocks proved. After a block's own

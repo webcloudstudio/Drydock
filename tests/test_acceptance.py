@@ -121,6 +121,73 @@ def test_merely_naming_a_staged_path_keeps_the_story_budget():
     assert check.timeout_seconds == TIMEOUT_SECONDS
 
 
+def test_a_blank_line_between_declarations_does_not_end_the_metadata_run():
+    """The exact criterion that misreported in jq run 20260816.160223.
+
+    ``full-conformance`` spaced ``Intent:`` away from ``Suite:`` and ``Requires:``. The blank line
+    ended the metadata run, so both declarations fell into the proof body: the criterion drew the
+    story budget instead of the suite budget, declared no tooling, and — because ``Suite: full``
+    parses as a Python annotation — was reported as reading undefined globals named after its own
+    directives.
+    """
+    text = (
+        "=== AC full-conformance ===\n"
+        "Intent: The executable passes the supplied suite.\n"
+        "\n"
+        "Suite: full\n"
+        "Requires: executable=sh; scope=test\n"
+        "Requires: executable=python3; scope=test\n"
+        "\n"
+        "import subprocess\n"
+        'result = subprocess.run(["sh", "sources/full_test.sh"], capture_output=True, text=True)\n'
+        "assert result.returncode == 0\n"
+        "=== END AC full-conformance ===\n"
+    )
+
+    check = acceptance.parse_programmatic_acceptance_text(text, source="FEATURE-Full.md")[0]
+
+    assert check.full_suite is True
+    assert [(req.kind, req.name, req.scope) for req in check.requirements] == [
+        ("executable", "sh", "test"),
+        ("executable", "python3", "test"),
+    ]
+    assert check.intent == "The executable passes the supplied suite."
+    assert check.code.startswith("import subprocess")
+    assert "Suite:" not in check.code
+    assert "Requires:" not in check.code
+    assert acceptance.unresolved_globals(check.code) == ()
+
+
+def test_a_blank_line_before_the_first_statement_stays_in_the_proof_body():
+    """The run ends at the first non-declaration line, and the code begins exactly there.
+
+    Consuming the blanks themselves would silently reflow a proof body whose author opened with
+    deliberate spacing, so only blanks that a declaration follows are absorbed.
+    """
+    text = "=== AC spaced ===\nIntent: Example.\n\n\nassert 1 == 1\n=== END AC spaced ===\n"
+
+    check = acceptance.parse_programmatic_acceptance_text(text, source="FEATURE-Example.md")[0]
+
+    assert check.intent == "Example."
+    assert check.code == "assert 1 == 1"
+
+
+def test_a_declaration_shaped_first_statement_still_begins_the_proof_body():
+    """The recognized-key set is what separates a declaration from annotated Python."""
+    text = (
+        "=== AC annotated ===\n"
+        "Intent: Example.\n"
+        "\n"
+        "result: int = 5\n"
+        "assert result == 5\n"
+        "=== END AC annotated ===\n"
+    )
+
+    check = acceptance.parse_programmatic_acceptance_text(text, source="FEATURE-Example.md")[0]
+
+    assert check.code == "result: int = 5\nassert result == 5"
+
+
 def test_marker_lines_do_not_leak_into_the_stated_intent(tmp_path):
     checks = _checks(tmp_path)
 
