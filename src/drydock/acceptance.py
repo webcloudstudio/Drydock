@@ -90,7 +90,31 @@ def is_terminal_check_failure(error: str | None) -> bool:
 #: prints its own account of what it observed before asserting, and that account is the reason
 #: the assertion failed; a bounded tail carries it without turning a report into a log dump.
 OBSERVED_OUTPUT_LINES = 12
+#: Enough of the check's own stderr to carry the traceback that produced the verdict. The
+#: summary line names the assertion; this names where it lives and what led to it, which is the
+#: difference between "AssertionError" and a defect an operator can act on.
+DIAGNOSTIC_OUTPUT_LINES = 20
 _EXCEPTION_TAIL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception)\b")
+#: A CPython traceback frame: ``  File "decoder-no-arguments.py", line 12, in <module>``.
+_TRACEBACK_FRAME_RE = re.compile(r'^\s*File "(?P<file>[^"]+)", line (?P<line>\d+)')
+
+
+def assertion_location(stderr: str) -> str:
+    """``file:line`` of the deepest traceback frame, or ``""`` when there is no traceback.
+
+    The deepest frame is the one that raised. For a check written as a flat script that is the
+    failing ``assert`` itself, so the operator can open the criterion at the exact line rather
+    than re-reading the whole snippet to guess which expectation was missed.
+    """
+    frames = [
+        match
+        for match in (_TRACEBACK_FRAME_RE.match(line) for line in (stderr or "").splitlines())
+        if match
+    ]
+    if not frames:
+        return ""
+    deepest = frames[-1]
+    return f"{Path(deepest.group('file')).name}:{deepest.group('line')}"
 
 
 def assertion_summary(stderr: str, error: str | None = None, *, override: str | None = None) -> str:
@@ -145,10 +169,19 @@ def failure_detail(
     """Render one failed check as a readable block: the assertion, the exit, what it observed.
 
     This is the whole diagnostic an operator needs at the point of failure. It is deliberately
-    bounded: the summary line, the exit code, the exception, and the tail of the check's own
-    reported output. The full streams stay in the evidence file for the reader who wants them.
+    bounded: the summary line, where the assertion lives, the exit code, the exception, the tail
+    of the check's own reported output, and the tail of its stderr. The full streams stay in the
+    evidence file for the reader who wants them.
+
+    The stderr tail is not redundant with the summary. A check that prints nothing before it
+    asserts — the common shape for a boundary check — leaves ``observed output`` empty, and
+    without the traceback the report states an ``AssertionError`` with no account of how it was
+    reached. The traceback is that account, and it is on stderr.
     """
     lines = [f"{indent}assertion: {assertion_summary(stderr, error, override=override)}"]
+    location = assertion_location(stderr)
+    if location:
+        lines.append(f"{indent}raised at: {location}")
     if return_code is not None:
         lines.append(f"{indent}process exit code: {return_code}")
     exception = next(
@@ -165,6 +198,10 @@ def failure_detail(
     if observed:
         lines.append(f"{indent}observed output:")
         lines.extend(f"{indent}  {line}" for line in observed[-OBSERVED_OUTPUT_LINES:])
+    diagnostic = [line.rstrip() for line in (stderr or "").splitlines() if line.strip()]
+    if diagnostic:
+        lines.append(f"{indent}check stderr:")
+        lines.extend(f"{indent}  {line}" for line in diagnostic[-DIAGNOSTIC_OUTPUT_LINES:])
     return lines
 
 

@@ -1073,6 +1073,46 @@ def test_the_failure_detail_carries_what_the_check_itself_observed():
     assert "10 passed, 1 failed" in block
 
 
+def test_the_failure_detail_quotes_the_stderr_of_a_check_that_printed_nothing():
+    # A boundary check asserts without printing first, so ``observed output`` is empty and the
+    # traceback on stderr is the only account of how the verdict was reached.
+    lines = acceptance.failure_detail(
+        stderr=(
+            "Traceback (most recent call last):\n"
+            '  File "decoder-no-arguments.py", line 12, in <module>\n'
+            "    assert result.returncode != 0\nAssertionError\n"
+        ),
+        stdout="",
+        return_code=1,
+    )
+    block = "\n".join(lines)
+    assert "raised at: decoder-no-arguments.py:12" in block
+    assert "check stderr:" in block
+    assert "Traceback (most recent call last):" in block
+    assert "assert result.returncode != 0" in block
+
+
+def test_the_failure_detail_bounds_the_stderr_it_quotes():
+    lines = acceptance.failure_detail(
+        stderr="\n".join(f"frame {index}" for index in range(200)),
+        stdout="",
+        return_code=1,
+    )
+    quoted = [line for line in lines if line.strip().startswith("frame ")]
+    assert len(quoted) == acceptance.DIAGNOSTIC_OUTPUT_LINES
+    assert quoted[-1].strip() == "frame 199"
+
+
+def test_the_assertion_location_is_the_deepest_traceback_frame():
+    stderr = (
+        "Traceback (most recent call last):\n"
+        '  File "/tmp/ac/check.py", line 4, in <module>\n    helper()\n'
+        '  File "/tmp/ac/check.py", line 2, in helper\n    assert False\nAssertionError\n'
+    )
+    assert acceptance.assertion_location(stderr) == "check.py:2"
+    assert acceptance.assertion_location("no traceback here") == ""
+
+
 def test_the_failure_detail_bounds_the_output_it_quotes():
     lines = acceptance.failure_detail(
         stderr="AssertionError: nope\n",
