@@ -410,6 +410,13 @@ assert source.strip() in result.stdout
 
 `Encoding:` is a declaration of deliberate intent, reviewable as such. Absent it, ASCII.
 
+**Stated behavior only.** A criterion asserts behavior the source states, not behavior its phrasing
+implies. "Takes no arguments", "has no configuration", and "has no side effects" describe the
+surface a program offers; they are not requirements that it detect and reject an argument, a
+configuration file, or a write. Where the source supplies a reference implementation, that
+implementation bounds what the criteria may demand: a criterion the reference shape would fail is a
+criterion the source did not ask for.
+
 **Every check is standalone.** Drydock writes each fenced block to its own script and runs it in
 its own process from the build directory. Checks in the same file share no imports, no variables,
 and no execution order. A snippet that reads a name another snippet bound raises `NameError` on
