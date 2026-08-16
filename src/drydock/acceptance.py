@@ -7,6 +7,7 @@ import builtins
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import symtable
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
+from drydock.acceptance_runner import VALUES_BEGIN, VALUES_END
 from drydock.acceptance_taxonomy import load_acceptance_failure_taxonomy
 from drydock.build_plan import BuildPlan, PlanBlock
 from drydock.child_sandbox import child_limits, kill_process_group
@@ -101,6 +103,8 @@ DIAGNOSTIC_OUTPUT_LINES = 20
 CODE_EXCERPT_LINES = 40
 #: Lines kept either side of the failing line when a criterion is longer than the whole-source cap.
 CODE_CONTEXT_LINES = 12
+#: The value-capture harness, copied beside each criterion at run time.
+_RUNNER_SOURCE = Path(__file__).with_name("acceptance_runner.py")
 _EXCEPTION_TAIL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception)\b")
 #: A CPython traceback frame: ``  File "decoder-no-arguments.py", line 12, in <module>``.
 _TRACEBACK_FRAME_RE = re.compile(r'^\s*File "(?P<file>[^"]+)", line (?P<line>\d+)')
@@ -113,6 +117,7 @@ def assertion_location(stderr: str) -> str:
     failing ``assert`` itself, so the operator can open the criterion at the exact line rather
     than re-reading the whole snippet to guess which expectation was missed.
     """
+    _, stderr = split_captured_values(stderr)
     frames = [
         match
         for match in (_TRACEBACK_FRAME_RE.match(line) for line in (stderr or "").splitlines())
@@ -124,8 +129,26 @@ def assertion_location(stderr: str) -> str:
     return f"{Path(deepest.group('file')).name}:{deepest.group('line')}"
 
 
+def split_captured_values(stderr: str) -> tuple[list[str], str]:
+    """Separate the harness's value block from the criterion's own stderr.
+
+    Returns ``(value_lines, remaining_stderr)``. The values are reported as their own section
+    because they are the answer to the reader's question — what did the criterion actually
+    observe — and burying them above a traceback puts the answer where nobody looks.
+    """
+    text = stderr or ""
+    if VALUES_BEGIN not in text:
+        return [], text
+    before, _, rest = text.partition(VALUES_BEGIN)
+    block, _, after = rest.partition(VALUES_END)
+    values = [line.rstrip() for line in block.splitlines() if line.strip()]
+    remaining = (before + after.lstrip("\n")) if after else before
+    return values, remaining
+
+
 def _assertion_line_number(stderr: str) -> int | None:
     """1-based line number of the deepest traceback frame, or ``None`` when there is no traceback."""
+    _, stderr = split_captured_values(stderr)
     frames = [
         match
         for match in (_TRACEBACK_FRAME_RE.match(line) for line in (stderr or "").splitlines())
@@ -182,6 +205,7 @@ def assertion_summary(stderr: str, error: str | None = None, *, override: str | 
     """
     if override:
         return override
+    _, stderr = split_captured_values(stderr)
     lines = [line.rstrip() for line in (stderr or "").splitlines() if line.strip()]
     assertion = next(
         (line.strip() for line in reversed(lines) if line.strip().startswith("assert ")), ""
@@ -227,6 +251,7 @@ def failure_detail(
     without the traceback the report states an ``AssertionError`` with no account of how it was
     reached. The traceback is that account, and it is on stderr.
     """
+    values, stderr = split_captured_values(stderr)
     lines = [f"{indent}assertion: {assertion_summary(stderr, error, override=override)}"]
     location = assertion_location(stderr)
     if location:
@@ -243,6 +268,11 @@ def failure_detail(
     )
     if exception and ":" in exception:
         lines.append(f"{indent}error: {exception}")
+    # The values the criterion observed come before its source: they are the answer, and the
+    # source is the context for the answer.
+    if values:
+        lines.append(f"{indent}values at failure:")
+        lines.extend(f"{indent}{line}" for line in values)
     excerpt = code_excerpt(code, focus_line=_assertion_line_number(stderr), indent=f"{indent}  ")
     if excerpt:
         lines.append(f"{indent}criterion code:")
@@ -1305,10 +1335,16 @@ def run_programmatic_acceptance(
         with tempfile.TemporaryDirectory(prefix="drydock-acceptance-") as tmp:
             script = Path(tmp) / f"{check.check_id or 'acceptance'}.py"
             script.write_text(check.code + "\n", encoding="utf-8")
+            # The criterion runs through the value-capture harness rather than directly, so a
+            # failed assertion reports the values it observed and not only its own source line.
+            # The harness is copied beside the criterion because it executes under the Target's
+            # interpreter, which cannot be assumed able to import Drydock.
+            runner = Path(tmp) / "_drydock_acceptance_runner.py"
+            shutil.copyfile(_RUNNER_SOURCE, runner)
             # Own session so the timeout can reap the whole tree, and a bounded address
             # space so a runaway is stopped by the kernel long before the timeout.
             process = subprocess.Popen(
-                [str(environment.interpreter), str(script)],
+                [str(environment.interpreter), str(runner), str(script)],
                 cwd=build_dir,
                 env=env,
                 stdout=subprocess.PIPE,

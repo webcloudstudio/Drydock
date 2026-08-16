@@ -297,6 +297,73 @@ def test_failing_assertion_reports_its_source_line(tmp_path):
     assert "value drifted" in result.stderr
 
 
+def test_a_failed_criterion_reports_the_values_it_observed(tmp_path):
+    """The operands are the diagnosis. ``assert result.returncode != 0`` names the expectation;
+    only the value says the return code was 0 and the command printed a payload anyway."""
+    result = _run_one(
+        "import subprocess\n"
+        "result = subprocess.run(['/bin/sh', '-c', 'printf ok'], capture_output=True, text=True)\n"
+        "assert result.returncode != 0\n",
+        tmp_path,
+    )
+    assert not result.passed
+    values, remaining = acceptance.split_captured_values(result.stderr)
+    assert any("returncode=0" in line for line in values)
+    assert any("stdout='ok'" in line for line in values)
+    assert acceptance.VALUES_BEGIN not in remaining
+
+
+def test_the_value_harness_leaves_the_traceback_and_location_untouched(tmp_path):
+    result = _run_one("value = 1\nassert value == 2\n", tmp_path)
+    assert acceptance.assertion_location(result.stderr) == "diagnostic-check.py:2"
+    assert acceptance.assertion_summary(result.stderr) == "assert value == 2 → AssertionError"
+    # The harness runs the criterion through runpy; none of that may reach the report.
+    assert "runpy" not in result.stderr
+    assert "_drydock_acceptance_runner" not in result.stderr
+
+
+def test_the_value_harness_preserves_an_explicit_exit_code(tmp_path):
+    result = _run_one("import sys\nsys.exit(3)\n", tmp_path)
+    assert result.return_code == 3
+    assert not result.passed
+
+
+def test_the_value_harness_keeps_a_passing_criterion_green(tmp_path):
+    result = _run_one("assert 1 + 1 == 2\n", tmp_path)
+    assert result.passed
+    assert result.return_code == 0
+
+
+def test_the_failure_detail_reports_captured_values_as_their_own_section():
+    stderr = (
+        f"{acceptance.VALUES_BEGIN}\n"
+        "  result = CompletedProcess(returncode=0, stdout='{}')\n"
+        f"{acceptance.VALUES_END}\n"
+        "Traceback (most recent call last):\n"
+        '  File "c.py", line 2, in <module>\n'
+        "    assert result.returncode != 0\nAssertionError\n"
+    )
+    lines = acceptance.failure_detail(stderr=stderr, stdout="", return_code=1)
+    block = "\n".join(lines)
+    assert "values at failure:" in block
+    assert "returncode=0" in block
+    # The fences are an internal transport, never report text.
+    assert acceptance.VALUES_BEGIN not in block
+    assert "raised at: c.py:2" in block
+
+
+def test_captured_values_never_masquerade_as_the_assertion():
+    """A value whose repr contains ``assert`` must not be mistaken for the failing line."""
+    stderr = (
+        f"{acceptance.VALUES_BEGIN}\n"
+        "  text = 'assert this is not the assertion'\n"
+        f"{acceptance.VALUES_END}\n"
+        '  File "c.py", line 9, in <module>\n'
+        "    assert ok\nAssertionError\n"
+    )
+    assert acceptance.assertion_summary(stderr) == "assert ok → AssertionError"
+
+
 def test_traceback_names_the_check_not_a_temporary_path(tmp_path):
     result = _run_one("assert False", tmp_path)
     assert "diagnostic-check.py" in result.stderr
