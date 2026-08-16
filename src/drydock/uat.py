@@ -761,20 +761,48 @@ def seed_technology_stack(fixture: UATFixture, workspace: Path) -> Path | None:
     return destination
 
 
-def _next_sequence(command_logs: Path) -> int:
-    """Return the highest recorded step number in ``command_logs``.
+#: Where a resume moves the steps it is about to replace. The superseded attempt stays inside the
+#: run's evidence, but out of the live step listing, so ``NN-label`` means one thing only: the
+#: step the current run recorded at position ``NN``.
+SUPERSEDED_DIRNAME = "superseded"
 
-    A resumed run appends to the same evidence directory, so its numbering continues past the
-    prior attempt rather than overwriting logs the earlier failure produced.
+
+def _retained_steps(prior_commands: Sequence[CommandResult], start: int) -> int:
+    """Return how many recorded steps a resume at stage index *start* keeps.
+
+    Everything from the first step owned by the resumed stage onward is about to be executed
+    again, so it is not carried forward: the resumed run re-records those positions itself. A
+    step whose label maps to no stage cannot be attributed, so it is kept.
     """
-    highest = 0
+    for index, command in enumerate(prior_commands):
+        stage = stage_for_label(command.label, default="")
+        if stage and stage_index(stage) >= start:
+            return index
+    return len(prior_commands)
+
+
+def _supersede_steps(command_logs: Path, keep: int, stamp: str) -> Path | None:
+    """Move every step log past position *keep* into a timestamped superseded directory.
+
+    A resume rewrites the tail of the run, so the prior tail cannot stay in place: two files
+    would claim the same step number. It is moved rather than deleted because the failure that
+    made the resume necessary is the evidence an operator came for. Returns the archive
+    directory, or ``None`` when there was nothing to supersede.
+    """
     if not command_logs.is_dir():
-        return highest
-    for path in command_logs.glob("*.log"):
-        prefix = path.name.split("-", 1)[0]
-        if prefix.isdigit():
-            highest = max(highest, int(prefix))
-    return highest
+        return None
+    stale = sorted(
+        path
+        for path in command_logs.glob("*.log")
+        if path.name.split("-", 1)[0].isdigit() and int(path.name.split("-", 1)[0]) > keep
+    )
+    if not stale:
+        return None
+    archive = command_logs / SUPERSEDED_DIRNAME / stamp
+    archive.mkdir(parents=True, exist_ok=True)
+    for path in stale:
+        shutil.move(str(path), str(archive / path.name))
+    return archive
 
 
 def _prior_run(case_root: Path) -> tuple[tuple[CommandResult, ...], int]:
@@ -881,8 +909,12 @@ _PREFIX_LABEL_STAGES: tuple[tuple[str, str], ...] = (
 _STEP_PREFIX_RE = re.compile(r"^\d+-")
 
 
-def stage_for_label(label: str) -> str:
-    """Return the resumable stage that produced the step recorded as *label*."""
+def stage_for_label(label: str, *, default: str | None = None) -> str:
+    """Return the resumable stage that produced the step recorded as *label*.
+
+    Passing ``default`` returns it instead of raising, for callers classifying a whole recorded
+    run where one unattributable label must not stop the work.
+    """
     name = _STEP_PREFIX_RE.sub("", label)
     stage = _EXACT_LABEL_STAGES.get(name)
     if stage:
@@ -890,6 +922,8 @@ def stage_for_label(label: str) -> str:
     for prefix, candidate in _PREFIX_LABEL_STAGES:
         if name.startswith(prefix):
             return candidate
+    if default is not None:
+        return default
     raise SpecificationError(
         f"Step {label!r} belongs to no resumable stage; resume with --stage instead."
     )
@@ -917,12 +951,15 @@ def run_steps(case_root: Path) -> tuple[RunStep, ...]:
     return tuple(steps)
 
 
-def resolve_step_stage(fixture: UATFixture, run: str | None, step: int) -> tuple[str, RunStep]:
+def resolve_step_stage(
+    fixture: UATFixture, run: str | None, step: int
+) -> tuple[str, RunStep, RunStep]:
     """Translate a recorded step number into the stage a resume re-enters.
 
     A stage is the atomic entry unit: re-entering at the stage that owns the step replays that
     stage from its start. There is no mid-stage entry, because a stage's later commands read
-    what its earlier ones produced.
+    what its earlier ones produced. The third element is that starting step — the step execution
+    actually resumes at, which is the requested one only when it opens its stage.
     """
     case_root = resolve_run_dir(fixture, run)
     steps = run_steps(case_root)
@@ -938,7 +975,8 @@ def resolve_step_stage(fixture: UATFixture, run: str | None, step: int) -> tuple
             f"Step {step} ({resolved.label}) belongs to stage 'init', which creates the run. "
             f"Start a new run with: drydock uat {fixture.name}"
         )
-    return case_root.name, resolved
+    entry = next(item for item in steps if item.stage == resolved.stage)
+    return case_root.name, resolved, entry
 
 
 def render_steps(fixture: UATFixture, run: str | None) -> str:
@@ -1046,10 +1084,20 @@ def run_fixture(
 
     llm_records = workspace / "logs" / "llm.jsonl"
     prior_commands, prior_passes = _prior_run(case_root) if start else ((), 0)
-    commands: list[CommandResult] = list(prior_commands)
+    # A resume replays the stage it re-enters, so the steps from that stage onward are superseded:
+    # their logs move aside and the run renumbers from the retained position. Step numbers stay
+    # the ones ``--steps`` printed, which is the only way ``--from-step 16`` can be seen to start
+    # at step 16.
+    retained = _retained_steps(prior_commands, start) if start else 0
+    if start:
+        stamp = started_at.strftime("%Y%m%d.%H%M%S")
+        superseded = _supersede_steps(command_logs, retained, stamp)
+        if superseded and on_event:
+            on_event(f"{fixture.name}: superseded steps {retained + 1}+ -> {superseded.name}")
+    commands: list[CommandResult] = list(prior_commands[:retained])
     scores: dict[str, int] = {}
     build_passes = prior_passes
-    sequence = _next_sequence(command_logs) if start else 0
+    sequence = retained
 
     def execute(parts: Sequence[str], label: str, *, required: bool = True) -> CommandResult:
         nonlocal sequence

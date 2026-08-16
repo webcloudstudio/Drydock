@@ -439,11 +439,12 @@ def _uat_stage_for_step(uat_root: Path, selected: str | None, run: str | None, s
     from drydock.uat import resolve_step_stage
 
     fixture = _uat_one_fixture(uat_root, selected, "--from-step")
-    run_id, resolved = resolve_step_stage(fixture, run, step)
-    print(
-        f"{fixture.name} run {run_id}: step {resolved.number} ({resolved.label}) "
-        f"-> resuming at stage {resolved.stage!r}"
-    )
+    run_id, resolved, entry = resolve_step_stage(fixture, run, step)
+    print(f"{fixture.name} run {run_id}: step {resolved.number} ({resolved.label})")
+    print(f"  stage {resolved.stage!r} replays in full, starting at step {entry.number}")
+    if entry.number != resolved.number:
+        print(f"  step {resolved.number} runs again once the stage reaches it")
+    print(f"  steps {entry.number} and later are superseded; their logs move to superseded/")
     return resolved.stage
 
 

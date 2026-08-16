@@ -55,6 +55,19 @@ def format_argv(argv: Sequence[str]) -> str:
     return line
 
 
+def format_label(label: str) -> str:
+    """Render a recorded step label as the operator's own vocabulary.
+
+    The stored label carries the step's position as a numeric prefix — ``16-score-acceptance`` —
+    which reads as part of the command name rather than as the number ``--from-step`` takes.
+    Naming it explicitly is the difference between "step 16" and an opaque prefix.
+    """
+    number, separator, name = label.partition("-")
+    if separator and number.isdigit():
+        return f"step {int(number)}: {name}"
+    return label
+
+
 class StepConsole:
     """Frame and stream the output of each UAT child command onto one stream."""
 
@@ -141,7 +154,7 @@ class StepConsole:
     # -- rendering --------------------------------------------------------------
 
     def _title(self) -> str:
-        parts = [part for part in (self._kit, self._label) if part]
+        parts = [part for part in (self._kit, format_label(self._label)) if part]
         return console.render(" · ", self._tier).join(parts) or "step"
 
     def _rule(self, title: str, right: str) -> str:

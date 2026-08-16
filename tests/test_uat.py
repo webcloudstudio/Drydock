@@ -846,7 +846,7 @@ def test_resume_reenters_the_newest_run_at_the_named_stage(tmp_path: Path) -> No
     assert not [parts for parts in resumed_calls if parts[:1] == ("import",)]
 
 
-def test_resume_appends_to_the_prior_evidence_instead_of_overwriting_it(tmp_path: Path) -> None:
+def test_resume_supersedes_the_replayed_steps_and_keeps_their_numbers(tmp_path: Path) -> None:
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
     run_id, failed = run_uat(
@@ -873,12 +873,24 @@ def test_resume_appends_to_the_prior_evidence_instead_of_overwriting_it(tmp_path
         now=datetime(2026, 8, 10, tzinfo=UTC),
     )
 
-    after = sorted(path.name for path in (case_root / "evidence" / "commands").glob("*.log"))
-    assert set(before) <= set(after)
-    # The prior attempt's commands stay in the receipt; the new ones continue the numbering.
+    commands_dir = case_root / "evidence" / "commands"
+    after = sorted(path.name for path in commands_dir.glob("*.log"))
     labels = [command.label for command in results[0].commands]
-    assert labels[: len(failed[0].commands)] == [c.label for c in failed[0].commands]
-    assert int(after[-1].split("-", 1)[0]) > int(before[-1].split("-", 1)[0])
+    prior_labels = [command.label for command in failed[0].commands]
+    # Steps before the resumed stage are untouched; the plan step is re-recorded at its own
+    # number rather than appended past the end of the prior attempt.
+    kept = [label for label in prior_labels if not label.endswith("-plan")]
+    assert labels[: len(kept)] == kept
+    assert "04-plan" in labels
+    assert len(labels) == len(set(labels))
+    # Numbering never runs past the step count: the live logs are exactly the receipt's steps.
+    assert sorted(after) == sorted(
+        f"{label}.{stream}.log" for label in labels for stream in ("stdout", "stderr")
+    )
+    # The superseded attempt is preserved, out of the way, under its own timestamp.
+    archived = sorted(path.name for path in commands_dir.glob("superseded/*/*.log"))
+    assert any(name.startswith("04-plan") for name in archived)
+    assert set(before) <= set(archived) | set(after)
 
 
 def test_resume_rejects_an_unknown_stage_and_a_run_without_a_stage(tmp_path: Path) -> None:
@@ -1498,11 +1510,14 @@ def test_a_step_number_resolves_to_the_stage_that_owns_it(tmp_path: Path) -> Non
     steps = run_steps(fixtures_root / "ReadingList" / "runs" / run_id)
     scoring = next(step.number for step in steps if "score-acceptance" in step.label)
 
-    resolved_run, step = resolve_step_stage(fixture, None, scoring)
+    resolved_run, step, entry = resolve_step_stage(fixture, None, scoring)
 
     assert resolved_run == run_id
     assert step.stage == "score"
     assert step.number == scoring
+    # The stage replays from its first step, which the operator is told about by number.
+    assert entry.stage == "score"
+    assert entry.number == next(item.number for item in steps if item.stage == "score")
 
 
 def test_a_step_outside_the_recorded_run_is_rejected(tmp_path: Path) -> None:

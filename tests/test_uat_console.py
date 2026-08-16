@@ -40,7 +40,7 @@ def test_step_frames_child_output_with_stage_headers_and_a_gutter() -> None:
     console.finish(0, 64200)
 
     lines = stream.getvalue().splitlines()
-    assert lines[1].startswith("── Toml · 09-analyze")
+    assert lines[1].startswith("── Toml · step 9: analyze")
     assert lines[1].endswith("14:03:11 ──")
     assert lines[2] == "   drydock analyze Toml"
     assert lines[3] == " │ Analyzing Blueprint"
