@@ -155,6 +155,42 @@ class AcReport:
         return 1 if any(v.status == FAIL for v in self.verdicts) else 0
 
 
+def proof_coverage_lines(report: AcReport) -> tuple[str, ...]:
+    """State how much of the board is proof rather than merely green.
+
+    A criterion is evidence only if it could have failed and did not. Two conditions break that,
+    and both already have verdicts of their own: ``PREPASSED`` was green before its block's code
+    existed, and ``UNVERIFIED`` from a proof-integrity demotion has no effective failure path at
+    all. Scattered one per row across a long board they read as decoration; gathered, with the
+    story that owns each one, they are the author's work list.
+
+    This is a report. Neither condition blocks a build or changes an exit code — a criterion
+    measuring a deliverable that legitimately already existed is indistinguishable from a vacuous
+    one, and only the author can tell which a given criterion is.
+    """
+    weak = [v for v in report.verdicts if v.status in {PREPASSED, UNVERIFIED}]
+    if not weak:
+        return ()
+    proven = sum(1 for v in report.verdicts if v.status == PASS)
+    lines = [
+        f"Proof coverage: {proven} of {len(report.verdicts)} criteria are proof — "
+        f"green here, and observed red before the work that turned them green.",
+        f"  {len(weak)} are not. Each names a story whose acceptance did not test it.",
+        "",
+    ]
+    for verdict in weak:
+        owner = "/".join(part for part in (verdict.feature, verdict.story) if part)
+        location = "  ".join(part for part in (owner, verdict.source) if part)
+        reason = (
+            "green before its block built"
+            if verdict.status == PREPASSED
+            else (verdict.evidence.strip() or "not verified")
+        )
+        lines.append(f"  {verdict.status:<10} {verdict.criterion_id}  {location}".rstrip())
+        lines.append(f"             {reason}")
+    return tuple(lines)
+
+
 def ac_failure_lines(report: AcReport) -> tuple[str, ...]:
     """Name every criterion that failed, with its owner and the reason it failed."""
     lines: list[str] = []

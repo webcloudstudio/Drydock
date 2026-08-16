@@ -628,6 +628,46 @@ def test_a_failed_criterion_reports_the_assertion_and_what_the_check_observed():
     assert "10 passed, 1 failed" in block
 
 
+def test_proof_coverage_separates_evidence_from_criteria_that_only_look_green():
+    """Half of Toml's board was green before the code that was supposed to satisfy it existed.
+    Scattered one per row that reads as decoration; gathered with its owner it is a work list."""
+    from drydock.score import PASS, PREPASSED, UNVERIFIED, AcReport, AcVerdict, proof_coverage_lines
+
+    report = AcReport(
+        target="toml",
+        verdicts=(
+            AcVerdict("decoder-valid", "", PASS, "", "FEATURE-Decoder.md", "decoder", "contract"),
+            AcVerdict("parser-invalid", "", PREPASSED, "was green", "FEATURE-Parser.md", "parser"),
+            AcVerdict(
+                "suite-run", "", UNVERIFIED, "proof failed integrity: no effective failure path"
+            ),
+        ),
+        soundings_path=Path("SOUNDINGS.md"),
+        verified_at="",
+    )
+
+    block = "\n".join(proof_coverage_lines(report))
+
+    assert "1 of 3 criteria are proof" in block
+    assert "2 are not" in block
+    assert "parser-invalid" in block and "green before its block built" in block
+    assert "suite-run" in block and "no effective failure path" in block
+    # A criterion that is genuinely proof is not listed as a gap.
+    assert "decoder-valid" not in block
+
+
+def test_proof_coverage_is_silent_when_every_criterion_is_proof():
+    from drydock.score import PASS, AcReport, AcVerdict, proof_coverage_lines
+
+    report = AcReport(
+        target="toml",
+        verdicts=(AcVerdict("decoder-valid", "", PASS, ""),),
+        soundings_path=Path("SOUNDINGS.md"),
+        verified_at="",
+    )
+    assert proof_coverage_lines(report) == ()
+
+
 def test_the_stderr_failure_block_carries_the_criterion_code_and_the_whole_detail():
     """A caller that captured only stderr must get the diagnosis, not a truncated stub.
 

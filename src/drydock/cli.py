@@ -2227,7 +2227,14 @@ def _ac_mark(status: str) -> str:
 
 def cmd_score_ac(target: str, step: str | None = None) -> int:
     from drydock.config import require_target_dir
-    from drydock.score import PREPASSED, UNVERIFIED, ac_failure_lines, emit_failure, verify_acs
+    from drydock.score import (
+        PREPASSED,
+        UNVERIFIED,
+        ac_failure_lines,
+        emit_failure,
+        proof_coverage_lines,
+        verify_acs,
+    )
 
     target_dir = require_target_dir(target)
     report = verify_acs(target, target_dir, step_id=step)
@@ -2243,15 +2250,6 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
     if prepassed:
         counts += f"   PREPASSED {prepassed}"
     print(f"{counts}   ({len(report.verdicts)} AC)")
-    if prepassed:
-        print(
-            f"  {prepassed} criterion(s) were green before their block built. Either they do not "
-            "exercise the story's work,"
-        )
-        print(
-            "  or the deliverable already existed. Not counted as proven; the build is not "
-            "blocked on them."
-        )
     if not report.verdicts:
         print("  No programmatic acceptance assertions in scope.")
     else:
@@ -2285,6 +2283,12 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
             for line in (verdict.evidence or "").strip().splitlines() or ["(no detail captured)"]:
                 print(f"        {line}")
         print()
+    # The board says which criteria are green. This says which of them are evidence.
+    coverage = proof_coverage_lines(report)
+    if coverage:
+        print()
+        for line in coverage:
+            print(f"  {line}" if line else "")
     if report.wrote_soundings:
         print()
         print(f"Soundings: {report.soundings_path}")
