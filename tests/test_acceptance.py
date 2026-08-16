@@ -1113,6 +1113,39 @@ def test_the_assertion_location_is_the_deepest_traceback_frame():
     assert acceptance.assertion_location("no traceback here") == ""
 
 
+def test_the_failure_detail_quotes_the_criterion_code_and_marks_the_failing_line():
+    code = "import subprocess\nresult = subprocess.run(['toml'])\n\nassert result.returncode != 0\n"
+    lines = acceptance.failure_detail(
+        stderr=(
+            "Traceback (most recent call last):\n"
+            '  File "decoder-no-arguments.py", line 4, in <module>\n'
+            "    assert result.returncode != 0\nAssertionError\n"
+        ),
+        stdout="",
+        return_code=1,
+        code=code,
+    )
+    block = "\n".join(lines)
+    assert "criterion code:" in block
+    assert "1 | import subprocess" in block
+    assert "> 4 | assert result.returncode != 0" in block
+
+
+def test_the_code_excerpt_windows_a_long_criterion_around_the_failing_line():
+    code = "\n".join(f"step_{index}()" for index in range(200))
+    excerpt = acceptance.code_excerpt(code, focus_line=100)
+    quoted = [line for line in excerpt if "|" in line]
+    assert len(quoted) == 2 * acceptance.CODE_CONTEXT_LINES + 1
+    assert any(line.startswith(">") and "step_99()" in line for line in quoted)
+    assert excerpt[0].strip().startswith("...")
+    assert excerpt[-1].strip().startswith("...")
+
+
+def test_the_code_excerpt_is_empty_when_there_is_no_code():
+    assert acceptance.code_excerpt("") == []
+    assert acceptance.code_excerpt("\n\n") == []
+
+
 def test_the_failure_detail_bounds_the_output_it_quotes():
     lines = acceptance.failure_detail(
         stderr="AssertionError: nope\n",

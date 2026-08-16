@@ -165,7 +165,11 @@ def ac_failure_lines(report: AcReport) -> tuple[str, ...]:
         location = "  ".join(part for part in (owner, verdict.source) if part)
         lines.append(f"{verdict.criterion_id}  {location}".rstrip())
         reason = list(verdict.detail) or (verdict.evidence or "").strip().splitlines()
-        lines.extend(f"  {line}" for line in reason[:4])
+        # The detail block is already bounded at the point it is built — assertion, location,
+        # exit, criterion source, observed output, stderr tail. Truncating it again here cut it
+        # off mid-block: a reader who captured only stderr got a ``check stderr:`` heading with
+        # nothing under it, which is worse than no heading at all.
+        lines.extend(f"  {line}" for line in reason)
     return tuple(lines)
 
 
@@ -173,7 +177,9 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _observation_verdict(obs: AcceptanceObservation) -> tuple[str, str, tuple[str, ...]]:
+def _observation_verdict(
+    obs: AcceptanceObservation, code: str = ""
+) -> tuple[str, str, tuple[str, ...]]:
     """Map a per-assertion observation to a board ``(status, evidence, detail)`` triple.
 
     A passing proof that fails integrity analysis is demoted to ``UNVERIFIED`` (vacuous), so a
@@ -192,6 +198,7 @@ def _observation_verdict(obs: AcceptanceObservation) -> tuple[str, str, tuple[st
             return_code=obs.return_code,
             error=obs.error,
             override=obs.error,
+            code=code,
         )
         return UNVERIFIED, summary, tuple(detail)
     if not obs.passed:
@@ -202,6 +209,7 @@ def _observation_verdict(obs: AcceptanceObservation) -> tuple[str, str, tuple[st
             return_code=obs.return_code,
             error=obs.error,
             override=obs.error,
+            code=code,
         )
         return FAIL, summary, tuple(detail)
     if not obs.integrity_ok:
@@ -327,10 +335,13 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
     # satisfied by its absence look identical. Only the build's baseline separates them, so this
     # reports what the build recorded instead of re-deriving it from output.
     prepassed = read_prepassed_acceptance(target_dir / "evidence")
+    # The criterion's own source, so a failure report can quote the code that raised rather than
+    # naming a line number in a file the reader has to go find.
+    code_by_id = {check.check_id: check.code for check in checks}
     verdicts: list[AcVerdict] = []
     rows: list[Sounding] = []
     for obs in observations:
-        status, evidence, detail = _observation_verdict(obs)
+        status, evidence, detail = _observation_verdict(obs, code_by_id.get(obs.check_id, ""))
         if status == PASS and obs.check_id in prepassed:
             status = PREPASSED
             detail = ()

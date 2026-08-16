@@ -94,6 +94,13 @@ OBSERVED_OUTPUT_LINES = 12
 #: summary line names the assertion; this names where it lives and what led to it, which is the
 #: difference between "AssertionError" and a defect an operator can act on.
 DIAGNOSTIC_OUTPUT_LINES = 20
+#: How much of the criterion's own source a failure report quotes. A criterion is a short script,
+#: so the whole of it is usually the right answer: the reader is being asked why an assertion
+#: failed, and the assertion is one line of a program whose earlier lines built the values it
+#: tested. Longer criteria are windowed around the failing line instead of dumped.
+CODE_EXCERPT_LINES = 40
+#: Lines kept either side of the failing line when a criterion is longer than the whole-source cap.
+CODE_CONTEXT_LINES = 12
 _EXCEPTION_TAIL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception)\b")
 #: A CPython traceback frame: ``  File "decoder-no-arguments.py", line 12, in <module>``.
 _TRACEBACK_FRAME_RE = re.compile(r'^\s*File "(?P<file>[^"]+)", line (?P<line>\d+)')
@@ -115,6 +122,47 @@ def assertion_location(stderr: str) -> str:
         return ""
     deepest = frames[-1]
     return f"{Path(deepest.group('file')).name}:{deepest.group('line')}"
+
+
+def _assertion_line_number(stderr: str) -> int | None:
+    """1-based line number of the deepest traceback frame, or ``None`` when there is no traceback."""
+    frames = [
+        match
+        for match in (_TRACEBACK_FRAME_RE.match(line) for line in (stderr or "").splitlines())
+        if match
+    ]
+    return int(frames[-1].group("line")) if frames else None
+
+
+def code_excerpt(code: str, *, focus_line: int | None = None, indent: str = "") -> list[str]:
+    """Render a criterion's source with line numbers, marking the line that raised.
+
+    A failure report that names an assertion without showing it makes the reader open the
+    Blueprint to find out what was asserted. The code is the check; quoting it is what turns
+    ``AssertionError`` into a statement about the product. The failing line carries a ``>``
+    marker so it is findable without counting.
+    """
+    lines = (code or "").splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return []
+    first, last = 1, len(lines)
+    if len(lines) > CODE_EXCERPT_LINES and focus_line is not None:
+        first = max(1, focus_line - CODE_CONTEXT_LINES)
+        last = min(len(lines), focus_line + CODE_CONTEXT_LINES)
+    elif len(lines) > CODE_EXCERPT_LINES:
+        last = CODE_EXCERPT_LINES
+    width = len(str(last))
+    out: list[str] = []
+    if first > 1:
+        out.append(f"{indent}  ... {first - 1} earlier line(s)")
+    for number in range(first, last + 1):
+        mark = ">" if number == focus_line else " "
+        out.append(f"{indent}{mark} {str(number).rjust(width)} | {lines[number - 1]}".rstrip())
+    if last < len(lines):
+        out.append(f"{indent}  ... {len(lines) - last} further line(s)")
+    return out
 
 
 def assertion_summary(stderr: str, error: str | None = None, *, override: str | None = None) -> str:
@@ -164,6 +212,7 @@ def failure_detail(
     return_code: int | None = None,
     error: str | None = None,
     override: str | None = None,
+    code: str = "",
     indent: str = "",
 ) -> list[str]:
     """Render one failed check as a readable block: the assertion, the exit, what it observed.
@@ -194,6 +243,10 @@ def failure_detail(
     )
     if exception and ":" in exception:
         lines.append(f"{indent}error: {exception}")
+    excerpt = code_excerpt(code, focus_line=_assertion_line_number(stderr), indent=f"{indent}  ")
+    if excerpt:
+        lines.append(f"{indent}criterion code:")
+        lines.extend(excerpt)
     observed = [line.rstrip() for line in (stdout or "").splitlines() if line.strip()]
     if observed:
         lines.append(f"{indent}observed output:")

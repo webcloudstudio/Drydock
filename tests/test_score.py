@@ -628,6 +628,55 @@ def test_a_failed_criterion_reports_the_assertion_and_what_the_check_observed():
     assert "10 passed, 1 failed" in block
 
 
+def test_the_stderr_failure_block_carries_the_criterion_code_and_the_whole_detail():
+    """A caller that captured only stderr must get the diagnosis, not a truncated stub.
+
+    Observed in the Toml UAT of 2026-08-16: the stderr block stopped after four lines, printing
+    a ``check stderr:`` heading with nothing under it and never quoting the failing code.
+    """
+    from drydock.acceptance import AcceptanceObservation
+    from drydock.score import FAIL, AcReport, AcVerdict, _observation_verdict, ac_failure_lines
+
+    code = "import subprocess\nresult = subprocess.run(['toml'])\n\nassert result.returncode != 0\n"
+    observation = AcceptanceObservation(
+        "decoder-no-arguments",
+        "FEATURE-Decoder-Contract.md",
+        "the decoder rejects an empty argument list",
+        False,
+        1,
+        "",
+        "Traceback (most recent call last):\n"
+        '  File "decoder-no-arguments.py", line 4, in <module>\n'
+        "    assert result.returncode != 0\nAssertionError\n",
+    )
+
+    status, evidence, detail = _observation_verdict(observation, code)
+    report = AcReport(
+        target="toml",
+        verdicts=(
+            AcVerdict(
+                observation.check_id,
+                observation.intent,
+                status,
+                evidence,
+                observation.source,
+                "decoder-contract",
+                "",
+                detail,
+            ),
+        ),
+        soundings_path=Path("SOUNDINGS.md"),
+        verified_at="",
+    )
+
+    assert status == FAIL
+    block = "\n".join(ac_failure_lines(report))
+    assert "criterion code:" in block
+    assert "> 4 | assert result.returncode != 0" in block
+    assert "check stderr:" in block
+    assert "Traceback (most recent call last):" in block
+
+
 def test_a_malformed_criterion_is_unverified_and_does_not_fail_scoring():
     from drydock.acceptance import MALFORMED_FAILURE_PREFIX, AcceptanceObservation
     from drydock.score import UNVERIFIED, AcReport, AcVerdict, _observation_verdict
