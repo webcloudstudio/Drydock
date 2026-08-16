@@ -22,6 +22,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-16: An acceptance criterion that invokes a staged source asset without the environment
+  that asset declares required is now detected at plan time instead of failing a build block. The
+  new `drydock.acceptance_env` module reads each asset under `blueprint/sources/` for variables it
+  states are required — an "is not set" / "must be set" / "is required" sentence, an `Environment:`
+  entry marked required, or a documented usage line that assigns the variable in front of the
+  asset's own command — then parses every emitted criterion and reports any `subprocess` call that
+  names the asset without supplying the variable through `env=` or `os.environ`. `plan` writes the
+  specification as authored, reports the defect as a warning, and raises it as a blocking decision
+  against the owning story, matching how a criterion that does not compile is handled; a call whose
+  environment cannot be read statically is treated as satisfied, so a sound story is never blocked
+  on a guess. The origin is fixed with it: the worked `Suite: scoped` example in
+  `prompts/BLUEPRINTS_CONTRACT.md` now carries `env={**os.environ, ...}`, where previously it
+  modelled a bare `subprocess.run` while prose forty lines below required the variable. In the
+  observed `jq` run, ten criteria copied the example and the first to execute exited on the
+  conformance runner's own usage code, which no implementation could have changed.
+
 - 2026-08-16: A Blueprint specification whose acceptance container cannot be read no longer
   discards the work around it. An unclosed `=== AC <id> ===` block that `plan`'s terminator repair
   declines to close — its body does not tokenize, so no boundary is inferable — used to raise out

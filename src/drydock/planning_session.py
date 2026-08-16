@@ -40,6 +40,7 @@ from drydock.acceptance import (
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
 from drydock.acceptance_contract import load_contract as load_acceptance_contract
+from drydock.acceptance_env import read_staged_assets, staged_asset_env_defects
 from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
     recommend_external_declarations,
@@ -2268,6 +2269,59 @@ def malformed_acceptance_decisions(
     )
 
 
+def staged_asset_env_decisions(
+    defects: tuple[MalformedAcceptance, ...],
+) -> tuple[Decision, ...]:
+    """Ask the Commander about each criterion that calls a staged asset the wrong way.
+
+    Same mechanism and same reasoning as :func:`malformed_acceptance_decisions`, and a distinct
+    identity because the repair differs: this criterion compiles and runs, and still cannot pass,
+    so the operator is told which variable to supply rather than that the snippet is broken.
+    """
+    return tuple(
+        Decision(
+            id=f"acceptance-{defect.source}-{defect.check_id or 'container'}-staged-env",
+            type="text",
+            severity="blocking",
+            origin="plan",
+            blueprint=defect.source,
+            story=None,
+            status="open",
+            archived=False,
+            title=f"Acceptance criterion {defect.check_id or 'container'} cannot pass",
+            description=(
+                f"{defect.rendered}\n\n"
+                "The staged asset exits on its own usage code when the variable is absent, so "
+                "this criterion is false under every implementation. Supply the variable in the "
+                "Blueprint specification, or answer that the story is acceptable without the "
+                "criterion. Never repair it by editing the staged asset: it is restored before "
+                "grading and the edit is reported as tampering."
+            ),
+            options=(),
+            system_choice="not answered",
+        )
+        for defect in defects
+    )
+
+
+def _staged_asset_env_defects(
+    blocks: dict[str, str], blueprint_dir: Path
+) -> tuple[MalformedAcceptance, ...]:
+    """Return every emitted criterion that calls a staged asset without its required environment.
+
+    An unreadable acceptance container contributes nothing here; it is already a warning and a
+    blocking decision of its own, and re-reporting it under a second identity would ask the
+    operator the same question twice.
+    """
+    checks = tuple(
+        check
+        for name in sorted(blocks)
+        if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+        for check in _acceptance_checks(blocks[name], source=name)
+    )
+    return staged_asset_env_defects(checks, read_staged_assets(blueprint_dir))
+
+
 def _malformed_acceptance_defects(blocks: dict[str, str]) -> tuple[MalformedAcceptance, ...]:
     """Return every acceptance criterion in the emitted specs that is not Python, or not parseable.
 
@@ -2920,6 +2974,14 @@ def _validate_plan_output(
     # separate question, asked by ``project_plan_requirement_decisions`` against the real
     # environment, and it is the only one that can legitimately stop anything.
     usage_recommendations = recommend_external_declarations(declared_checks)
+    # A criterion that calls a staged asset without the environment that asset declares required
+    # is unsatisfiable for the same reason a criterion that does not compile is: the asset exits
+    # on its own usage code, so ``returncode == 0`` is false under every implementation. Reported
+    # here and raised as a blocking decision, never as a plan failure.
+    env_warnings = tuple(
+        f"{defect.rendered} — recorded as a blocking decision; this criterion cannot pass"
+        for defect in staged_asset_env_defects(declared_checks, read_staged_assets(blueprint_dir))
+    )
     # Removals lead the warning list: they changed the artifact the author is about to read,
     # so they must not be buried under advisory graph notes.
     # Malformed criteria lead: they change what the operator must answer before the story
@@ -2929,6 +2991,7 @@ def _validate_plan_output(
         + standalone_import_warnings
         + escape_warnings
         + malformed_warnings
+        + env_warnings
         + declaration_warnings
         + usage_recommendations
         + tuple(defect.rendered() for defect in advisory_plan_shape(emitted_files))
@@ -4911,6 +4974,7 @@ def create_plan(
         *parse_plan_decisions(blocks.get(DECISIONS_BLOCK, "[]")),
         *requirement_decisions,
         *malformed_acceptance_decisions(_malformed_acceptance_defects(blocks)),
+        *staged_asset_env_decisions(_staged_asset_env_defects(blocks, blueprint_dir)),
     )
     story_for_spec = {
         str(name): block.block_id

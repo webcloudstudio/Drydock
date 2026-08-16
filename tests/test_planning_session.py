@@ -4595,3 +4595,114 @@ def test_a_repair_reply_mixing_envelope_forms_is_refused():
 
 def test_prose_in_angle_brackets_is_not_an_artifact_envelope():
     assert ps._parse_repair_artifact_envelopes("<note>\nnot a file\n</note>\n") == {}
+
+
+def test_a_criterion_missing_a_staged_assets_variable_warns_and_blocks(tmp_path):
+    """The jq run: ten criteria called the conformance runner without the JQ it declares.
+
+    The criterion compiles and runs, so no existing pass sees it, and the runner exits on its
+    own usage code — so the assertion is false at every level of implementation quality. The
+    plan is written; the defect is a warning and a blocking decision against the owning story.
+    """
+    from drydock.planning_session import (
+        _staged_asset_env_defects,
+        _validate_plan_output,
+        staged_asset_env_decisions,
+    )
+
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "run_suite.py").write_text(
+        '"""Runner.\n\nEnvironment:\n'
+        "    RUNNER     command that runs the candidate. Required -- no default.\n"
+        '"""\n',
+        encoding="utf-8",
+    )
+    spec = (
+        "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
+        "=== AC status-suite ===\nIntent: The suite passes.\n\n"
+        "import subprocess\n"
+        'result = subprocess.run(["python3", "sources/run_suite.py"], capture_output=True)\n'
+        "assert result.returncode == 0\n"
+        "=== END AC status-suite ===\n\n"
+        "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n"
+    )
+    manifest = _manifest()
+    blocks = {
+        "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
+        "FEATURE-Status.md": spec,
+        "MANIFEST.md": manifest,
+    }
+
+    plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    assert plan.blocks
+    assert any("sources/run_suite.py without RUNNER" in warning for warning in warnings)
+    decisions = staged_asset_env_decisions(_staged_asset_env_defects(blocks, tmp_path))
+    assert [item.id for item in decisions] == [
+        "acceptance-FEATURE-Status.md-status-suite-staged-env"
+    ]
+    assert decisions[0].severity == "blocking"
+
+
+def test_a_criterion_supplying_the_variable_raises_no_defect(tmp_path):
+    from drydock.planning_session import _staged_asset_env_defects, _validate_plan_output
+
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "run_suite.py").write_text(
+        '"""Runner.\n\nEnvironment:\n'
+        "    RUNNER     command that runs the candidate. Required -- no default.\n"
+        '"""\n',
+        encoding="utf-8",
+    )
+    spec = (
+        "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
+        "=== AC status-suite ===\nIntent: The suite passes.\n\n"
+        "import os\nimport subprocess\n"
+        "result = subprocess.run(\n"
+        '    ["python3", "sources/run_suite.py"],\n'
+        "    capture_output=True,\n"
+        '    env={**os.environ, "RUNNER": "./status"},\n'
+        ")\n"
+        "assert result.returncode == 0\n"
+        "=== END AC status-suite ===\n\n"
+        "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n"
+    )
+    manifest = _manifest()
+    blocks = {
+        "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
+        "FEATURE-Status.md": spec,
+        "MANIFEST.md": manifest,
+    }
+
+    _, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    assert not any("without RUNNER" in warning for warning in warnings)
+    assert _staged_asset_env_defects(blocks, tmp_path) == ()
+
+
+def test_the_authoring_contract_example_supplies_the_variables_it_documents():
+    """The exemplar is the defect's origin, so the exemplar is what the lint must clear.
+
+    Ten jq criteria omitted the runner's required variable because the contract's worked example
+    called a suite runner with no ``env=`` at all. Prose forty lines below it said otherwise and
+    lost. This asserts the example and the rule agree.
+    """
+    from drydock.acceptance import parse_programmatic_acceptance_text
+    from drydock.acceptance_env import staged_asset_env_defects
+
+    example = _authoring_contract_blueprint_example()
+    asset = (
+        '"""Suite runner.\n\nEnvironment:\n'
+        "    RUNNER     command that runs the candidate. Required -- no default.\n"
+        '"""\n'
+    )
+    checks = parse_programmatic_acceptance_text(
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n" + example,
+        source="FEATURE-Example.md",
+    )
+    suite_checks = tuple(check for check in checks if "run_suite.py" in check.code)
+    assert suite_checks, "the contract example no longer runs a staged suite runner"
+
+    assert staged_asset_env_defects(suite_checks, {"tests/run_suite.py": asset}) == ()

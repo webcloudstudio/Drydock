@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260816 V13
+version: 20260816 V14
 ---
 
 ## Overview
@@ -458,12 +458,16 @@ assert response.get_json()["status"] == "ok"
 Intent: The implementation passes the conformance sections this story owns.
 Suite: scoped
 
+import os
 import subprocess
 import sys
 
+# tests/run_suite.py documents RUNNER as required: it is the runner's only knowledge of the
+# implementation. Read the asset and supply every variable it declares required.
 result = subprocess.run(
     [sys.executable, "tests/run_suite.py", "--sections", "headings,lists"],
     capture_output=True, text=True,
+    env={**os.environ, "RUNNER": f"{os.getcwd()}/program"},
 )
 print(result.stdout)
 print(result.stderr, file=sys.stderr)
