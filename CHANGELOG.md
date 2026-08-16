@@ -10,6 +10,30 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-16: A block is now swept against everything earlier blocks proved. After a block's own
+  criteria go green, `drydock build` re-runs the accumulated proven set; a criterion that was green
+  when the previous block finished and is red now is a regression attributable to this block,
+  because nothing else ran in between. The block fails with `acceptance regression: <check-ids>`,
+  and the repair pass is given a `### Regression — fix this first` section naming what it broke.
+  A clean sweep says nothing to the model and costs no prompt context — previously proven criteria
+  are never injected unless one of them goes red. This closes the gap that let Toml delete its
+  decoder's argument guard at block 3 and ship eight further blocks before final scoring noticed.
+
+- 2026-08-16: A failed acceptance criterion reports the values it observed. Criteria now execute
+  through `drydock/acceptance_runner.py`, which prints the operands of the failing line before the
+  traceback, so `assert result.returncode != 0` is reported alongside
+  `result = CompletedProcess(returncode=0, stdout='…')` rather than as a bare `AssertionError`.
+  The failure block also quotes the criterion's own source with the raising line marked. Values
+  and source flow to every consumer of `failure_detail`: `drydock score ac`, block evidence, and
+  the build-run repair feedback.
+
+- 2026-08-16: `drydock score ac` reports proof coverage. After the per-criterion board it states
+  how many criteria are evidence — green here and observed red before the work that turned them
+  green — and lists every `PREPASSED` and integrity-demoted `UNVERIFIED` criterion with the story
+  that owns it. It changes no exit code and no build prompt: a criterion measuring a deliverable
+  that legitimately already existed is indistinguishable from a vacuous one, and only the author
+  can tell which.
+
 - 2026-08-15: A UAT run can be resumed at a recorded step instead of a stage name. `drydock uat
   <Project> --steps` prints the last run's numbered steps with the stage each one resumes into, and
   `drydock uat <Project> --from-step <n>` re-enters the run at the stage that owns step `n`,
