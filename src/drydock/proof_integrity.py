@@ -27,6 +27,7 @@ a criterion its PASS and never fails anything. Only the second is safe to keep.
 from __future__ import annotations
 
 import ast
+import warnings
 from dataclasses import dataclass
 
 # Call targets that raise on failure and therefore constitute a real check even without a bare
@@ -110,7 +111,13 @@ def _vacuous_assert_reason(node: ast.Assert) -> str | None:
 def analyze_proof(code: str) -> ProofIntegrity:
     """Judge whether a Programmatic Acceptance proof body can meaningfully fail."""
     try:
-        tree = ast.parse(code)
+        # A criterion's escape-sequence warnings are reported against the named criterion by
+        # ``acceptance.escape_defects``; this module must not repeat them on stderr. Suppressed
+        # locally rather than through ``acceptance.captured_syntax_warnings`` because
+        # ``acceptance`` imports this module.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", SyntaxWarning)
+            tree = ast.parse(code)
     except SyntaxError:
         # Unparseable code is not vacuous; it fails loudly when executed. Do not demote it.
         return ProofIntegrity(True)

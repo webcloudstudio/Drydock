@@ -15,8 +15,10 @@ Tests inject a fake runner and never spend API credits.
 from __future__ import annotations
 
 import ast
+import io
 import json
 import re
+import tokenize
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -32,6 +34,7 @@ from drydock.acceptance import (
     AC_OPEN_RE,
     MalformedAcceptance,
     ProgrammaticAcceptance,
+    escape_defects,
     parse_programmatic_acceptance_text,
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
@@ -2292,6 +2295,105 @@ def _malformed_acceptance_defects(blocks: dict[str, str]) -> tuple[MalformedAcce
     return tuple(defects)
 
 
+def _body_is_a_complete_cut(body: str) -> bool:
+    """True when ``body`` can stand as a whole criterion, so a boundary may be inserted after it.
+
+    This is the one decidable question that separates a dropped terminator from a real defect.
+    An ``=== AC ... ===`` line only matches at column zero, so the sole way one lands inside a
+    criterion rather than after it is inside a triple-quoted string — and a target that processes
+    Drydock's own markup will legitimately embed one. Cutting there leaves an unterminated
+    literal, which ``tokenize`` reports and ``compile`` alone would not distinguish from ordinary
+    bad Python.
+
+    Tokenizing rather than compiling is the point. ``assert 1 ==`` is bad Python that tokenizes;
+    it is normalized here and then downgraded to a blocking decision downstream, which is the
+    policy already settled for a criterion that does not compile. ``sample = \"\"\"`` and ``f(``
+    do not tokenize; they mean the boundary is not where the marker is, so nothing is inserted
+    and the existing hard error stands.
+    """
+    try:
+        list(tokenize.generate_tokens(io.StringIO(body).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return False
+    return True
+
+
+def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Close ``=== AC <id> ===`` blocks whose ``=== END AC <id> ===`` the model omitted.
+
+    Dropping terminators is the plan model's most expensive habit: one batch in a real ``jq`` run
+    emitted nineteen openers and zero closers, and because an unclosed block is a hard error the
+    whole plan — six accepted batches, ten LLM calls, 944k input tokens — was discarded and
+    nothing was written. The policy settled for a criterion that does not compile applies exactly
+    here: keep the plan, repair what is unambiguous, and report what was repaired.
+
+    Only the unambiguous shape is repaired. An open marker followed by another open marker, or a
+    trailing open marker at the end of the block, has exactly one possible boundary, and
+    ``_body_is_a_complete_cut`` confirms the boundary is where the marker is. A mismatched end
+    id, a stray end marker, and a duplicate id have no single answer and are left to the hard
+    error in ``parse_delimited_acceptance``.
+
+    On output that already alternates strictly this inserts nothing and returns no warnings, so
+    it cannot change a plan that validates today.
+    """
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        text = blocks[name]
+        markers = sorted(
+            [(match.start(), match.end(), "open", match) for match in AC_OPEN_RE.finditer(text)]
+            + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)],
+            key=lambda item: item[0],
+        )
+        if not markers:
+            continue
+        # Walk backwards so each insertion offset stays valid against the original text.
+        repairs: list[tuple[int, str]] = []
+        for index, (start, end, kind, match) in enumerate(markers):
+            if kind != "open":
+                continue
+            following = markers[index + 1] if index + 1 < len(markers) else None
+            if following is not None and following[2] == "end":
+                continue
+            boundary = following[0] if following is not None else len(text)
+            body = text[end:boundary]
+            if not _body_is_a_complete_cut(body):
+                continue
+            ident = match.group("id").strip()
+            terminator = f"=== END AC {ident} ===\n"
+            if not body.endswith("\n"):
+                terminator = "\n" + terminator
+            repairs.append((boundary, terminator))
+            normalized.append(
+                f"{name} [{ident}]: missing '=== END AC {ident} ===' inserted; "
+                "the model omitted the terminator"
+            )
+        for boundary, terminator in reversed(repairs):
+            text = text[:boundary] + terminator + text[boundary:]
+        blocks[name] = text
+    return tuple(normalized)
+
+
+def _acceptance_escape_warnings(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Report criterion literals whose backslash is not the escape the author wrote."""
+    reported: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            continue
+        for check in checks:
+            for defect in escape_defects(check.code):
+                reported.append(
+                    f"{name} [{check.check_id}] {defect} — write the backslash as a raw "
+                    'string (r"...") or double it'
+                )
+    return tuple(reported)
+
+
 def _normalize_standalone_subprocess_imports(blocks: dict[str, str]) -> tuple[str, ...]:
     """Give each AC that reads ``subprocess`` its own explicit module import.
 
@@ -2752,7 +2854,11 @@ def _validate_plan_output(
     # story. Interactively that asks the Commander whether the criterion is salvageable before
     # the story builds; under ``--override`` the run continues and the record survives for
     # review. Either way the pipeline processes the criterion cleanly instead of stopping on it.
+    # Terminators first: every pass below parses the acceptance containers, and an unclosed one
+    # raises before any of them can report anything useful about the criterion it belongs to.
+    terminator_warnings = _normalize_unterminated_acceptance_blocks(blocks)
     standalone_import_warnings = _normalize_standalone_subprocess_imports(blocks)
+    escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
     malformed_warnings = tuple(
         f"{defect.rendered} — recorded as a blocking decision; this criterion gates nothing"
@@ -2815,7 +2921,9 @@ def _validate_plan_output(
     # Malformed criteria lead: they change what the operator must answer before the story
     # builds, so they must not sit below advisory graph notes.
     warnings = (
-        standalone_import_warnings
+        terminator_warnings
+        + standalone_import_warnings
+        + escape_warnings
         + malformed_warnings
         + declaration_warnings
         + usage_recommendations
@@ -4279,6 +4387,9 @@ def create_plan(
     # already computed and the merge path must not re-derive it.
     declared_topology = False
     latest_plan_score: PlanScore | None = None
+    # Every execution that contributed a block to the merged set. A Stage 2 merge spans several
+    # responses, so no single execution id identifies the artifact a validation failure names.
+    contributing_execution_ids: tuple[str, ...] = ()
     waiver_execution_id: str | None = None
     waiver_warning: str | None = None
     # The delimited response the blocks came from, tracked so the pairing check measures the
@@ -4513,6 +4624,7 @@ def create_plan(
                 latest_plan_score = continuation.score
                 if continuation.passes:
                     blocks = continuation.blocks
+                    contributing_execution_ids = tuple(continuation.execution_ids)
                     # The merged set spans several responses and can no longer be pairing-checked
                     # as one text; each contribution was already checked against its own response.
                     blocks_text = None
@@ -4704,7 +4816,21 @@ def create_plan(
                     command="plan",
                     phase="post-output validation",
                     classification="plan output validation failed",
-                    detail=f"{exc}\n  No files were changed.",
+                    # ``exec_id`` is the execution that opened the plan, not the one that wrote
+                    # the offending artifact: a Stage 2 merge spans several responses. Naming
+                    # every contributor points a diagnostician at the right prompt output
+                    # instead of at the first call.
+                    detail=(
+                        f"{exc}\n"
+                        + (
+                            "  contributing execution ids: "
+                            + ", ".join(contributing_execution_ids)
+                            + "\n"
+                            if contributing_execution_ids
+                            else ""
+                        )
+                        + "  No files were changed."
+                    ),
                     execution_id=exec_id,
                     evidence=log_dir,
                     recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",

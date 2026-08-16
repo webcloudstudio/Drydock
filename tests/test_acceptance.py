@@ -898,6 +898,41 @@ def test_a_criterion_that_compiles_is_not_flagged():
     assert acceptance.syntax_defect("assert 1 == 2") is None
 
 
+def test_a_bare_backslash_escape_is_reported_but_never_gated(capsys):
+    """CPython preserves the bytes, so the criterion runs and proves what it claims. It is still
+    not the escape the author wrote, and the warning must reach the operator by name rather than
+    as an unattributable `<acceptance>:1: SyntaxWarning` on stderr."""
+    code = "program = '\"value=\\(.)\"'"
+
+    defects = acceptance.escape_defects(code)
+
+    assert len(defects) == 1
+    assert "invalid escape sequence" in defects[0]
+    assert defects[0].startswith("line 1:")
+    assert acceptance.syntax_defect(code) is None
+    assert capsys.readouterr().err == ""
+
+
+def test_compiling_a_criterion_never_prints_a_warning(capsys):
+    code = "import re\n\npattern = '\\d+'\nassert re.match(pattern, '7')"
+
+    acceptance.syntax_defect(code)
+    acceptance.unresolved_globals(code)
+    acceptance.retyped_expectations(code)
+
+    assert capsys.readouterr().err == ""
+
+
+def test_a_correctly_escaped_criterion_has_no_escape_defect():
+    assert acceptance.escape_defects("program = r'\"value=\\(.)\"'") == ()
+    assert acceptance.escape_defects("program = '\"value=\\\\(.)\"'") == ()
+
+
+def test_escape_defects_are_silent_about_code_that_does_not_compile():
+    """Not compiling is a separate, already-reported fact."""
+    assert acceptance.escape_defects('sample = """') == ()
+
+
 # --- Prepassed criteria: recorded for reporting, never gated ----------------------------
 
 

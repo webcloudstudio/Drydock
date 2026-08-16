@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260813 V12
+version: 20260816 V13
 ---
 
 ## Overview
@@ -167,9 +167,19 @@ Nothing inside the body can move a boundary. A Markdown fence, a `##` line, a `#
 processes markup will legitimately embed all of them in its proof. Write the body as plain Python;
 do not wrap it in a fence.
 
-An unterminated block, an end marker naming a different id, a stray end marker, and a duplicate id
-are all hard errors that stop planning. None of them degrade into a criterion that silently stops
-gating.
+Write `=== END AC {check-id} ===` for every `=== AC {check-id} ===` you open, with the same id.
+The end marker is not optional and the next opening marker does not stand in for it. Where the
+boundary is decidable Drydock inserts the missing marker and reports having done so; where it is
+not, planning stops.
+
+An end marker naming a different id, a stray end marker, and a duplicate id are hard errors that
+stop planning. None of them degrade into a criterion that silently stops gating.
+
+A backslash in the proof body belongs in a raw string or is doubled. Write `r"\d+"`, `"\\("`, or
+`r"\("` — never a bare `"\("`. A bare backslash before a character Python does not recognize as
+an escape is not the escape you wrote: it survives today only by a rule scheduled to become a
+hard error, and it costs the criterion its binding status. This applies to every proof that
+embeds a regular expression, a Windows path, or a target language's own escape syntax.
 
 ### The oracle rule
 

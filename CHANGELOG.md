@@ -104,6 +104,30 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-16: A dropped `=== END AC <id> ===` terminator no longer discards a whole plan.
+  `drydock plan` closes an acceptance container whose terminator the model omitted when the
+  boundary is decidable — an opener directly followed by another opener, or a trailing opener at
+  the end of an artifact block — and reports each repair as a planning warning. The boundary is
+  accepted only when the candidate body tokenizes, so an `=== AC ... ===` line embedded in a
+  triple-quoted string (which a target that processes Drydock's own markup writes legitimately)
+  still raises rather than splitting a criterion silently. A mismatched end id, a stray end
+  marker, and a duplicate id remain hard errors. Output that already pairs strictly is not
+  touched. Previously a single omitted terminator failed post-output validation and rolled the
+  run back: a `jq` run lost ten LLM calls, six accepted batches, and 944k input tokens, writing
+  nothing. A plan validation failure now also names every execution that contributed to a merged
+  Stage 2 block set, instead of naming only the call that opened the plan.
+
+- 2026-08-16: A backslash escape in an acceptance criterion is reported against the criterion
+  that contains it rather than as an unattributable `<acceptance>:5: SyntaxWarning` on stderr.
+  `acceptance.escape_defects` captures the compiler's advisory and `drydock plan` renders it as
+  `FEATURE-X.md [check-id] line 5: invalid escape sequence '\(' — write the backslash as a raw
+  string (r"...") or double it`. The criterion is not gated and not rewritten: CPython preserves
+  the bytes, so a jq or regex proof written this way runs and proves what it claims. Every
+  `ast.parse`, `compile`, and `symtable` call over criterion text now suppresses the duplicate
+  console warning, which previously re-emitted on every parsing pass because compile-time syntax
+  warnings carry a NULL registry. `prompts/BLUEPRINTS_CONTRACT.md` (V13) states the escaping rule
+  and that the end marker is mandatory.
+
 - 2026-08-15: `drydock score ac` preserves an acceptance observation already classified as
   `UNVERIFIED` instead of relabeling every non-passing process as `FAIL`. Blueprint validation now
   rejects acceptance scripts that read unresolved standalone globals, such as `sys` without an

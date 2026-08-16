@@ -4254,6 +4254,115 @@ def test_plan_normalizes_subprocess_import_inside_each_standalone_ac():
     )
 
 
+def test_plan_closes_acceptance_blocks_whose_terminator_the_model_dropped():
+    """The habit this exists for cost a real jq run ten LLM calls and wrote nothing."""
+    from drydock.planning_session import _normalize_unterminated_acceptance_blocks
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\nassert 1 == 1\n\n"
+            "=== AC second ===\nIntent: Second.\n\nassert 2 == 2\n"
+        )
+    }
+
+    warnings = _normalize_unterminated_acceptance_blocks(blocks)
+
+    checks = parse_programmatic_acceptance_text(
+        blocks["FEATURE-Example.md"], source="FEATURE-Example.md"
+    )
+    assert [check.check_id for check in checks] == ["first", "second"]
+    assert [check.code for check in checks] == ["assert 1 == 1", "assert 2 == 2"]
+    assert len(warnings) == 2
+    assert "missing '=== END AC first ===' inserted" in warnings[0]
+
+
+def test_normalizing_terminators_is_a_no_op_on_a_correctly_paired_block():
+    """The property that makes this safe: output that validates today is not touched."""
+    from drydock.planning_session import _normalize_unterminated_acceptance_blocks
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\nassert 1 == 1\n=== END AC first ===\n\n"
+        "=== AC second ===\nIntent: Second.\n\nassert 2 == 2\n=== END AC second ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_unterminated_acceptance_blocks(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_a_marker_inside_a_string_literal_is_not_treated_as_a_boundary():
+    """A target that processes Drydock's own markup embeds these lines in its proofs. Cutting
+    there would split a criterion silently; the hard error must survive instead."""
+    from drydock.planning_session import _normalize_unterminated_acceptance_blocks
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\n"
+        'sample = """\n'
+        "=== AC not-a-real-marker ===\n"
+        '"""\nassert sample\n=== END AC first ===\n'
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_unterminated_acceptance_blocks(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+    with pytest.raises(ValueError):
+        parse_programmatic_acceptance_text(text, source="FEATURE-Example.md")
+
+
+def test_an_ambiguous_terminator_defect_is_left_to_the_hard_error():
+    """A mismatched end id has no single right answer, so nothing is inserted."""
+    from drydock.planning_session import _normalize_unterminated_acceptance_blocks
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\nassert 1 == 1\n=== END AC second ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_unterminated_acceptance_blocks(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_a_bare_backslash_escape_is_reported_against_its_criterion():
+    """`'"value=\\(.)"'` is what a jq interpolation proof looks like. It runs, so it is not
+    gated; it is not the escape the author wrote, so it is not silent either."""
+    from drydock.planning_session import _acceptance_escape_warnings
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC interpolation ===\nIntent: Interpolation.\n\n"
+            "program = '\"value=\\(.)\"'\nassert program\n"
+            "=== END AC interpolation ===\n"
+        )
+    }
+
+    warnings = _acceptance_escape_warnings(blocks)
+
+    assert len(warnings) == 1
+    assert "FEATURE-Example.md [interpolation]" in warnings[0]
+    assert "invalid escape sequence" in warnings[0]
+    assert 'r"..."' in warnings[0]
+
+
+def test_a_correctly_escaped_criterion_reports_nothing():
+    from drydock.planning_session import _acceptance_escape_warnings
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC interpolation ===\nIntent: Interpolation.\n\n"
+            "program = r'\"value=\\(.)\"'\nassert program\n"
+            "=== END AC interpolation ===\n"
+        )
+    }
+
+    assert _acceptance_escape_warnings(blocks) == ()
+
+
 def test_a_malformed_criterion_becomes_a_blocking_decision():
     """Interactively this asks before the story builds; under --override it survives for review."""
     from drydock.planning_session import (

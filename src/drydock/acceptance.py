@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import contextlib
 import json
 import os
 import re
@@ -12,7 +13,8 @@ import signal
 import subprocess
 import symtable
 import tempfile
-from collections.abc import Iterable, Sequence
+import warnings
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -38,6 +40,29 @@ AC_OPEN_RE = re.compile(r"^===[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", r
 AC_END_RE = re.compile(r"^===[ \t]+END[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", re.MULTILINE)
 #: Leading ``Key: value`` metadata lines inside an AC block, terminated by the first blank line.
 AC_META_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9 _-]*):[ \t]*(?P<value>.*?)[ \t]*$")
+
+
+@contextlib.contextmanager
+def captured_syntax_warnings() -> Iterator[list[warnings.WarningMessage]]:
+    """Capture compile-time warnings from criterion text instead of printing them.
+
+    A criterion is authored text that Drydock compiles on the operator's behalf, so a warning
+    about it is Drydock's to report against the named criterion — not a bare
+    ``<acceptance>:5: SyntaxWarning`` on stderr with nothing to attribute it to. The one that
+    occurs in practice is a bare ``\\(`` in a non-raw string, which a jq or regex target writes
+    constantly. Compile-time syntax warnings use a NULL registry, so they re-emit on every parse
+    rather than deduplicating: left unfiltered one criterion produces one warning line per
+    parsing pass, per plan attempt.
+
+    The block wraps a single compile call, so nothing else can warn inside it. This path is
+    single-threaded; ``catch_warnings`` mutates global filter state and must not be used where
+    it is not.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", SyntaxWarning)
+        yield caught
+
+
 TIMEOUT_SECONDS = 120
 # A suite-bound check runs a complete conformance suite; a story timeout would kill it.
 SUITE_TIMEOUT_SECONDS = 900
@@ -954,7 +979,8 @@ def _invokes_staged_asset(code: str) -> bool:
     suite budget, so the staged path must appear in the arguments of a process launch.
     """
     try:
-        tree = ast.parse(code)
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
     except SyntaxError:
         # Not parseable is a separate, already-reported fact. Nothing to classify.
         return False
@@ -1041,7 +1067,8 @@ def retyped_expectations(code: str) -> tuple[str, ...]:
     decision, and with it the entire failure class.
     """
     try:
-        tree = ast.parse(code)
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
     except SyntaxError:
         # Not parseable is a separate, already-reported fact. Nothing to classify.
         return ()
@@ -1136,7 +1163,8 @@ def syntax_defect(code: str) -> str | None:
     the story nothing. The criterion stops gating and the story closes green.
     """
     try:
-        compile(code, "<acceptance>", "exec")
+        with captured_syntax_warnings():
+            compile(code, "<acceptance>", "exec")
     except SyntaxError as exc:
         where = f" (line {exc.lineno})" if exc.lineno else ""
         return f"criterion is not valid Python: {exc.msg}{where}"
@@ -1144,6 +1172,32 @@ def syntax_defect(code: str) -> str | None:
         # Source containing a null byte raises ValueError rather than SyntaxError.
         return f"criterion is not valid Python: {exc}"
     return None
+
+
+def escape_defects(code: str) -> tuple[str, ...]:
+    """Return the compiler's escape-sequence advisories for one criterion.
+
+    This reports rather than gates, and the distinction is the whole point. ``'"value=\\(.)"'``
+    is what a jq target's interpolation test looks like, and CPython preserves the bytes it
+    describes, so the criterion runs and proves what it claims. Two things are nonetheless worth
+    telling the author: the escape is not the one they wrote — it survives by a rule that is
+    scheduled to become a hard ``SyntaxError`` — and a literal carrying a backslash also fails
+    ``_is_escapable``, which silently drops the criterion's ``binding`` flag.
+
+    The fix is a raw string or a doubled backslash, and it is the author's to make. Rewriting
+    the literal here would change what a proof asserts, which is not a thing to do quietly.
+    """
+    try:
+        with captured_syntax_warnings() as caught:
+            compile(code, "<acceptance>", "exec")
+    except (SyntaxError, ValueError):
+        # Not compilable at all is a separate, already-reported fact.
+        return ()
+    return tuple(
+        f"line {entry.lineno}: {entry.message}"
+        for entry in caught
+        if issubclass(entry.category, SyntaxWarning)
+    )
 
 
 _IMPLICIT_SCRIPT_GLOBALS = frozenset({
@@ -1166,7 +1220,8 @@ def unresolved_globals(code: str) -> tuple[str, ...]:
     script globals remain valid.
     """
     try:
-        root = symtable.symtable(code, "<acceptance>", "exec")
+        with captured_syntax_warnings():
+            root = symtable.symtable(code, "<acceptance>", "exec")
     except (SyntaxError, ValueError):
         return ()
     module_bindings = {
