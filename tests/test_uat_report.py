@@ -265,8 +265,61 @@ def test_case_kit_links_llm_activity_beside_the_command_streams(tmp_path: Path) 
     steps = page.split('id="panel-llm"')[0]
 
     assert "<th>stdout</th><th>stderr</th><th>llm</th>" in steps
-    assert "view/workspace/logs/call.llm.log.html" in steps
+    assert "view/evidence/commands/02-build.llm.log.html" in steps
     assert ">llm</a>" in steps
+    combined = (case / "evidence" / "commands" / "02-build.llm.log").read_text(encoding="utf-8")
+    assert "--- llm 1/1 · build · codex test-model · exec-1 ---" in combined
+    assert "tokens: 5" in combined
+
+
+def test_case_kit_joins_every_model_call_a_step_made_into_one_activity_log(
+    tmp_path: Path,
+) -> None:
+    """A planning step drives many calls; the receipt links one log, not a row of numbers."""
+    case = _case(tmp_path / "run")
+    _mirror(case)
+    logs = case / "workspace" / "logs"
+    records = []
+    for index in (1, 2, 3):
+        log = logs / f"call-{index}.llm.log"
+        log.write_text(f"call {index} tokens\n", encoding="utf-8")
+        records.append({
+            "execution_id": f"exec-{index}",
+            "status": "completed",
+            "job": {"command_name": "plan", "llm": "codex", "model": "test-model"},
+            "result": {"returncode": 0, "stats": {"elapsed_ms": 10}},
+            "artifacts": {"llm_log": str(log)},
+        })
+    (case / "evidence" / "llm.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records), encoding="utf-8"
+    )
+    record = json.loads((case / "result.json").read_text(encoding="utf-8"))
+    record["commands"][1]["llm_executions"] = ["exec-1", "exec-2", "exec-3"]
+    (case / "result.json").write_text(json.dumps(record), encoding="utf-8")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+    steps = page.split('id="panel-llm"')[0]
+
+    assert "llm 2</a>" not in steps
+    assert "view/evidence/commands/02-build.llm.log.html" in steps
+    combined = (case / "evidence" / "commands" / "02-build.llm.log").read_text(encoding="utf-8")
+    assert combined.index("call 1 tokens") < combined.index("call 2 tokens")
+    assert "--- llm 3/3 · plan · codex test-model · exec-3 ---" in combined
+    # The joined log is published evidence, so the kit checksums it like any other artifact.
+    sums = (case / "SHA256SUMS").read_text(encoding="utf-8")
+    assert "evidence/commands/02-build.llm.log" in sums
+
+
+def test_case_kit_drops_a_joined_activity_log_a_later_run_no_longer_produces(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path / "run")
+    stale = case / "evidence" / "commands" / "09-superseded.llm.log"
+    stale.write_text("old\n", encoding="utf-8")
+
+    build_case_kit(case)
+
+    assert not stale.exists()
 
 
 def test_case_kit_derives_a_legacy_sibling_llm_activity_log(tmp_path: Path) -> None:
@@ -281,7 +334,7 @@ def test_case_kit_derives_a_legacy_sibling_llm_activity_log(tmp_path: Path) -> N
 
     page = build_case_kit(case).read_text(encoding="utf-8")
 
-    assert "view/workspace/logs/call.llm.log.html" in page
+    assert "view/evidence/commands/02-build.llm.log.html" in page
 
 
 def test_case_kit_opens_every_evidence_link_in_its_own_tab(tmp_path: Path) -> None:
@@ -1019,7 +1072,7 @@ def test_case_kit_links_llm_activity_from_the_executions_the_command_recorded(
     page = build_case_kit(case).read_text(encoding="utf-8")
     steps = page.split('id="panel-llm"')[0]
 
-    assert "view/workspace/logs/call.llm.log.html" in steps
+    assert "view/evidence/commands/02-build.llm.log.html" in steps
     # The step that made no call claims none of another step's transcripts.
     rows = steps.split("<tr>")
     init_row = next(row for row in rows if "01-init" in row)

@@ -8,6 +8,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-08-16: A UAT receipt now links one LLM activity log per lifecycle step instead of a row of
+  numbered links. `drydock uat --report` joins every model call a step made, in execution order,
+  into `evidence/commands/<step>.llm.log` under a banner naming the call position, command,
+  provider, model, and execution identifier, and the step table links that single file beside the
+  step's stdout and stderr. The joined logs are published evidence: they are inventoried, hashed
+  into `SHA256SUMS` and `evidence/manifest.json`, and rendered through the kit's HTML viewer.
+  Logs for steps a resume superseded are deleted on rebuild rather than accumulating. Per-step
+  attribution is unchanged — it still comes from the execution identifiers each command records —
+  so a planning step that drives lineage attribution continues to own those calls.
+
 ### Fixed
 
 - 2026-08-16: A Blueprint specification whose acceptance container cannot be read no longer

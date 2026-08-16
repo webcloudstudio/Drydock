@@ -131,6 +131,88 @@ def _command_llm_logs(
     return tuple(joined)
 
 
+def _receipt_llm_logs(
+    case_root: Path,
+    commands: Sequence[Mapping[str, object]],
+    calls: Sequence[Mapping[str, object]],
+) -> tuple[tuple[str, ...], ...]:
+    """Per-step logs to link: the step's combined log when the kit wrote one, else each call."""
+    per_command = _command_llm_logs(case_root, commands, calls)
+    linked: list[tuple[str, ...]] = []
+    for index, (command, logs) in enumerate(zip(commands, per_command, strict=True), start=1):
+        combined = _step_llm_log(case_root, str(command.get("label") or f"step-{index:02d}"))
+        if logs and combined.is_file():
+            linked.append((combined.relative_to(case_root).as_posix(),))
+        else:
+            linked.append(logs)
+    return tuple(linked)
+
+
+def _step_llm_log(case_root: Path, label: str) -> Path:
+    """Path of the one activity log a step publishes, beside its stdout and stderr."""
+    return case_root / "evidence" / "commands" / f"{label}.llm.log"
+
+
+def _write_step_llm_logs(
+    case_root: Path,
+    commands: Sequence[Mapping[str, object]],
+    calls: Sequence[Mapping[str, object]],
+) -> tuple[tuple[str, ...], ...]:
+    """Concatenate every model call a step made into one activity log for that step.
+
+    A step drives as many calls as its command needs — planning drives fifteen — and linking each
+    three-line log separately turns one table cell into a row of numbered links that says nothing
+    about which call is which. The calls are joined in execution order under a banner naming the
+    call, its command, and its execution identifier, so the step's model activity reads as one
+    document alongside its stdout.
+
+    Returns the per-command log paths the receipt should link: the combined log where one was
+    written, and the individual logs for a step whose calls could not be joined.
+    """
+    per_command = _command_llm_logs(case_root, commands, calls)
+    by_path = {str(call.get("llm_log") or ""): call for call in calls}
+    linked: list[tuple[str, ...]] = []
+    written: set[Path] = set()
+    for index, (command, logs) in enumerate(zip(commands, per_command, strict=True), start=1):
+        label = str(command.get("label") or f"step-{index:02d}")
+        combined = _step_llm_log(case_root, label)
+        if not logs:
+            linked.append(())
+            continue
+        sections: list[str] = []
+        for position, relative in enumerate(logs, start=1):
+            call = by_path.get(relative) or {}
+            banner = " · ".join(
+                part
+                for part in (
+                    f"llm {position}/{len(logs)}",
+                    str(call.get("command") or ""),
+                    " ".join(
+                        part for part in (call.get("provider"), call.get("model")) if part
+                    ).strip(),
+                    str(call.get("execution_id") or ""),
+                )
+                if part
+            )
+            try:
+                body = (case_root / relative).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                body = ""
+            sections.append(f"--- {banner} ---\n{body.rstrip()}\n")
+        combined.parent.mkdir(parents=True, exist_ok=True)
+        combined.write_text("\n".join(sections), encoding="utf-8")
+        written.add(combined)
+        linked.append((combined.relative_to(case_root).as_posix(),))
+    # A rebuild after a resume renumbered or dropped steps leaves logs for steps this run no
+    # longer has. They are generated, so they are replaced rather than accumulated.
+    commands_root = case_root / "evidence" / "commands"
+    if commands_root.is_dir():
+        for stale in commands_root.glob("*.llm.log"):
+            if stale not in written:
+                stale.unlink()
+    return tuple(linked)
+
+
 # A run drives a Drydock workspace, and that workspace keeps its own copy of every prompt,
 # provider transcript, and model output the run produced. Inventorying both trees whole
 # publishes each transcript twice and renders an HTML viewer for both copies, which is where
@@ -400,7 +482,7 @@ def _render_case_markdown(
         "|---|---|---|---|---|",
     ]
     calls = _llm_calls(case_root / "evidence" / "llm.jsonl", case_root, redirect)
-    command_logs = _command_llm_logs(case_root, commands, calls)
+    command_logs = _receipt_llm_logs(case_root, commands, calls)
     for item, logs in zip(commands, command_logs, strict=True):
         argv = " ".join(str(part) for part in item.get("argv") or [])
         stdout = str(item.get("stdout_path") or "")
@@ -703,7 +785,7 @@ def _render_case(
         groups, f"runs/{result.get('run_id') or case_root.name}/", _INVENTORY_TABS
     )
     calls = _llm_calls(case_root / "evidence" / "llm.jsonl", case_root, redirect)
-    command_logs = _command_llm_logs(case_root, commands, calls)
+    command_logs = _receipt_llm_logs(case_root, commands, calls)
 
     command_rows: list[list[str]] = []
     for index, (command, logs) in enumerate(zip(commands, command_logs, strict=True), start=1):
@@ -1087,6 +1169,13 @@ def build_case_kit(case_root: Path) -> Path:
     target = str(result.get("target") or case_root.name)
 
     manifest_path = case_root / "evidence" / "manifest.json"
+    # Written before the inventory: the combined step logs are published evidence, so they are
+    # hashed into SHA256SUMS and the manifest like the streams they sit beside.
+    _write_step_llm_logs(
+        case_root,
+        [item for item in result.get("commands") or [] if isinstance(item, dict)],
+        _llm_calls(case_root / "evidence" / "llm.jsonl", case_root),
+    )
     groups, unpublished = _case_groups(case_root, target)
     _write_ignore(case_root, unpublished)
 
