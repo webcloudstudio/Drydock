@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 
 from drydock.acceptance import MalformedAcceptance, ProgrammaticAcceptance
@@ -53,7 +54,9 @@ _ENV_SECTION = re.compile(r"^\s*Environment:\s*$", re.M)
 _ENV_ENTRY = re.compile(rf"^\s+({_NAME})\s{{2,}}(?P<detail>.+)$")
 
 #: A documented invocation that assigns the variable in front of the asset's own command line.
-_USAGE_ASSIGNMENT = re.compile(rf"^\s*(?:\$\s*)?({_NAME})=\S*\s+(?P<rest>.+)$", re.M)
+#: The value is captured because it is the asset's own statement of what the variable should be,
+#: which is the authoritative repair when a criterion omits it.
+_USAGE_ASSIGNMENT = re.compile(rf"^\s*(?:\$\s*)?({_NAME})=(?P<value>\S*)\s+(?P<rest>.+)$", re.M)
 
 #: subprocess entry points whose first positional argument is the command.
 _SUBPROCESS_CALLS = frozenset({"run", "call", "check_call", "check_output", "Popen"})
@@ -137,6 +140,40 @@ def _is_subprocess_call(node: ast.Call) -> bool:
     return isinstance(func, ast.Name) and func.id in _SUBPROCESS_CALLS
 
 
+def _inherits_environ(node: ast.Call) -> bool:
+    """True when setting ``os.environ`` before the call would reach the child process.
+
+    A call with no ``env=`` inherits the parent environment outright. A call whose ``env=`` is a
+    dict literal spreading something — ``{**os.environ, ...}`` — carries the parent environment
+    through. A call passing a closed dict deliberately isolates the child, and no assignment
+    upstream of it can help, so its gap is reported rather than repaired.
+    """
+    for keyword in node.keywords:
+        if keyword.arg != "env":
+            continue
+        if not isinstance(keyword.value, ast.Dict):
+            return False
+        return any(key is None for key in keyword.value.keys)
+    return True
+
+
+def _supplied_values(node: ast.Call) -> dict[str, str]:
+    """Literal ``env=`` entries in a call, as name to value."""
+    values: dict[str, str] = {}
+    for keyword in node.keywords:
+        if keyword.arg != "env" or not isinstance(keyword.value, ast.Dict):
+            continue
+        for key, item in zip(keyword.value.keys, keyword.value.values, strict=False):
+            if (
+                isinstance(key, ast.Constant)
+                and isinstance(key.value, str)
+                and isinstance(item, ast.Constant)
+                and isinstance(item.value, str)
+            ):
+                values[key.value] = item.value
+    return values
+
+
 def _supplied_names(node: ast.Call) -> frozenset[str] | None:
     """Names the call supplies through ``env=``, or ``None`` when it cannot be read.
 
@@ -203,8 +240,19 @@ def _matching_asset(argument: str, assets: Mapping[str, str]) -> str | None:
     return None
 
 
-def missing_env_names(code: str, assets: Mapping[str, str]) -> tuple[tuple[str, str], ...]:
-    """Return ``(asset, variable)`` pairs the snippet fails to supply.
+@dataclass(frozen=True)
+class EnvGap:
+    """One variable a criterion fails to supply to a staged asset that requires it."""
+
+    asset: str
+    name: str
+    #: Whether assigning the variable into the snippet's own environment would reach the asset.
+    #: False when the call passes a closed ``env=`` dict, which isolates the child deliberately.
+    inheritable: bool = True
+
+
+def env_gaps(code: str, assets: Mapping[str, str]) -> tuple[EnvGap, ...]:
+    """Return every variable ``code`` owes a staged asset it invokes.
 
     ``assets`` maps a build-relative staged path to that asset's text. Code that does not parse
     is not this pass's defect — ``syntax_defect`` already owns it — so it yields nothing.
@@ -214,7 +262,7 @@ def missing_env_names(code: str, assets: Mapping[str, str]) -> tuple[tuple[str, 
     except SyntaxError:
         return ()
     preset = _environ_assignments(tree)
-    missing: list[tuple[str, str]] = []
+    gaps: list[EnvGap] = []
     seen: set[tuple[str, str]] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not _is_subprocess_call(node):
@@ -232,8 +280,13 @@ def missing_env_names(code: str, assets: Mapping[str, str]) -> tuple[tuple[str, 
                 if name in supplied or name in preset or (relative, name) in seen:
                     continue
                 seen.add((relative, name))
-                missing.append((relative, name))
-    return tuple(missing)
+                gaps.append(EnvGap(asset=relative, name=name, inheritable=_inherits_environ(node)))
+    return tuple(gaps)
+
+
+def missing_env_names(code: str, assets: Mapping[str, str]) -> tuple[tuple[str, str], ...]:
+    """Return ``(asset, variable)`` pairs the snippet fails to supply."""
+    return tuple((gap.asset, gap.name) for gap in env_gaps(code, assets))
 
 
 def staged_asset_env_defects(
@@ -257,3 +310,157 @@ def staged_asset_env_defects(
                 )
             )
     return tuple(defects)
+
+
+# ── repair ───────────────────────────────────────────────────────────────────────────
+
+
+def asset_usage_value(asset_text: str, asset_name: str, name: str) -> str | None:
+    """Return the value ``asset_text`` documents for ``name``, or ``None``.
+
+    This is the authoritative source. The asset is imported, hash-verified, and restored before
+    grading, so a usage line it publishes is a statement of its own interface rather than a
+    guess about it. A value carrying an unexpanded shell reference is rejected: ``env=`` performs
+    no substitution, so passing ``$PWD/jq`` through would hand the child a literal dollar sign.
+    """
+    if len(asset_text) > _MAX_ASSET_BYTES:
+        return None
+    stem = PurePosixPath(asset_name).name
+    if not stem:
+        return None
+    for match in _USAGE_ASSIGNMENT.finditer(asset_text):
+        if match.group(1) != name or stem not in match.group("rest"):
+            continue
+        value = match.group("value").strip("'\"")
+        if value and "$" not in value:
+            return value
+    return None
+
+
+def sibling_env_value(
+    checks: Iterable[ProgrammaticAcceptance],
+    source: str,
+    asset: str,
+    name: str,
+) -> str | None:
+    """Return the value a criterion in the same Blueprint supplies for ``name``.
+
+    Scoped to one Blueprint file because that is the unit acceptance belongs to: criteria are
+    declared by a story inside its own specification, and a value borrowed across specifications
+    would be borrowed from a story that answers a different question.
+    """
+    for check in checks:
+        if check.source != source:
+            continue
+        try:
+            tree = ast.parse(check.code)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not _is_subprocess_call(node) or not node.args:
+                continue
+            if not any(
+                _matching_asset(argument, {asset: ""}) for argument in _argv_strings(node.args[0])
+            ):
+                continue
+            value = _supplied_values(node).get(name)
+            if value:
+                return value
+    return None
+
+
+@dataclass(frozen=True)
+class EnvRepair:
+    """One applied in-memory repair, and where its value came from."""
+
+    check_id: str
+    source: str
+    asset: str
+    name: str
+    value: str
+    origin: str
+
+
+@dataclass(frozen=True)
+class EnvShortfall:
+    """One gap no value could be resolved for, so the criterion is left unrepaired."""
+
+    check_id: str
+    source: str
+    asset: str
+    name: str
+    reason: str
+
+
+def repair_staged_asset_env(
+    checks: tuple[ProgrammaticAcceptance, ...],
+    assets: Mapping[str, str],
+) -> tuple[tuple[ProgrammaticAcceptance, ...], tuple[EnvRepair, ...], tuple[EnvShortfall, ...]]:
+    """Supply the environment a criterion owes a staged asset, in memory, for this grading only.
+
+    The Blueprint is not edited and the staged asset is not touched. A criterion that omits a
+    variable the asset declares required cannot be satisfied by any build — a repair pass may not
+    rewrite a criterion, and the asset is restored before grading — so left alone it burns the
+    repair budget against an assertion no implementation can move. Supplying the variable makes
+    the criterion run and produce a real verdict, which is strictly more evidence than reporting
+    it unverified.
+
+    Every repair is returned so the caller can record it. A gap with no resolvable value, or one
+    the criterion isolates behind a closed ``env=``, is returned as a shortfall instead.
+    """
+    if not assets:
+        return checks, (), ()
+    repaired: list[ProgrammaticAcceptance] = []
+    applied: list[EnvRepair] = []
+    shortfalls: list[EnvShortfall] = []
+    for check in checks:
+        prelude: list[str] = []
+        for gap in env_gaps(check.code, assets):
+            if not gap.inheritable:
+                shortfalls.append(
+                    EnvShortfall(
+                        check_id=check.check_id,
+                        source=check.source,
+                        asset=gap.asset,
+                        name=gap.name,
+                        reason=(
+                            f"passes a closed env= to {gap.asset}, which omits {gap.name}; "
+                            f"no assignment upstream of the call can reach it"
+                        ),
+                    )
+                )
+                continue
+            value = asset_usage_value(assets[gap.asset], gap.asset, gap.name)
+            origin = f"{gap.asset} usage line"
+            if value is None:
+                value = sibling_env_value(checks, check.source, gap.asset, gap.name)
+                origin = f"another criterion in {check.source}"
+            if value is None:
+                shortfalls.append(
+                    EnvShortfall(
+                        check_id=check.check_id,
+                        source=check.source,
+                        asset=gap.asset,
+                        name=gap.name,
+                        reason=(
+                            f"invokes {gap.asset} without {gap.name}, which that asset declares "
+                            f"required, and neither the asset nor {check.source} states a value"
+                        ),
+                    )
+                )
+                continue
+            prelude.append(f"os.environ[{gap.name!r}] = {value!r}")
+            applied.append(
+                EnvRepair(
+                    check_id=check.check_id,
+                    source=check.source,
+                    asset=gap.asset,
+                    name=gap.name,
+                    value=value,
+                    origin=origin,
+                )
+            )
+        if prelude:
+            check = replace(check, code="import os\n" + "\n".join(prelude) + "\n" + check.code)
+        repaired.append(check)
+    return tuple(repaired), tuple(applied), tuple(shortfalls)

@@ -1611,3 +1611,135 @@ def test_each_command_records_the_llm_executions_it_produced(tmp_path: Path) -> 
     # A command that made no call claims none of another command's executions.
     assert by_label[next(label for label in by_label if label.endswith("-init"))] == ()
     assert sum(len(ids) for ids in by_label.values()) == len(written)
+
+
+# ── assertion attribution and decision carry-forward ──────────────────────────────────
+
+
+def test_an_unverified_assertion_is_not_also_charged_to_the_product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``failed`` was ``total - passed``, which counted every harness defect twice: once as the
+    kit fault it is, and once as a product defect it is not."""
+    from drydock import uat as uat_module
+
+    class _Report:
+        total_checks = 5
+        passed_checks = 3
+        unverified_checks = 2
+
+    monkeypatch.setattr(uat_module, "build_score_report", lambda *a, **k: _Report())
+
+    counts = uat_module._assertion_outcomes(tmp_path, "Demo", tmp_path / "llm.jsonl")
+
+    assert counts == {
+        "passed": 3,
+        "failed": 0,
+        "unverified": 2,
+        "product_defects": 0,
+        "harness_defects": 2,
+    }
+    assert counts["passed"] + counts["failed"] + counts["unverified"] == _Report.total_checks
+
+
+def test_answered_decisions_carry_into_the_next_run(tmp_path: Path) -> None:
+    """UAT is a process, not a clean room: a question a human answered stays answered."""
+    from drydock.decisions import Decision, load_decisions, write_decisions
+    from drydock.uat import discover_fixtures, prior_decisions, seed_prior_decisions
+
+    fixture_root = _fixture(tmp_path)
+    fixture = discover_fixtures(tmp_path)[0]
+    prior = fixture_root / "runs" / "20260101.000000" / "inputs"
+    prior.mkdir(parents=True)
+    write_decisions(
+        prior / "DECISIONS.json",
+        (
+            Decision(
+                id="analyze-display_name",
+                type="text",
+                severity="material",
+                origin="analyze-questionnaire",
+                blueprint="ARCHITECTURE.md",
+                story=None,
+                status="answered",
+                archived=False,
+                title="Display Name",
+                description="",
+                options=(),
+                system_choice="Proposed",
+                commander_direction="Chosen By Hand",
+            ),
+            # Drydock's own proposal. Re-derived every run, so carrying it would cache a machine
+            # decision and hide that Drydock stopped making it.
+            Decision(
+                id="build-env-x",
+                type="text",
+                severity="material",
+                origin="build",
+                blueprint="FEATURE-X.md",
+                story=None,
+                status="recommended",
+                archived=False,
+                title="Acceptance environment supplied: x",
+                description="",
+                options=(),
+                system_choice="JQ=./jq",
+            ),
+        ),
+    )
+
+    case_root = fixture_root / "runs" / "20260202.000000"
+    case_root.mkdir(parents=True)
+    workspace = case_root / "workspace"
+    assert [item.id for item in prior_decisions(fixture, case_root)] == ["analyze-display_name"]
+
+    written = seed_prior_decisions(fixture, workspace, case_root)
+    assert written is not None
+    seeded = load_decisions(written)
+    assert [item.id for item in seeded] == ["analyze-display_name"]
+    assert seeded[0].commander_direction == "Chosen By Hand"
+
+
+def test_the_runs_decisions_become_an_input_for_the_next_run(tmp_path: Path) -> None:
+    from drydock.decisions import Decision, write_decisions
+    from drydock.uat import capture_decisions, discover_fixtures
+
+    fixture_root = _fixture(tmp_path)
+    fixture = discover_fixtures(tmp_path)[0]
+    case_root = fixture_root / "runs" / "20260202.000000"
+    target_dir = case_root / "workspace" / "targets" / "ReadingList"
+    target_dir.mkdir(parents=True)
+    write_decisions(
+        target_dir / "DECISIONS.json",
+        (
+            Decision(
+                id="analyze-display_name",
+                type="text",
+                severity="material",
+                origin="analyze-questionnaire",
+                blueprint="ARCHITECTURE.md",
+                story=None,
+                status="answered",
+                archived=False,
+                title="Display Name",
+                description="",
+                options=(),
+                system_choice="Proposed",
+                commander_direction="Chosen By Hand",
+            ),
+        ),
+    )
+
+    captured = capture_decisions(fixture, case_root / "workspace", case_root)
+
+    assert captured == case_root / "inputs" / "DECISIONS.json"
+    assert captured.is_file()
+
+
+def test_no_prior_run_seeds_nothing(tmp_path: Path) -> None:
+    from drydock.uat import discover_fixtures, seed_prior_decisions
+
+    fixture_root = _fixture(tmp_path)
+    fixture = discover_fixtures(tmp_path)[0]
+    case_root = fixture_root / "runs" / "20260202.000000"
+    assert seed_prior_decisions(fixture, case_root / "workspace", case_root) is None

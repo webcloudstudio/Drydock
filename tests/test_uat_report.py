@@ -1130,3 +1130,88 @@ def test_a_recorded_path_spelled_in_another_case_is_still_inside_the_kit() -> No
     )
     # A genuinely external path is still preserved rather than forced under the kit.
     assert _relative("/etc/hosts", Path("/tmp/uat/CommonMark/runs/r1")) == "/etc/hosts"
+
+
+# ── decisions ────────────────────────────────────────────────────────────────────────
+
+
+def _decisions(case: Path, records: list[dict]) -> None:
+    path = case / "workspace" / "targets" / "commonmark" / "DECISIONS.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(records), encoding="utf-8")
+
+
+_ENV_DECISION = {
+    "id": "build-env-feature-formats.md-formats-suite-jq",
+    "type": "text",
+    "severity": "material",
+    "origin": "build",
+    "blueprint": "FEATURE-Formats.md",
+    "story": "block-6",
+    "status": "recommended",
+    "archived": False,
+    "title": "Acceptance environment supplied: formats-suite",
+    "description": "formats-suite invokes staged asset sources/run_conformance.py without JQ.",
+    "options": [],
+    "system_choice": "JQ=./jq",
+}
+_ANSWERED_DECISION = {
+    **_ENV_DECISION,
+    "id": "analyze-display_name",
+    "status": "answered",
+    "title": "Display Name",
+    "system_choice": "Proposed",
+    "commander_direction": "Chosen By Hand",
+}
+
+
+def test_a_run_page_shows_its_decisions_as_a_tier_one_section(tmp_path: Path) -> None:
+    """A UAT run has no operator at the keyboard, so DECISIONS.json is its review surface and
+    must be reachable without digging through the workspace mirror."""
+    kit = tmp_path / "kit"
+    case = _case(kit)
+    _decisions(case, [_ENV_DECISION, _ANSWERED_DECISION])
+
+    index = build_case_kit(case)
+    page = index.read_text(encoding="utf-8")
+
+    assert "<h2>Decisions</h2>" in page
+    # Above the raw record, not buried inside it.
+    assert page.index("<h2>Decisions</h2>") < page.index("<h2>Run detail</h2>")
+    assert "Acceptance environment supplied: formats-suite" in page
+    assert "JQ=./jq" in page
+    assert "Chosen By Hand" in page
+    assert "2 recorded · 1 still recommended" in page
+
+
+def test_a_run_with_no_decisions_shows_no_decisions_section(tmp_path: Path) -> None:
+    kit = tmp_path / "kit"
+    case = _case(kit)
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert "<h2>Decisions</h2>" not in page
+
+
+def test_the_project_page_counts_decisions_per_run(tmp_path: Path) -> None:
+    kit = tmp_path / "kit"
+    case = _case(kit)
+    _decisions(case, [_ENV_DECISION, _ANSWERED_DECISION])
+    build_case_kit(case)
+
+    page = write_kit_index(kit).read_text(encoding="utf-8")
+
+    assert "<h2>Decisions</h2>" in page
+    # Tier one: above the inputs and the governed document list, not appended after them.
+    assert page.index("<h2>Decisions</h2>") < page.index("<h2>Inputs</h2>")
+    assert page.index("<h2>Inputs</h2>") < page.index("<h2>Project</h2>")
+
+
+def test_the_project_page_labels_what_the_runs_were_built_from(tmp_path: Path) -> None:
+    kit = tmp_path / "kit"
+    build_case_kit(_case(kit))
+
+    page = write_kit_index(kit).read_text(encoding="utf-8")
+
+    assert "Everything supplied to these runs before Drydock authored anything" in page
+    assert "decisions carried in from earlier runs" in page

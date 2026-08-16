@@ -24,6 +24,7 @@ from drydock import __version__, sea_trials, technology_stack
 from drydock.acceptance_contract import AcceptanceContract, contract_from_config, write_contract
 from drydock.build_report import build_score_report
 from drydock.config import DEFAULT_REPAIR_ATTEMPTS
+from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
 from drydock.uat_console import StepSink
@@ -141,6 +142,10 @@ class UATResult:
     #: demonstrated a violation — but each names a prohibition a human must confirm by hand
     #: before the build is released. Reported, never a failure.
     attestations: tuple[str, ...] = ()
+    #: The release gate's own verdict over the built tree: PASSED, FAILED, ERROR, or empty when
+    #: the gate did not run. ``acceptance_status`` is derived from it, and the two differ — an
+    #: ERROR here reads as NOT_RUN there — so the raw verdict is recorded rather than inferred.
+    release_verdict: str = ""
     #: Story-acceptance outcomes for the run, three-valued. ``product_defects`` counts assertions
     #: that exercised the built code and found it wrong; ``harness_defects`` counts assertions
     #: that never reached it. A reader distinguishes "Drydock produced a bad artifact" from
@@ -673,7 +678,10 @@ def _assertion_outcomes(target_dir: Path, target: str, records_path: Path) -> di
         return empty
     passed = report.passed_checks
     unverified = report.unverified_checks
-    failed = max(report.total_checks - passed, 0)
+    # An UNVERIFIED assertion is neither passed nor failed. Subtracting only the passes charged
+    # every harness defect to the product as well, so a run could report one product defect and
+    # one harness defect for a single assertion that never ran.
+    failed = max(report.total_checks - passed - unverified, 0)
     return {
         "passed": passed,
         "failed": failed,
@@ -742,6 +750,64 @@ def seed_acceptance_contract(fixture: UATFixture, workspace: Path) -> Path | Non
     target_dir = workspace / "targets" / fixture.target
     target_dir.mkdir(parents=True, exist_ok=True)
     return write_contract(target_dir, fixture.acceptance)
+
+
+DECISIONS_FILENAME = "DECISIONS.json"
+
+
+def prior_decisions(fixture: UATFixture, case_root: Path) -> tuple[Decision, ...]:
+    """Return the human-answered decisions from this project's most recent completed run.
+
+    UAT is a process, not a clean room. A question an operator answered once has been answered
+    for the project, and making the next run re-ask it would measure the operator's patience
+    rather than Drydock. Only ``commander_direction`` carries: that is what a human typed.
+    ``system_choice`` is Drydock's own proposal and is re-derived every run, so carrying it
+    would cache a machine decision and hide the fact that Drydock stopped making it.
+    """
+    runs_root = fixture.root / "runs"
+    if not runs_root.is_dir():
+        return ()
+    for run_dir in sorted((path for path in runs_root.iterdir() if path.is_dir()), reverse=True):
+        if run_dir == case_root:
+            continue
+        path = run_dir / "inputs" / DECISIONS_FILENAME
+        if not path.is_file():
+            continue
+        answered = tuple(item for item in load_decisions(path) if item.commander_direction)
+        if answered:
+            return answered
+    return ()
+
+
+def seed_prior_decisions(fixture: UATFixture, workspace: Path, case_root: Path) -> Path | None:
+    """Place previously answered decisions in the Target before any stage reads them."""
+    answered = prior_decisions(fixture, case_root)
+    if not answered:
+        return None
+    target_dir = workspace / "targets" / fixture.target
+    target_dir.mkdir(parents=True, exist_ok=True)
+    path = target_dir / DECISIONS_FILENAME
+    current = {item.id: item for item in load_decisions(path)}
+    for item in answered:
+        current[item.id] = item
+    write_decisions(path, tuple(sorted(current.values(), key=lambda record: record.id)))
+    return path
+
+
+def capture_decisions(fixture: UATFixture, workspace: Path, case_root: Path) -> Path | None:
+    """Copy the run's decisions into ``inputs/`` so the next run can re-enter them.
+
+    The Target copy is sealed inside the run's workspace, which is a record of what happened,
+    not an input to anything. ``inputs/`` is where a run's seeded material lives, so this is the
+    file the next run reads.
+    """
+    source = workspace / "targets" / fixture.target / DECISIONS_FILENAME
+    if not source.is_file():
+        return None
+    destination = case_root / "inputs" / DECISIONS_FILENAME
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+    return destination
 
 
 def seed_technology_stack(fixture: UATFixture, workspace: Path) -> Path | None:
@@ -1215,6 +1281,7 @@ def run_fixture(
             seed_technology_stack(fixture, workspace)
             seed_sea_trials(fixture, workspace)
             seed_acceptance_contract(fixture, workspace)
+            seed_prior_decisions(fixture, workspace, case_root)
         if start <= stage_index("import"):
             execute(
                 ("import", fixture.target, str(source_root), "--format", "markdown"),
@@ -1263,6 +1330,9 @@ def run_fixture(
     # infrastructure error — but an infrastructure error must still stop the run reading as a
     # pass, which a single status derived from the final command's exit code would allow.
     release_verdict = _release_verdict(workspace / "targets" / fixture.target)
+    # Decisions this run recorded — including any Drydock made on the author's behalf —
+    # become an input to the next run of this project.
+    capture_decisions(fixture, workspace, case_root)
     if release_verdict == "ERROR":
         degraded.append("score release could not grade the project")
     execution_status = "ERROR" if (status == "failed" or degraded) else "PASS"
@@ -1340,6 +1410,7 @@ def run_fixture(
         degraded=tuple(degraded),
         execution_status=execution_status,
         acceptance_status=acceptance_status,
+        release_verdict=release_verdict,
         expected_verdict=expected_verdict,
         observed_verdict=observed_verdict,
         attestations=attestations,

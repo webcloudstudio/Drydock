@@ -4276,3 +4276,137 @@ def test_build_warns_when_a_specs_acceptance_cannot_be_read(tmp_path):
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append)
 
     assert any("DATABASE.md: acceptance criteria could not be read" in line for line in log)
+
+
+# ── staged-asset environment ─────────────────────────────────────────────────────────
+
+_ENV_RUNNER = '''#!/usr/bin/env python3
+"""Score a candidate.
+
+Usage:
+    RUNNER=./app python3 sources/score.py
+
+Environment:
+    RUNNER     command that runs the candidate. Required.
+"""
+import os
+import sys
+
+if not os.environ.get("RUNNER"):
+    sys.exit("error: RUNNER is not set")
+sys.exit(0)
+'''
+
+
+def _with_staged_runner(tmp_path, criterion: str):
+    """A Target whose story grades itself through a staged asset that requires ``RUNNER``."""
+    target_dir, build_dir = _setup(tmp_path)
+    sources = target_dir / "blueprint" / "sources"
+    sources.mkdir(parents=True, exist_ok=True)
+    (sources / "score.py").write_text(_ENV_RUNNER, encoding="utf-8")
+    build_sources = build_dir / "sources"
+    build_sources.mkdir(parents=True, exist_ok=True)
+    (build_sources / "score.py").write_text(_ENV_RUNNER, encoding="utf-8")
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "=== AC foundation-suite ===\n"
+        "Intent: The candidate passes its staged scoring asset.\n\n"
+        f"{criterion}"
+        "=== END AC foundation-suite ===\n",
+        encoding="utf-8",
+    )
+    return target_dir, build_dir
+
+
+def test_a_criterion_missing_a_staged_assets_variable_is_supplied_and_recorded(tmp_path):
+    """The jq UAT failure: the criterion omits the variable, so no build can move it.
+
+    Left alone it burns the whole repair budget and reports a product defect. Supplied, it runs
+    and produces a real verdict on the first pass.
+    """
+    target_dir, build_dir = _with_staged_runner(
+        tmp_path,
+        "import subprocess\n"
+        "result = subprocess.run(['python3', 'sources/score.py'])\n"
+        "assert result.returncode == 0\n",
+    )
+    log: list[str] = []
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        step_id="foundation",
+        on_text=log.append,
+    )
+
+    step = result.steps[0]
+    assert step.status == "built"
+    assert step.acceptance[0].passed is True
+    # One pass. The criterion was satisfiable from the first call, so no repair was bought.
+    assert step.calls_used == 1
+    decisions = {
+        item["id"]: item
+        for item in json.loads((target_dir / "DECISIONS.json").read_text(encoding="utf-8"))
+    }
+    record = decisions["build-env-database.md-foundation-suite-runner"]
+    assert record["status"] == "recommended"
+    assert record["system_choice"] == "RUNNER=./app"
+    assert "sources/score.py usage line" in record["description"]
+    assert "The Blueprint was not modified" in record["description"]
+    assert any("ac-env: foundation-suite" in line for line in log)
+
+
+def test_the_blueprint_is_not_rewritten_by_the_repair(tmp_path):
+    """The repair is for one grading. A criterion wrong at rest stays wrong until an author fixes
+    it, which is what keeps the recorded decision honest."""
+    criterion = (
+        "import subprocess\n"
+        "result = subprocess.run(['python3', 'sources/score.py'])\n"
+        "assert result.returncode == 0\n"
+    )
+    target_dir, build_dir = _with_staged_runner(tmp_path, criterion)
+    before = (target_dir / "blueprint" / "DATABASE.md").read_text(encoding="utf-8")
+
+    build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert (target_dir / "blueprint" / "DATABASE.md").read_text(encoding="utf-8") == before
+    assert "os.environ" not in before
+
+
+def test_a_story_whose_every_criterion_is_unverified_is_implemented_not_verified(tmp_path):
+    """Closing green here would report a single-criterion conformance story as verified with its
+    suite never executed."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-fixture\n"
+        "The generated fixture is required.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        'Path("tests/fixtures/repository").read_text(encoding="utf-8")\n'
+        "```\n",
+        encoding="utf-8",
+    )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        step_id="foundation",
+    )
+
+    step = result.steps[0]
+    assert step.acceptance[0].outcome == "UNVERIFIED"
+    # Not a failure — the product may be correct and the criterion broken — and not verified
+    # either, because nothing measured the built code.
+    assert _state(target_dir, "foundation") == "closed/implemented"
+    assert "every criterion this story declared settled UNVERIFIED" in (
+        target_dir / "MANIFEST.md"
+    ).read_text(encoding="utf-8")

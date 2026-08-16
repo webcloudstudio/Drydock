@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.acceptance import AcceptanceRunResult, ProgrammaticAcceptance
+from drydock.acceptance_env import EnvRepair, EnvShortfall
 from drydock.decisions import Decision, load_decisions, write_decisions
 
 _PAYLOAD_RE = re.compile(
@@ -136,6 +137,78 @@ def record_skipped_acceptance_decisions(
                     "do not treat it as passed."
                 ),
             ),
+        )
+    write_decisions(path, tuple(sorted(current.values(), key=lambda record: record.id)))
+    return (path,)
+
+
+def record_acceptance_env_decisions(
+    repairs: tuple[EnvRepair, ...],
+    shortfalls: tuple[EnvShortfall, ...],
+    *,
+    target_dir: Path,
+    story_for: dict[str, str] | None = None,
+) -> tuple[Path, ...]:
+    """Persist one reviewable decision per staged-asset environment repair or shortfall.
+
+    A repair lets a criterion run that would otherwise have been unsatisfiable by any build, so
+    it is a decision Drydock made on the author's behalf and must be visible as one. The record
+    names the criterion, the asset, the variable, the value, and where the value came from, so
+    the repair can be checked without re-deriving it. The Blueprint text is unchanged, which is
+    why the decision stays ``recommended``: the criterion is still wrong at rest.
+    """
+    if not repairs and not shortfalls:
+        return ()
+    story_for = story_for or {}
+    path = target_dir / "DECISIONS.json"
+    current = {item.id: item for item in load_decisions(path)}
+    for repair in repairs:
+        record_id = f"build-env-{repair.source}-{repair.check_id}-{repair.name}".lower().replace(
+            " ", "-"
+        )
+        current[record_id] = Decision(
+            id=record_id,
+            type="text",
+            severity="material",
+            origin="build",
+            blueprint=repair.source,
+            story=story_for.get(repair.check_id),
+            status="recommended",
+            archived=False,
+            title=f"Acceptance environment supplied: {repair.check_id}",
+            description=(
+                f"{repair.check_id} invokes staged asset {repair.asset} without {repair.name}, "
+                f"which that asset declares required. Drydock supplied "
+                f"{repair.name}={repair.value!r} for this grading, taken from the "
+                f"{repair.origin}. The Blueprint was not modified; repair the criterion in "
+                f"{repair.source} to make this permanent."
+            ),
+            options=(),
+            system_choice=f"{repair.name}={repair.value}",
+        )
+    for shortfall in shortfalls:
+        record_id = (
+            (f"build-env-unresolved-{shortfall.source}-{shortfall.check_id}-{shortfall.name}")
+            .lower()
+            .replace(" ", "-")
+        )
+        current[record_id] = Decision(
+            id=record_id,
+            type="text",
+            severity="material",
+            origin="build",
+            blueprint=shortfall.source,
+            story=story_for.get(shortfall.check_id),
+            status="recommended",
+            archived=False,
+            title=f"Acceptance environment unresolved: {shortfall.check_id}",
+            description=(
+                f"{shortfall.check_id} {shortfall.reason}. The criterion cannot be satisfied by "
+                f"any build and is reported unverified rather than charged against the product. "
+                f"Repair the criterion in {shortfall.source}."
+            ),
+            options=(),
+            system_choice=None,
         )
     write_decisions(path, tuple(sorted(current.values(), key=lambda record: record.id)))
     return (path,)

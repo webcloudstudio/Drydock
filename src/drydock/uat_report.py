@@ -716,6 +716,70 @@ def _run_summary(case_root: Path, result: dict, prefix: str = "") -> str:
     ])
 
 
+def _decision_records(case_root: Path) -> tuple[list[dict], str]:
+    """Return this run's decision records and the path they were read from.
+
+    A UAT run has no operator at the keyboard, so every question Drydock raised was either
+    answered from the fixture or decided by Drydock itself. That makes ``DECISIONS.json`` the
+    review surface for an unattended run — the same role ``decisions`` plays interactively — and
+    it must be reachable from the run page rather than buried in the workspace mirror.
+    """
+    targets = case_root / "workspace" / "targets"
+    if not targets.is_dir():
+        return [], ""
+    for target_dir in sorted(path for path in targets.iterdir() if path.is_dir()):
+        path = target_dir / "DECISIONS.json"
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return [], ""
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)], str(
+                path.relative_to(case_root).as_posix()
+            )
+    return [], ""
+
+
+def _decisions_block(case_root: Path) -> str:
+    """Tier-one panel listing every decision recorded during the run."""
+    records, relative = _decision_records(case_root)
+    if not records:
+        return ""
+    open_count = sum(1 for item in records if str(item.get("status")) != "answered")
+    rows = [
+        [
+            _cell(str(item.get("id") or "")),
+            _cell(str(item.get("origin") or "")),
+            _cell(str(item.get("severity") or "")),
+            _cell(str(item.get("status") or "")),
+            _cell(str(item.get("title") or "")),
+            _cell(str(item.get("system_choice") or "—")),
+            _cell(str(item.get("commander_direction") or "—")),
+        ]
+        for item in records
+    ]
+    note = (
+        f"{len(records)} recorded · {open_count} still recommended. A recommended decision is "
+        "one Drydock made on the author's behalf and no human has confirmed. Decisions carry "
+        "forward: an answered one is re-entered on this project's next run."
+    )
+    link = f" Full record: {_link(f'view/{relative}.html')}." if relative else ""
+    return f'<h2>Decisions</h2><p class="note">{html.escape(note)}{link}</p>' + _table(
+        (
+            "ID",
+            "Origin",
+            "Severity",
+            "Status",
+            "Title",
+            "System choice",
+            "Commander direction",
+        ),
+        rows,
+    )
+
+
 def _render_case(
     case_root: Path,
     result: dict,
@@ -975,6 +1039,7 @@ def _render_case(
             meta,
             _run_summary(case_root, result),
             run_notes(),
+            _decisions_block(case_root),
             "<h2>Run detail</h2>",
             '<p class="note">Everything below is the underlying record: the commands Drydock '
             "executed, the model calls they made, and every file this run wrote.</p>",
@@ -1065,6 +1130,31 @@ def _kit_bundle_panels(kit_root: Path) -> str:
     return "\n".join(sections)
 
 
+def _kit_decisions_rows(kit_root: Path) -> list[list[str]]:
+    """One row per run, counting the decisions it recorded and how many remain recommended."""
+    runs_root = kit_root / "runs"
+    if not runs_root.is_dir():
+        return []
+    rows: list[list[str]] = []
+    for run_dir in sorted((path for path in runs_root.iterdir() if path.is_dir()), reverse=True):
+        records, _ = _decision_records(run_dir)
+        if not records:
+            continue
+        open_count = sum(1 for item in records if str(item.get("status")) != "answered")
+        material = sum(
+            1
+            for item in records
+            if str(item.get("severity")) == "material" and str(item.get("status")) != "answered"
+        )
+        rows.append([
+            _link(f"runs/{run_dir.name}/index.html", run_dir.name),
+            _cell(str(len(records)), css="num"),
+            _cell(str(open_count), css="num"),
+            _cell(str(material) if material else "—", css="num"),
+        ])
+    return rows
+
+
 def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
     """Render the kit landing page: one row per run, newest first."""
     latest = results[0][1] if results else {}
@@ -1146,11 +1236,24 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
                 ("Run", "Status", "Model", "Commands", "Build passes", "Elapsed", "LLM usage"),
                 rows,
             ),
+            "<h2>Decisions</h2>",
+            '<p class="note">Questions Drydock raised while building this project, and how each '
+            "was settled. A run has no operator at the keyboard, so a decision still marked "
+            "recommended was made by Drydock and no human has confirmed it. Answered decisions "
+            "carry forward into the next run of this project.</p>",
+            _table(
+                ("Run", "Recorded", "Recommended", "Material open"),
+                _kit_decisions_rows(kit_root),
+            ),
+            "<h2>Inputs</h2>",
+            '<p class="note">Everything supplied to these runs before Drydock authored '
+            "anything: the imported specification bundle, the declared technology stack, the "
+            "frozen Sea Trials, the replacement sources that drive each rebuild, and the "
+            "decisions carried in from earlier runs.</p>",
+            _kit_bundle_panels(kit_root),
             "<h2>Project</h2>",
             '<p class="note">The governed documents that define this project.</p>',
             _table(("File", "Purpose"), _kit_documents(kit_root)),
-            "<h2>Inputs</h2>",
-            _kit_bundle_panels(kit_root),
             "<footer>Generated by <code>drydock uat --report</code>.</footer>",
         ]),
     )

@@ -48,6 +48,7 @@ from drydock.acceptance_contract import (
     load_contract,
     run_gate,
 )
+from drydock.acceptance_env import read_staged_assets, repair_staged_asset_env
 from drydock.acceptance_requirements import (
     authorization_for,
     discover_missing_requirement,
@@ -65,7 +66,11 @@ from drydock.build import (
     reusable_build_compact_sources,
     work_kind_of,
 )
-from drydock.build_decisions import record_build_decisions, record_skipped_acceptance_decisions
+from drydock.build_decisions import (
+    record_acceptance_env_decisions,
+    record_build_decisions,
+    record_skipped_acceptance_decisions,
+)
 from drydock.build_environment import EnvMaterialization, materialize_env_file
 from drydock.build_plan import (
     FINISHED_STATES,
@@ -128,6 +133,14 @@ UNGATED_FINDING_PREFIX = "UNVERIFIED: acceptance bypassed by --ungate"
 UNGOVERNED_FINDING = (
     "ADVISORY: implemented, not verified — no governed acceptance command covers this story. "
     "Declare one in ACCEPTANCE.json to gate it."
+)
+
+#: Recorded on a block whose every criterion settled UNVERIFIED. The product may be correct and
+#: the criteria broken, so it is not a failure; nothing measured it, so it is not verification.
+UNEXAMINED_FINDING = (
+    "ADVISORY: implemented, not verified — every criterion this story declared settled "
+    "UNVERIFIED, so nothing was measured against the built code. Repair the criteria in "
+    "the Blueprint and rebuild to obtain a verdict."
 )
 
 
@@ -2374,6 +2387,37 @@ def build_target(
             for message in dict.fromkeys(acceptance_defects):
                 on_text(f"[build] WARNING {message}\n")
         checks = tuple(gathered_checks)
+        # A criterion that invokes a staged asset without the environment that asset declares
+        # required cannot be satisfied by any build: a repair pass may not rewrite a criterion,
+        # and the asset is restored before grading. Left alone it spends the whole repair budget
+        # against an assertion nothing can move, and then reports the result as a product defect.
+        # Supply the environment here, in memory, for this grading only — the criterion then runs
+        # and yields a real verdict, which is strictly more evidence than reporting it unverified.
+        # Nothing is cached: this is recomputed from the criterion text on every build, so a
+        # repaired Blueprint simply stops producing repairs.
+        staged_asset_text = read_staged_assets(blueprint_dir)
+        checks, env_repairs, env_shortfalls = repair_staged_asset_env(checks, staged_asset_text)
+        if env_repairs or env_shortfalls:
+            regression_repaired, _, _ = repair_staged_asset_env(
+                tuple(proven_checks.values()), staged_asset_text
+            )
+            proven_checks = {check.check_id: check for check in regression_repaired}
+            record_acceptance_env_decisions(
+                env_repairs,
+                env_shortfalls,
+                target_dir=target_dir,
+                story_for={check_id: block.block_id for check_id, block in story_by_check.items()},
+            )
+            for repair in env_repairs:
+                _emit(
+                    on_text,
+                    f"ac-env: {repair.check_id} calls {repair.asset} without {repair.name} — "
+                    f"supplied {repair.name}={repair.value} from the {repair.origin} "
+                    f"(recorded in DECISIONS.json; repair {repair.source})",
+                )
+            for shortfall in env_shortfalls:
+                _emit(on_text, f"ac-env: {shortfall.check_id} {shortfall.reason} — UNVERIFIED")
+        unresolved_env_checks = {shortfall.check_id for shortfall in env_shortfalls}
         # Criteria this unit does not grade itself. Re-run after the block builds; never
         # injected into the prompt unless one of them goes red, because telling a model about
         # criteria it is not being asked to satisfy spends context on work it must not do.
@@ -2916,6 +2960,18 @@ def build_target(
                         if acceptance:
                             acceptance = tuple(
                                 replace(item, provisioning_result=provisioning_result)
+                                for item in acceptance
+                            )
+                        # A criterion whose staged-asset environment could not be resolved never
+                        # reaches the code under test, whatever its exit status. Settle it as
+                        # UNVERIFIED so it neither drives a repair pass nor is charged to the
+                        # product; the decision recorded above carries the repair back to the
+                        # author.
+                        if unresolved_env_checks and acceptance:
+                            acceptance = tuple(
+                                replace(item, skipped=True)
+                                if item.check_id in unresolved_env_checks and not item.passed
+                                else item
                                 for item in acceptance
                             )
                         skipped_checks = tuple(check for check in acceptance if check.skipped)
@@ -3487,6 +3543,14 @@ def build_target(
                 and owner.block_id == block.block_id
             )
             gate = gate_results.get(block.block_id)
+            # A story that declared criteria and closed without one of them passing produced no
+            # evidence at all: every criterion settled UNVERIFIED, so nothing was measured
+            # against the built code. That is not a failure — the product may be entirely
+            # correct and the criteria broken — but it is emphatically not verification, and
+            # closing it green would report a single-criterion conformance story as verified
+            # with its suite never executed. ``implemented`` is the state that already means
+            # exactly this: the work is done and nothing with standing examined it.
+            unexamined = bool(own_checks) and not any(check.passed for check in own_checks)
             if ac_attributable:
                 # Per-block attribution: only the story whose own governed gate failed is
                 # closed/failed. A group-mate that passed its own gate, or has none, does not
@@ -3519,6 +3583,8 @@ def build_target(
                         result,
                         own_checks,
                     )
+                elif unexamined:
+                    block_state, block_finding = "closed/implemented", UNEXAMINED_FINDING
                 elif acceptance_contract.declared:
                     block_state, block_finding = "closed/implemented", UNGOVERNED_FINDING
                 else:
@@ -3529,6 +3595,9 @@ def build_target(
             elif gate is not None and gate.passed:
                 block_state = "closed/verified"
                 block_finding = None
+            elif gate is None and unexamined:
+                block_state = "closed/implemented"
+                block_finding = UNEXAMINED_FINDING
             elif gate is not None:
                 # The gate could not run. That is a fault in the kit, not the product, so it
                 # never fails the block — but it also cannot verify it.

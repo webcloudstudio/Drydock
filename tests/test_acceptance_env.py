@@ -6,9 +6,13 @@ import textwrap
 
 from drydock.acceptance import parse_programmatic_acceptance_text
 from drydock.acceptance_env import (
+    asset_usage_value,
+    env_gaps,
     missing_env_names,
     read_staged_assets,
+    repair_staged_asset_env,
     required_env_names,
+    sibling_env_value,
     staged_asset_env_defects,
 )
 
@@ -182,3 +186,132 @@ def test_staged_assets_are_read_from_the_blueprint_source_tree(tmp_path):
 
 def test_no_source_tree_reads_as_no_assets(tmp_path):
     assert read_staged_assets(tmp_path) == {}
+
+
+# ── repair ───────────────────────────────────────────────────────────────────────────
+
+
+def _check(code: str, check_id: str = "formats-suite", source: str = "FEATURE-Formats.md"):
+    text = (
+        f"## Programmatic Acceptance\n\n=== AC {check_id} ===\nIntent: t.\n\n"
+        f"{_code(code)}=== END AC {check_id} ===\n"
+    )
+    return parse_programmatic_acceptance_text(text, source=source)
+
+
+def test_the_asset_usage_line_supplies_the_value():
+    assert asset_usage_value(RUNNER, "sources/run_conformance.py", "JQ") == "./jq"
+
+
+def test_a_value_carrying_an_unexpanded_shell_reference_is_refused():
+    """``env=`` performs no substitution, so ``$PWD/jq`` would reach the child as a literal."""
+    text = 'Usage:\n    JQ="$PWD/jq" python3 sources/only.py\n'
+    assert asset_usage_value(text, "sources/only.py", "JQ") is None
+
+
+def test_a_sibling_criterion_in_the_same_blueprint_supplies_the_value():
+    checks = (
+        *_check(
+            """
+            import os, subprocess
+            subprocess.run(["python3", "sources/tool.py"], env={**os.environ, "RUNNER": "./bin/x"})
+            """,
+            check_id="good",
+        ),
+        *_check("import subprocess\nsubprocess.run(['python3', 'sources/tool.py'])", "bad"),
+    )
+    assert sibling_env_value(checks, "FEATURE-Formats.md", "sources/tool.py", "RUNNER") == "./bin/x"
+
+
+def test_a_sibling_in_a_different_blueprint_is_not_borrowed():
+    """Acceptance belongs to the story that declared it; a value from elsewhere answers another
+    question."""
+    checks = _check(
+        """
+        import os, subprocess
+        subprocess.run(["python3", "sources/tool.py"], env={**os.environ, "RUNNER": "./bin/x"})
+        """,
+        check_id="good",
+        source="FEATURE-Other.md",
+    )
+    assert sibling_env_value(checks, "FEATURE-Formats.md", "sources/tool.py", "RUNNER") is None
+
+
+def test_the_run_that_failed_is_repaired_from_the_assets_own_usage_line():
+    """Verbatim from the jq UAT run 20260816.202001, FEATURE-Formats.md."""
+    checks = _check(
+        """
+        import subprocess
+
+        result = subprocess.run(
+            ["python3", "sources/run_conformance.py", "--select", r"@|interpolation"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        """
+    )
+    repaired, applied, shortfalls = repair_staged_asset_env(checks, ASSETS)
+    assert shortfalls == ()
+    assert [(item.name, item.value) for item in applied] == [("JQ", "./jq")]
+    assert applied[0].origin == "sources/run_conformance.py usage line"
+    assert "os.environ['JQ'] = './jq'" in repaired[0].code
+    # The repair is what makes the criterion satisfiable at all.
+    assert missing_env_names(repaired[0].code, ASSETS) == ()
+
+
+def test_a_criterion_that_already_supplies_the_variable_is_untouched():
+    checks = _check(
+        """
+        import os, subprocess
+        subprocess.run(
+            ["python3", "sources/run_conformance.py"], env={**os.environ, "JQ": "./jq"}
+        )
+        """
+    )
+    repaired, applied, shortfalls = repair_staged_asset_env(checks, ASSETS)
+    assert (applied, shortfalls) == ((), ())
+    assert repaired[0].code == checks[0].code
+
+
+def test_a_closed_environment_is_reported_rather_than_repaired():
+    """No assignment upstream of the call can reach a child the criterion deliberately isolated."""
+    checks = _check(
+        """
+        import subprocess
+        subprocess.run(["python3", "sources/run_conformance.py"], env={"PATH": "/usr/bin"})
+        """
+    )
+    repaired, applied, shortfalls = repair_staged_asset_env(checks, ASSETS)
+    assert applied == ()
+    assert [(item.name, item.check_id) for item in shortfalls] == [("JQ", "formats-suite")]
+    assert repaired[0].code == checks[0].code
+
+
+def test_a_gap_no_source_can_answer_is_reported_as_a_shortfall():
+    asset = "Environment:\n    TOKEN      credential. Required\n"
+    checks = _check("import subprocess\nsubprocess.run(['sh', 'sources/deploy.sh'])")
+    _, applied, shortfalls = repair_staged_asset_env(checks, {"sources/deploy.sh": asset})
+    assert applied == ()
+    assert shortfalls[0].name == "TOKEN"
+    assert "neither the asset nor FEATURE-Formats.md states a value" in shortfalls[0].reason
+
+
+def test_a_project_with_no_staged_assets_is_never_repaired():
+    checks = _check("import subprocess\nsubprocess.run(['python3', 'x.py'])")
+    assert repair_staged_asset_env(checks, {}) == (checks, (), ())
+
+
+def test_a_closed_environment_is_not_inheritable():
+    code = (
+        "import subprocess\nsubprocess.run(['python3','sources/run_conformance.py'],env={'A':'b'})"
+    )
+    assert [gap.inheritable for gap in env_gaps(code, ASSETS)] == [False]
+
+
+def test_an_environ_spread_is_inheritable():
+    code = (
+        "import os, subprocess\n"
+        "subprocess.run(['python3','sources/run_conformance.py'], env={**os.environ})"
+    )
+    assert [gap.inheritable for gap in env_gaps(code, ASSETS)] == [True]

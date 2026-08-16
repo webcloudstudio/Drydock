@@ -8,6 +8,21 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-08-16: `drydock uat` carries answered decisions forward and publishes every decision on the
+  report. A run's `DECISIONS.json` is copied to its `inputs/` directory at completion, and the next
+  run of the same project re-enters the decisions a human answered — `commander_direction` only, so
+  Drydock's own `system_choice` proposals are re-derived each run rather than cached. UAT runs are
+  therefore not clean-room: a question settled once stays settled, which is the point. Both report
+  surfaces now show them: a run's page carries a `Decisions` section above the run detail, listing
+  each decision's id, origin, severity, status, title, system choice, and commander direction; the
+  project page carries a `Decisions` section, above `Inputs` and `Project`, counting the decisions
+  each run recorded and how many remain recommended. The project page's `Inputs` section is now
+  labelled with what it holds. `DECISIONS.json` was already sealed into each run but was reachable
+  only four directories deep inside the workspace mirror, with nothing linking to it — an
+  unattended run has no operator at the keyboard, so it is the only review surface there is.
+
 ### Changed
 
 - 2026-08-16: A UAT receipt now links one LLM activity log per lifecycle step instead of a row of
@@ -21,6 +36,38 @@ command surface and Typed Specification contract are unstable and may change bet
   so a planning step that drives lineage attribution continues to own those calls.
 
 ### Fixed
+
+- 2026-08-16: An acceptance criterion that invokes a staged source asset without the environment
+  that asset requires is now supplied that environment at build time, so the criterion produces a
+  verdict instead of consuming the repair budget. Detection at plan time reports the defect but
+  does not stop it reaching a builder — `drydock uat` plans with `--override`, where the blocking
+  decision is recorded rather than enforced — and the criterion is unsatisfiable by any build: a
+  repair pass may not rewrite a criterion, and staged assets are restored before grading. `build`
+  now reads each block's criteria against the staged assets before its first LLM call and injects
+  the missing variable into the criterion's own environment for that grading only, taking the
+  value from the asset's documented usage line and, failing that, from a criterion in the same
+  Blueprint that invokes the same asset correctly. The Blueprint and the staged asset are
+  unchanged; every injection is recorded in `DECISIONS.json` as a `recommended` decision naming
+  the criterion, asset, variable, value, and the source of the value, and is re-derived on every
+  build so a repaired Blueprint simply stops producing them. A gap no source can answer, or one
+  behind a closed `env=` dict no upstream assignment can reach, settles the criterion UNVERIFIED
+  and records the decision without a choice. In the observed `jq` run, five of ten `Suite: scoped`
+  criteria omitted `JQ` — the other five supplied it, from the same prompt in the same run — and
+  the first to execute burned three LLM calls, failed its block, left blocks 6 through 11 unbuilt,
+  and was reported as a product defect.
+
+- 2026-08-16: A story whose every criterion settled UNVERIFIED now closes `closed/implemented`
+  rather than `closed/verified`. Nothing measured the built code, so the story is not verified;
+  the product may be correct and the criteria broken, so it is not a failure either. The Manifest
+  records an advisory naming the condition. Previously a single-criterion conformance story whose
+  criterion never ran closed green, which would have released a project with its conformance suite
+  never executed.
+
+- 2026-08-16: `drydock uat` no longer charges an UNVERIFIED assertion to the product as well as to
+  the harness. The run record derived `failed` as `total - passed`, which includes unverified, so
+  one assertion that never ran was counted once as `harness_defects` and again as
+  `product_defects`. The run record also now carries `release_verdict`, the release gate's own
+  PASSED/FAILED/ERROR result, which `acceptance_status` is derived from and does not preserve.
 
 - 2026-08-16: An acceptance criterion that invokes a staged source asset without the environment
   that asset declares required is now detected at plan time instead of failing a build block. The
