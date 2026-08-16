@@ -53,6 +53,10 @@ docs/drydock_planning/
 targets/
 uat/
 
+# Author-private working material; kept on disk, never in the repository
+ideas/
+notes/
+
 # QuarterDeck local state
 QuarterDeck/data/*.sqlite
 QuarterDeck/tickets.json
