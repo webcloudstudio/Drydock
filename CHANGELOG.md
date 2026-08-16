@@ -10,6 +10,38 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-15: A UAT run can be resumed at a recorded step instead of a stage name. `drydock uat
+  <Project> --steps` prints the last run's numbered steps with the stage each one resumes into, and
+  `drydock uat <Project> --from-step <n>` re-enters the run at the stage that owns step `n`,
+  stating the translation before it runs. A stage remains the atomic entry unit, so a step
+  belonging to `init` is refused with a pointer to a fresh run; `--from-step` and `--stage` are
+  mutually exclusive and both accept `--run`.
+
+- 2026-08-15: A nonzero `drydock score ac`, `drydock score build`, `drydock score release`, and
+  `drydock build` now names its cause on stderr as well as stdout: the failing criterion or block,
+  its owner and Blueprint file, and the assertion summary. The graded report on stdout is
+  unchanged. An empty error stream beside a nonzero exit is now a defect rather than the norm, so a
+  harness or CI step that captured only stderr is told why the command failed.
+
+### Changed
+
+- 2026-08-15: UAT proof kits report `drydock status` steps as states rather than grades. A status
+  row's Result column carries the state the command printed — `READY TO BUILD`, `NOT READY`,
+  `BUILD COMPLETE`, `INCOMPLETE` — with no pass/fail styling and no `EXIT n` stamp, and shows
+  nothing when the invocation printed no headline. The same rendering applies to the build receipt.
+
+- 2026-08-15: The proof kit's Error tab quotes every step that exited nonzero, in run order and
+  with the error stream first, instead of only the first and last. A failing step that wrote
+  nothing to stderr is called out as such rather than rendered blank.
+
+- 2026-08-15: A UAT run records the LLM execution identifiers each lifecycle command produced, and
+  the proof kit joins model transcripts to steps with those identifiers. The previous association
+  was reconstructed by matching `Calling <provider>/<model>` banners in captured stdout, which
+  attached nothing to `drydock build` — the command that makes most of a run's calls and prints no
+  banner. Runs recorded before the field still fall back to banner matching. Kit selection also
+  now resolves to the directory spelling on disk, so a case-insensitive filesystem no longer
+  records paths the report cannot state relative to the kit.
+
 - 2026-08-15: Every `drydock uat` invocation verifies that each selected `uat/<Kit>/` directory is
   an independent Git repository, initializes it when absent, and commits all pending kit changes
   before exit, including report rebuilds, resumed stages, failures, and usage exits reached after

@@ -164,6 +164,15 @@ def _relative(value: object, base: Path) -> str:
             return path.relative_to(candidate).as_posix()
         except ValueError:
             continue
+    # A case-insensitive filesystem lets a run record ``uat/Commonmark`` for a directory named
+    # ``CommonMark``: the same file, spelled the way the operator typed it. Matching exactly would
+    # call that path external and publish an absolute link nobody else can open, so the spellings
+    # are compared case-blind and the recorded remainder is kept.
+    for candidate in (base, base.resolve()):
+        prefix = candidate.as_posix().rstrip("/") + "/"
+        recorded = path.as_posix()
+        if recorded[: len(prefix)].lower() == prefix.lower():
+            return recorded[len(prefix) :]
     return text
 
 
@@ -683,13 +692,56 @@ def _is_status_command(argv: Sequence[object]) -> bool:
     return _command_text(argv).split()[:2] == ["drydock", "status"]
 
 
-def _status_cell(returncode: object, argv: Sequence[object] = ()) -> str:
-    """Stamp a recorded exit code without calling a status-state signal a failure."""
+#: The verdicts ``drydock status`` prints as the first word of its first line. These are states,
+#: not outcomes: the command succeeded in every case and its exit code is the verdict channel.
+_STATUS_HEADLINES = (
+    "READY TO BUILD",
+    "BUILD COMPLETE",
+    "NOT READY",
+    "INCOMPLETE",
+    "COMPLETE",
+    "BLOCKED",
+)
+
+
+def status_headline(text: str) -> str:
+    """Return the state a ``drydock status`` invocation reported, from the line it printed.
+
+    ``--ready`` and ``--check`` each lead with their verdict. A bare ``drydock status`` renders a
+    projection with no headline, which reports as no state rather than an invented one.
+    """
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        for headline in _STATUS_HEADLINES:
+            if stripped.startswith(headline):
+                return headline
+    return ""
+
+
+def recorded_status_headline(base: Path, stdout: str, argv: Sequence[object]) -> str:
+    """Read the state a status step reported, so its row can show that instead of a grade."""
+    if not stdout or not _is_status_command(argv):
+        return ""
+    try:
+        with (base / stdout).open("r", encoding="utf-8", errors="replace") as handle:
+            return status_headline(handle.read(4096))
+    except OSError:
+        return ""
+
+
+def _status_cell(returncode: object, argv: Sequence[object] = (), headline: str = "") -> str:
+    """Grade a command's exit code, or report a status command's state without grading it.
+
+    ``drydock status`` is a status check. Its nonzero exits are states — NOT READY, INCOMPLETE —
+    so the Result column carries the state it reported and never a pass/fail verdict over it.
+    """
     ok = returncode == 0
-    if not ok and _is_status_command(argv):
+    if _is_status_command(argv):
+        if not headline:
+            return '<td class="dash">—</td>'
         return (
-            f'<td><span class="tag unknown" title="exit {html.escape(str(returncode))}">'
-            f"EXIT {html.escape(str(returncode))}</span></td>"
+            f'<td><span class="tag raw" title="exit {html.escape(str(returncode))}">'
+            f"{html.escape(headline)}</span></td>"
         )
     label = "OK" if ok else f"FAIL {returncode}"
     state = "pass" if ok else "fail"

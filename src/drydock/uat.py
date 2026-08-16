@@ -7,13 +7,14 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
@@ -58,6 +59,10 @@ class CommandResult:
     stderr_path: str
     label: str = ""
     cwd: str = ""
+    #: Identifiers of the LLM executions this command produced, recorded from the workspace's
+    #: execution log as the command ran. The report joins model transcripts to steps with these
+    #: rather than reconstructing the association from console text a child may never print.
+    llm_executions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -268,6 +273,24 @@ def _fixture_stack(path: Path | None) -> Path | None:
     return path
 
 
+def _canonical_kit_dir(root: Path, selected: str) -> Path:
+    """Return the kit directory as it is spelled on disk, not as the operator typed it.
+
+    A case-insensitive filesystem — every Windows-backed workspace — opens ``uat/Commonmark``
+    for a directory named ``CommonMark``. Every path a run records is then built from the typed
+    spelling, and the report's attempt to state those paths relative to the kit fails on the
+    mismatch, so the published receipt links absolute workspace paths nobody else can open.
+    """
+    candidate = root / selected
+    if candidate.name in {path.name for path in root.iterdir() if path.is_dir()}:
+        return candidate
+    lowered = selected.lower()
+    for path in sorted(root.iterdir()):
+        if path.is_dir() and path.name.lower() == lowered:
+            return path
+    return candidate
+
+
 def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixture, ...]:
     """Discover the configured UAT kits under ``root``.
 
@@ -279,7 +302,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
     if not root.is_dir():
         raise SpecificationError(f"UAT kit directory does not exist: {root}")
     directories = (
-        [root / selected]
+        [_canonical_kit_dir(root, selected)]
         if selected
         else sorted(path for path in root.iterdir() if (path / "uat.json").is_file())
     )
@@ -474,6 +497,33 @@ def subprocess_runner(
         label=label,
         cwd=str(cwd),
     )
+
+
+def execution_ids(records: Path) -> tuple[str, ...]:
+    """Return every LLM execution identifier recorded so far, in the order it was written.
+
+    Reading the log before and after a child command names exactly the executions that command
+    produced. The alternative — matching call banners in captured console output — misses every
+    call a command makes without printing one, which is all of them for ``drydock build``.
+    """
+    if not records.is_file():
+        return ()
+    found: list[str] = []
+    try:
+        text = records.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and payload.get("execution_id"):
+            found.append(str(payload["execution_id"]))
+    return tuple(found)
 
 
 def make_streaming_runner(sink: StepSink) -> Runner:
@@ -763,6 +813,9 @@ def _prior_run(case_root: Path) -> tuple[tuple[CommandResult, ...], int]:
                 stderr_path=absolute(item.get("stderr_path")),
                 label=str(item.get("label") or ""),
                 cwd=absolute(item.get("cwd")),
+                llm_executions=tuple(
+                    str(value) for value in item.get("llm_executions") or () if value
+                ),
             )
         )
     try:
@@ -801,6 +854,108 @@ def resolve_run_dir(fixture: UATFixture, run: str | None = None) -> Path:
     if not existing:
         raise SpecificationError(f"No completed run to resume for kit {fixture.name}: {runs}")
     return existing[-1]
+
+
+#: The lifecycle stage that owns each recorded step label. An operator reads the step table of a
+#: failed run and knows which step to re-enter; this is the translation from that step number back
+#: to the stage the resume machinery understands. Exact labels are matched first because ``init``
+#: is a prefix of ``initial-ready``.
+_EXACT_LABEL_STAGES: dict[str, str] = {
+    "init": "init",
+    "import-sources": "import",
+    "analyze": "analyze",
+    "plan": "plan",
+    "test": "test",
+}
+
+_PREFIX_LABEL_STAGES: tuple[tuple[str, str], ...] = (
+    ("after-plan-", "plan"),
+    ("initial-", "build"),
+    ("after-initial-", "build"),
+    ("import-update-", "refit"),
+    ("refit-", "refit"),
+    ("after-refit-", "refit"),
+    ("score-", "score"),
+)
+
+_STEP_PREFIX_RE = re.compile(r"^\d+-")
+
+
+def stage_for_label(label: str) -> str:
+    """Return the resumable stage that produced the step recorded as *label*."""
+    name = _STEP_PREFIX_RE.sub("", label)
+    stage = _EXACT_LABEL_STAGES.get(name)
+    if stage:
+        return stage
+    for prefix, candidate in _PREFIX_LABEL_STAGES:
+        if name.startswith(prefix):
+            return candidate
+    raise SpecificationError(
+        f"Step {label!r} belongs to no resumable stage; resume with --stage instead."
+    )
+
+
+@dataclass(frozen=True)
+class RunStep:
+    """One numbered step of a recorded run, with the stage a resume would re-enter."""
+
+    number: int
+    label: str
+    stage: str
+    returncode: int
+
+
+def run_steps(case_root: Path) -> tuple[RunStep, ...]:
+    """Number the steps of a recorded run so an operator can name one instead of a stage."""
+    commands, _ = _prior_run(case_root)
+    if not commands:
+        raise SpecificationError(f"No recorded steps in {case_root}")
+    steps: list[RunStep] = []
+    for number, command in enumerate(commands, start=1):
+        label = command.label or f"step-{number:02d}"
+        steps.append(RunStep(number, label, stage_for_label(label), command.returncode))
+    return tuple(steps)
+
+
+def resolve_step_stage(fixture: UATFixture, run: str | None, step: int) -> tuple[str, RunStep]:
+    """Translate a recorded step number into the stage a resume re-enters.
+
+    A stage is the atomic entry unit: re-entering at the stage that owns the step replays that
+    stage from its start. There is no mid-stage entry, because a stage's later commands read
+    what its earlier ones produced.
+    """
+    case_root = resolve_run_dir(fixture, run)
+    steps = run_steps(case_root)
+    if step < 1 or step > len(steps):
+        raise SpecificationError(
+            f"Step {step} is out of range for {case_root.name}: it recorded {len(steps)} steps."
+        )
+    resolved = steps[step - 1]
+    # ``init`` is not a resume: it creates the workspace the run directory already holds. An
+    # operator asking to re-enter there wants a new run, which is what plain ``drydock uat`` is.
+    if resolved.stage == "init":
+        raise SpecificationError(
+            f"Step {step} ({resolved.label}) belongs to stage 'init', which creates the run. "
+            f"Start a new run with: drydock uat {fixture.name}"
+        )
+    return case_root.name, resolved
+
+
+def render_steps(fixture: UATFixture, run: str | None) -> str:
+    """Render the recorded step table an operator reads before choosing ``--from-step``."""
+    case_root = resolve_run_dir(fixture, run)
+    steps = run_steps(case_root)
+    width = max(len(step.label) for step in steps)
+    lines = [f"{fixture.name} run {case_root.name}", ""]
+    lines.extend(
+        f"  {step.number:>3}  {step.label:<{width}}  {step.stage:<8}  exit {step.returncode}"
+        for step in steps
+    )
+    lines.extend([
+        "",
+        f"Resume with: drydock uat {fixture.name} --from-step <n> [--run {case_root.name}]",
+    ])
+    return "\n".join(lines)
 
 
 #: The Target artifact each resumable stage consumes, and the stage that produces it. A resume
@@ -889,6 +1044,7 @@ def run_fixture(
         env["DRYDOCK_EFFORT"] = effort
     env.pop("DRYDOCK_PARENT_TRANSCRIPT", None)
 
+    llm_records = workspace / "logs" / "llm.jsonl"
     prior_commands, prior_passes = _prior_run(case_root) if start else ((), 0)
     commands: list[CommandResult] = list(prior_commands)
     scores: dict[str, int] = {}
@@ -901,7 +1057,9 @@ def run_fixture(
         argv = (sys.executable, "-m", "drydock", *parts)
         if on_event:
             on_event(f"{fixture.name}: {label}")
+        before = len(execution_ids(llm_records))
         result = runner(argv, workspace, env, command_logs, f"{sequence:02d}-{label}")
+        result = replace(result, llm_executions=execution_ids(llm_records)[before:])
         commands.append(result)
         if required and result.returncode != 0:
             raise DrydockError(f"{fixture.name}: {label} exited {result.returncode}")

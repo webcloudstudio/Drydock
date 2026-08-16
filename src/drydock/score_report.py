@@ -61,6 +61,7 @@ from drydock.report_render import (
     inventory_panels,
     local_run_window,
     prune_generated,
+    recorded_status_headline,
     run_notes,
 )
 
@@ -802,7 +803,11 @@ def _render(
             _cell(index, css="num"),
             _cell(command.get("time") or "", css="nowrap"),
             f"<td><code>{html.escape(_command_text(command.get('argv') or []))}</code></td>",
-            _status_cell(command.get("returncode"), command.get("argv") or []),
+            _status_cell(
+                command.get("returncode"),
+                command.get("argv") or [],
+                recorded_status_headline(report_root, stdout, command.get("argv") or []),
+            ),
             _cell(f"{int(command.get('elapsed_ms') or 0) / 1000:.1f}s", css="num"),
             _stream_link(report_root, stdout, "transcript"),
             _llm_log_cell(report_root, logs),

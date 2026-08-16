@@ -299,7 +299,29 @@ class TestHelpAndVersion:
     def test_uat_run_requires_a_resume_stage(self):
         rc, _, err = run_cli("uat", "ReadingList", "--run", "20260809T000000.000000Z")
         assert rc == 2
-        assert "--run requires --stage" in err
+        assert "--run requires --stage or --from-step" in err
+
+    def test_uat_help_offers_resuming_at_a_recorded_step(self):
+        rc, out, err = run_cli("uat", "--help")
+
+        assert rc == 0, err
+        assert "--from-step" in out
+        assert "--steps" in out
+
+    def test_uat_rejects_a_step_resume_without_a_kit(self):
+        rc, _, err = run_cli("uat", "--from-step", "16")
+        assert rc == 2
+        assert "--from-step requires <Project>" in err
+
+    def test_uat_rejects_a_step_listing_without_a_kit(self):
+        rc, _, err = run_cli("uat", "--steps")
+        assert rc == 2
+        assert "--steps requires <Project>" in err
+
+    def test_uat_refuses_both_a_stage_and_a_step(self):
+        rc, _, err = run_cli("uat", "ReadingList", "--stage", "score", "--from-step", "16")
+        assert rc == 2
+        assert "--from-step" in err
 
     def test_uat_rejects_an_unknown_resume_stage(self):
         rc, _, err = run_cli("uat", "ReadingList", "--stage", "compile")

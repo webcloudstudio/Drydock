@@ -435,20 +435,47 @@ def test_case_kit_stamps_each_command_result_rather_than_printing_an_exit_code(
     assert '<span class="tag fail" title="exit 1">FAIL 1</span>' in page
 
 
-def test_case_kit_never_labels_a_drydock_status_exit_as_a_failure(tmp_path: Path) -> None:
+def test_case_kit_reports_a_status_state_instead_of_grading_it(tmp_path: Path) -> None:
+    """``drydock status`` is a status check: its row shows the state, never a pass/fail grade."""
     case = _case(tmp_path / "run")
     _stage(
         case,
         "03-complete",
         ["/opt/venv/bin/python", "-m", "drydock", "status", "commonmark", "--check"],
         1,
+        stdout="INCOMPLETE: commonmark  0/9 verified  (9 closed/implemented)\n",
+    )
+    _stage(
+        case,
+        "04-ready",
+        ["/opt/venv/bin/python", "-m", "drydock", "status", "commonmark", "--ready"],
+        1,
+        stdout="NOT READY: commonmark  (no buildable frontier)\n",
     )
 
     page = build_case_kit(case).read_text(encoding="utf-8")
 
-    assert '<span class="tag unknown" title="exit 1">EXIT 1</span>' in page
+    assert '<span class="tag raw" title="exit 1">INCOMPLETE</span>' in page
+    assert '<span class="tag raw" title="exit 1">NOT READY</span>' in page
+    assert "EXIT 1" not in page
     assert 'Target completion check passed</td><td><span class="tag unknown">UNPROVEN' in page
     assert 'drydock status commonmark</code></td><td><span class="tag fail"' not in page
+
+
+def test_case_kit_shows_no_result_for_a_status_step_that_named_no_state(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    _stage(
+        case,
+        "03-target-status",
+        ["/opt/venv/bin/python", "-m", "drydock", "status", "commonmark"],
+        1,
+        stdout="Project: commonmark\n",
+    )
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert '<td class="dash">—</td>' in page
+    assert "FAIL 1" not in page
 
 
 def test_case_kit_reports_usage_as_cached_and_uncached(tmp_path: Path) -> None:
@@ -756,13 +783,23 @@ def test_the_kit_index_tags_a_degraded_run_distinctly(tmp_path: Path) -> None:
     assert '<span class="tag degraded">DEGRADED</span>' in page
 
 
-def _stage(case: Path, label: str, argv: list[str], returncode: int) -> None:
+def _stage(
+    case: Path,
+    label: str,
+    argv: list[str],
+    returncode: int,
+    stdout: str | None = None,
+    stderr: str = "",
+) -> None:
     """Add one more executed lifecycle stage to a fixture run, with its captured streams."""
     commands_dir = case / "evidence" / "commands"
-    # stdout carries the stage's account of itself; stderr is empty, which is the ordinary case
-    # for a command that succeeded. An empty stream is never linked or given a viewer page.
-    (commands_dir / f"{label}.stdout.log").write_text(f"{label} ran\n", encoding="utf-8")
-    (commands_dir / f"{label}.stderr.log").write_text("", encoding="utf-8")
+    # stdout carries the stage's account of itself; stderr is empty by default, which is the
+    # ordinary case for a command that succeeded. An empty stream is never linked or given a
+    # viewer page.
+    (commands_dir / f"{label}.stdout.log").write_text(
+        stdout if stdout is not None else f"{label} ran\n", encoding="utf-8"
+    )
+    (commands_dir / f"{label}.stderr.log").write_text(stderr, encoding="utf-8")
     record = json.loads((case / "result.json").read_text(encoding="utf-8"))
     record["commands"].append({
         "argv": argv,
@@ -965,3 +1002,78 @@ def test_the_failure_excerpt_quotes_the_first_failing_stage_not_only_the_last(
     assert "cannot open full_test.sh" in page
     assert "release refused" in page
     assert "where the run diverged" in page
+
+
+def test_case_kit_links_llm_activity_from_the_executions_the_command_recorded(
+    tmp_path: Path,
+) -> None:
+    """A build makes model calls without printing a banner, so the run records the ids itself."""
+    case = _case(tmp_path / "run")
+    _mirror(case)
+    # No banner anywhere: the association comes from the recorded execution ids alone.
+    (case / "evidence" / "commands" / "02-build.stdout.log").write_text("built\n", encoding="utf-8")
+    record = json.loads((case / "result.json").read_text(encoding="utf-8"))
+    record["commands"][1]["llm_executions"] = ["exec-1"]
+    (case / "result.json").write_text(json.dumps(record), encoding="utf-8")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+    steps = page.split('id="panel-llm"')[0]
+
+    assert "view/workspace/logs/call.llm.log.html" in steps
+    # The step that made no call claims none of another step's transcripts.
+    rows = steps.split("<tr>")
+    init_row = next(row for row in rows if "01-init" in row)
+    assert "call.llm.log" not in init_row
+
+
+def test_case_kit_quotes_every_failing_step_error_stream_first(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run", status="failed", failing=True)
+    _stage(
+        case,
+        "03-score-acceptance",
+        ["/opt/venv/bin/python", "-m", "drydock", "score", "ac", "commonmark"],
+        1,
+        stdout="✗ FAIL  complete-conformance\n",
+        stderr="error: acceptance verification failed for commonmark\n",
+    )
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+    errors = page.split('id="panel-error"')[1].split('id="panel-llm"')[0]
+
+    # Both failing steps are quoted, not just the first and the last.
+    assert "02-build" in errors and "03-score-acceptance" in errors
+    assert "boom: acceptance failed" in errors
+    assert "error: acceptance verification failed for commonmark" in errors
+    # stderr leads: a command that exits nonzero states its cause there.
+    assert errors.index("03-score-acceptance.stderr.log") < errors.index(
+        "03-score-acceptance.stdout.log"
+    )
+
+
+def test_case_kit_calls_out_a_failing_step_that_wrote_no_error_stream(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run", status="failed")
+    _stage(
+        case,
+        "03-score-acceptance",
+        ["/opt/venv/bin/python", "-m", "drydock", "score", "ac", "commonmark"],
+        1,
+        stdout="✗ FAIL  complete-conformance\n",
+    )
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+    errors = page.split('id="panel-error"')[1].split('id="panel-llm"')[0]
+
+    assert "wrote nothing to" in errors
+    assert "complete-conformance" in errors
+
+
+def test_a_recorded_path_spelled_in_another_case_is_still_inside_the_kit() -> None:
+    """A case-insensitive filesystem records the typed spelling; the file is the same file."""
+    assert (
+        _relative(
+            "/tmp/uat/Commonmark/runs/r1/workspace/logs/a.log", Path("/tmp/uat/CommonMark/runs/r1")
+        )
+        == "workspace/logs/a.log"
+    )
+    # A genuinely external path is still preserved rather than forced under the kit.
+    assert _relative("/etc/hosts", Path("/tmp/uat/CommonMark/runs/r1")) == "/etc/hosts"

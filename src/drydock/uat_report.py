@@ -65,6 +65,7 @@ from drydock.report_render import (
     inventory_panels,
     local_run_window,
     prune_generated,
+    recorded_status_headline,
     run_notes,
 )
 
@@ -86,12 +87,26 @@ def _command_llm_logs(
     commands: Sequence[Mapping[str, object]],
     calls: Sequence[Mapping[str, object]],
 ) -> tuple[tuple[str, ...], ...]:
-    """Join LLM activity logs to lifecycle commands through captured call banners.
+    """Join LLM activity logs to the lifecycle command that produced them.
 
-    A lifecycle command can make many calls. Its stdout records those calls in order, and
-    ``llm.jsonl`` records their artifacts in the same order. This also reconstructs associations
-    for old UAT runs whose immutable result records predate explicit LLM-log links.
+    A run records the execution identifiers each command created while it ran, which is an exact
+    association. Banner matching against captured stdout is the fallback for runs recorded before
+    that field existed; it is lossy, because a command that makes calls without printing a banner
+    — ``drydock build`` does — leaves nothing to match.
     """
+    by_execution = {str(call.get("execution_id") or ""): call for call in calls}
+    if any(command.get("llm_executions") for command in commands):
+        linked: list[tuple[str, ...]] = []
+        for command in commands:
+            recorded: list[str] = []
+            for execution_id in command.get("llm_executions") or ():
+                call = by_execution.get(str(execution_id))
+                path = str(call.get("llm_log") or "") if call else ""
+                if path and (case_root / path).is_file():
+                    recorded.append(path)
+            linked.append(tuple(recorded))
+        return tuple(linked)
+
     pending: dict[str, list[Mapping[str, object]]] = {}
     for call in calls:
         pending.setdefault(str(call.get("command") or ""), []).append(call)
@@ -701,7 +716,11 @@ def _render_case(
             _cell(index, css="num"),
             _cell(label),
             f"<td><code>{html.escape(_command_text(argv))}</code></td>",
-            _status_cell(command.get("returncode"), argv),
+            _status_cell(
+                command.get("returncode"),
+                argv,
+                recorded_status_headline(case_root, stdout, argv),
+            ),
             _cell(f"{elapsed / 1000:.1f}s", css="num"),
             _stream_link(case_root, stdout, "stdout"),
             _stream_link(case_root, stderr, "stderr"),
@@ -714,15 +733,14 @@ def _render_case(
 
     excerpt = ""
     if failed:
-        # The first non-zero stage is the one that explains the run; every later failure is
-        # usually its consequence — a test harness the aborted build never delivered, a score
-        # over a tree that was never finished. Quoting only the last stage hands the reader the
-        # symptom and hides the cause, so both ends are quoted when they differ.
-        quoted = [failed[0]] if len(failed) == 1 else [failed[0], failed[-1]]
+        # Every stage that exited nonzero, in the order it ran. The first is where the run
+        # diverged and the rest are usually its consequence, but a reader chasing a defect needs
+        # all of them: quoting two ends of the list hides whatever failed between them. stderr
+        # leads each block, because a command that exits nonzero states its cause there.
         blocks: list[str] = []
-        for position, command in enumerate(quoted):
+        for position, command in enumerate(failed):
             sections = []
-            for stream in ("stdout_path", "stderr_path"):
+            for stream, name in (("stderr_path", "stderr"), ("stdout_path", "stdout")):
                 relative = _relative(command.get(stream), case_root)
                 text = _tail(case_root / relative) if relative else ""
                 if text:
@@ -730,23 +748,32 @@ def _render_case(
                         f'<p class="note">Tail of <code>{html.escape(relative)}</code>.</p>'
                         f"<pre>{html.escape(text[-4000:])}</pre>"
                     )
+                elif name == "stderr":
+                    # A nonzero exit with an empty error stream is itself a defect: the command
+                    # failed without naming a cause. Say so rather than render nothing.
+                    sections.append(
+                        '<p class="note">This stage exited nonzero and wrote nothing to '
+                        "<code>stderr</code>. The failure is reported below from "
+                        "<code>stdout</code> only.</p>"
+                    )
             if not sections:
                 continue
-            if len(quoted) == 1:
-                role = "exited nonzero"
-            elif position == 0:
-                role = "is the first stage that exited nonzero, so it is where the run diverged"
-            else:
-                role = "is the last stage that exited nonzero"
+            role = (
+                "is the first stage that exited nonzero, so it is where the run diverged"
+                if position == 0
+                else "exited nonzero"
+            )
             label = html.escape(str(command.get("label") or ""))
+            code = html.escape(str(command.get("returncode")))
             blocks.append(
-                f'<p class="note">Stage <code>{label}</code> {role}.</p>' + "".join(sections)
+                f'<p class="note">Stage <code>{label}</code> {role} (exit {code}).</p>'
+                + "".join(sections)
             )
         if blocks:
             excerpt = (
                 "<h2>Recorded failure output</h2>"
-                '<p class="note">Quoted verbatim from the captured streams. A stage that wrote '
-                "nothing to a stream is omitted rather than shown empty.</p>" + "".join(blocks)
+                '<p class="note">Every stage that exited nonzero, quoted verbatim from the '
+                "captured streams, error stream first.</p>" + "".join(blocks)
             )
 
     call_rows = [

@@ -20,9 +20,12 @@ import json
 import re
 import shutil
 import subprocess
+import sys
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import IO
 
 from drydock.acceptance import (
     AcceptanceObservation,
@@ -99,6 +102,22 @@ _VERIFIED_LABEL = {
 }
 
 
+def emit_failure(
+    headline: str, details: Sequence[str] = (), *, stream: IO[str] | None = None
+) -> None:
+    """Name on stderr why a scoring command is exiting nonzero.
+
+    A nonzero exit is an error, and an error states its cause on the error stream. The graded
+    report on stdout is the full record; this is the part a caller that captured only stderr —
+    a build script, a UAT harness, a CI step — must still be told. An empty stderr beside a
+    nonzero exit tells that caller nothing, which is the defect this exists to prevent.
+    """
+    handle = stream if stream is not None else sys.stderr
+    print(f"error: {headline}", file=handle)
+    for line in details:
+        print(f"  {line}", file=handle)
+
+
 @dataclass(frozen=True)
 class AcVerdict:
     criterion_id: str
@@ -134,6 +153,20 @@ class AcReport:
         # A FAIL is a hard failure; UNVERIFIED is surfaced but does not fail the run, since not
         # every story carries an executable proof (spikes, pure UI). The board shows the gap.
         return 1 if any(v.status == FAIL for v in self.verdicts) else 0
+
+
+def ac_failure_lines(report: AcReport) -> tuple[str, ...]:
+    """Name every criterion that failed, with its owner and the reason it failed."""
+    lines: list[str] = []
+    for verdict in report.verdicts:
+        if verdict.status != FAIL:
+            continue
+        owner = "/".join(part for part in (verdict.feature, verdict.story) if part)
+        location = "  ".join(part for part in (owner, verdict.source) if part)
+        lines.append(f"{verdict.criterion_id}  {location}".rstrip())
+        reason = list(verdict.detail) or (verdict.evidence or "").strip().splitlines()
+        lines.extend(f"  {line}" for line in reason[:4])
+    return tuple(lines)
 
 
 def _now() -> str:

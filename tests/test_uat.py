@@ -1444,3 +1444,155 @@ def test_the_environment_records_the_package_version_without_installed_metadata(
     monkeypatch.setattr(metadata, "version", missing)
 
     assert _environment("model", "provider", None)["drydock_version"] == __version__
+
+
+# ── resuming at a recorded step ───────────────────────────────────────────────
+
+
+def test_every_recorded_label_maps_to_the_stage_that_produced_it() -> None:
+    from drydock.uat import stage_for_label
+
+    assert stage_for_label("01-init") == "init"
+    assert stage_for_label("02-import-sources") == "import"
+    assert stage_for_label("03-analyze") == "analyze"
+    assert stage_for_label("04-plan") == "plan"
+    assert stage_for_label("05-after-plan-build-status") == "plan"
+    # ``init`` is a prefix of ``initial-``; the build stage must win.
+    assert stage_for_label("10-initial-ready") == "build"
+    assert stage_for_label("12-after-initial-build-target-status") == "build"
+    assert stage_for_label("20-import-update-1") == "refit"
+    assert stage_for_label("21-refit-update-1") == "refit"
+    assert stage_for_label("22-after-refit-1-build-status") == "refit"
+    assert stage_for_label("15-test") == "test"
+    assert stage_for_label("16-score-acceptance") == "score"
+
+
+def test_an_unmapped_label_is_rejected_rather_than_guessed() -> None:
+    from drydock.uat import stage_for_label
+
+    with pytest.raises(SpecificationError, match="no resumable stage"):
+        stage_for_label("07-compile-everything")
+
+
+def _failed_run(tmp_path: Path) -> tuple[Path, str]:
+    """Produce a real run directory whose scoring step is the one an operator would re-enter."""
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    run_id, _ = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([]),
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+    return fixtures_root, run_id
+
+
+def test_a_step_number_resolves_to_the_stage_that_owns_it(tmp_path: Path) -> None:
+    from drydock.uat import resolve_step_stage, run_steps
+
+    fixtures_root, run_id = _failed_run(tmp_path)
+    fixture = discover_fixtures(fixtures_root, "ReadingList")[0]
+    steps = run_steps(fixtures_root / "ReadingList" / "runs" / run_id)
+    scoring = next(step.number for step in steps if "score-acceptance" in step.label)
+
+    resolved_run, step = resolve_step_stage(fixture, None, scoring)
+
+    assert resolved_run == run_id
+    assert step.stage == "score"
+    assert step.number == scoring
+
+
+def test_a_step_outside_the_recorded_run_is_rejected(tmp_path: Path) -> None:
+    from drydock.uat import resolve_step_stage
+
+    fixtures_root, _ = _failed_run(tmp_path)
+    fixture = discover_fixtures(fixtures_root, "ReadingList")[0]
+
+    with pytest.raises(SpecificationError, match="out of range"):
+        resolve_step_stage(fixture, None, 999)
+    with pytest.raises(SpecificationError, match="out of range"):
+        resolve_step_stage(fixture, None, 0)
+
+
+def test_resuming_at_the_init_step_directs_the_operator_to_a_new_run(tmp_path: Path) -> None:
+    from drydock.uat import resolve_step_stage
+
+    fixtures_root, _ = _failed_run(tmp_path)
+    fixture = discover_fixtures(fixtures_root, "ReadingList")[0]
+
+    with pytest.raises(SpecificationError, match="Start a new run"):
+        resolve_step_stage(fixture, None, 1)
+
+
+def test_the_step_listing_numbers_every_recorded_step_with_its_stage(tmp_path: Path) -> None:
+    from drydock.uat import render_steps
+
+    fixtures_root, run_id = _failed_run(tmp_path)
+    fixture = discover_fixtures(fixtures_root, "ReadingList")[0]
+
+    listing = render_steps(fixture, None)
+
+    assert f"ReadingList run {run_id}" in listing
+    assert "  1  01-init" in listing
+    assert "score" in listing
+    assert "--from-step" in listing
+
+
+def test_a_kit_named_in_another_case_still_records_the_directory_spelling(tmp_path: Path) -> None:
+    """A case-insensitive filesystem must not leak the operator's spelling into recorded paths."""
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, name="CommonMark", updated=False)
+
+    fixtures = discover_fixtures(fixtures_root, "commonmark")
+
+    assert fixtures[0].root.name == "CommonMark"
+
+
+# ── LLM executions are recorded per command ───────────────────────────────────
+
+
+def test_each_command_records_the_llm_executions_it_produced(tmp_path: Path) -> None:
+    """The report joins transcripts to steps with these ids, not with console banners."""
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    written: list[str] = []
+
+    def runner(argv, cwd, env, output_dir, label):
+        del env
+        parts = tuple(argv[3:])
+        records = cwd / "logs" / "llm.jsonl"
+        records.parent.mkdir(parents=True, exist_ok=True)
+        # analyze makes one call and prints a banner; build makes two and prints nothing.
+        calls = {"analyze": 1, "build": 2}.get(parts[0] if parts else "", 0)
+        with records.open("a", encoding="utf-8") as handle:
+            for index in range(calls):
+                execution_id = f"{parts[0]}-{len(written) + index}"
+                written.append(execution_id)
+                handle.write(json.dumps({"execution_id": execution_id}) + "\n")
+        returncode = 1 if parts[:2] == ("status", "ReadingList") and "--ready" in parts else 0
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+
+    by_label = {command.label: command.llm_executions for command in results[0].commands}
+    analyze = next(ids for label, ids in by_label.items() if label.endswith("-analyze"))
+    assert len(analyze) == 1
+    # A command that made no call claims none of another command's executions.
+    assert by_label[next(label for label in by_label if label.endswith("-init"))] == ()
+    assert sum(len(ids) for ids in by_label.values()) == len(written)

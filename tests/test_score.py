@@ -657,3 +657,49 @@ def test_a_malformed_criterion_is_unverified_and_does_not_fail_scoring():
     assert error in evidence
     assert "655 passed, 0 failed" in "\n".join(detail)
     assert report.exit_code() == 0
+
+
+# ── a nonzero scoring exit names its cause on stderr ──────────────────────────
+
+
+def test_score_ac_names_the_failing_criterion_on_stderr(tmp_path, capsys, monkeypatch):
+    """A caller that captured only stderr must still be told which criterion failed and why."""
+    from drydock import cli
+
+    target_dir = _scoped_target(tmp_path)
+    monkeypatch.setattr("drydock.config.require_target_dir", lambda target: target_dir)
+
+    exit_code = cli.cmd_score_ac("Demo")
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err.startswith("error: acceptance verification failed for Demo")
+    assert "beta-proof" in captured.err
+    assert "BETA.md" in captured.err
+
+
+def test_score_ac_writes_nothing_to_stderr_when_every_criterion_passes(
+    tmp_path, capsys, monkeypatch
+):
+    from drydock import cli
+
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+    monkeypatch.setattr("drydock.config.require_target_dir", lambda target: target_dir)
+
+    exit_code = cli.cmd_score_ac("Demo")
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+
+
+def test_the_failure_emitter_states_the_headline_and_its_details(capsys):
+    from drydock.score import emit_failure
+
+    emit_failure("release gate FAILED for Demo", ("criterion-1 not met", "criterion-2 not met"))
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "error: release gate FAILED for Demo\n  criterion-1 not met\n  criterion-2 not met\n"
+    )

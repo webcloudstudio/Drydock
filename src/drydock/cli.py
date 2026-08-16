@@ -414,6 +414,39 @@ def _uat_report(kits: tuple[Path, ...]) -> int:
     return 0
 
 
+def _uat_one_fixture(uat_root: Path, selected: str | None, flag: str):
+    """Resolve the single kit a step-numbered operation names, rejecting an ambiguous sweep."""
+    from drydock.uat import discover_fixtures
+
+    if not selected:
+        raise UsageError(f"{flag} requires <Project>: step numbers belong to one kit's run")
+    fixtures = discover_fixtures(uat_root, selected)
+    if len(fixtures) != 1:
+        raise UsageError(f"{flag} requires exactly one kit, matched {len(fixtures)}")
+    return fixtures[0]
+
+
+def _uat_steps(uat_root: Path, selected: str | None, run: str | None) -> int:
+    """Print a recorded run's numbered steps and the stage each one resumes into."""
+    from drydock.uat import render_steps
+
+    print(render_steps(_uat_one_fixture(uat_root, selected, "--steps"), run))
+    return 0
+
+
+def _uat_stage_for_step(uat_root: Path, selected: str | None, run: str | None, step: int) -> str:
+    """Translate ``--from-step <n>`` into the stage a resume re-enters, stating the translation."""
+    from drydock.uat import resolve_step_stage
+
+    fixture = _uat_one_fixture(uat_root, selected, "--from-step")
+    run_id, resolved = resolve_step_stage(fixture, run, step)
+    print(
+        f"{fixture.name} run {run_id}: step {resolved.number} ({resolved.label}) "
+        f"-> resuming at stage {resolved.stage!r}"
+    )
+    return resolved.stage
+
+
 def _add_bound_arguments(parser: argparse.ArgumentParser) -> None:
     """Attach the execution bounds shared by every command that runs the code under test.
 
@@ -500,6 +533,12 @@ def cmd_uat(args: argparse.Namespace) -> int:
     workspace = get_workspace().resolve()
     uat_root = args.uat_root.resolve() if args.uat_root is not None else workspace / "uat"
     report = args.report is not None
+    # Step numbers belong to one kit's recorded run, so the selection is settled before any kit
+    # is touched: a sweep has no step 16 to resolve.
+    if not report and not args.Project:
+        for flag, given in (("--from-step", args.from_step is not None), ("--steps", args.steps)):
+            if given:
+                raise UsageError(f"{flag} requires <Project>: step numbers belong to one kit's run")
     kits = _uat_kit_roots(uat_root, args.report if report else args.Project, report=report)
     from drydock.uat_git import checkpoint_kit_repositories, ensure_kit_repositories
 
@@ -511,8 +550,13 @@ def cmd_uat(args: argparse.Namespace) -> int:
             raise UsageError("--max-build-passes must be at least 1")
         if args.repair_attempts is not None and args.repair_attempts < 0:
             raise UsageError("--repair-attempts must be zero or greater")
-        if args.run is not None and args.stage is None:
-            raise UsageError("--run requires --stage")
+        if args.steps:
+            return _uat_steps(uat_root, args.Project, args.run)
+        if args.run is not None and args.stage is None and args.from_step is None:
+            raise UsageError("--run requires --stage or --from-step")
+        start_stage = args.stage or "init"
+        if args.from_step is not None:
+            start_stage = _uat_stage_for_step(uat_root, args.Project, args.run, args.from_step)
         _apply_bound_overrides(args)
         repair_attempts = _resolved_repair_attempts(args)
         step_console = StepConsole(sys.stdout, quiet=args.quiet)
@@ -527,7 +571,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
             repair_attempts=repair_attempts,
             runner=make_streaming_runner(step_console),
             on_event=step_console.event,
-            start_stage=args.stage or "init",
+            start_stage=start_stage,
             run=args.run,
         )
         if not args.quiet:
@@ -2060,7 +2104,30 @@ def cmd_build(args: argparse.Namespace) -> int:
             print()
             print(_render_recorded_error(record))
             _standoff_diagnosis(args, None, record=record)
-    return result.exit_code()
+    exit_code = result.exit_code()
+    if exit_code and not result.dry_run:
+        # A nonzero build states its cause on the error stream too. The console rendering above
+        # is the operator's record; a harness that captured only stderr must still be told which
+        # block failed and why, instead of inferring it from an exit code alone.
+        from drydock.score import emit_failure
+
+        if result.failed():
+            emit_failure(
+                f"build failed for {args.Target}: {len(result.failed())} step(s)",
+                tuple(
+                    f"{step.block_id} — {step.state}" + (f": {step.error}" if step.error else "")
+                    for step in (failures or result.failed())
+                ),
+            )
+        elif result.stalled():
+            emit_failure(
+                f"build stalled for {args.Target}: "
+                f"{len(result.stalled_blocks)} block(s) outstanding and none could advance",
+                tuple(result.stalled_blocks[:20]),
+            )
+        else:
+            emit_failure(f"build did not complete for {args.Target}")
+    return exit_code
 
 
 def _build_running_command(args: argparse.Namespace) -> str:
@@ -2159,7 +2226,7 @@ def _ac_mark(status: str) -> str:
 
 def cmd_score_ac(target: str, step: str | None = None) -> int:
     from drydock.config import require_target_dir
-    from drydock.score import PREPASSED, UNVERIFIED, verify_acs
+    from drydock.score import PREPASSED, UNVERIFIED, ac_failure_lines, emit_failure, verify_acs
 
     target_dir = require_target_dir(target)
     report = verify_acs(target, target_dir, step_id=step)
@@ -2220,7 +2287,14 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
     if report.wrote_soundings:
         print()
         print(f"Soundings: {report.soundings_path}")
-    return report.exit_code()
+    exit_code = report.exit_code()
+    if exit_code:
+        emit_failure(
+            f"acceptance verification failed for {target}: {failed} of "
+            f"{len(report.verdicts)} criteria",
+            ac_failure_lines(report),
+        )
+    return exit_code
 
 
 def _compact_clock(milliseconds: int) -> str:
@@ -2356,6 +2430,7 @@ def cmd_score_build(target: str) -> int:
     """Print the deterministic post-build report. Reads evidence and usage logs only."""
     from drydock.build_report import build_score_report
     from drydock.config import get_workspace, require_target_dir
+    from drydock.score import emit_failure
 
     target_dir = require_target_dir(target)
     report = build_score_report(
@@ -2364,7 +2439,24 @@ def cmd_score_build(target: str) -> int:
     for line in _render_build_score(report):
         print(line)
     print()
-    return 0 if report.blocks and not report.failed_blocks else 1
+    if not report.blocks:
+        emit_failure(f"no build evidence for {target}", (f"run: drydock build {target}",))
+        return 1
+    if report.failed_blocks:
+        emit_failure(
+            f"{len(report.failed_blocks)} build block(s) unverified in {target}",
+            tuple(
+                f"{block.block_id} {block.name}: {block.state or 'not verified'}"
+                + (
+                    f"; failed: {', '.join(block.failed_check_ids)}"
+                    if block.failed_check_ids
+                    else ""
+                )
+                for block in report.failed_blocks
+            ),
+        )
+        return 1
+    return 0
 
 
 def cmd_score_report(target: str) -> int:
@@ -2392,7 +2484,7 @@ def cmd_score_release(target: str) -> int:
         require_target_dir,
     )
     from drydock.quarterdeck_state import refresh_commanders_chair
-    from drydock.score import score_release
+    from drydock.score import emit_failure, score_release
 
     target_dir = require_target_dir(target)
     result = score_release(
@@ -2414,7 +2506,13 @@ def cmd_score_release(target: str) -> int:
     print(f"Evidence: {result.evidence_path}")
     for attestation in result.attestations:
         print(f"  MANUAL VERIFICATION: {attestation}")
-    return result.exit_code()
+    exit_code = result.exit_code()
+    if exit_code:
+        emit_failure(
+            f"release gate {result.verdict} for {target}",
+            result.blockers or (f"see {result.scorecard_path}",),
+        )
+    return exit_code
 
 
 def cmd_score_spec(
@@ -2913,7 +3011,8 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Report only stage names instead of streaming each child command's output.",
     )
-    p_uat.add_argument(
+    p_resume = p_uat.add_mutually_exclusive_group()
+    p_resume.add_argument(
         "--stage",
         default=None,
         choices=("import", "analyze", "plan", "build", "refit", "test", "score"),
@@ -2923,11 +3022,27 @@ def _build_parser() -> argparse.ArgumentParser:
             "produced. Development affordance: a resumed run is not a clean-room measurement."
         ),
     )
+    p_resume.add_argument(
+        "--from-step",
+        dest="from_step",
+        type=int,
+        default=None,
+        metavar="<n>",
+        help=(
+            "Resume at the stage that owns recorded step <n>, named as the step table numbers "
+            "it. Requires <Project>; list the steps with --steps."
+        ),
+    )
+    p_uat.add_argument(
+        "--steps",
+        action="store_true",
+        help="List the recorded steps of a run with the stage each resumes into, then exit.",
+    )
     p_uat.add_argument(
         "--run",
         default=None,
         metavar="<run-id>",
-        help="Run directory to resume (default: the newest). Requires --stage.",
+        help="Run directory to resume (default: the newest). Requires --stage or --from-step.",
     )
 
     # ── status ────────────────────────────────────────────────────────────────
