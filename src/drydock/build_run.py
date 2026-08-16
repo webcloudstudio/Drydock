@@ -1266,6 +1266,9 @@ _CASE_TALLY_RE = re.compile(
 
 #: Names a block failed by its governed stage gate rather than by a model-authored criterion.
 GOVERNED_FAILURE_PREFIX = "governed acceptance failed"
+#: A block that broke a criterion an earlier block had already proven. Repairable by
+#: construction: working code for it existed in this same tree one block ago.
+REGRESSION_FAILURE_PREFIX = "acceptance regression"
 
 
 def _is_repairable(error: str | None) -> bool:
@@ -1285,6 +1288,7 @@ def _is_repairable(error: str | None) -> bool:
         return False
     return error.startswith((
         "programmatic acceptance failed",
+        REGRESSION_FAILURE_PREFIX,
         GOVERNED_FAILURE_PREFIX,
         _AGENT_REPORTED_PREFIX,
     ))
@@ -1511,12 +1515,39 @@ def _console_failure_lines(result: AcceptanceRunResult, max_lines: int = 5) -> l
     return lines
 
 
+def _render_regression_detail(
+    regressed: tuple[AcceptanceRunResult, ...],
+    owners: dict[str, PlanBlock],
+) -> str:
+    """Name each previously proven criterion this block turned red, and who owns it."""
+    lines = [
+        "This block broke acceptance criteria that earlier blocks had already proven.",
+        "They were green when the previous block finished and are red now.",
+    ]
+    for result in regressed:
+        owner = owners.get(result.check_id)
+        label = f' — story "{owner.name}" [{owner.block_id}]' if owner is not None else ""
+        lines.append(f"  - {result.check_id} ({result.source}){label}")
+        lines.extend(
+            failure_detail(
+                stderr=result.stderr,
+                stdout=result.stdout,
+                return_code=result.return_code,
+                error=result.error,
+                override=str(result.error) if _resource_verdict(result) else None,
+                indent="      ",
+            )
+        )
+    return "\n".join(lines)
+
+
 def _render_repair_feedback(
     unit: BuildUnit,
     failed_checks: tuple[AcceptanceRunResult, ...],
     agent_report: tuple[str, str] | None,
     changed_files: tuple[str, ...],
     story_by_check: dict[str, PlanBlock],
+    regressed_checks: tuple[AcceptanceRunResult, ...] = (),
 ) -> str:
     """Compose the repair-pass feedback appended as the prompt's recency anchor.
 
@@ -1548,6 +1579,27 @@ def _render_repair_feedback(
         "which is where a broken assertion has to be fixed.",
         "",
     ]
+    if regressed_checks:
+        # A regression outranks this block's own red criteria. The block already had working
+        # code for these and deleted or broke it, so the repair is a restoration, not a new
+        # implementation — and saying so stops the pass rewriting a subsystem that was correct.
+        lines.extend([
+            "### Regression — fix this first",
+            "",
+            "The criteria below belong to earlier stories that were already proven. They were",
+            "green before this block ran and are red now, so this block's edits broke them.",
+            "Restore the behavior they assert without discarding this block's own work, and do",
+            "not edit the criteria.",
+            "",
+        ])
+        for result in regressed_checks:
+            lines.append(f"- {result.check_id} ({result.source}): {result.intent.strip()}")
+            lines.append(f"    assertion: {_assertion_summary(result)}")
+            tail = _output_tail(result)
+            if tail:
+                lines.append("    output:")
+                lines.extend(f"      {line}" for line in tail)
+        lines.append("")
     exhausted = tuple(result for result in failed_checks if _resource_verdict(result))
     if exhausted:
         # State the resource fact before the check list. A pass that reads only "the check
@@ -2172,6 +2224,15 @@ def build_target(
             _reset_step_for_rebuild(manifest_path, scoped_selector)
 
     steps: list[BuildStepResult] = []
+    # Criteria earlier blocks proved, and the set of them that was green when the previous block
+    # finished. A block grades only its own stories, so without this a later block can silently
+    # undo an earlier block's deliverable and nothing notices until final scoring — which is how
+    # Toml shipped ten blocks with its decoder's argument guard deleted at block 3. Re-running the
+    # proven set after each block turns that into a regression attributable to the block that
+    # caused it, because nothing but that block ran in between.
+    proven_checks: dict[str, ProgrammaticAcceptance] = {}
+    proven_owner: dict[str, PlanBlock] = {}
+    proven_green: set[str] = set()
     guard = 0
     while True:
         plan = preview_plan if preview_plan is not None else parse_build_plan(manifest_path)
@@ -2304,6 +2365,22 @@ def build_target(
                 story_by_check[check.check_id] = block
                 story_by_source_check[(check.source, check.check_id)] = block
         checks = tuple(gathered_checks)
+        # Criteria this unit does not grade itself. Re-run after the block builds; never
+        # injected into the prompt unless one of them goes red, because telling a model about
+        # criteria it is not being asked to satisfy spends context on work it must not do.
+        unit_check_ids = {check.check_id for check in checks}
+        regression_checks = tuple(
+            check for check_id, check in proven_checks.items() if check_id not in unit_check_ids
+        )
+        # Criteria owned by the stories being built now. Only these may be recorded as
+        # baseline-green: a criterion carried in from an earlier block is green because that
+        # block proved it, which is the opposite of the claim ``prepassed`` makes.
+        owned_check_ids = {
+            check.check_id
+            for check in checks
+            if (owner := story_by_check.get(check.check_id)) is not None
+            and owner.block_id in {block.block_id for block in unit.steps}
+        }
         # The governed contract is read once per unit, from the Target root. Absent, every
         # block in this unit will close ``implemented``: model-authored criteria still run and
         # still drive repair, but nothing that could establish authority is present to verify.
@@ -2450,7 +2527,12 @@ def build_target(
         # nothing or measuring a deliverable that legitimately already existed, and the baseline
         # cannot tell those apart, so failing on it would break correct builds.
         record_prepassed_acceptance(
-            evidence_dir, (check.check_id for check in pre_acceptance if check.passed)
+            evidence_dir,
+            (
+                check.check_id
+                for check in pre_acceptance
+                if check.passed and check.check_id in owned_check_ids
+            ),
         )
         if pre_acceptance:
             baseline_red = sum(1 for check in pre_acceptance if not check.passed)
@@ -2490,6 +2572,7 @@ def build_target(
         # only the outer bound on how much progress is worth paying for.
         state = status = error = failure_detail = ""
         acceptance: tuple[AcceptanceRunResult, ...] = ()
+        regressed_checks: tuple[AcceptanceRunResult, ...] = ()
         agent_report: tuple[str, str] | None = None
         changed_files: tuple[str, ...] = ()
         execution_id: str | None = None
@@ -2556,7 +2639,12 @@ def build_target(
                 active_assembly = _repair_prompt_assembly(
                     prompt_assembly,
                     _render_repair_feedback(
-                        unit, feedback_checks, agent_report, changed_files, story_by_check
+                        unit,
+                        feedback_checks,
+                        agent_report,
+                        changed_files,
+                        story_by_check,
+                        regressed_checks,
                     ),
                 )
             if attempt == 0:
@@ -2948,6 +3036,53 @@ def build_target(
                         else:
                             state, status, error = "closed/verified", "built", None
                             failure_detail = ""
+                        # ── Regression sweep ─────────────────────────────────────────────
+                        #
+                        # Re-run what earlier blocks proved. Only when this block's own
+                        # criteria are green: a block that is still red repairs anyway, and
+                        # it cannot close without reaching this point green, so nothing
+                        # escapes the sweep. Attribution needs no second baseline run — the
+                        # previous sweep established the state, and only this block has run
+                        # since, so a criterion that was green then and is red now was broken
+                        # here.
+                        regressed_checks = ()
+                        if regression_checks and status == "built":
+                            swept = run_programmatic_acceptance(
+                                regression_checks,
+                                build_dir=resolved_build_dir,
+                                target_dir=target_dir,
+                                blueprint_dir=blueprint_dir,
+                                strict_target=True,
+                            )
+                            regressed_checks = tuple(
+                                result
+                                for result in swept
+                                if not result.passed
+                                and not result.skipped
+                                and result.check_id in proven_green
+                            )
+                            # The observed state replaces the recorded one, so a criterion
+                            # that stays red is reported against the block that broke it and
+                            # not again against every block that follows.
+                            proven_green -= {result.check_id for result in swept}
+                            proven_green |= {result.check_id for result in swept if result.passed}
+                            _emit(
+                                on_text,
+                                f"regression sweep: {len(swept)} prior criteria · "
+                                + (
+                                    f"{len(regressed_checks)} regressed"
+                                    if regressed_checks
+                                    else "all green"
+                                ),
+                            )
+                            if regressed_checks:
+                                state, status = "closed/failed", "failed"
+                                error = f"{REGRESSION_FAILURE_PREFIX}: " + ", ".join(
+                                    result.check_id for result in regressed_checks
+                                )
+                                failure_detail = _render_regression_detail(
+                                    regressed_checks, proven_owner
+                                )
                         if checks:
                             _emit(
                                 on_text,
@@ -3203,6 +3338,21 @@ def build_target(
                     f"diagnostic: {overruled} — model-authored criteria red where the governed "
                     "gate passed; recorded against the criteria, not the product",
                 )
+
+        # What this block proved joins the set every later block is swept against. Only green
+        # criteria owned by the stories just built: a red one was never proven, and a criterion
+        # carried in from an earlier block is already in the set.
+        if status not in {"failed", "blocked"}:
+            for result in acceptance:
+                if not result.passed or result.check_id not in owned_check_ids:
+                    continue
+                declared = next((item for item in checks if item.check_id == result.check_id), None)
+                if declared is None:
+                    continue
+                proven_checks[result.check_id] = declared
+                proven_green.add(result.check_id)
+                if (owner := story_by_check.get(result.check_id)) is not None:
+                    proven_owner[result.check_id] = owner
 
         written_reusable_compacts: tuple[str, ...] = ()
         if status not in {"failed", "blocked"} and reusable_compact_sources:

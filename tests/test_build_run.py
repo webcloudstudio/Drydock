@@ -1324,6 +1324,138 @@ def test_ac_failure_fails_only_the_owning_story_not_its_group_mate(tmp_path):
     assert "service-adds" not in (_finding(target_dir, "foundation") or "")
 
 
+def _regression_runner(tmp_path):
+    """A runner whose second block deletes the deliverable the first block proved."""
+    build_dir = tmp_path / "build"
+    calls: list[dict] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        step_id = kwargs["parameters"]["step"]
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        if step_id == "foundation":
+            (work / "guard.txt").write_text("on\n", encoding="utf-8")
+        elif step_id == "service" and not any("Regression" in part for part in [prompt]):
+            (work / "guard.txt").unlink(missing_ok=True)
+        else:
+            # The repair pass is told about the regression and restores the deliverable.
+            (work / "guard.txt").write_text("on\n", encoding="utf-8")
+        (work / f"{step_id}.txt").write_text(f"built {step_id}\n", encoding="utf-8")
+        calls.append({"prompt": prompt, "wd": working_directory, **kwargs})
+        return FakeResult(ok=True, text=_success_report(changed=(f"{step_id}.txt",)))
+
+    runner.calls = calls  # type: ignore[attr-defined]
+    assert build_dir is not None
+    return runner
+
+
+def _with_guard_criterion(target_dir):
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### db-guard\n"
+        "The guard file the foundation installs stays installed.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        'assert Path("guard.txt").read_text().strip() == "on"\n'
+        "```\n",
+        encoding="utf-8",
+    )
+
+
+def test_a_later_block_that_breaks_an_earlier_criterion_fails_on_the_regression(tmp_path):
+    """A block grades only its own stories, so an earlier block's deliverable can be deleted
+    without anything noticing until final scoring. The sweep attributes it to the block that
+    did it, because nothing else ran in between."""
+    target_dir, build_dir = _setup(tmp_path)
+    _with_guard_criterion(target_dir)
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=_regression_runner(tmp_path),
+        repair_attempts=0,
+    )
+
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "service") == "closed/failed"
+    finding = _finding(target_dir, "service") or ""
+    assert "acceptance regression" in finding
+    assert "db-guard" in finding
+    detail = result.steps[-1].failure_detail
+    assert "db-guard" in detail
+    assert "earlier blocks had already proven" in detail
+
+
+def test_the_repair_pass_restores_what_the_block_regressed(tmp_path):
+    """The point of telling the model is that it can act on it. The repair pass sees the
+    regression, restores the earlier block's deliverable, and the block closes verified."""
+    target_dir, build_dir = _setup(tmp_path)
+    _with_guard_criterion(target_dir)
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=_regression_runner(tmp_path),
+        repair_attempts=1,
+    )
+
+    assert _state(target_dir, "service") == "closed/verified"
+    assert (build_dir / "guard.txt").read_text().strip() == "on"
+
+
+def test_a_clean_regression_sweep_says_nothing_to_the_model(tmp_path):
+    """Silence is the contract: a sweep that finds everything green must not spend prompt
+    context telling the next block about criteria it is not being asked to satisfy."""
+    target_dir, build_dir = _setup(tmp_path)
+    _with_guard_criterion(target_dir)
+    runner = make_runner()
+
+    def keep_guard(prompt, working_directory, **kwargs):
+        Path(working_directory).mkdir(parents=True, exist_ok=True)
+        (Path(working_directory) / "guard.txt").write_text("on\n", encoding="utf-8")
+        return make_runner()(prompt, working_directory, **kwargs)
+
+    keep_guard.calls = runner.calls  # type: ignore[attr-defined]
+    lines: list[str] = []
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=keep_guard,
+        on_text=lines.append,
+        repair_attempts=0,
+    )
+
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "service") == "closed/verified"
+    # Reported to the operator, never to the model.
+    assert any("regression sweep: 1 prior criteria · all green" in line for line in lines)
+
+
+def test_the_regression_is_the_first_thing_the_repair_pass_is_told(tmp_path):
+    from drydock.build_plan import PlanBlock
+
+    regressed = AcceptanceRunResult(
+        check_id="db-guard",
+        source="DATABASE.md",
+        intent="The guard stays installed.",
+        passed=False,
+        return_code=1,
+        stdout="",
+        stderr="AssertionError\n",
+    )
+    unit = _select_build_unit(parse_build_plan(_setup(tmp_path)[0] / "MANIFEST.md"), None, "Demo")
+    feedback = _render_repair_feedback(unit, (), None, (), {}, (regressed,))
+
+    assert "### Regression — fix this first" in feedback
+    assert feedback.index("### Regression") < len(feedback)
+    assert "db-guard" in feedback
+    assert isinstance(unit.steps[0], PlanBlock)
+
+
 def test_failed_step_marks_failed_and_stops(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner(ok=False, text="", write_files=False)
