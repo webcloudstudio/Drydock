@@ -42,6 +42,6 @@ python3 scripts/check_wheel_rigging.py
 uv publish  --token "$PYPI_TOKEN" dist/*
 #uv publish --skip-existing --token "$PYPI_TOKEN" dist/*
 
-git tag -a "$TAG" -m "Drydock $VERSION alpha"
+git tag -a "$TAG" -m "Drydock $VERSION beta"
 git push origin main
 git push origin "$TAG"
