@@ -31,6 +31,13 @@ htmlcov/
 # Ruff
 .ruff_cache/
 
+# Mypy
+.mypy_cache/
+
+# Codex pre-commit toolchain caches
+.codex-precommit-venv/
+.uv-cache-codex/
+
 # Editor
 .DS_Store
 .vscode/
@@ -40,6 +47,7 @@ htmlcov/
 
 # Drydock generated
 prompts/generated/
+docs/drydock_planning/
 
 # Drydock self-host workspace
 targets/
