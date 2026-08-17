@@ -53,6 +53,29 @@ def clear_compass_import_pending(target_dir: Path) -> None:
         pass
 
 
+def mark_compass_authored(target_dir: Path) -> None:
+    """Mark target COMPASS.md as Commander-authored: one Compass, and this is it.
+
+    An authored Compass is the project's only Compass. Imported material may still be routed
+    to the Compass disposition by an Analysis — the Source Roles table is model-written, and a
+    model that disagrees with the author's own table will write ``compass`` where the author
+    wrote ``context`` — but that routing may not append to a Compass a human wrote. Two Compass
+    documents in one file is two sets of governing rules, and the second one silently wins the
+    recency position.
+    """
+    _state_path(target_dir).write_text("state: authored\n", encoding="utf-8", newline="\n")
+
+
+def compass_is_authored(target_dir: Path) -> bool:
+    """Return True when the Compass was supplied by the Commander rather than composed."""
+    path = _state_path(target_dir)
+    if not path.is_file():
+        return False
+    return any(
+        line.strip() == "state: authored" for line in path.read_text(encoding="utf-8").splitlines()
+    )
+
+
 def is_compass_file(name: str | Path) -> bool:
     """Return True when a file name is one of the Compass files."""
     return Path(name).name in COMPASS_FILENAMES

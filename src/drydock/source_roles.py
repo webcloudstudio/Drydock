@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
+from drydock.compass_sources import compass_is_authored
 from drydock.errors import SpecificationError
 from drydock.source_files import iter_source_files
 
@@ -94,7 +95,10 @@ def promote_imported_sources(
         rel = source.relative_to(sources_dir).as_posix()
         role = source_role_for(rel, roles)
         if role is not None and role.plan_disposition == "compass":
-            _append_compass(target_dir / "COMPASS.md", source)
+            # An authored Compass is the only Compass. Appending to it would give the project a
+            # second set of governing rules in the same file, positioned after the first.
+            if not compass_is_authored(target_dir):
+                _append_compass(target_dir / "COMPASS.md", source)
             continue
         if source.suffix.lower() == ".md":
             continue

@@ -4597,14 +4597,18 @@ def test_prose_in_angle_brackets_is_not_an_artifact_envelope():
     assert ps._parse_repair_artifact_envelopes("<note>\nnot a file\n</note>\n") == {}
 
 
-def test_a_criterion_missing_a_staged_assets_variable_warns_and_blocks(tmp_path):
-    """The jq run: ten criteria called the conformance runner without the JQ it declares.
+def test_a_criterion_missing_a_staged_assets_variable_is_rejected_for_repair(tmp_path):
+    """The jq run: criteria called the conformance runner without the JQ it declares.
 
     The criterion compiles and runs, so no existing pass sees it, and the runner exits on its
-    own usage code — so the assertion is false at every level of implementation quality. The
-    plan is written; the defect is a warning and a blocking decision against the owning story.
+    own usage code — the assertion is false at every level of implementation quality. Validation
+    now refuses it, which routes the owning specification into the artifact repair loop instead
+    of emitting the defect and asking a human about it afterwards.
     """
+    import pytest
+
     from drydock.planning_session import (
+        CriteriaDefect,
         _staged_asset_env_defects,
         _validate_plan_output,
         staged_asset_env_decisions,
@@ -4634,8 +4638,17 @@ def test_a_criterion_missing_a_staged_assets_variable_warns_and_blocks(tmp_path)
         "MANIFEST.md": manifest,
     }
 
-    plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+    with pytest.raises(CriteriaDefect, match="sources/run_suite.py without RUNNER"):
+        _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
 
+    # The repair budget is finite. When it is spent the plan is still written, and the criterion
+    # falls back to the blocking decision that parks its story.
+    plan, warnings = _validate_plan_output(
+        blocks,
+        tmp_path,
+        FakeRun(text=_llm_output(manifest)),
+        enforce_criteria=False,
+    )
     assert plan.blocks
     assert any("sources/run_suite.py without RUNNER" in warning for warning in warnings)
     decisions = staged_asset_env_decisions(_staged_asset_env_defects(blocks, tmp_path))
@@ -4643,6 +4656,114 @@ def test_a_criterion_missing_a_staged_assets_variable_warns_and_blocks(tmp_path)
         "acceptance-FEATURE-Status.md-status-suite-staged-env"
     ]
     assert decisions[0].severity == "blocking"
+
+
+_TWO_STORY_MANIFEST = """# MANIFEST: Example
+updated: 2026-06-16
+plan_hash: test
+state: draft
+
+## feature 1: Status
+id: feature-status
+summary: Deliver the status command.
+state: pending
+
+## story 1: Deliver Status
+id: story-status
+parent: feature-status
+summary: Build the status command.
+implements: FEATURE-Status.md
+scope: both
+state: pending
+
+## story 2: Run the whole suite
+id: story-verify
+parent: feature-status
+summary: Run the complete suite.
+implements: FEATURE-Verify.md
+depends: story-status
+scope: both
+state: pending
+"""
+
+
+def _runner_kit(tmp_path):
+    """A staged suite runner offering a list mode, as the jq conformance harness does."""
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "run_suite.py").write_text(
+        '"""Runner.\n\nUsage:\n'
+        "    python3 sources/run_suite.py            # whole corpus\n"
+        "    python3 sources/run_suite.py --list     # print cases, run nothing\n"
+        '"""\n',
+        encoding="utf-8",
+    )
+
+
+def _spec_running(code: str) -> str:
+    return (
+        "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
+        "=== AC status-suite ===\nIntent: The suite passes.\n\n"
+        "import subprocess\n"
+        f"{code}\n"
+        "assert result.returncode == 0\n"
+        "=== END AC status-suite ===\n\n"
+        "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n"
+    )
+
+
+def test_a_non_terminal_story_running_the_authoritative_runner_is_rejected(tmp_path):
+    """jq block-9: a phase-1 staging story ran the whole corpus and the step was abandoned.
+
+    A partial capability fails most of an authoritative corpus by construction, and its
+    unimplemented cases exhaust the runner's per-case timeout rather than returning.
+    """
+    import pytest
+
+    from drydock.planning_session import CriteriaDefect, _validate_plan_output
+
+    _runner_kit(tmp_path)
+    manifest = _TWO_STORY_MANIFEST
+    blocks = {
+        "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
+        "FEATURE-Status.md": _spec_running(
+            'result = subprocess.run(["python3", "sources/run_suite.py"], capture_output=True)'
+        ),
+        "FEATURE-Verify.md": _SPEC_HEADER.format(
+            ftype="FEATURE", name="Verify", ac="The suite passes."
+        ),
+        "MANIFEST.md": manifest,
+    }
+
+    with pytest.raises(CriteriaDefect, match="is not the terminal story"):
+        _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+
+def test_a_non_terminal_story_may_invoke_the_runner_in_list_mode(tmp_path):
+    """List mode enumerates the suite without executing a case.
+
+    It is the staging story's one legal criterion: the corpus parses and the harness starts,
+    while nothing is asked of the code under test.
+    """
+    from drydock.planning_session import _validate_plan_output
+
+    _runner_kit(tmp_path)
+    manifest = _TWO_STORY_MANIFEST
+    blocks = {
+        "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
+        "FEATURE-Status.md": _spec_running(
+            "result = subprocess.run("
+            '["python3", "sources/run_suite.py", "--list"], capture_output=True)'
+        ),
+        "FEATURE-Verify.md": _SPEC_HEADER.format(
+            ftype="FEATURE", name="Verify", ac="The suite passes."
+        ),
+        "MANIFEST.md": manifest,
+    }
+
+    plan, _ = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    assert plan.blocks
 
 
 def test_a_criterion_supplying_the_variable_raises_no_defect(tmp_path):

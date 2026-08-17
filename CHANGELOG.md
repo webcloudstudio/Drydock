@@ -44,6 +44,25 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-17: Plan rejects two acceptance-criteria defects deterministically instead of reporting
+  them afterwards. A criterion that invokes a staged asset without a variable that asset declares
+  required, and a criterion on a non-terminal story that executes the authoritative suite runner
+  outside its list or dry-run mode, now raise `CriteriaDefect` from plan validation. That routes
+  the owning specification into the existing artifact repair loop, which re-emits only the cited
+  file and re-validates, bounded by `continue_attempts`. When the repair budget is spent the plan
+  is still written: validation re-runs with the criteria gate cleared and the defect falls back to
+  the pre-existing blocking decision that parks its story, so several accepted batches of correct
+  planning are never discarded over one bad snippet. The environment defect was previously a
+  blocking decision that `--override` waived on every unattended run; the scope defect was
+  detected nowhere.
+
+- 2026-08-17: A Target has exactly one Compass. Imported material routed to the Compass
+  disposition by the Analysis is no longer appended to a Commander-authored `COMPASS.md`;
+  `compass_sources.mark_compass_authored` records the authorship and `promote_imported_sources`
+  honors it. The Source Roles table is model-written, so a model that disagrees with the author's
+  own table writes `compass` where the author wrote `context` — which is how the jq kit's
+  instructions became a second set of governing rules appended after the first.
+
 - 2026-08-17: A UAT run stops at a failed build instead of scoring one. The build stage declares a
   stop condition when a build pass exits non-zero with work still on the frontier, or when the
   pass bound is exhausted, and the refit, test, and all three scoring stages no longer run. The

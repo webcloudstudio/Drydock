@@ -2322,6 +2322,84 @@ def _staged_asset_env_defects(
     return staged_asset_env_defects(checks, read_staged_assets(blueprint_dir))
 
 
+class CriteriaDefect(SpecificationError):
+    """A criterion that cannot pass as written, and can be repaired by rewriting it.
+
+    Raised from plan validation so the artifact repair loop re-emits the owning specification.
+    It is deliberately distinguishable from every other validation failure: when the repair
+    budget is exhausted the plan is still worth writing. Discarding several accepted batches of
+    correct planning over one bad snippet is the failure mode the repair loop exists to avoid,
+    and the criterion has a second line of defence — it is recorded as a blocking decision
+    against its story, which parks that story until a Commander answers.
+    """
+
+
+#: Runner modes that enumerate a suite without executing a case. A non-terminal story may
+#: invoke the authoritative runner in one of these and in no other way: listing proves the
+#: corpus parses and the harness starts while requiring nothing of the code under test.
+_RUNNER_LIST_MODES = ("--list", "--collect-only", "--dry-run", "--list-tests", "--co")
+
+
+def _runner_invocation_defects(
+    blocks: dict[str, str], plan: BuildPlan, blueprint_dir: Path
+) -> tuple[str, ...]:
+    """Return every non-terminal story whose acceptance runs the authoritative runner.
+
+    The terminal story is the last story in the build order — the story every other story
+    precedes — and it is the only one whose acceptance may execute the imported suite. A partial
+    capability fails most of an authoritative corpus by construction, and its unimplemented cases
+    exhaust the runner's per-case timeout instead of returning, so a mid-build invocation costs
+    the most exactly where it teaches the least and is routinely abandoned as hung.
+
+    Detection is deliberately narrow. Only a staged asset that reads as a suite runner counts,
+    and an invocation carrying a list or dry-run flag is permitted: that is the staging story's
+    one legitimate use, and it executes nothing.
+    """
+    assets = read_staged_assets(blueprint_dir)
+    runners = tuple(
+        relative
+        for relative, text in assets.items()
+        if relative.lower().endswith((".py", ".sh"))
+        and any(mode in text for mode in _RUNNER_LIST_MODES)
+    )
+    if not runners:
+        return ()
+    stories = [block for block in plan.blocks if block.block_type == "story"]
+    if len(stories) < 2:
+        return ()
+    terminal = stories[-1].block_id
+    spec_owner = {
+        str(name): block.block_id
+        for block in stories
+        for name in (
+            block.fields.get("implements", ())
+            if isinstance(block.fields.get("implements", ()), tuple)
+            else (block.fields.get("implements", ""),)
+        )
+        if name
+    }
+    defects: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS or not name.lower().endswith(".md"):
+            continue
+        owner = spec_owner.get(name)
+        if owner is None or owner == terminal:
+            continue
+        for check in _acceptance_checks(blocks[name], source=name):
+            for runner in runners:
+                if runner not in check.code:
+                    continue
+                if any(mode in check.code for mode in _RUNNER_LIST_MODES):
+                    continue
+                defects.append(
+                    f"{name} [{check.check_id}]: story {owner} is not the terminal story "
+                    f"({terminal}) and its acceptance executes the authoritative runner "
+                    f"{runner}. Gate this story on its own declared behavior, or invoke the "
+                    f"runner in list mode, which enumerates the suite without running a case."
+                )
+    return tuple(defects)
+
+
 def _malformed_acceptance_defects(blocks: dict[str, str]) -> tuple[MalformedAcceptance, ...]:
     """Return every acceptance criterion in the emitted specs that is not Python, or not parseable.
 
@@ -2755,8 +2833,13 @@ def _validate_plan_output(
     source_text: str | None = None,
     *,
     project: str = "",
+    enforce_criteria: bool = True,
 ) -> tuple[BuildPlan, tuple[str, ...]]:
     """Validate one LLM response mode and return the parsed plan for success mode.
+
+    ``enforce_criteria`` is cleared for the final pass after the repair budget is spent, which
+    lets a plan whose criteria could not be mechanically repaired proceed under the pre-existing
+    warning-and-blocking-decision path rather than be discarded.
 
     ``source_text`` is the delimited response the blocks were parsed from, when there
     is one.  It is ``None`` for blocks recovered from write-tool-call syntax, which
@@ -2951,6 +3034,32 @@ def _validate_plan_output(
             _with_execution_evidence(
                 "Plan generation failed: LLM output did not satisfy the artifact contract.\n  "
                 + "\n  ".join(missing_from_response)
+                + "\n  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+
+    # Two criteria defects that are decidable the moment the Blueprints exist, and repairable by
+    # rewriting the criterion that carries them. Raising here routes both into the artifact
+    # repair loop, which re-emits only the cited specification and re-validates — the criterion
+    # is corrected before the plan is written, rather than emitted, detected, and handed to a
+    # human as a question about a defect Drydock had already located.
+    #
+    # Both were previously reported after the fact: the environment defect as a blocking
+    # decision that ``--override`` waived on every unattended run, and the scope defect not at
+    # all. Prose in the planning contract instructs the model on both, and a 370 KB prompt is
+    # not a gate.
+    criteria_defects = (
+        [defect.rendered for defect in _staged_asset_env_defects(blocks, blueprint_dir)]
+        + list(_runner_invocation_defects(blocks, plan, blueprint_dir))
+        if enforce_criteria
+        else []
+    )
+    if criteria_defects:
+        raise CriteriaDefect(
+            _with_execution_evidence(
+                "Plan generation failed: an acceptance criterion cannot pass as written.\n  "
+                + "\n  ".join(criteria_defects)
                 + "\n  No Blueprint or Manifest artifacts were written.",
                 result,
             )
@@ -4876,6 +4985,27 @@ def create_plan(
                     except Exception as next_exc:
                         repair_exc = next_exc
                         break
+            if not repair_succeeded and isinstance(repair_exc, CriteriaDefect):
+                # The repair budget is spent and the surviving defect is a criterion, not a
+                # broken plan. Accept the plan without the criteria gate: the defect is still
+                # reported, and still parks its story as a blocking decision.
+                if on_text is not None:
+                    on_text("[plan] criteria repair exhausted — recording as blocking decisions\n")
+                try:
+                    plan, warnings = _validate_plan_output(
+                        repaired_blocks,
+                        blueprint_dir,
+                        result,
+                        source_text=None,
+                        project=target,
+                        enforce_criteria=False,
+                    )
+                except Exception:
+                    pass
+                else:
+                    blocks = repaired_blocks
+                    blocks_text = None
+                    repair_succeeded = True
             if not repair_succeeded:
                 exc = repair_exc
                 record = write_error_record(

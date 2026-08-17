@@ -23,11 +23,12 @@ from typing import IO
 from drydock import __version__, sea_trials, technology_stack
 from drydock.acceptance_contract import AcceptanceContract, contract_from_config, write_contract
 from drydock.build_report import build_score_report
+from drydock.compass_sources import mark_compass_authored
 from drydock.config import DEFAULT_REPAIR_ATTEMPTS
 from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
-from drydock.stop_condition import StopCondition, read_stop, write_stop
+from drydock.stop_condition import StopCondition, clear_stop, read_stop, write_stop
 from drydock.uat_console import StepSink
 from drydock.uat_report import build_case_kit, local_run_window, write_kit_index
 
@@ -793,6 +794,9 @@ def seed_compass(fixture: UATFixture, workspace: Path) -> Path | None:
     target_dir.mkdir(parents=True, exist_ok=True)
     destination = target_dir / "COMPASS.md"
     shutil.copyfile(fixture.compass, destination)
+    # One Compass. Imported material routed to the Compass disposition by the Analysis is not
+    # appended to a Compass the kit authored.
+    mark_compass_authored(target_dir)
     return destination
 
 
@@ -1302,8 +1306,13 @@ def run_fixture(
         absence rather than the product, and a verdict over a partial tree is a number that
         invites acting on it. The halt is recorded as a stop condition at the Target root so the
         stages that follow refuse by reading it, not by re-deriving it from an exit code.
+
+        A stop declared by an earlier attempt is cleared on entry. A resumed run re-enters this
+        stage precisely to repair what halted it, so carrying the old semaphore forward would
+        halt the repaired build on the strength of a failure it just fixed.
         """
         nonlocal build_passes
+        clear_stop(workspace / "targets" / fixture.target)
         entry_degraded = len(degraded)
         stage_passes = 0
         while True:
