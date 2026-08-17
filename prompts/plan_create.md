@@ -584,14 +584,28 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   spec's assertions call every route the screen provides and consumes; a FEATURE spec's assertions
   exercise every route, interface, read, and write it provides.
 - Do not copy Sea Trial commands into ordinary story acceptance or execute them while planning.
+- **The terminal story is the last story in the build order** — the one on which every other story
+  is a transitive dependency and after which no further story runs. Position in the dependency
+  graph decides it, never the story's name, `type`, or `kind`. A story that stages the test assets
+  runs first and is never terminal. Resolve `depends` and identify the terminal story before
+  writing any suite criterion.
 - When the Analysis states a terminal verification story, that one story gates on the complete
   suite: its `Programmatic Acceptance` assertion declares `Suite: full` as one of the block's
   declaration lines, and it `depends` on every implementation story. Without
   that declaration a full-suite run is rejected. **Only the terminal story runs the whole suite.**
 - A harness staging or integration story — one that runs the imported runner only to prove it is
-  staged and executes, not to gate correctness — must bound its invocation with the runner's
-  `--pattern`/`--number` selector. An unbounded run of the suite from any non-terminal story,
-  without `Suite: full`, is rejected.
+  staged and executes, not to gate correctness — invokes the runner in its list or dry-run mode,
+  which enumerates the suite without executing a case, and asserts the runner exits `0` and
+  reports the expected count. Where the runner offers no list mode, bound the invocation with its
+  `--pattern`/`--number` selector instead. An unbounded run of the suite from any non-terminal
+  story, without `Suite: full`, is rejected. Never leave a staging story with no criterion: a
+  story that cannot be verified closes advisory and gates nothing.
+- Every invocation of a staged asset — in any story, in any mode, including list and dry-run mode —
+  supplies every environment variable that asset declares required, by extending the inherited
+  environment (`env={**os.environ, "NAME": value}`). Read the asset's usage block for the value it
+  names. An asset that is called without a variable it requires exits on its own usage code, which
+  is a harness fault and never a verdict about the product, so the criterion is false under every
+  implementation and no build can move it.
 - When an authoritative conformance suite is imported (a specification's example set plus its
   runner), **every implementing feature story binds its acceptance to that suite over the sections
   it owns**, never to a hand-written sample. The assertion invokes the imported runner limited to

@@ -276,6 +276,14 @@ Trial that runs that suite.
 restate its cases in either destination — a restated case adds no coverage and adds one more
 expectation that can be wrong.
 
+**The terminal story is the last story in the build order** — the one on which every other story
+is a transitive dependency and after which no further story runs. It is decided by position in the
+graph, never by name, type, or kind. A story is not terminal because it is called "verify", because
+its `kind` is a test harness, or because it stages the test assets: staging the corpus is
+foundational work that runs first, and running the corpus is terminal work that runs last. When a
+plan contains several verification stories, exactly one of them is terminal and it is the one every
+other story precedes. Identify it by resolving `depends` before writing any suite criterion.
+
 **One story invokes the authoritative runner, and it is the terminal one.** No intermediate story's
 acceptance runs that runner, with or without a scoping flag, and no story exists whose purpose is to
 run the suite in slices — a "focused verification" or "bounded conformance" story is a defect, not a
@@ -285,6 +293,17 @@ exact proportion to how incomplete the code is, because unimplemented cases exha
 per-case timeout instead of returning: the invocation costs most at the point in the build where it
 teaches least, and a build agent that starts one mid-story typically abandons it and reports the
 suite as hung.
+
+**A story that stages the suite is gated in list mode.** Staging is real work with a real
+obligation — the corpus parses, the exclusion list applies, the runner starts — and it is the one
+story for which "run the suite" and "assert a file exists" are both unavailable: the first belongs
+to the terminal story and the second is staging, not testing. Its criterion therefore invokes the
+runner's list or dry-run mode, which enumerates the corpus without executing a single case, and
+asserts the runner exits `0` and reports the expected count. This is the only permitted
+non-terminal invocation of the runner, it still supplies every environment variable the runner
+declares required, and it requires nothing of the code under test. Leaving such a story with no
+criterion at all is a defect: it produces a story that cannot be verified and a build block that
+closes advisory.
 
 A story verifies its own increment with its own assertions. If an imported instruction states where
 the suite may run, that statement governs and is not softened by a scoping flag the runner happens

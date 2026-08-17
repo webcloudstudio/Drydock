@@ -27,6 +27,7 @@ from drydock.config import DEFAULT_REPAIR_ATTEMPTS
 from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
+from drydock.stop_condition import StopCondition, read_stop, write_stop
 from drydock.uat_console import StepSink
 from drydock.uat_report import build_case_kit, local_run_window, write_kit_index
 
@@ -84,11 +85,11 @@ class UATFixture:
     #: stop passing without changing. With it, every run is graded against the same exam and a
     #: regression is finally detectable.
     sea_trials: Path | None = None
-    #: Optional ``DECISIONS.json`` of standing Commander answers seeded into the Target after
-    #: ``init``. It exists for the questions this kit has settled for good — chiefly a blocking
-    #: decision that would otherwise be waived by ``--override`` on every run and leave the run
-    #: ungoverned. It carries answers only; a kit may not pre-seed an unanswered question.
-    decisions: Path | None = None
+    #: Optional ``COMPASS.md`` seeded into the Target after ``init``. The Compass is the first
+    #: artifact analyze, plan, and every build step read, so a kit that authors it declares its
+    #: governing rules as an input instead of letting analyze compose them from whichever
+    #: imported source a model classified as intent.
+    compass: Path | None = None
     acceptance: AcceptanceContract = field(default_factory=AcceptanceContract)
     #: The verdict this fixture is expected to produce. UAT does not ask "did the fixture project
     #: pass" — it asks "did Drydock reach the correct conclusion about it". A fixture with a known
@@ -283,30 +284,31 @@ def _fixture_stack(path: Path | None) -> Path | None:
     return path
 
 
-def _fixture_decisions(path: Path | None) -> Path | None:
-    """Return the kit's standing ``DECISIONS.json``, validated, or ``None``.
+def _fixture_compass(path: Path | None) -> Path | None:
+    """Return the fixture's authored ``COMPASS.md``, validated, or ``None``.
 
-    Validation is strict for the same reason the Sea Trials' is, and stricter in one respect:
-    every record must carry a ``commander_direction``. A record without one is not an answer,
-    and seeding it would reproduce the unanswered blocking gate this file exists to close while
-    reading as though the kit had settled it.
+    Two rules, both of which decide whether ``analyze`` honors the file. It must carry the three
+    Compass body sections, and it must not contain an HTML comment: ``analyze`` treats any
+    comment as an unfilled template marker and overwrites the file, so a seeded Compass that
+    carries one is silently replaced by a model-composed Compass and the kit governs nothing.
     """
     if path is None:
         return None
     try:
-        records = load_decisions(path)
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise SpecificationError(f"Unreadable UAT fixture decisions: {path}") from exc
-    if not records:
-        # ``load_decisions`` tolerates a malformed store by returning nothing, which is right
-        # for a Target mid-run and wrong for a declared fixture input: both readings mean this
-        # kit seeds nothing while claiming to seed answers.
-        raise SpecificationError(f"UAT fixture decisions is empty or unparseable: {path}")
-    unanswered = sorted(item.id for item in records if not item.answer)
-    if unanswered:
+        raise SpecificationError(f"Unreadable UAT fixture Compass: {path}") from exc
+    missing = [
+        name for name in ("## Compass", "## Constraints", "## Guardrails") if name not in text
+    ]
+    if missing:
         raise SpecificationError(
-            f"UAT fixture decisions must all carry a commander_direction: {path}: "
-            + ", ".join(unanswered)
+            f"UAT fixture Compass is missing required sections {', '.join(missing)}: {path}"
+        )
+    if "<!--" in text:
+        raise SpecificationError(
+            "UAT fixture Compass must not contain an HTML comment — analyze reads one as an "
+            f"unfilled template and overwrites the file: {path}"
         )
     return path
 
@@ -364,7 +366,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         raw_acceptance = config.get("acceptance")
         raw_sea_trials = config.get("sea_trials")
         raw_stack = config.get("technology_stack")
-        raw_decisions = config.get("decisions")
+        raw_compass = config.get("compass")
         expected_verdict = _expected_verdict(config.get("expect"), where=str(config_path))
         if (
             not isinstance(raw_sources, list)
@@ -412,7 +414,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         updates = resolve_paths(raw_updates, "update")
         declared_sea_trials = resolve_optional_path(raw_sea_trials, "sea_trials")
         declared_stack = resolve_optional_path(raw_stack, "technology_stack")
-        declared_decisions = resolve_optional_path(raw_decisions, "decisions")
+        declared_compass = _fixture_compass(resolve_optional_path(raw_compass, "compass"))
         source_names = [source.name for source in sources]
         if len(source_names) != len(set(source_names)):
             raise SpecificationError(
@@ -445,7 +447,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 tuple(raw_test_command),
                 _fixture_stack(declared_stack),
                 _fixture_sea_trials(declared_sea_trials),
-                _fixture_decisions(declared_decisions),
+                declared_compass,
                 acceptance,
                 expected_verdict,
             )
@@ -772,6 +774,28 @@ def seed_sea_trials(fixture: UATFixture, workspace: Path) -> Path | None:
     return destination
 
 
+def seed_compass(fixture: UATFixture, workspace: Path) -> Path | None:
+    """Place the fixture's authored Compass in the Target before ``analyze`` composes one.
+
+    The Compass is the earliest artifact every later stage reads: ``analyze`` injects it,
+    ``plan`` injects it, and every build step stacks it whole under the ``compass`` role. A kit
+    that leaves it to ``analyze`` gets a Compass composed from whichever imported source the
+    model classified as intent, which makes the project's governing rules a model output rather
+    than a declared input. Seeding it here makes them an input.
+
+    ``analyze`` preserves a populated ``COMPASS.md`` and normalizes only the Drydock-owned Build
+    Write Guardrail into it, so the authored body survives the run unchanged. Seed the body
+    without a guardrail block: ``analyze`` writes that section itself.
+    """
+    if fixture.compass is None:
+        return None
+    target_dir = workspace / "targets" / fixture.target
+    target_dir.mkdir(parents=True, exist_ok=True)
+    destination = target_dir / "COMPASS.md"
+    shutil.copyfile(fixture.compass, destination)
+    return destination
+
+
 def seed_acceptance_contract(fixture: UATFixture, workspace: Path) -> Path | None:
     """Place the fixture's governed acceptance commands in the Target before the build.
 
@@ -815,28 +839,9 @@ def prior_decisions(fixture: UATFixture, case_root: Path) -> tuple[Decision, ...
     return ()
 
 
-def kit_decisions(fixture: UATFixture) -> tuple[Decision, ...]:
-    """Return the kit's own standing answers, or ``()`` when it declares none.
-
-    A run-history answer only survives while its run does. A question the kit's owner has
-    settled permanently — a governed criterion that is correct as written, a product choice the
-    fixture exists to hold still — belongs to the kit, beside its frozen Sea Trials and stack,
-    so a pruned ``runs/`` directory cannot silently re-open a blocking gate and hand the next
-    run back to ``--override``.
-    """
-    if fixture.decisions is None:
-        return ()
-    return load_decisions(fixture.decisions)
-
-
 def seed_prior_decisions(fixture: UATFixture, workspace: Path, case_root: Path) -> Path | None:
-    """Place standing answers in the Target before any stage reads them.
-
-    Precedence runs lowest to highest: whatever ``init`` already left, then the kit's standing
-    answers, then the most recent run's. A later run's answer is the more recent human
-    statement, so it wins; the kit's answer is the floor beneath it.
-    """
-    answered = kit_decisions(fixture) + prior_decisions(fixture, case_root)
+    """Place previously answered decisions in the Target before any stage reads them."""
+    answered = prior_decisions(fixture, case_root)
     if not answered:
         return None
     target_dir = workspace / "targets" / fixture.target
@@ -1234,6 +1239,18 @@ def run_fixture(
             raise DrydockError(f"{fixture.name}: {label} exited {result.returncode}")
         return result
 
+    def declare_stop(stage: str, reason: str) -> None:
+        """Record the halt at the Target root and announce it on the console."""
+        target_dir = workspace / "targets" / fixture.target
+        if not target_dir.is_dir():
+            return
+        write_stop(target_dir, stage, reason)
+        if on_event:
+            on_event(f"{fixture.name}: STOP declared by {stage} — {reason}")
+
+    def stopped() -> StopCondition | None:
+        return read_stop(workspace / "targets" / fixture.target)
+
     def execute_test() -> None:
         if not fixture.test_command:
             return
@@ -1272,14 +1289,19 @@ def run_fixture(
         execute(("status", fixture.target), f"{stage}-target-status", required=False)
         execute(("status",), f"{stage}-workspace-status", required=False)
 
-    def build_to_completion(stage: str) -> None:
-        """Build until nothing is ready, recording — not raising on — a terminal build failure.
+    def build_until_no_work_remains(stage: str) -> None:
+        """Run build passes until the frontier is empty, or declare a stop condition.
 
-        A build that exhausts its repair budget has reached its terminal state. Stopping the run
-        there discards the measurement the UAT exists to take: the partial application, the
-        scores over it, and the test command's verdict are all still meaningful, and are the only
-        record of how far Drydock actually got. So the stage is marked degraded and the lifecycle
-        continues to scoring.
+        The loop is iterative by construction: each pass builds every ready block, which makes
+        more blocks ready, until ``status --ready`` reports nothing left. It is not a single
+        command that either completes or does not.
+
+        A build that exhausts its repair budget has reached its terminal state, and the run ends
+        there. Scoring a build that stopped part way measures a project nobody asked for: the
+        entry point the last stories deliver is absent, so every score below it describes that
+        absence rather than the product, and a verdict over a partial tree is a number that
+        invites acting on it. The halt is recorded as a stop condition at the Target root so the
+        stages that follow refuse by reading it, not by re-deriving it from an exit code.
         """
         nonlocal build_passes
         entry_degraded = len(degraded)
@@ -1293,6 +1315,12 @@ def run_fixture(
             if stage_passes > max_build_passes:
                 degraded.append(
                     f"{stage}: exceeded {max_build_passes} build passes without completing"
+                )
+                declare_stop(
+                    stage,
+                    f"The build made {max_build_passes} passes without emptying the frontier. "
+                    "Either a block is looping without progress or the bound is too low for "
+                    "this Manifest.",
                 )
                 break
             built = execute(
@@ -1308,6 +1336,12 @@ def run_fixture(
             )
             if built.returncode != 0:
                 degraded.append(f"{stage}-build-{stage_passes} exited {built.returncode}")
+                declare_stop(
+                    f"{stage}-build-{stage_passes}",
+                    f"The build exited {built.returncode} with work still on the frontier. "
+                    "Diagnose the failing block from its evidence before rerunning; a score "
+                    "taken over a partial build grades the absence, not the product.",
+                )
                 break
         # ``--check`` records Manifest verification completeness; it does not control the build
         # loop and does not grade the product. ``--ready`` already established that the frontier
@@ -1335,6 +1369,7 @@ def run_fixture(
             execute(("init", fixture.target), "init")
             seed_technology_stack(fixture, workspace)
             seed_sea_trials(fixture, workspace)
+            seed_compass(fixture, workspace)
             seed_acceptance_contract(fixture, workspace)
             seed_prior_decisions(fixture, workspace, case_root)
         if start <= stage_index("import"):
@@ -1348,7 +1383,7 @@ def run_fixture(
             execute(("plan", fixture.target, "--override"), "plan")
             capture_status("after-plan")
         if start <= stage_index("build"):
-            build_to_completion("initial")
+            build_until_no_work_remains("initial")
             capture_status("after-initial-build")
 
         # A refit re-specifies work against a build that completed. Running it over a terminal
@@ -1361,8 +1396,15 @@ def run_fixture(
                 execute(("import", fixture.target, "--update"), f"import-update-{index}")
                 execute(("refit", fixture.target, "--sources"), f"refit-update-{index}")
                 capture_status(f"after-refit-{index}")
-                build_to_completion(f"refit-{index}")
+                build_until_no_work_remains(f"refit-{index}")
                 capture_status(f"after-refit-{index}-build")
+
+        # Every stage below observes the finished application. The stop condition is read once,
+        # here, rather than tested again inside each of them: a halt is a property of the run,
+        # not a special case each measurement has to remember to check.
+        halt = stopped()
+        if halt is not None:
+            raise DrydockError(f"{fixture.name}: stopped at {halt.stage}: {halt.reason}")
 
         if start <= stage_index("test"):
             execute_test()

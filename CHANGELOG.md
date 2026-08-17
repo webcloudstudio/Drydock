@@ -10,15 +10,24 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-08-17: A UAT kit declares standing Commander answers as a lifecycle input. `uat.json`
-  accepts `"decisions": "inputs/DECISIONS.json"`, validated at discovery to be non-empty and to
-  carry a `commander_direction` on every record, and seeded into the Target after `init` alongside
-  the frozen Sea Trials and technology stack. Precedence runs kit answer, then most recent run
-  answer, so the kit is the floor and a later human statement still wins. Run-history answers only
-  survive while their run does; a question the kit's owner has settled permanently now belongs to
-  the kit, so pruning `runs/` cannot silently re-open a blocking gate and hand the next run back to
-  `--override`. The `jq` kit answers `verify-001-harness-list`, the blocking decision that made
-  every previous run report itself ungoverned.
+- 2026-08-17: A UAT kit declares its own `COMPASS.md` as a lifecycle input. `uat.json` accepts
+  `"compass": "inputs/COMPASS.md"`, validated at discovery to carry the three Compass body
+  sections and to contain no HTML comment — `analyze` reads any comment as an unfilled template
+  and would silently replace the file — and seeded into the Target after `init` beside the frozen
+  Sea Trials and technology stack. The Compass is the first artifact `analyze`, `plan`, and every
+  build step read, so a kit that authors it declares its governing rules as an input rather than
+  letting `analyze` compose them from whichever imported source a model classified as intent.
+  `analyze` preserves a populated Compass and normalizes only the Drydock-owned Build Write
+  Guardrail into it. The `jq` kit now ships one, carrying the harness invocation contract, the
+  definition of its terminal story, and the scope rule for every other story.
+
+- 2026-08-17: `STOP_NOW.md` is a Target-level halt semaphore. A lifecycle stage that reaches a
+  terminal failure records the stage, the reason, and the time at the Target root, and the stages
+  that follow refuse by reading it rather than by re-deriving a verdict from an exit code they did
+  not observe — several Drydock commands exit non-zero as ordinary state signals. The first
+  declaration wins and is never overwritten, so a stopped run preserves its first causal failure
+  instead of the last incidental one. `drydock.stop_condition` exposes `write_stop`, `read_stop`,
+  and `clear_stop`.
 
 - 2026-08-16: `drydock uat` carries answered decisions forward and publishes every decision on the
   report. A run's `DECISIONS.json` is copied to its `inputs/` directory at completion, and the next
@@ -34,6 +43,25 @@ command surface and Typed Specification contract are unstable and may change bet
   unattended run has no operator at the keyboard, so it is the only review surface there is.
 
 ### Changed
+
+- 2026-08-17: A UAT run stops at a failed build instead of scoring one. The build stage declares a
+  stop condition when a build pass exits non-zero with work still on the frontier, or when the
+  pass bound is exhausted, and the refit, test, and all three scoring stages no longer run. The
+  run records `failed` rather than `degraded`. Scoring a build that stopped part way grades the
+  absence of the entry point the last stories deliver and publishes a number that invites acting
+  on it; the useful artifact is the failing block's evidence, not a release verdict over a
+  partial tree. `build_to_completion` is renamed `build_until_no_work_remains`, which describes
+  what the loop does — it runs build passes until `status --ready` reports nothing left.
+
+- 2026-08-17: The planning contract defines the terminal story by position rather than by name.
+  `BLUEPRINTS_CONTRACT.md` and `plan_create.md` now state that the terminal story is the last
+  story in the build order — the one every other story is a transitive dependency of — decided by
+  resolving `depends`, never by a story's name, `type`, or `kind`. A story that stages the test
+  assets runs first and is never terminal. The same contracts close the gap that left a staging
+  story with no legal criterion: it is gated in the runner's list or dry-run mode, which
+  enumerates the suite without executing a case, and every staged-asset invocation in any story
+  and any mode supplies the environment variables the asset declares required, by extending the
+  inherited environment.
 
 - 2026-08-17: A build step whose agent interrupted its own verification command is repairable
   rather than terminal. `target verification interrupted by build agent` now buys repair passes

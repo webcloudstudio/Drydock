@@ -207,112 +207,84 @@ def test_undeclared_root_lifecycle_inputs_are_ignored(tmp_path: Path) -> None:
     assert found.stack is None
 
 
-def _kit_decisions(fixture: Path, *records: dict) -> Path:
-    path = fixture / "inputs" / "DECISIONS.json"
+_COMPASS = (
+    "# COMPASS: Demo\n\n## Compass\nBuild a thing.\n\n"
+    "## Constraints\n- Standard library only.\n\n## Guardrails\n- Do not vendor a dependency.\n"
+)
+
+
+def _kit_compass(fixture: Path, text: str = _COMPASS) -> Path:
+    path = fixture / "inputs" / "COMPASS.md"
     path.parent.mkdir(exist_ok=True)
-    path.write_text(json.dumps(list(records)), encoding="utf-8")
-    _declare(fixture, decisions="inputs/DECISIONS.json")
+    path.write_text(text, encoding="utf-8")
+    _declare(fixture, compass="inputs/COMPASS.md")
     return path
 
 
-def _blocking_record(**overrides: object) -> dict:
-    record = {
-        "id": "acceptance-FEATURE-A.md-a-001-staged-env",
-        "type": "text",
-        "severity": "blocking",
-        "origin": "plan",
-        "blueprint": "FEATURE-A.md",
-        "story": "a-001",
-        "status": "answered",
-        "archived": False,
-        "title": "Acceptance criterion a-001 cannot pass",
-        "description": "The criterion omits an environment variable the staged asset requires.",
-        "options": [],
-        "system_choice": "not answered",
-        "commander_direction": "Accepted as written; Drydock supplies the variable at grading.",
-    }
-    record.update(overrides)
-    return record
-
-
-def test_discover_fixture_reads_declared_standing_decisions(tmp_path: Path) -> None:
+def test_discover_fixture_reads_declared_compass(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
-    path = _kit_decisions(fixture, _blocking_record())
+    path = _kit_compass(fixture)
 
-    assert discover_fixtures(tmp_path)[0].decisions == path.resolve()
+    assert discover_fixtures(tmp_path)[0].compass == path.resolve()
 
 
-def test_discover_fixture_without_standing_decisions_leaves_every_question_open(
-    tmp_path: Path,
-) -> None:
+def test_discover_fixture_without_compass_lets_analyze_compose_one(tmp_path: Path) -> None:
     _fixture(tmp_path)
 
-    assert discover_fixtures(tmp_path)[0].decisions is None
+    assert discover_fixtures(tmp_path)[0].compass is None
 
 
-def test_discover_fixture_rejects_standing_decisions_that_answer_nothing(
-    tmp_path: Path,
-) -> None:
-    """A kit input carries answers. A record without one re-opens the gate it claims to close."""
+def test_discover_fixture_rejects_a_compass_missing_a_body_section(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
-    _kit_decisions(fixture, _blocking_record(commander_direction=""))
+    _kit_compass(fixture, "# COMPASS: Demo\n\n## Compass\nBuild a thing.\n")
 
-    with pytest.raises(SpecificationError, match="must all carry a commander_direction"):
+    with pytest.raises(SpecificationError, match="missing required sections"):
         discover_fixtures(tmp_path)
 
 
-def test_discover_fixture_rejects_empty_standing_decisions(tmp_path: Path) -> None:
-    fixture = _fixture(tmp_path)
-    _kit_decisions(fixture)
+def test_discover_fixture_rejects_a_compass_carrying_an_html_comment(tmp_path: Path) -> None:
+    """``analyze`` reads any HTML comment as an unfilled template and overwrites the file.
 
-    with pytest.raises(SpecificationError, match="empty or unparseable"):
+    A kit that seeds one governs nothing and the substitution is silent, so it is rejected at
+    discovery where the operator can still see it.
+    """
+    fixture = _fixture(tmp_path)
+    _kit_compass(fixture, _COMPASS + "\n<!-- a note -->\n")
+
+    with pytest.raises(SpecificationError, match="must not contain an HTML comment"):
         discover_fixtures(tmp_path)
 
 
-def test_kit_decisions_are_seeded_before_any_stage_reads_them(tmp_path: Path) -> None:
-    """The kit's answer must reach the Target before ``plan`` synchronizes its question gates."""
-    from drydock.decisions import load_decisions
-    from drydock.uat import seed_prior_decisions
+def test_a_seeded_compass_survives_analyze_as_a_populated_file(tmp_path: Path) -> None:
+    """The seeded body must not read as an unfilled template, or analyze replaces it."""
+    from drydock.analyze import _is_compass_unpopulated
+    from drydock.uat import seed_compass
 
     fixture_dir = _fixture(tmp_path)
-    _kit_decisions(fixture_dir, _blocking_record())
-    fixture = discover_fixtures(tmp_path)[0]
-    workspace = tmp_path / "workspace"
-
-    path = seed_prior_decisions(fixture, workspace, fixture_dir / "runs" / "20260817.000000")
-
-    assert path is not None
-    seeded = load_decisions(path)
-    assert [item.id for item in seeded] == ["acceptance-FEATURE-A.md-a-001-staged-env"]
-    # ``answer`` is what ``synchronize_manifest_question_gates`` reads to release the story.
-    assert seeded[0].answer
-    assert seeded[0].severity == "blocking"
-
-
-def test_a_later_run_answer_outranks_the_kit_answer(tmp_path: Path) -> None:
-    """The kit answer is the floor; a human who answered again more recently wins."""
-    from drydock.decisions import load_decisions
-    from drydock.uat import seed_prior_decisions
-
-    fixture_dir = _fixture(tmp_path)
-    _kit_decisions(fixture_dir, _blocking_record())
-    prior = fixture_dir / "runs" / "20260816.000000" / "inputs"
-    prior.mkdir(parents=True)
-    (prior / "DECISIONS.json").write_text(
-        json.dumps([_blocking_record(commander_direction="Superseded by a later operator.")]),
-        encoding="utf-8",
-    )
+    _kit_compass(fixture_dir)
     fixture = discover_fixtures(tmp_path)[0]
 
-    path = seed_prior_decisions(
-        fixture, tmp_path / "workspace", fixture_dir / "runs" / "20260817.000000"
-    )
+    written = seed_compass(fixture, tmp_path / "workspace")
 
-    assert path is not None
-    assert load_decisions(path)[0].answer == "Superseded by a later operator."
+    assert written == tmp_path / "workspace" / "targets" / "ReadingList" / "COMPASS.md"
+    assert written.read_text(encoding="utf-8") == _COMPASS
+    assert _is_compass_unpopulated(written) is False
 
 
-@pytest.mark.parametrize("field", ["sea_trials", "technology_stack", "decisions"])
+def test_the_shipped_jq_compass_governs_harness_invocation_and_the_terminal_story():
+    """The run that failed had all of this in prose the model ignored; it is now a kit input."""
+    root = Path(__file__).resolve().parents[1] / "uat"
+    fixture = discover_fixtures(root, "jq")[0]
+
+    assert fixture.compass == (root / "jq" / "inputs" / "COMPASS.md").resolve()
+    text = fixture.compass.read_text(encoding="utf-8")
+    assert 'JQ="$PWD/jq" python3 sources/run_conformance.py' in text
+    assert 'env={**os.environ, "JQ"' in text
+    assert "### The terminal story" in text
+    assert "the last story in the build order" in text
+
+
+@pytest.mark.parametrize("field", ["sea_trials", "technology_stack", "compass"])
 @pytest.mark.parametrize("value", ["", "../outside.md", "inputs/missing.md"])
 def test_declared_lifecycle_input_path_must_be_valid(
     tmp_path: Path, field: str, value: str
@@ -1162,7 +1134,12 @@ def _staged_runner(tmp_path: Path, *, failing: tuple[str, ...], ready_passes: in
     return runner, seen
 
 
-def test_a_failed_build_degrades_the_run_and_the_lifecycle_continues(tmp_path: Path) -> None:
+def test_a_failed_build_stops_the_run(tmp_path: Path) -> None:
+    """A build that reached its terminal state ends the run; nothing downstream is measured.
+
+    Scoring a build that stopped part way grades the absence of the entry point the last
+    stories deliver, and publishes a number that invites acting on it.
+    """
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
     runner, seen = _staged_runner(tmp_path, failing=("initial-build",))
@@ -1178,20 +1155,48 @@ def test_a_failed_build_degrades_the_run_and_the_lifecycle_continues(tmp_path: P
     )
 
     result = results[0]
-    assert result.status == "degraded"
-    assert result.degraded == (
-        "initial-build-1 exited 1",
-        "test not run: the build did not complete",
-    )
-    # Final validation waits for the build. The completion check restates a shortfall the run
-    # already recorded, and the scoring command exercises an entry point the last stories have
-    # not delivered yet, so a nonzero exit there would be the harness, not the product.
+    assert result.status == "failed"
+    assert "stopped at initial-build-1" in result.error
+    assert "initial-build-1 exited 1" in result.degraded
     assert not any(label.endswith("initial-complete") for label in seen)
     assert not any(label.endswith("-test") for label in seen)
-    # The measurement the run exists to take still happened.
-    assert any("score-acceptance" in label for label in seen)
-    assert any("score-release" in label for label in seen)
-    assert set(result.score_exit_codes) == {"acceptance", "build-report", "release"}
+    # No score is taken over a build that never finished.
+    assert not any("score-" in label for label in seen)
+    assert result.score_exit_codes == {}
+
+
+def test_a_stopped_run_records_why_at_the_target_root(tmp_path: Path) -> None:
+    """``STOP_NOW.md`` is the first file to open in a halted run tree."""
+    from drydock.stop_condition import read_stop
+
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    runner, _ = _staged_runner(tmp_path, failing=("initial-build",))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    target_dir = (
+        fixtures_root
+        / "ReadingList"
+        / "runs"
+        / results[0].run_id
+        / "workspace"
+        / "targets"
+        / "ReadingList"
+    )
+    halt = read_stop(target_dir)
+    assert halt is not None
+    assert halt.stage == "initial-build-1"
+    assert "exited 1" in halt.reason
+    assert halt.declared_at
 
 
 def test_incomplete_status_snapshot_does_not_gate_an_empty_frontier(tmp_path: Path) -> None:
@@ -1221,7 +1226,7 @@ def test_incomplete_status_snapshot_does_not_gate_an_empty_frontier(tmp_path: Pa
     assert not result.degraded
 
 
-def test_a_degraded_run_does_not_put_a_partial_build_to_final_validation(
+def test_a_stopped_run_never_reaches_final_validation(
     tmp_path: Path,
 ) -> None:
     fixtures_root = tmp_path / "fixtures"
@@ -1242,8 +1247,7 @@ def test_a_degraded_run_does_not_put_a_partial_build_to_final_validation(
     # nothing to run it against. Running it anyway records a missing harness as a product
     # failure, which is the one thing the run must not claim.
     result = results[0]
-    assert result.status == "degraded"
-    assert "test not run: the build did not complete" in result.degraded
+    assert result.status == "failed"
     assert not any(label.endswith("-test") for label in seen)
     # Never observed, therefore never graded — not passed, and not failed.
     assert result.acceptance_status == "NOT_RUN"
@@ -1412,10 +1416,11 @@ def test_a_run_with_no_failures_still_passes(tmp_path: Path) -> None:
     assert results[0].degraded == ()
 
 
-def test_a_degraded_build_skips_refit_but_still_measures(tmp_path: Path) -> None:
-    """A refit re-specifies work against a build that completed. Over a terminal partial build
-    it measures nothing, and its required `import --update` / `refit` steps would raise and
-    rewrite the run as ``failed`` — destroying the degraded verdict."""
+def test_a_stopped_build_skips_refit_and_scoring_alike(tmp_path: Path) -> None:
+    """A refit re-specifies work against a build that completed, so a stopped build has none.
+
+    Nothing downstream of the halt runs: not the refit, not the test command, not the scores.
+    """
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=True)
     runner, seen = _staged_runner(tmp_path, failing=("initial-build",))
@@ -1430,11 +1435,10 @@ def test_a_degraded_build_skips_refit_but_still_measures(tmp_path: Path) -> None
         now=datetime(2026, 8, 10, tzinfo=UTC),
     )
 
-    assert results[0].status == "degraded"
+    assert results[0].status == "failed"
     assert not any("import-update" in label for label in seen)
     assert not any("refit-update" in label for label in seen)
-    # The measurement the run exists to take still happened.
-    assert any("score-release" in label for label in seen)
+    assert not any("score-" in label for label in seen)
 
 
 def test_a_clean_build_still_runs_its_refit_stage(tmp_path: Path) -> None:
@@ -1488,24 +1492,6 @@ def test_shipped_fixtures_declare_lifecycle_inputs_under_inputs():
         assert config["technology_stack"] == "inputs/TECHNOLOGY_STACK.md"
         assert (root / name / config["sea_trials"]).is_file()
         assert (root / name / config["technology_stack"]).is_file()
-
-
-def test_jq_kit_answers_the_blocking_criterion_override_kept_waiving():
-    """Run 20260817.024254 waived ``story-question verify-001`` and reported itself ungoverned.
-
-    The kit now answers that gate itself, so the waiver is not re-earned every run.
-    """
-    from drydock.uat import kit_decisions
-
-    fixtures = discover_fixtures(Path(__file__).resolve().parents[1] / "uat", "jq")
-    records = kit_decisions(fixtures[0])
-
-    assert [item.id for item in records] == [
-        "acceptance-FEATURE-VERIFY-001.md-verify-001-harness-list-staged-env"
-    ]
-    assert records[0].severity == "blocking"
-    assert records[0].story == "verify-001"
-    assert records[0].answer
 
 
 def test_commonmark_has_one_deterministic_blocking_proof_criterion():
