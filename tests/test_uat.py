@@ -207,7 +207,112 @@ def test_undeclared_root_lifecycle_inputs_are_ignored(tmp_path: Path) -> None:
     assert found.stack is None
 
 
-@pytest.mark.parametrize("field", ["sea_trials", "technology_stack"])
+def _kit_decisions(fixture: Path, *records: dict) -> Path:
+    path = fixture / "inputs" / "DECISIONS.json"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps(list(records)), encoding="utf-8")
+    _declare(fixture, decisions="inputs/DECISIONS.json")
+    return path
+
+
+def _blocking_record(**overrides: object) -> dict:
+    record = {
+        "id": "acceptance-FEATURE-A.md-a-001-staged-env",
+        "type": "text",
+        "severity": "blocking",
+        "origin": "plan",
+        "blueprint": "FEATURE-A.md",
+        "story": "a-001",
+        "status": "answered",
+        "archived": False,
+        "title": "Acceptance criterion a-001 cannot pass",
+        "description": "The criterion omits an environment variable the staged asset requires.",
+        "options": [],
+        "system_choice": "not answered",
+        "commander_direction": "Accepted as written; Drydock supplies the variable at grading.",
+    }
+    record.update(overrides)
+    return record
+
+
+def test_discover_fixture_reads_declared_standing_decisions(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    path = _kit_decisions(fixture, _blocking_record())
+
+    assert discover_fixtures(tmp_path)[0].decisions == path.resolve()
+
+
+def test_discover_fixture_without_standing_decisions_leaves_every_question_open(
+    tmp_path: Path,
+) -> None:
+    _fixture(tmp_path)
+
+    assert discover_fixtures(tmp_path)[0].decisions is None
+
+
+def test_discover_fixture_rejects_standing_decisions_that_answer_nothing(
+    tmp_path: Path,
+) -> None:
+    """A kit input carries answers. A record without one re-opens the gate it claims to close."""
+    fixture = _fixture(tmp_path)
+    _kit_decisions(fixture, _blocking_record(commander_direction=""))
+
+    with pytest.raises(SpecificationError, match="must all carry a commander_direction"):
+        discover_fixtures(tmp_path)
+
+
+def test_discover_fixture_rejects_empty_standing_decisions(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    _kit_decisions(fixture)
+
+    with pytest.raises(SpecificationError, match="empty or unparseable"):
+        discover_fixtures(tmp_path)
+
+
+def test_kit_decisions_are_seeded_before_any_stage_reads_them(tmp_path: Path) -> None:
+    """The kit's answer must reach the Target before ``plan`` synchronizes its question gates."""
+    from drydock.decisions import load_decisions
+    from drydock.uat import seed_prior_decisions
+
+    fixture_dir = _fixture(tmp_path)
+    _kit_decisions(fixture_dir, _blocking_record())
+    fixture = discover_fixtures(tmp_path)[0]
+    workspace = tmp_path / "workspace"
+
+    path = seed_prior_decisions(fixture, workspace, fixture_dir / "runs" / "20260817.000000")
+
+    assert path is not None
+    seeded = load_decisions(path)
+    assert [item.id for item in seeded] == ["acceptance-FEATURE-A.md-a-001-staged-env"]
+    # ``answer`` is what ``synchronize_manifest_question_gates`` reads to release the story.
+    assert seeded[0].answer
+    assert seeded[0].severity == "blocking"
+
+
+def test_a_later_run_answer_outranks_the_kit_answer(tmp_path: Path) -> None:
+    """The kit answer is the floor; a human who answered again more recently wins."""
+    from drydock.decisions import load_decisions
+    from drydock.uat import seed_prior_decisions
+
+    fixture_dir = _fixture(tmp_path)
+    _kit_decisions(fixture_dir, _blocking_record())
+    prior = fixture_dir / "runs" / "20260816.000000" / "inputs"
+    prior.mkdir(parents=True)
+    (prior / "DECISIONS.json").write_text(
+        json.dumps([_blocking_record(commander_direction="Superseded by a later operator.")]),
+        encoding="utf-8",
+    )
+    fixture = discover_fixtures(tmp_path)[0]
+
+    path = seed_prior_decisions(
+        fixture, tmp_path / "workspace", fixture_dir / "runs" / "20260817.000000"
+    )
+
+    assert path is not None
+    assert load_decisions(path)[0].answer == "Superseded by a later operator."
+
+
+@pytest.mark.parametrize("field", ["sea_trials", "technology_stack", "decisions"])
 @pytest.mark.parametrize("value", ["", "../outside.md", "inputs/missing.md"])
 def test_declared_lifecycle_input_path_must_be_valid(
     tmp_path: Path, field: str, value: str
@@ -1383,6 +1488,24 @@ def test_shipped_fixtures_declare_lifecycle_inputs_under_inputs():
         assert config["technology_stack"] == "inputs/TECHNOLOGY_STACK.md"
         assert (root / name / config["sea_trials"]).is_file()
         assert (root / name / config["technology_stack"]).is_file()
+
+
+def test_jq_kit_answers_the_blocking_criterion_override_kept_waiving():
+    """Run 20260817.024254 waived ``story-question verify-001`` and reported itself ungoverned.
+
+    The kit now answers that gate itself, so the waiver is not re-earned every run.
+    """
+    from drydock.uat import kit_decisions
+
+    fixtures = discover_fixtures(Path(__file__).resolve().parents[1] / "uat", "jq")
+    records = kit_decisions(fixtures[0])
+
+    assert [item.id for item in records] == [
+        "acceptance-FEATURE-VERIFY-001.md-verify-001-harness-list-staged-env"
+    ]
+    assert records[0].severity == "blocking"
+    assert records[0].story == "verify-001"
+    assert records[0].answer
 
 
 def test_commonmark_has_one_deterministic_blocking_proof_criterion():

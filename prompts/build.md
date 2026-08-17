@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20260813 V6
+version: 20260817 V7
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 model: opus
@@ -74,8 +74,15 @@ Operating contract:
    and isolation — each test arranges its own data, with a fresh store or explicit teardown, so
    a run leaves no residue behind in the build directory.
    Where a staged authoritative suite already covers a surface, that suite is the coverage:
-   run it, and do not restate its cases. Report the suite's pass/fail counts in your `SUMMARY`
-   so a reader can see coverage moving across steps.
+   run it, and do not restate its cases. Run it **only through the invocation this step's
+   acceptance criteria declare**. A criterion marked `Suite: scoped` names the whole of this
+   step's obligation to that suite; running the suite's unscoped entry point instead is not
+   extra rigor, it is a different step's gate executed early. A partial capability fails most
+   of an authoritative corpus by construction and its unimplemented cases exhaust the runner's
+   per-case timeout rather than returning, so the unscoped run costs the most where it teaches
+   the least, and interrupting it forfeits the step. If no criterion in this step invokes the
+   staged suite, do not invoke it. Report the pass/fail counts of the invocations you did run
+   in your `SUMMARY` so a reader can see coverage moving across steps.
 7. Treat `User Acceptance` entries as review evidence requirements. Implement
    the supporting behavior, but do not claim to have performed human judgment.
 8. The `implements` section is authoritative and intentionally stacked late in

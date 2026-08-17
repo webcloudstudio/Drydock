@@ -14,7 +14,9 @@ import pytest
 from drydock.acceptance import MEMORY_FAILURE_PREFIX, AcceptanceRunResult
 from drydock.build_plan import parse_build_plan, stale_applied_specs
 from drydock.build_run import (
+    INTERRUPTED_VERIFICATION_PREFIX,
     _assertion_summary,
+    _classify_failure,
     _is_repairable,
     _render_repair_feedback,
     _resolve_step_selector,
@@ -2868,6 +2870,23 @@ def test_is_repairable_only_for_acceptance_and_agent_reports():
     assert _is_repairable("dependency legitimacy gate failed: 1 issue(s)") is False
     assert _is_repairable("staged build asset modified: kit.py") is False
     assert _is_repairable(None) is False
+
+
+def test_interrupted_verification_is_repairable_not_terminal():
+    """An agent that stops its own verification command has said nothing about the code.
+
+    Classifying it terminal ended a block on its first pass with its whole repair budget
+    unspent, which is how a step with three green scoped criteria closed ``failed``.
+    """
+    category, _ = _classify_failure(
+        "RESULT: FAILURE\n"
+        "FAILURE_SUMMARY: full conformance interrupted\n"
+        "FAILURE_DETAIL: KeyboardInterrupt while running the supplied corpus.\n",
+        ok=True,
+        wrote_files=("evaluator.py",),
+    )
+    assert category == INTERRUPTED_VERIFICATION_PREFIX
+    assert _is_repairable(category) is True
 
 
 def test_repair_feedback_names_failing_checks_and_caps_size():

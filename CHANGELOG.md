@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-17: A UAT kit declares standing Commander answers as a lifecycle input. `uat.json`
+  accepts `"decisions": "inputs/DECISIONS.json"`, validated at discovery to be non-empty and to
+  carry a `commander_direction` on every record, and seeded into the Target after `init` alongside
+  the frozen Sea Trials and technology stack. Precedence runs kit answer, then most recent run
+  answer, so the kit is the floor and a later human statement still wins. Run-history answers only
+  survive while their run does; a question the kit's owner has settled permanently now belongs to
+  the kit, so pruning `runs/` cannot silently re-open a blocking gate and hand the next run back to
+  `--override`. The `jq` kit answers `verify-001-harness-list`, the blocking decision that made
+  every previous run report itself ungoverned.
+
 - 2026-08-16: `drydock uat` carries answered decisions forward and publishes every decision on the
   report. A run's `DECISIONS.json` is copied to its `inputs/` directory at completion, and the next
   run of the same project re-enters the decisions a human answered — `commander_direction` only, so
@@ -24,6 +34,17 @@ command surface and Typed Specification contract are unstable and may change bet
   unattended run has no operator at the keyboard, so it is the only review surface there is.
 
 ### Changed
+
+- 2026-08-17: A build step whose agent interrupted its own verification command is repairable
+  rather than terminal. `target verification interrupted by build agent` now buys repair passes
+  like any other agent-reported failure: the build directory holds the work, the declared criteria
+  still name the gate, and the interruption is a statement about that command's scope, not about
+  the product. The classification previously closed a block on its first pass with its whole repair
+  budget unspent — a `jq` step with three green scoped criteria closed `failed` after one call of a
+  possible seven. The `build` prompt is now explicit that a staged authoritative suite is run only
+  through the invocation this step's acceptance criteria declare: a `Suite: scoped` criterion is the
+  whole of the step's obligation to that suite, and running the suite's unscoped entry point is a
+  later step's gate executed early against a partial capability.
 
 - 2026-08-16: A UAT receipt now links one LLM activity log per lifecycle step instead of a row of
   numbered links. `drydock uat --report` joins every model call a step made, in execution order,

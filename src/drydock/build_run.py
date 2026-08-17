@@ -1117,7 +1117,7 @@ def _classify_failure(
                 "scoped too broadly for the story, not hung. "
                 + (agent_detail or agent_summary or "Inspect execution evidence for the command.")
             )
-            return "target verification interrupted by build agent", detail
+            return INTERRUPTED_VERIFICATION_PREFIX, detail
         category = (
             f"{_AGENT_REPORTED_PREFIX}: {agent_summary}"
             if agent_summary
@@ -1285,6 +1285,10 @@ GOVERNED_FAILURE_PREFIX = "governed acceptance failed"
 #: A block that broke a criterion an earlier block had already proven. Repairable by
 #: construction: working code for it existed in this same tree one block ago.
 REGRESSION_FAILURE_PREFIX = "acceptance regression"
+#: A block whose agent stopped one of its own verification commands. The build directory holds
+#: the work, the declared criteria still name the gate, and the interruption says nothing about
+#: whether the code is right — so this is a repairable pass, not a terminal classification.
+INTERRUPTED_VERIFICATION_PREFIX = "target verification interrupted by build agent"
 
 
 def _is_repairable(error: str | None) -> bool:
@@ -1294,7 +1298,10 @@ def _is_repairable(error: str | None) -> bool:
     failure is repairable: the build directory holds the partial work and the failing gate or
     checks name what remains. A red governed gate is the most repairable signal there is — it
     is the authoritative statement of what the product still gets wrong — so it must buy passes
-    rather than end the block with the budget unspent. Every other classification (token/context limit, sandbox unavailable,
+    rather than end the block with the budget unspent. An interrupted verification is repairable
+    for the same reason: the agent stopped its own command, which is a statement about that
+    command's scope and not about the product, and ending the block there spends nothing and
+    learns nothing. Every other classification (token/context limit, sandbox unavailable,
     provider error, dependency gate, staged-asset tamper, no files written) is terminal
     and never loops — re-running it only wastes a pass. ``no files written`` reaches here
     only for a block with no acceptance criteria; with criteria it is downgraded to advisory
@@ -1306,6 +1313,7 @@ def _is_repairable(error: str | None) -> bool:
         "programmatic acceptance failed",
         REGRESSION_FAILURE_PREFIX,
         GOVERNED_FAILURE_PREFIX,
+        INTERRUPTED_VERIFICATION_PREFIX,
         _AGENT_REPORTED_PREFIX,
     ))
 

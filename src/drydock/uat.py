@@ -84,6 +84,11 @@ class UATFixture:
     #: stop passing without changing. With it, every run is graded against the same exam and a
     #: regression is finally detectable.
     sea_trials: Path | None = None
+    #: Optional ``DECISIONS.json`` of standing Commander answers seeded into the Target after
+    #: ``init``. It exists for the questions this kit has settled for good — chiefly a blocking
+    #: decision that would otherwise be waived by ``--override`` on every run and leave the run
+    #: ungoverned. It carries answers only; a kit may not pre-seed an unanswered question.
+    decisions: Path | None = None
     acceptance: AcceptanceContract = field(default_factory=AcceptanceContract)
     #: The verdict this fixture is expected to produce. UAT does not ask "did the fixture project
     #: pass" — it asks "did Drydock reach the correct conclusion about it". A fixture with a known
@@ -278,6 +283,34 @@ def _fixture_stack(path: Path | None) -> Path | None:
     return path
 
 
+def _fixture_decisions(path: Path | None) -> Path | None:
+    """Return the kit's standing ``DECISIONS.json``, validated, or ``None``.
+
+    Validation is strict for the same reason the Sea Trials' is, and stricter in one respect:
+    every record must carry a ``commander_direction``. A record without one is not an answer,
+    and seeding it would reproduce the unanswered blocking gate this file exists to close while
+    reading as though the kit had settled it.
+    """
+    if path is None:
+        return None
+    try:
+        records = load_decisions(path)
+    except OSError as exc:
+        raise SpecificationError(f"Unreadable UAT fixture decisions: {path}") from exc
+    if not records:
+        # ``load_decisions`` tolerates a malformed store by returning nothing, which is right
+        # for a Target mid-run and wrong for a declared fixture input: both readings mean this
+        # kit seeds nothing while claiming to seed answers.
+        raise SpecificationError(f"UAT fixture decisions is empty or unparseable: {path}")
+    unanswered = sorted(item.id for item in records if not item.answer)
+    if unanswered:
+        raise SpecificationError(
+            f"UAT fixture decisions must all carry a commander_direction: {path}: "
+            + ", ".join(unanswered)
+        )
+    return path
+
+
 def _canonical_kit_dir(root: Path, selected: str) -> Path:
     """Return the kit directory as it is spelled on disk, not as the operator typed it.
 
@@ -331,6 +364,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         raw_acceptance = config.get("acceptance")
         raw_sea_trials = config.get("sea_trials")
         raw_stack = config.get("technology_stack")
+        raw_decisions = config.get("decisions")
         expected_verdict = _expected_verdict(config.get("expect"), where=str(config_path))
         if (
             not isinstance(raw_sources, list)
@@ -378,6 +412,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         updates = resolve_paths(raw_updates, "update")
         declared_sea_trials = resolve_optional_path(raw_sea_trials, "sea_trials")
         declared_stack = resolve_optional_path(raw_stack, "technology_stack")
+        declared_decisions = resolve_optional_path(raw_decisions, "decisions")
         source_names = [source.name for source in sources]
         if len(source_names) != len(set(source_names)):
             raise SpecificationError(
@@ -410,6 +445,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 tuple(raw_test_command),
                 _fixture_stack(declared_stack),
                 _fixture_sea_trials(declared_sea_trials),
+                _fixture_decisions(declared_decisions),
                 acceptance,
                 expected_verdict,
             )
@@ -779,9 +815,28 @@ def prior_decisions(fixture: UATFixture, case_root: Path) -> tuple[Decision, ...
     return ()
 
 
+def kit_decisions(fixture: UATFixture) -> tuple[Decision, ...]:
+    """Return the kit's own standing answers, or ``()`` when it declares none.
+
+    A run-history answer only survives while its run does. A question the kit's owner has
+    settled permanently — a governed criterion that is correct as written, a product choice the
+    fixture exists to hold still — belongs to the kit, beside its frozen Sea Trials and stack,
+    so a pruned ``runs/`` directory cannot silently re-open a blocking gate and hand the next
+    run back to ``--override``.
+    """
+    if fixture.decisions is None:
+        return ()
+    return load_decisions(fixture.decisions)
+
+
 def seed_prior_decisions(fixture: UATFixture, workspace: Path, case_root: Path) -> Path | None:
-    """Place previously answered decisions in the Target before any stage reads them."""
-    answered = prior_decisions(fixture, case_root)
+    """Place standing answers in the Target before any stage reads them.
+
+    Precedence runs lowest to highest: whatever ``init`` already left, then the kit's standing
+    answers, then the most recent run's. A later run's answer is the more recent human
+    statement, so it wins; the kit's answer is the floor beneath it.
+    """
+    answered = kit_decisions(fixture) + prior_decisions(fixture, case_root)
     if not answered:
         return None
     target_dir = workspace / "targets" / fixture.target
