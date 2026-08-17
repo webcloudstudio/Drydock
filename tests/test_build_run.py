@@ -1886,6 +1886,20 @@ class TestClassifyFailure:
         category, _ = self._classify(summary="All good, nothing to do.", wrote_files=())
         assert category == "no build files written"
 
+    def test_interrupted_verification_does_not_blame_a_missing_drydock_timeout(self):
+        """The agent stops its own subprocess; Drydock never owned it, so the detail must
+        point at the interrupted command's scope rather than at an unset Drydock timeout."""
+        summary = (
+            "RESULT: FAILURE\n"
+            "FAILURE_SUMMARY: full conformance interrupted\n"
+            "FAILURE_DETAIL: KeyboardInterrupt while running the supplied corpus.\n"
+        )
+        category, detail = self._classify(summary=summary)
+        assert category == "target verification interrupted by build agent"
+        assert "timeout" not in detail.lower()
+        assert "scoped too broadly" in detail
+        assert "KeyboardInterrupt while running the supplied corpus." in detail
+
 
 def test_snapshot_ignores_transient_and_generated_paths(tmp_path):
     """Bytecode caches, tool caches, and .git are not build output and must not register

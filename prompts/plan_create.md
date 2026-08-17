@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20260814 V33
+version: 20260816 V34
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 model: sonnet
@@ -512,6 +512,10 @@ Additional body guidance:
 - An assertion that invokes a staged asset obeys that asset's documented interface, supplies every
   environment variable it declares required, and extends the inherited environment rather than
   replacing it. See the staged-asset invocation rules in `BLUEPRINTS_CONTRACT.md`.
+- Where an imported source stages an authoritative test suite, exactly one story invokes its runner
+  and that story is the terminal one. Never plan a story whose purpose is running that suite in
+  slices, and never let a scoping flag the runner offers override an imported instruction that says
+  where the suite may run. See the authoritative-suite rules in `BLUEPRINTS_CONTRACT.md`.
 - `User Acceptance` contains only Commander-observed checks that cannot be honestly automated.
 ---
 

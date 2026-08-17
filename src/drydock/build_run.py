@@ -1111,7 +1111,10 @@ def _classify_failure(
         if interruption:
             detail = (
                 "A target verification command was interrupted inside the build-agent session. "
-                "Drydock did not configure an LLM execution timeout for this build. "
+                "The build agent stopped that command itself; Drydock does not own or time out "
+                "commands the agent runs. Identify the interrupted command in the execution "
+                "evidence before rerunning: a verification that outgrows its step is usually "
+                "scoped too broadly for the story, not hung. "
                 + (agent_detail or agent_summary or "Inspect execution evidence for the command.")
             )
             return "target verification interrupted by build agent", detail

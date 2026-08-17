@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260816 V14
+version: 20260816 V15
 ---
 
 ## Overview
@@ -275,6 +275,23 @@ Trial that runs that suite.
 `sources/` defines correctness for the surface it covers. Bind one criterion to it and do not
 restate its cases in either destination — a restated case adds no coverage and adds one more
 expectation that can be wrong.
+
+**One story invokes the authoritative runner, and it is the terminal one.** No intermediate story's
+acceptance runs that runner, with or without a scoping flag, and no story exists whose purpose is to
+run the suite in slices — a "focused verification" or "bounded conformance" story is a defect, not a
+diagnostic. Two reasons, both load-bearing. A partial capability fails most of an authoritative
+corpus by construction, so the run reports the schedule rather than a defect. And the run is slow in
+exact proportion to how incomplete the code is, because unimplemented cases exhaust the runner's
+per-case timeout instead of returning: the invocation costs most at the point in the build where it
+teaches least, and a build agent that starts one mid-story typically abandons it and reports the
+suite as hung.
+
+A story verifies its own increment with its own assertions. If an imported instruction states where
+the suite may run, that statement governs and is not softened by a scoping flag the runner happens
+to offer. Where no such instruction exists and a project's own suite is sliced across stories, size
+each slice from the runner's list or dry-run mode before writing the criterion — that is also how a
+text-matched selector that silently pulls in cases from unbuilt stories is caught at plan time
+rather than mid-build — and keep every non-terminal slice to a few hundred cases.
 
 ### What a criterion is worth
 
