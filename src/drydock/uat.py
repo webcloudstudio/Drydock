@@ -29,6 +29,7 @@ from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
 from drydock.stop_condition import StopCondition, clear_stop, read_stop, write_stop
+from drydock.story_guidance import StoryGuidance, guidance_from_config, write_guidance
 from drydock.uat_console import StepSink
 from drydock.uat_report import build_case_kit, local_run_window, write_kit_index
 
@@ -92,6 +93,11 @@ class UATFixture:
     #: imported source a model classified as intent.
     compass: Path | None = None
     acceptance: AcceptanceContract = field(default_factory=AcceptanceContract)
+    #: Optional Commander story guidance seeded into the Target after ``init``. Declared as
+    #: ``acceptance.story_guidance`` in ``uat.json``, it names the stories planning must produce
+    #: and, where the kit supplies one, the command that decides each. A kit input precedes every
+    #: Drydock command, so every entry it declares is Commander provenance and binding.
+    story_guidance: StoryGuidance = field(default_factory=StoryGuidance)
     #: The verdict this fixture is expected to produce. UAT does not ask "did the fixture project
     #: pass" — it asks "did Drydock reach the correct conclusion about it". A fixture with a known
     #: product defect that Drydock correctly reports as FAILED is a UAT *pass*: the harness worked.
@@ -382,6 +388,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         ):
             raise SpecificationError(f"UAT fixture updates must be a list of paths: {config_path}")
         acceptance = contract_from_config(raw_acceptance, where=str(config_path))
+        story_guidance = guidance_from_config(raw_acceptance, where=str(config_path))
         # The scoring entry point and the run's test command are the same command by construction;
         # a fixture only states it twice when it wants them to differ.
         if raw_test_command is None:
@@ -450,6 +457,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 _fixture_sea_trials(declared_sea_trials),
                 declared_compass,
                 acceptance,
+                story_guidance,
                 expected_verdict,
             )
         )
@@ -801,19 +809,32 @@ def seed_compass(fixture: UATFixture, workspace: Path) -> Path | None:
 
 
 def seed_acceptance_contract(fixture: UATFixture, workspace: Path) -> Path | None:
-    """Place the fixture's governed acceptance commands in the Target before the build.
+    """Place the fixture's governed release gate in the Target before the build.
 
-    This is the fixture acting as Commander. The contract is the only thing in the run that can
-    close a story ``closed/verified`` or fail the release, and nothing the model writes can
+    This is the fixture acting as Commander. The gate is one of only two things in the run that
+    can close a story ``closed/verified`` or fail the release, and nothing the model writes can
     reach it — ``ACCEPTANCE.json`` is not a Blueprint artifact and no LLM-assisted command emits
     it. UAT populates the same target-level contract the build and scoring engines read for a
     real Target, so the two cannot drift apart.
     """
-    if not fixture.acceptance.declared:
+    if not fixture.acceptance.full:
         return None
     target_dir = workspace / "targets" / fixture.target
     target_dir.mkdir(parents=True, exist_ok=True)
     return write_contract(target_dir, fixture.acceptance)
+
+
+def seed_story_guidance(fixture: UATFixture, workspace: Path) -> Path | None:
+    """Place the fixture's Commander story guidance in the Target before ``analyze`` runs.
+
+    Seeded at ``init`` rather than later because ``analyze`` reads it: guidance that arrives
+    after the Story List exists cannot shape it, which is the whole reason to declare it.
+    """
+    if not fixture.story_guidance.declared:
+        return None
+    target_dir = workspace / "targets" / fixture.target
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return write_guidance(target_dir, fixture.story_guidance)
 
 
 DECISIONS_FILENAME = "DECISIONS.json"
@@ -1028,6 +1049,10 @@ _EXACT_LABEL_STAGES: dict[str, str] = {
 
 _PREFIX_LABEL_STAGES: tuple[tuple[str, str], ...] = (
     ("after-plan-", "plan"),
+    # Verification and its repair belong to the plan they judge, so resuming at ``plan`` re-runs
+    # them with the plan rather than stranding a Target on an unrepaired Blueprint.
+    ("plan-verify", "plan"),
+    ("plan-repair", "plan"),
     ("initial-", "build"),
     ("after-initial-", "build"),
     ("import-update-", "refit"),
@@ -1243,6 +1268,30 @@ def run_fixture(
             raise DrydockError(f"{fixture.name}: {label} exited {result.returncode}")
         return result
 
+    def repair_unrunnable_acceptance() -> None:
+        """Verify the plan, repair it once if needed, and stop the run if it is still unrunnable.
+
+        A criterion that cannot execute costs the build its entire repair budget on a story whose
+        code was already correct, then stops the run on a score that never moved — which is
+        exactly how the run that motivated this step was lost. Verification is deterministic and
+        free, so it runs every time; the repair call is paid for only when verification fails.
+
+        One attempt, then the run halts. A second pass asks the same model the same question with
+        the same context, and building on a Blueprint whose criteria cannot run measures nothing.
+        """
+        verified = execute(("plan", "verify", fixture.target), "plan-verify", required=False)
+        if verified.returncode == 0:
+            return
+        execute(("plan", "repair", fixture.target), "plan-repair", required=False)
+        confirmed = execute(
+            ("plan", "verify", fixture.target), "plan-verify-after-repair", required=False
+        )
+        if confirmed.returncode != 0:
+            declare_stop(
+                "plan-repair",
+                "acceptance criteria still cannot run after one repair pass",
+            )
+
     def declare_stop(stage: str, reason: str) -> None:
         """Record the halt at the Target root and announce it on the console."""
         target_dir = workspace / "targets" / fixture.target
@@ -1380,6 +1429,7 @@ def run_fixture(
             seed_sea_trials(fixture, workspace)
             seed_compass(fixture, workspace)
             seed_acceptance_contract(fixture, workspace)
+            seed_story_guidance(fixture, workspace)
             seed_prior_decisions(fixture, workspace, case_root)
         if start <= stage_index("import"):
             execute(
@@ -1390,7 +1440,14 @@ def run_fixture(
             execute(("analyze", fixture.target), "analyze")
         if start <= stage_index("plan"):
             execute(("plan", fixture.target, "--override"), "plan")
+            repair_unrunnable_acceptance()
             capture_status("after-plan")
+            # Checked here rather than at the shared halt below: a build over criteria that
+            # cannot run spends the full LLM budget to learn nothing, so the run ends at the
+            # plan rather than after it.
+            halted = stopped()
+            if halted is not None:
+                raise DrydockError(f"{fixture.name}: stopped at {halted.stage}: {halted.reason}")
         if start <= stage_index("build"):
             build_until_no_work_remains("initial")
             capture_status("after-initial-build")

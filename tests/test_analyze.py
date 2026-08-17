@@ -41,6 +41,7 @@ from drydock.quarterdeck_state import (
     commanders_chair_command,
 )
 from drydock.source_material import SourceMaterialFile
+from drydock.story_guidance import load_guidance
 
 # ---------------------------------------------------------------------------
 # Minimal valid LLM output helpers
@@ -736,7 +737,7 @@ class TestParseBlocks:
 
 class TestParseOutput:
     def test_valid_output_extracts_all_fields(self):
-        analysis, sea_trials, compass, blockers, spikes, quality, summary, _ = _parse_output(
+        analysis, sea_trials, compass, blockers, spikes, quality, summary, _, _ = _parse_output(
             _VALID_LLM_OUTPUT_WITH_SPIKES
         )
         assert "Blueprint Analysis" in analysis
@@ -750,7 +751,7 @@ class TestParseOutput:
         assert "discovery-guardrails.json" in spikes
 
     def test_summary_fields_parsed(self):
-        _, _, _, _, _, _, summary, _ = _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
+        _, _, _, _, _, _, summary, _, _ = _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
         assert summary.get("stories") == "5"
         assert summary.get("features") == "4"
         assert summary.get("blockers") == "0"
@@ -762,21 +763,21 @@ class TestParseOutput:
 
     def test_blocked_quality_parsed(self):
         output = _make_llm_output(quality="Blocked")
-        _, _, _, _, _, quality, _, _ = _parse_output(output)
+        _, _, _, _, _, quality, _, _, _ = _parse_output(output)
         assert quality == "Blocked"
 
     def test_questions_quality_parsed(self):
         output = _make_llm_output(quality="Questions")
-        _, _, _, _, _, quality, _, _ = _parse_output(output)
+        _, _, _, _, _, quality, _, _, _ = _parse_output(output)
         assert quality == "Questions"
 
     def test_no_compass_block_returns_none(self):
-        _, _, compass, _, _, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
+        _, _, compass, _, _, _, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
         assert compass is None
 
     def test_blockers_block_returned_when_present(self):
         output = _make_llm_output(blockers=_BLOCKERS_CONTENT)
-        _, _, _, blockers, _, _, _, _ = _parse_output(output)
+        _, _, _, blockers, _, _, _, _, _ = _parse_output(output)
         assert blockers is not None
         assert "Missing project name" in blockers
 
@@ -784,13 +785,13 @@ class TestParseOutput:
         # Regression (FIX-10): the LLM emitted the block with placeholder text instead of
         # omitting it; the writer must treat it as "no blockers" so its existence stays a real flag.
         output = _make_llm_output(blockers="(omitted — no blockers)")
-        _, _, _, blockers, _, _, _, _ = _parse_output(output)
+        _, _, _, blockers, _, _, _, _, _ = _parse_output(output)
         assert blockers is None
 
     def test_titleonly_blockers_block_returns_none(self):
         # Heading prose but no "## " blocker entry → not a genuine blocker list.
         output = _make_llm_output(blockers="# Blockers: TestProject\n\nNo blockers found.")
-        _, _, _, blockers, _, _, _, _ = _parse_output(output)
+        _, _, _, blockers, _, _, _, _, _ = _parse_output(output)
         assert blockers is None
 
     def test_missing_analysis_block_raises(self):
@@ -841,7 +842,7 @@ Verification: proof""",
     def test_no_spikes_is_tolerated(self):
         # Spikes are emitted dynamically; an analysis with nothing open is valid.
         output = _make_llm_output(include_spikes=False)
-        _, _, _, _, spikes, _, _, _ = _parse_output(output)
+        _, _, _, _, spikes, _, _, _, _ = _parse_output(output)
         assert spikes == {}
 
     def test_invalid_spike_json_raises(self):
@@ -856,18 +857,18 @@ Verification: proof""",
             1,
         )
 
-        _, _, _, _, discoveries, _, _, _ = _parse_output(missing_end)
+        _, _, _, _, discoveries, _, _, _, _ = _parse_output(missing_end)
 
         assert discoveries["discovery-intent.json"]["id"] == "discovery-intent"
 
     def test_unknown_quality_when_absent(self):
         no_quality = _VALID_LLM_OUTPUT.replace("Quality: Ready", "")
-        _, _, _, _, _, quality, _, _ = _parse_output(no_quality)
+        _, _, _, _, _, quality, _, _, _ = _parse_output(no_quality)
         assert quality == "unknown"
 
     def test_variable_spikes_collected(self):
         output = _make_llm_output(extra_spike=True)
-        _, _, _, _, spikes, _, _, _ = _parse_output(output)
+        _, _, _, _, spikes, _, _, _, _ = _parse_output(output)
         assert "discovery-auth.json" in spikes
 
     def test_write_tool_transcript_is_recovered(self):
@@ -920,7 +921,7 @@ Compass text.
 - None stated.</parameter>
 </invoke>
 </function_calls>"""
-        analysis, sea_trials, compass, blockers, spikes, quality, _, _ = _parse_output(text)
+        analysis, sea_trials, compass, blockers, spikes, quality, _, _, _ = _parse_output(text)
         assert "Blueprint Analysis" in analysis
         assert "Sea Trials" in sea_trials
         assert compass is not None
@@ -1210,6 +1211,67 @@ class TestAnalyze:
         assert (target_dir / "PLAN_COMPASS.md").read_text(encoding="utf-8") == "# Plan Compass\n"
         assert not (target_dir / "SOUNDINGS.md").exists()
         assert "## Questions" not in result.analysis_path.read_text(encoding="utf-8")
+
+    def test_story_guidance_is_written_and_rendered_as_an_analysis_section(self, tmp_path):
+        """Derived guidance is evidence: recorded at plan provenance and visible in the document."""
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        emitted = _VALID_LLM_OUTPUT + (
+            "\n=== BEGIN ARTIFACT STORY_GUIDANCE.json ===\n"
+            '{"stories":[{"id":"parser-strings","gate":["sh","stage.sh","string"],'
+            '"note":"chapter 3"}]}\n'
+            "=== END ARTIFACT ===\n"
+        )
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=emitted))
+
+        assert result.ok
+        guidance = load_guidance(target_dir)
+        assert guidance.ids == ("parser-strings",)
+        assert guidance.commander_ids == ()
+        # A gate Drydock derived drives repair but confers no verification authority.
+        assert guidance.governed_gates == {}
+        analysis = result.analysis_path.read_text(encoding="utf-8")
+        assert "## Story Guidance" in analysis
+        assert "parser-strings" in analysis
+        assert "STORY_GUIDANCE.json" in analysis
+
+    def test_commander_guidance_survives_a_derived_entry_of_the_same_name(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "STORY_GUIDANCE.json").write_text(
+            '{"stories":[{"id":"parser-strings","provenance":"commander",'
+            '"gate":["sh","commander.sh"]}]}\n',
+            encoding="utf-8",
+        )
+        emitted = _VALID_LLM_OUTPUT + (
+            "\n=== BEGIN ARTIFACT STORY_GUIDANCE.json ===\n"
+            '{"stories":[{"id":"parser-strings","gate":["sh","derived.sh"]}]}\n'
+            "=== END ARTIFACT ===\n"
+        )
+
+        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=emitted))
+
+        guidance = load_guidance(target_dir)
+        assert guidance.commander_ids == ("parser-strings",)
+        assert guidance.gates == {"parser-strings": ("sh", "commander.sh")}
+
+    def test_an_absent_guidance_block_still_writes_the_section(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+
+        assert not load_guidance(target_dir).declared
+        assert "## Story Guidance" in result.analysis_path.read_text(encoding="utf-8")
+
+    def test_a_malformed_guidance_block_costs_the_guidance_not_the_pass(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        emitted = _VALID_LLM_OUTPUT + (
+            "\n=== BEGIN ARTIFACT STORY_GUIDANCE.json ===\n{not json\n=== END ARTIFACT ===\n"
+        )
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=emitted))
+
+        assert result.ok
+        assert not load_guidance(target_dir).declared
 
     def test_analysis_path_is_at_target_root(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})

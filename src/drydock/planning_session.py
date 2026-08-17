@@ -39,7 +39,6 @@ from drydock.acceptance import (
     parse_programmatic_acceptance_text,
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
-from drydock.acceptance_contract import load_contract as load_acceptance_contract
 from drydock.acceptance_env import read_staged_assets, staged_asset_env_defects
 from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
@@ -110,6 +109,8 @@ from drydock.prompts import load_prompt
 from drydock.source_material import SourceMaterialFile, discover_source_material
 from drydock.source_roles import parse_source_roles, promote_imported_sources
 from drydock.standard_artifacts import ensure_standard_artifacts, render_console
+from drydock.story_guidance import FILENAME as STORY_GUIDANCE_FILENAME
+from drydock.story_guidance import load_guidance as load_story_guidance
 
 PROMPT_NAME = "plan_create"
 
@@ -159,10 +160,15 @@ _RESERVED_BLOCKS = frozenset({
     DECISIONS_BLOCK,
 })
 # Artifacts a planning agent may never emit. ``ACCEPTANCE.json`` is the Commander's governed
-# acceptance contract and the only thing that can close a story ``closed/verified``; a plan that
-# could write it would be authoring its own oracle, which is the whole failure this design
-# removes.
-_NON_BLUEPRINT_ARTIFACTS = frozenset({"AGENTS.md", ACCEPTANCE_CONTRACT_FILENAME})
+# release gate and ``STORY_GUIDANCE.json`` carries the governed story gates; between them they are
+# the only things that can close a story ``closed/verified``. A plan that could write either would
+# be authoring its own oracle, which is the whole failure this design removes. Derived guidance is
+# written by ``analyze``, before any planning agent runs.
+_NON_BLUEPRINT_ARTIFACTS = frozenset({
+    "AGENTS.md",
+    ACCEPTANCE_CONTRACT_FILENAME,
+    STORY_GUIDANCE_FILENAME,
+})
 
 _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 
@@ -1637,8 +1643,25 @@ def _assemble_prompt_assembly(
             )
         )
 
+    def story_guidance_parts() -> list:
+        """Expose the named story list without making the commands model-editable."""
+        path = target_dir / STORY_GUIDANCE_FILENAME
+        text = _read_if(path)
+        if not text:
+            return []
+        return list(
+            contextual_fenced_parts(
+                STORY_GUIDANCE_FILENAME,
+                text.rstrip(),
+                filename=STORY_GUIDANCE_FILENAME,
+                fence="json",
+                role="governed story guidance",
+                path=path,
+            )
+        )
+
     def acceptance_contract_parts() -> list:
-        """Expose Commander-owned stage boundaries without making them model-editable."""
+        """Expose the Commander-owned release gate without making it model-editable."""
         path = target_dir / ACCEPTANCE_CONTRACT_FILENAME
         text = _read_if(path)
         if not text:
@@ -1784,6 +1807,7 @@ def _assemble_prompt_assembly(
         "ANALYSIS.md": analysis_parts,
         "SEA_TRIALS.md": sea_trials_parts,
         ACCEPTANCE_CONTRACT_FILENAME: acceptance_contract_parts,
+        STORY_GUIDANCE_FILENAME: story_guidance_parts,
         "SOUNDINGS.md": soundings_parts,
         "QUESTIONNAIRES": questionnaire_parts,
         "TYPED_SPEC": typed_spec_parts,
@@ -2153,11 +2177,13 @@ def _integrity_check(
                 "each governed specification has exactly one owning story"
             )
 
-    # A Commander-owned stage that matches no story can never run. Catch the mismatch while the
+    # Commander story guidance that matches no story can never run. Catch the mismatch while the
     # topology is still repairable instead of letting every affected story close implemented and
     # discovering the missing authority only after the full build.
-    acceptance_contract = load_acceptance_contract(blueprint_dir.parent)
-    if acceptance_contract.stages:
+    # Every binding id must be claimed, gate or no gate: guidance without a command still names a
+    # story the Commander requires, and dropping it silently is the failure this catches.
+    binding_ids = set(load_story_guidance(blueprint_dir.parent).commander_ids)
+    if binding_ids:
         governed_selectors = set(ids)
         for block in plan.blocks:
             if block.block_type not in {"story", "spike"}:
@@ -2165,12 +2191,12 @@ def _integrity_check(
             covers = block.fields.get("covers", ())
             values = covers if isinstance(covers, tuple) else (covers,)
             governed_selectors.update(str(value) for value in values if value)
-        unmatched = sorted(set(acceptance_contract.stages) - governed_selectors)
+        unmatched = sorted(binding_ids - governed_selectors)
         if unmatched:
             fatal.append(
-                "governed acceptance stages are not matched by any Manifest story: "
+                "Commander story guidance is not matched by any Manifest story: "
                 + ", ".join(unmatched)
-                + " — preserve each stage key as a story id or stable covers: selector"
+                + " — preserve each guidance story id as a story id or stable covers: selector"
             )
 
     # Sea Trials flow *into* planning as context for authoring acceptance criteria. Nothing points
@@ -3581,7 +3607,7 @@ def _repair_declaration_coverage(
 #: field the declaration owns, so the authored Blueprint artifacts stay valid and untouched.
 _TOPOLOGY_FIELD_DEFECTS = (
     "analyzed stories are not delivered by any Manifest story:",
-    "governed acceptance stages are not matched by any Manifest story:",
+    "Commander story guidance is not matched by any Manifest story:",
 )
 
 

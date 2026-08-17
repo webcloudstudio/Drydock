@@ -1002,6 +1002,82 @@ def _print_override_summary(waivers: object) -> None:
     print(format_override_summary(items))  # type: ignore[arg-type]
 
 
+#: Sub-verbs under ``drydock plan``. Everything else in the operand slot is a Target name.
+_PLAN_SUB_VERBS = ("verify", "repair")
+
+
+def _parse_plan_args(args: argparse.Namespace) -> tuple[str, str]:
+    """Return ``(sub_verb, target)`` from the REMAINDER operands. ``""`` means plan creation.
+
+    Options are declared on the dispatcher *and* re-parsed here, the same shape ``build`` uses:
+    argparse consumes a flag written before the Target, and this recovers one written after it.
+    Both spellings have always worked and neither is being retired by the sub-verbs.
+    """
+    operands = [item for item in (getattr(args, "args", None) or []) if item != "--"]
+    trailing = argparse.ArgumentParser(prog="drydock plan", add_help=False)
+    _add_llm_override_flags(trailing)
+    trailing.add_argument("--overwrite", action="store_true", default=None)
+    trailing.add_argument("--no-conform", action="store_true", default=None)
+    trailing.add_argument("--override", action="store_true", default=None)
+    trailing.add_argument("--continue-attempts", dest="continue_attempts", type=int, default=None)
+    try:
+        parsed, positional = trailing.parse_known_args(operands)
+    except SystemExit as exc:  # argparse already printed the usage error
+        raise UsageError("Invalid option for drydock plan.") from exc
+    for name, value in vars(parsed).items():
+        if value is not None and value is not False:
+            setattr(args, name, value)
+    if unknown := [item for item in positional if item.startswith("-")]:
+        raise UsageError(f"Unrecognized option for drydock plan: {unknown[0]}")
+    sub_verb = ""
+    if positional and positional[0] in _PLAN_SUB_VERBS:
+        sub_verb = positional.pop(0)
+    if not positional:
+        raise UsageError(
+            f"drydock plan {sub_verb} requires a Target.".replace("  ", " ")
+            if sub_verb
+            else "drydock plan requires a Target."
+        )
+    if len(positional) > 1:
+        raise UsageError(f"Unexpected operand for drydock plan: {positional[1]}")
+    return sub_verb, positional[0]
+
+
+def cmd_plan_verify(target: str) -> int:
+    """Report every acceptance criterion that cannot run. Read-only; exit status is the verdict."""
+    from drydock.config import require_target_dir
+    from drydock.plan_verify import render, verify
+
+    result = verify(target, require_target_dir(target))
+    print(render(result))
+    return result.exit_code()
+
+
+def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
+    """Make unrunnable criteria runnable in one pass, then report what is still broken."""
+    from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
+    from drydock.plan_repair import render, repair
+    from drydock.plan_verify import render as render_verify
+    from drydock.plan_verify import verify
+
+    target_dir = require_target_dir(target)
+    result = repair(
+        target,
+        target_dir,
+        model=get_model(getattr(args, "model", None)),
+        llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+        log_dir=get_workspace() / "logs",
+        on_text=lambda text: print(text, end="", flush=True),
+    )
+    print(render(result))
+    if result.nothing_to_repair:
+        return 0
+    # Re-verify from disk rather than trusting the repair's own bookkeeping. The plan is about to
+    # be built against these files, so the last word belongs to the same check the build uses.
+    print(render_verify(verify(target, target_dir)))
+    return result.exit_code()
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
     from drydock.config import (
         get_diagnose_enabled,
@@ -1013,6 +1089,16 @@ def cmd_plan(args: argparse.Namespace) -> int:
     )
     from drydock.planning_session import PlanDeferredResult, create_plan
     from drydock.quarterdeck_state import commanders_chair_command
+
+    sub_verb, target = _parse_plan_args(args)
+    # The Target is resolved from the operand slot now that ``plan`` carries sub-verbs. Setting it
+    # back keeps the post-dispatch activity record and every downstream reader unchanged.
+    args.Target = target
+    args.plan_sub_verb = sub_verb
+    if sub_verb == "verify":
+        return cmd_plan_verify(target)
+    if sub_verb == "repair":
+        return cmd_plan_repair(args, target)
 
     def _progress(text: str) -> None:
         # Only surface plan's own mode/status notices; suppress the raw streamed
@@ -3236,9 +3322,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rig_v.add_argument("Target", metavar="<Target>")
 
     # ── plan ─────────────────────────────────────────────────────────────────
+    # ── plan ──────────────────────────────────────────────────────────────────
+    # Handles: plan <Target>
+    #          plan verify <Target>
+    #          plan repair <Target>
     p_plan = sub.add_parser(
         "plan",
-        help="Create a draft executable plan and target Planning Session.",
+        help="Create, verify, or repair an executable plan.",
+        description=(
+            "drydock plan <Target>          — create the Blueprint specs and MANIFEST.md\n"
+            "drydock plan verify <Target>   — report acceptance criteria that cannot run\n"
+            "                                   (deterministic, read-only, no LLM call)\n"
+            "drydock plan repair <Target>   — one LLM pass making those criteria runnable\n\n"
+            "verify is free and repair is not, so the intended workflow pays for repair only\n"
+            "when it is needed:\n"
+            "    drydock plan verify <Target> || drydock plan repair <Target>"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_llm_override_flags(p_plan)
     p_plan.add_argument(
@@ -3263,7 +3363,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Consecutive retry allowance for malformed or no-progress Blueprint batches after "
         "TOPOLOGY.md is frozen (0 disables Stage 2; default 3).",
     )
-    p_plan.add_argument("Target", metavar="<Target>")
+    p_plan.add_argument("args", nargs=argparse.REMAINDER, metavar="[verify|repair] <Target>")
 
     # ── build ─────────────────────────────────────────────────────────────────
     # Handles: build <Target>
@@ -3786,7 +3886,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     if command == "plan":
         rc = cmd_plan(args)
-        if rc == 0:
+        # ``verify`` and ``repair`` inspect a plan rather than producing one, so neither counts as
+        # activity on the Target; only plan creation does.
+        if rc == 0 and not getattr(args, "plan_sub_verb", ""):
             from drydock.config import record_activity
 
             record_activity("plan", args.Target, args.Target)
@@ -4133,13 +4235,45 @@ def _quarantine_lines(quarantined) -> list[str]:
     return lines
 
 
-def _acceptance_recovery_lines(target: str, *, indent: str) -> list[str]:
+#: A build agent has no write authority over ``blueprint/``, so when it concludes the criterion is
+#: wrong rather than the code, the only thing it can do is say so and stop. These are the phrasings
+#: it says it with; matching any of them routes the operator to the command that can act.
+_BLUEPRINT_REPAIR_SIGNALS = (
+    "blueprint repair",
+    "acceptance criteria require blueprint",
+    "no code change is appropriate",
+)
+
+
+def _requests_blueprint_repair(step) -> bool:
+    """True when the agent reported that the specification, not the product, is at fault."""
+    text = f"{getattr(step, 'agent_blockers', '') or ''} {getattr(step, 'agent_summary', '') or ''}"
+    return any(signal in text.lower() for signal in _BLUEPRINT_REPAIR_SIGNALS)
+
+
+def _acceptance_recovery_lines(
+    target: str, *, indent: str, blueprint_repair: bool = False
+) -> list[str]:
     """The continue command for an acceptance failure.
 
     A story that fails acceptance is left ``closed/failed``, which is selectable: a plain
     ``drydock build <Target>`` continues the build and resumes that story in place.
+
+    When the agent reported that the criterion is at fault, rebuilding is the wrong move and
+    costs a full pass to learn nothing — the agent already refused to change correct code. The
+    repair route is offered first in that case, because it is the only one with write authority
+    over ``blueprint/``.
     """
-    return [
+    lines: list[str] = []
+    if blueprint_repair:
+        lines += [
+            f"{indent}The agent reports the acceptance criteria are at fault, not the code.",
+            f"{indent}Run: drydock plan verify {target}",
+            f"{indent}  to confirm which criteria cannot run, then:",
+            f"{indent}Run: drydock plan repair {target}",
+            f"{indent}  to repair them in one pass. Rebuilding first repeats the same failure.",
+        ]
+    return lines + [
         f"{indent}Run: drydock build {target}",
         f"{indent}  to continue the build. This story resumes where it left off and is",
         f"{indent}  retried against the checks it failed.",
@@ -4208,7 +4342,11 @@ def _render_build_failures(
                 if tally is not None:
                     lines.append(f"      Result tally: {tally[0]} passed, {tally[1]} failed")
             lines.append("    Recovery")
-            lines.extend(_acceptance_recovery_lines(target, indent="      "))
+            lines.extend(
+                _acceptance_recovery_lines(
+                    target, indent="      ", blueprint_repair=_requests_blueprint_repair(step)
+                )
+            )
         if step.agent_blockers:
             lines += [
                 "    agent blockers:",
@@ -4232,7 +4370,11 @@ def _render_build_failures(
     )
     lines += ["", "  Next"]
     if acceptance_failed:
-        lines += _acceptance_recovery_lines(target, indent="    ")
+        lines += _acceptance_recovery_lines(
+            target,
+            indent="    ",
+            blueprint_repair=any(_requests_blueprint_repair(step) for step in steps),
+        )
     else:
         lines += textwrap.wrap(
             hint, width=width - 4, initial_indent="    ", subsequent_indent="    "

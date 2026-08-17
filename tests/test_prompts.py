@@ -142,6 +142,7 @@ class TestInputTokens:
             "PLAN_COMPASS.md",
             "ANALYSIS.md",
             "SEA_TRIALS.md",
+            "STORY_GUIDANCE.json",
             "ACCEPTANCE.json",
             "SOUNDINGS.md",
             "BLOCKERS.md",
@@ -160,12 +161,20 @@ class TestInputTokens:
             "every block that calls `subprocess.run` contains its own `import subprocess`" in body
         )
 
-    def test_plan_create_preserves_commander_owned_governed_stage_ids(self):
+    def test_plan_create_preserves_commander_owned_story_ids(self):
         body = " ".join(load_prompt("plan_create").body.split())
 
-        assert "Each key in `stages` is an exact story id" in body
-        assert "Preserve those ids verbatim in `TOPOLOGY.md`" in body
-        assert "Do not emit or amend `ACCEPTANCE.json`" in body
+        assert "Each entry's `id` is an exact story id" in body
+        assert "preserve its id verbatim in `TOPOLOGY.md`" in body
+        assert "Do not emit or amend `STORY_GUIDANCE.json`" in body
+        assert "Do not emit or amend it either" in body
+
+    def test_plan_create_distinguishes_commander_guidance_from_derived(self):
+        """Provenance is the authority boundary; the prompt must state both sides of it."""
+        body = " ".join(load_prompt("plan_create").body.split())
+
+        assert '`"provenance": "commander"` is binding' in body
+        assert '`"provenance": "plan"` was derived' in body
 
     def test_plan_create_declares_the_graph_and_leaves_ordering_to_drydock(self):
         body = load_prompt("plan_create").body

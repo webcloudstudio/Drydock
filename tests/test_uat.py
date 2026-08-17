@@ -461,6 +461,96 @@ def test_run_uat_builds_initial_and_updated_sources_and_gates_on_the_release_ver
     assert (case_root / "index.html").is_file()
 
 
+def _plan_gate_runner(calls: list, *, verify_codes: dict[int, int]):
+    """A fake runner that fails ``plan verify`` on the attempts named in ``verify_codes``."""
+    seen = {"verify": 0}
+
+    def fake_runner(argv, cwd, env, output_dir, label):
+        del env
+        parts = tuple(argv[3:])
+        calls.append(parts)
+        returncode = 0
+        if parts[:2] == ("plan", "verify"):
+            seen["verify"] += 1
+            returncode = verify_codes.get(seen["verify"], 0)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
+
+    return fake_runner
+
+
+def test_a_clean_plan_verify_skips_the_repair_call(tmp_path: Path) -> None:
+    """Verification is free and repair is not, so a clean plan never pays for one."""
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root)
+    calls: list[tuple[str, ...]] = []
+
+    run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_plan_gate_runner(calls, verify_codes={}),
+        now=datetime(2026, 8, 7, tzinfo=UTC),
+    )
+
+    assert ("plan", "verify", "ReadingList") in calls
+    assert not any(parts[:2] == ("plan", "repair") for parts in calls)
+
+
+def test_a_failed_plan_verify_buys_exactly_one_repair_and_reverifies(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root)
+    calls: list[tuple[str, ...]] = []
+
+    run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        # First verification red, the one after the repair green.
+        runner=_plan_gate_runner(calls, verify_codes={1: 1}),
+        now=datetime(2026, 8, 7, tzinfo=UTC),
+    )
+
+    assert [parts for parts in calls if parts[:2] == ("plan", "repair")] == [
+        ("plan", "repair", "ReadingList")
+    ]
+    assert len([parts for parts in calls if parts[:2] == ("plan", "verify")]) == 2
+    assert any(parts[0] == "build" and "status" not in parts for parts in calls)
+
+
+def test_criteria_still_unrunnable_after_one_repair_end_the_run_at_the_plan(
+    tmp_path: Path,
+) -> None:
+    """Building over criteria that cannot run spends the whole budget to learn nothing."""
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root)
+    calls: list[tuple[str, ...]] = []
+
+    _, results = run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_plan_gate_runner(calls, verify_codes={1: 1, 2: 1}),
+        now=datetime(2026, 8, 7, tzinfo=UTC),
+    )
+
+    assert results[0].status == "failed"
+    assert "still cannot run after one repair pass" in results[0].error
+    # No repair is retried, and no build is attempted on an unrunnable plan.
+    assert len([parts for parts in calls if parts[:2] == ("plan", "repair")]) == 1
+    assert not any(parts[0] == "build" and "status" not in parts for parts in calls)
+
+
 def test_run_uat_carries_unproven_guardrails_into_the_run_record(tmp_path: Path) -> None:
     """A passing run still reports the prohibitions a human must settle by hand.
 

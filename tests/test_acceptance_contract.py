@@ -42,10 +42,10 @@ def test_an_absent_contract_is_empty_not_an_error(tmp_path):
 
     assert not contract.declared
     assert contract.full == ()
-    assert contract.stages == {}
+    assert contract.story_gates == {}
 
 
-def test_full_and_stages_load_as_argv(tmp_path):
+def test_a_retired_stages_key_still_loads_as_governed_story_gates(tmp_path):
     target, _ = _target(
         tmp_path,
         {
@@ -58,19 +58,19 @@ def test_full_and_stages_load_as_argv(tmp_path):
 
     assert contract.declared
     assert contract.full == ("sh", "sources/full_test.sh")
-    assert contract.stage_for("parser-strings") == (
+    assert contract.story_gate_for("parser-strings") == (
         "parser-strings",
         ("sh", "sources/stage_test.sh", "valid/string/**"),
     )
 
 
-def test_stage_lookup_falls_back_through_the_story_ids_a_block_delivers(tmp_path):
+def test_story_gate_lookup_falls_back_through_the_story_ids_a_block_delivers(tmp_path):
     target, _ = _target(tmp_path, {"stages": {"PARSER-002": ["sh", "x.sh"]}})
 
     contract = load_contract(target)
 
-    assert contract.stage_for("parser-strings", "PARSER-002") == ("PARSER-002", ("sh", "x.sh"))
-    assert contract.stage_for("parser-keys", "PARSER-003") is None
+    assert contract.story_gate_for("parser-strings", "PARSER-002") == ("PARSER-002", ("sh", "x.sh"))
+    assert contract.story_gate_for("parser-keys", "PARSER-003") is None
 
 
 def test_stable_coverage_selector_takes_precedence_over_generated_story_id(tmp_path):
@@ -86,7 +86,7 @@ def test_stable_coverage_selector_takes_precedence_over_generated_story_id(tmp_p
 
     contract = load_contract(target)
 
-    assert contract.stage_for("LEXICAL-001", "lexical-strings") == (
+    assert contract.story_gate_for("LEXICAL-001", "lexical-strings") == (
         "LEXICAL-001",
         ("sh", "stable.sh"),
     )
@@ -118,15 +118,16 @@ def test_unreadable_json_is_rejected(tmp_path):
         load_contract(target)
 
 
-def test_a_written_contract_round_trips(tmp_path):
+def test_a_written_contract_carries_the_release_gate_alone(tmp_path):
+    """Story gates belong to STORY_GUIDANCE.json and are not round-tripped through this file."""
     target, _ = _target(tmp_path)
-    contract = AcceptanceContract(full=("sh", "t.sh"), stages={"a": ("sh", "s.sh")})
+    contract = AcceptanceContract(full=("sh", "t.sh"), story_gates={"a": ("sh", "s.sh")})
 
     write_contract(target, contract)
     loaded = load_contract(target)
 
     assert loaded.full == contract.full
-    assert loaded.stages == contract.stages
+    assert loaded.story_gates == {}
 
 
 def test_a_fixture_declaration_becomes_a_contract():

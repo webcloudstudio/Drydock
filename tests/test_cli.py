@@ -2143,12 +2143,76 @@ class TestPlanningSession:
         assert not (target / "QuarterDeck" / "tickets.json").exists()
 
     @pytest.mark.parametrize("verb", ["create", "init", "show", "approve", "revise", "reject"])
-    def test_plan_has_no_public_subcommands(self, verb):
+    def test_plan_rejects_a_verb_it_does_not_publish(self, verb):
+        """``verify`` and ``repair`` are the only sub-verbs; anything else is an operand."""
         rc, out, err = run_cli("plan", verb, "Example", "Target")
 
         assert rc == 2
-        assert "usage: drydock" in err
-        assert "unrecognized arguments: Example Target" in err
+        assert "Unexpected operand for drydock plan" in err
+
+    @pytest.mark.parametrize("verb", ["verify", "repair"])
+    def test_plan_publishes_its_sub_verbs(self, verb):
+        rc, out, err = run_cli("plan", verb)
+
+        assert rc == 2
+        assert f"drydock plan {verb} requires a Target" in err
+
+
+class TestPlanVerifyAndRepair:
+    """The two-command workflow: verification is free and decides whether repair is paid for."""
+
+    _BROKEN = (
+        "# FEATURE: Broken\n\n## Programmatic Acceptance\n\n"
+        "=== AC path-filter ===\n"
+        "Intent: Filtered paths select only matching locations.\n\n"
+        "import subprocess\n\n"
+        'result = subprocess.run([os.path.join(os.getcwd(), "jq")], capture_output=True)\n'
+        "assert result.returncode == 0\n"
+        "=== END AC path-filter ===\n"
+    )
+    _RUNNABLE = (
+        "# FEATURE: Ok\n\n## Programmatic Acceptance\n\n"
+        "=== AC ok ===\nIntent: Runs.\n\nimport json\n\n"
+        'assert "a" in json.dumps({"a": 1})\n'
+        "=== END AC ok ===\n"
+    )
+
+    def _configure(self, tmp_target_root, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+    def test_plan_verify_exits_zero_on_a_runnable_blueprint(
+        self, tmp_target_root, isolated_config, monkeypatch, make_blueprint
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+        make_blueprint("Proj", {"FEATURE-Ok.md": self._RUNNABLE})
+
+        rc, out, err = run_cli("plan", "verify", "Proj")
+
+        assert rc == 0, err
+        assert "every one can run" in out
+
+    def test_plan_verify_exits_one_and_names_the_criterion(
+        self, tmp_target_root, isolated_config, monkeypatch, make_blueprint
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+        make_blueprint("Proj", {"FEATURE-Broken.md": self._BROKEN})
+
+        rc, out, err = run_cli("plan", "verify", "Proj")
+
+        assert rc == 1
+        assert "FEATURE-Broken.md [path-filter]" in out
+        assert "drydock plan repair Proj" in out
+
+    def test_plan_verify_never_writes(
+        self, tmp_target_root, isolated_config, monkeypatch, make_blueprint
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+        blueprint = make_blueprint("Proj", {"FEATURE-Broken.md": self._BROKEN})
+        before = (blueprint / "FEATURE-Broken.md").read_text(encoding="utf-8")
+
+        run_cli("plan", "verify", "Proj")
+
+        assert (blueprint / "FEATURE-Broken.md").read_text(encoding="utf-8") == before
 
 
 class TestImport:

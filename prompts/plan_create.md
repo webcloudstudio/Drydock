@@ -5,7 +5,7 @@ version: 20260816 V34
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 model: sonnet
-inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
+inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
 output: TOPOLOGY.md, DECISIONS.json
 ---
 
@@ -28,12 +28,16 @@ that stages or implements the capability exercised by a final Sea Trial still na
 emitted in Stage 1 before any Blueprint, so settle the complete story set and its acceptance
 before emitting anything.
 
-When `ACCEPTANCE.json` is present, it is the Commander-owned governed stage topology. Each key in
-`stages` is an exact story id and each argv is the authoritative gate for that story. Preserve
-those ids verbatim in `TOPOLOGY.md` and shape each story around the scope its command exercises;
-merge related analyzed Story IDs into that story's `covers:` field when one governed stage owns
-their combined slice. Do not emit or amend `ACCEPTANCE.json`. The optional `full` command is the
-finished-project release gate, not an ordinary story id.
+`STORY_GUIDANCE.json` names stories that must exist. Each entry's `id` is an exact story id and
+its optional `gate` is the command that decides that story. An entry marked `"provenance":
+"commander"` is binding: preserve its id verbatim in `TOPOLOGY.md`, shape the story around the
+scope its gate exercises, and merge related analyzed Story IDs into that story's `covers:` field
+when one gate owns their combined slice. An entry marked `"provenance": "plan"` was derived from
+the imported material by `drydock analyze`; treat it as the default decomposition and depart from
+it only where the sources show it is wrong. Do not emit or amend `STORY_GUIDANCE.json`.
+
+`ACCEPTANCE.json` carries one command, `full`: the finished-project release gate. It is not a
+story id and no story owns it. Do not emit or amend it either.
 
 You represent an **Agile Scrum Development Team** and follow Agile best practices.
 
@@ -512,10 +516,14 @@ Additional body guidance:
 - An assertion that invokes a staged asset obeys that asset's documented interface, supplies every
   environment variable it declares required, and extends the inherited environment rather than
   replacing it. See the staged-asset invocation rules in `BLUEPRINTS_CONTRACT.md`.
-- Where an imported source stages an authoritative test suite, exactly one story invokes its runner
-  and that story is the terminal one. Never plan a story whose purpose is running that suite in
-  slices, and never let a scoping flag the runner offers override an imported instruction that says
-  where the suite may run. See the authoritative-suite rules in `BLUEPRINTS_CONTRACT.md`.
+- Where an imported source stages an authoritative test suite, exactly one story runs the **whole**
+  suite and that story is the terminal one. Every other story that owns behavior the suite covers
+  runs its own slice of it, scoped by the runner's selector to the cases that story implements, and
+  the slice **executes those cases** — a list or dry-run invocation asserts nothing about the
+  product and is a defect outside a pure staging story. The slices together cover every case in the
+  corpus; overlap is expected, a gap is not. Never let a scoping flag override an imported
+  instruction that says where the suite may run. See the authoritative-suite rules in
+  `BLUEPRINTS_CONTRACT.md`.
 - `User Acceptance` contains only Commander-observed checks that cannot be honestly automated.
 ---
 
@@ -593,13 +601,18 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   suite: its `Programmatic Acceptance` assertion declares `Suite: full` as one of the block's
   declaration lines, and it `depends` on every implementation story. Without
   that declaration a full-suite run is rejected. **Only the terminal story runs the whole suite.**
-- A harness staging or integration story — one that runs the imported runner only to prove it is
-  staged and executes, not to gate correctness — invokes the runner in its list or dry-run mode,
-  which enumerates the suite without executing a case, and asserts the runner exits `0` and
-  reports the expected count. Where the runner offers no list mode, bound the invocation with its
-  `--pattern`/`--number` selector instead. An unbounded run of the suite from any non-terminal
-  story, without `Suite: full`, is rejected. Never leave a staging story with no criterion: a
-  story that cannot be verified closes advisory and gates nothing.
+- A story that owns behavior the suite covers gates on its own slice: the runner scoped by its
+  selector to the cases that story implements, executing them, asserting exit `0`. Size the
+  selector with the runner's list mode while planning and record the case count in the criterion's
+  `Intent:`, so a selector that silently reaches into unbuilt stories is caught here rather than
+  mid-build. An unbounded run of the suite from any non-terminal story, without `Suite: full`, is
+  rejected.
+- A pure harness staging story — one that proves the runner is staged and starts, implements none
+  of the behavior under test, and gates no correctness — is the single exception: it invokes the
+  runner in its list or dry-run mode, which enumerates the suite without executing a case, and
+  asserts the runner exits `0` and reports the expected count. Using list mode anywhere else
+  produces a criterion that is green before the code exists. Never leave a staging story with no
+  criterion: a story that cannot be verified closes advisory and gates nothing.
 - Every invocation of a staged asset — in any story, in any mode, including list and dry-run mode —
   supplies every environment variable that asset declares required, by extending the inherited
   environment (`env={**os.environ, "NAME": value}`). Read the asset's usage block for the value it

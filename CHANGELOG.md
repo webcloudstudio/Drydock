@@ -10,6 +10,34 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-17: `drydock plan verify` and `drydock plan repair` close the gap between detecting an
+  unrunnable acceptance criterion and doing something about it. `plan verify` is deterministic,
+  read-only, and free: it parses every criterion in `blueprint/` and exits non-zero when one
+  cannot execute — a missing import, an undefined name, a syntax error — the class of fault that
+  raises `NameError` in the criterion's own frame, settles UNVERIFIED, and spends a story's whole
+  repair budget on code that was already correct. `plan repair` makes one LLM pass over exactly
+  those criteria, splicing whole `=== AC id ===` blocks back over the ones they replace and
+  reverting any file that fails to re-parse; it repairs mechanics only and never touches what a
+  criterion asserts. One attempt, then it reports what is still broken rather than retrying. The
+  intended workflow pays for the model only when it is needed:
+  `drydock plan verify <Target> || drydock plan repair <Target>`. `drydock uat` runs that sequence
+  after `plan` and halts the run at the plan when criteria remain unrunnable, instead of building
+  over them. A build agent that reports the specification is at fault — it has no write authority
+  over `blueprint/` — now routes the operator to `plan repair` rather than to another build pass.
+  `drydock plan` gains sub-verbs and a verb menu in `--help`; options continue to work before or
+  after the Target.
+
+- 2026-08-17: `STORY_GUIDANCE.json` is a Target-root artifact naming the stories planning must
+  produce, with an optional gate command for each and a `provenance` field that carries the
+  authority. `commander` entries are supplied as a kit input before `analyze`, are binding —
+  `plan` preserves their ids verbatim and shapes each story around the scope its gate exercises —
+  and their gates are governed oracles that can close a story `closed/verified`. `plan` entries
+  are derived by `analyze` when the imported material states its own build breakdown; they are
+  recorded as evidence and their gates are ordinary repairable criteria, because an oracle the
+  model wrote proves nothing about the code the same model wrote. `analyze` re-derives its own
+  entries each run and never displaces a Commander entry. The resolved set is rendered into
+  `ANALYSIS.md` as a `## Story Guidance` section, which QuarterDeck surfaces as a tab.
+
 - 2026-08-17: A UAT kit declares its own `COMPASS.md` as a lifecycle input. `uat.json` accepts
   `"compass": "inputs/COMPASS.md"`, validated at discovery to carry the three Compass body
   sections and to contain no HTML comment — `analyze` reads any comment as an unfilled template
@@ -43,6 +71,23 @@ command surface and Typed Specification contract are unstable and may change bet
   unattended run has no operator at the keyboard, so it is the only review surface there is.
 
 ### Changed
+
+- 2026-08-17: `ACCEPTANCE.json` now carries only `full`, the whole-project release gate. The
+  per-story `stages` map moved to `STORY_GUIDANCE.json`, whose subject is the story list rather
+  than acceptance; `AcceptanceContract.stages` is now `story_gates` and `stage_for` is
+  `story_gate_for`. A Target or kit still declaring `stages` keeps working — the retired key is
+  read as Commander-provenance guidance — and `uat.json` accepts `acceptance.story_guidance`.
+  The rename also removes a collision: `plan create` already used "stage" for its own internal
+  phases.
+
+- 2026-08-17: Planning guidance for an authoritative test suite now requires intermediate slices
+  to **execute**. Previously every non-terminal invocation was confined to the runner's list or
+  dry-run mode, which enumerates cases without running any, so a slice criterion passed before its
+  story's code existed and steered no repair. A story that owns behavior the suite covers now
+  gates on its own slice, scoped by the runner's selector to the cases that story implements and
+  executing them; the slices together cover the corpus, with overlap expected and gaps treated as
+  unchecked work. Only the terminal story runs the whole suite, and list mode remains correct for
+  a pure harness staging story, which implements none of the behavior under test.
 
 - 2026-08-17: Plan rejects two acceptance-criteria defects deterministically instead of reporting
   them afterwards. A criterion that invokes a staged asset without a variable that asset declares

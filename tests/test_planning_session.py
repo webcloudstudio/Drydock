@@ -2011,6 +2011,19 @@ def test_uncovered_analyzed_story_is_a_repairable_topology_defect():
     )
 
 
+def test_unmatched_commander_story_guidance_is_a_repairable_topology_defect():
+    """Story ids live in the declaration, so the guidance mismatch is repairable there too."""
+    from drydock.planning_session import _is_repairable_topology_defect
+
+    assert _is_repairable_topology_defect(
+        SpecificationError(
+            "Plan integrity check failed:\n  Commander story guidance is not matched by any "
+            "Manifest story: parser-strings — preserve each guidance story id as a story id "
+            "or stable covers: selector"
+        )
+    )
+
+
 def test_mixed_integrity_defects_are_not_topology_repairable():
     # A defect stated in Blueprint prose needs artifact repair; mixing one in disqualifies
     # the whole report from the topology path.
@@ -2049,8 +2062,9 @@ def test_covered_analyzed_stories_pass_without_warning(tmp_path):
 
 def test_governed_stage_without_a_story_is_a_repairable_topology_defect(tmp_path):
     target_dir = _make_target(tmp_path)
-    (target_dir / "ACCEPTANCE.json").write_text(
-        '{"stages":{"parser-strings":["sh","sources/stage_test.sh","valid/string/**"]}}\n',
+    (target_dir / "STORY_GUIDANCE.json").write_text(
+        '{"stories":[{"id":"parser-strings","provenance":"commander",'
+        '"gate":["sh","sources/stage_test.sh","valid/string/**"]}]}\n',
         encoding="utf-8",
     )
 
@@ -2061,14 +2075,15 @@ def test_governed_stage_without_a_story_is_a_repairable_topology_defect(tmp_path
         excinfo,
         target_dir,
         classification="plan output validation failed",
-        detail="governed acceptance stages are not matched by any Manifest story: parser-strings",
+        detail=("Commander story guidance is not matched by any Manifest story: parser-strings"),
     )
 
 
 def test_governed_stage_matching_a_story_id_passes_plan_integrity(tmp_path):
     target_dir = _make_target(tmp_path)
-    (target_dir / "ACCEPTANCE.json").write_text(
-        '{"stages":{"story-status":["sh","sources/stage_test.sh","status"]}}\n',
+    (target_dir / "STORY_GUIDANCE.json").write_text(
+        '{"stories":[{"id":"story-status","provenance":"commander",'
+        '"gate":["sh","sources/stage_test.sh","status"]}]}\n',
         encoding="utf-8",
     )
 
@@ -3127,8 +3142,7 @@ def test_assemble_prompt_reorders_when_tokens_reordered(tmp_path):
 def test_assemble_prompt_includes_commander_owned_acceptance_contract(tmp_path):
     target_dir = _make_target(tmp_path)
     (target_dir / "ACCEPTANCE.json").write_text(
-        '{"stages":{"parser-strings":["sh","sources/stage_test.sh","valid/string/**"]}}\n',
-        encoding="utf-8",
+        '{"full":["sh","sources/full_test.sh"]}\n', encoding="utf-8"
     )
 
     result = _assemble_prompt(
@@ -3142,6 +3156,29 @@ def test_assemble_prompt_includes_commander_owned_acceptance_contract(tmp_path):
 
     assert 'filename="ACCEPTANCE.json"' in result
     assert 'role="governed acceptance contract"' in result
+    assert '"sources/full_test.sh"' in result
+
+
+def test_assemble_prompt_includes_commander_owned_story_guidance(tmp_path):
+    """The story list a Commander declared is injected, and its argv stays out of model hands."""
+    target_dir = _make_target(tmp_path)
+    (target_dir / "STORY_GUIDANCE.json").write_text(
+        '{"stories":[{"id":"parser-strings","provenance":"commander",'
+        '"gate":["sh","sources/stage_test.sh","valid/string/**"]}]}\n',
+        encoding="utf-8",
+    )
+
+    result = _assemble_prompt(
+        "BODY",
+        target_dir,
+        target_dir / "blueprint",
+        _ANALYSIS,
+        "2026-08-14",
+        input_tokens=("STORY_GUIDANCE.json",),
+    )
+
+    assert 'filename="STORY_GUIDANCE.json"' in result
+    assert 'role="governed story guidance"' in result
     assert '"parser-strings"' in result
 
 

@@ -18,7 +18,7 @@ from datetime import date
 from pathlib import Path
 from typing import Protocol
 
-from drydock import technology_stack
+from drydock import story_guidance, technology_stack
 from drydock.artifact_blocks import (
     ArtifactDefect,
     ArtifactParseResult,
@@ -855,6 +855,8 @@ def _parse_output(
     quality, summary, technology_stack_or_none).
 
     ``summary`` contains parsed sub-fields: blockers, questions, stories, stack, features.
+    ``STORY_GUIDANCE.json`` is optional and is emitted only when the imported material states its
+    own build breakdown; whatever it declares is recorded at ``plan`` provenance.
     Questionnaires (``discovery-*.json``), ``BLOCKERS.md``, and ``TECHNOLOGY_STACK.md`` are
     emitted dynamically, so none of them are required.
     Raises ValueError on missing required blocks or invalid JSON.
@@ -867,6 +869,7 @@ def _parse_output(
             "SEA_TRIALS.md",
             "BLOCKERS.md",
             "COMPASS.md",
+            story_guidance.FILENAME,
             technology_stack.FILENAME,
         },
         allowed_prefixes=("discovery-",),
@@ -921,7 +924,66 @@ def _parse_output(
         quality,
         summary,
         blocks.get(technology_stack.FILENAME) or None,
+        blocks.get(story_guidance.FILENAME) or None,
     )
+
+
+def _resolve_story_guidance(
+    target_dir: Path,
+    emitted: str | None,
+    *,
+    on_text: TextCallback | None = None,
+) -> story_guidance.StoryGuidance:
+    """Combine Commander story guidance with whatever this run derived.
+
+    Commander entries are authority and survive every re-analysis unchanged. Derived entries are
+    re-derived each run, so the previous run's are discarded rather than accumulated: they are a
+    reading of the source material, and a stale reading is worse than none.
+
+    A malformed emitted block costs the derived guidance, never the analyze pass. The stories
+    still exist in ``## Story List``; only the machine-readable slice is lost, and reporting a
+    parse defect is more useful than failing a run that produced a usable analysis.
+    """
+    commander = story_guidance.StoryGuidance(
+        entries=tuple(
+            entry for entry in story_guidance.load_guidance(target_dir).entries if entry.binding
+        ),
+        source=str(target_dir / story_guidance.FILENAME),
+    )
+    if not emitted or not emitted.strip():
+        return commander
+    try:
+        payload = json.loads(emitted)
+        derived = story_guidance.StoryGuidance(
+            entries=tuple(
+                # Provenance is assigned here, never read from the block. The model does not get
+                # to promote its own reading of the sources into a governed oracle by typing a
+                # word, which is exactly the authority failure this design exists to prevent.
+                story_guidance.StoryGuidanceEntry(
+                    story_id=entry.story_id,
+                    provenance=story_guidance.PROVENANCE_PLAN,
+                    gate=entry.gate,
+                    note=entry.note,
+                )
+                for entry in story_guidance.guidance_from_config(
+                    {"story_guidance": payload.get("stories") if isinstance(payload, dict) else []},
+                    where=story_guidance.FILENAME,
+                ).entries
+            )
+        )
+    except (ValueError, DrydockError) as exc:
+        if on_text is not None:
+            on_text(f"⚠  {story_guidance.FILENAME} was not usable and is ignored: {exc}\n")
+        return commander
+    displaced = sorted(set(derived.ids) & set(commander.commander_ids))
+    if displaced:
+        if on_text is not None:
+            on_text(
+                f"{story_guidance.FILENAME}: Commander guidance retained for "
+                + ", ".join(displaced)
+                + "\n"
+            )
+    return commander.merged_with(derived)
 
 
 def analyze(
@@ -1058,6 +1120,7 @@ def analyze(
             quality,
             summary,
             technology_stack_text,
+            story_guidance_text,
         ) = _parse_output(result.text, on_defect=_report_artifact_defect(on_text))
     except (DrydockError, ValueError) as exc:
         return _fail(str(exc))
@@ -1203,6 +1266,14 @@ def analyze(
     analysis_text = _attach_source_material_handoff(
         analysis_text, source_material, resolved_blockers=resolved_blockers
     )
+
+    # Story guidance is resolved after the document is otherwise final, because the rendered
+    # section must match the file that was actually written. Commander entries are loaded first
+    # and merged over, so a derived story can never displace, rename, or regrade one.
+    guidance = _resolve_story_guidance(target_dir, story_guidance_text, on_text=on_text)
+    story_guidance.write_guidance(target_dir, guidance)
+    analysis_text = story_guidance.replace_section(analysis_text, guidance)
+
     analysis_path.write_text(analysis_text + "\n", encoding="utf-8", newline="\n")
 
     # Lifecycle state, sub-state, and date stamp — always written on success.

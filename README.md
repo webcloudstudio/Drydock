@@ -100,7 +100,7 @@ drydock build MyApp --capture-output-limit 64   # a legitimately loud conformanc
 | **init** | `drydock init <Target>` | Initialize Workspace<br>**Creates:** `targets/<Target>` |
 | **import** | `drydock import <Target>` | import source material<br>**Creates:** `targets/<Target>/sources` |
 | **analyze** | `drydock analyze <Target>` | Decompose into stories, acceptance criteria, questions, and blockers.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, questionnaires. |
-| **plan** | `drydock plan <Target>` | Create story blueprints and a graph datbase.<br>**Creates:** `blueprints/` and `MANIFEST.md`. |
+| **plan** | `drydock plan <Target>` | Create story blueprints and a graph datbase.<br>**Creates:** `blueprints/` and `MANIFEST.md`.<br>`drydock plan verify <Target>` reports acceptance criteria that cannot run; `drydock plan repair <Target>` makes them runnable in one pass. |
 | **build** | `drydock build <Target>` | Executes context-aware builds gated by deterministic acceptance criteria.<br>**Creates:** `\$drydock_build_directory/<Target>` with working software. |
 | **refit** | `drydock refit <Target>` | git diff changes into change tickets and Manifest nodes.<br>**Updates:** `Blueprints/`, `MANIFEST.md`; continue with a  `build`. |
 
@@ -123,6 +123,8 @@ ai  drydock analyze           MyApp            # Epic decomposition into stories
 ai  drydock score spec        MyApp            # Audit imported raw specifications
     drydock run quarterdeck   MyApp            # Web interface
 ai  drydock plan              MyApp            # Grooming and dependency graph
+    drydock plan verify       MyApp            # Report acceptance criteria that cannot run
+ai  drydock plan repair       MyApp            # One pass making those criteria runnable
 
 # ── I ── IMPLEMENT ───────────────────────────────────────────────────────
 ai  drydock build             MyApp            # Iterative context-aware process

@@ -11,15 +11,19 @@ Authority cannot be inferred from an artifact the model wrote. It has to come fr
 does not author:
 
 * the **full gate** — one command that decides whether the project is acceptable;
-* optional **stage gates** — one command per story, deciding whether that story's slice is done.
+* optional **story gates** — one command per story, deciding whether that story's slice is done.
 
 Both are argv arrays Drydock executes directly. It does not generate a wrapper and then inspect the
 wrapper's text: a criterion that declares ``Suite:`` or mentions ``sources/`` proves nothing, since
 a model can type either string.
 
-``ACCEPTANCE.json`` in the Target root carries them. It is Commander-owned and appears in
-``RESERVED_ARTIFACTS`` so no LLM-assisted command may write it; ``drydock uat`` seeds it from the
-fixture's own declaration, exactly as it seeds ``SEA_TRIALS.md`` and ``TECHNOLOGY_STACK.md``.
+The two live in different files because they are different things. ``ACCEPTANCE.json`` in the
+Target root carries ``full`` alone — one whole-project release gate, which is not a story. Story
+gates are one column of ``STORY_GUIDANCE.json`` (see ``drydock.story_guidance``), whose subject is
+the story list rather than acceptance, and only its Commander-provenance entries are oracles.
+Both files are Commander-owned and appear in ``RESERVED_ARTIFACTS`` so no LLM-assisted command may
+write them; ``drydock uat`` seeds them from the fixture's own declaration, exactly as it seeds
+``SEA_TRIALS.md`` and ``TECHNOLOGY_STACK.md``.
 
 Where no contract exists, nothing here blocks anything. Model-authored criteria still run and still
 drive the repair loop; their blocks close ``closed/implemented`` rather than ``closed/verified``,
@@ -39,8 +43,9 @@ from pathlib import Path
 from drydock.child_sandbox import CaptureOverflow, run_bounded
 from drydock.config import get_capture_output_limit_mb, get_sandbox_mem_limit_mb
 from drydock.errors import SpecificationError
+from drydock.story_guidance import guidance_from_config, load_guidance
 
-#: The Commander-owned contract, in the Target root beside ``SEA_TRIALS.md``.
+#: The Commander-owned release gate, in the Target root beside ``SEA_TRIALS.md``.
 FILENAME = "ACCEPTANCE.json"
 
 #: A governed gate runs a whole conformance suite, not a unit test.
@@ -115,22 +120,22 @@ class AcceptanceContract:
     """The governed oracles for one Target. Absent file means an empty contract, never an error."""
 
     full: tuple[str, ...] = ()
-    stages: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    story_gates: dict[str, tuple[str, ...]] = field(default_factory=dict)
     source: str = ""
 
     @property
     def declared(self) -> bool:
-        return bool(self.full or self.stages)
+        return bool(self.full or self.story_gates)
 
-    def stage_for(self, *story_ids: str) -> tuple[str, tuple[str, ...]] | None:
-        """Return the first declared stage gate among ``story_ids``, or ``None``.
+    def story_gate_for(self, *story_ids: str) -> tuple[str, tuple[str, ...]] | None:
+        """Return the first declared story gate among ``story_ids``, or ``None``.
 
         A block may expose its generated story id plus stable analyzed ids from ``covers:``;
         the first selector with a governed gate owns the block's verdict. Callers put stable
         selectors first so a Commander-owned identity wins over a generated implementation id.
         """
         for story_id in story_ids:
-            argv = self.stages.get(story_id)
+            argv = self.story_gates.get(story_id)
             if argv:
                 return story_id, argv
         return None
@@ -145,55 +150,61 @@ def _argv(value: object, *, where: str) -> tuple[str, ...]:
 
 
 def load_contract(target_dir: Path) -> AcceptanceContract:
-    """Read the Target's governed acceptance contract, or an empty one when absent."""
+    """Read the Target's governed oracles, or an empty contract when none are declared.
+
+    ``full`` comes from ``ACCEPTANCE.json``. Story gates come from ``STORY_GUIDANCE.json``, and
+    only its Commander-provenance entries qualify: a gate Drydock derived is a criterion the model
+    effectively authored, so it drives repair like any other criterion but cannot confer
+    ``closed/verified``.
+    """
     path = target_dir / FILENAME
-    if not path.is_file():
-        return AcceptanceContract()
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise SpecificationError(f"{FILENAME} is not readable JSON: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise SpecificationError(f"{FILENAME} must contain a JSON object")
-    full = _argv(payload["full"], where="full") if payload.get("full") is not None else ()
-    raw_stages = payload.get("stages") or {}
-    if not isinstance(raw_stages, dict):
-        raise SpecificationError(f"{FILENAME}: stages must be an object keyed by story selector")
-    stages = {
-        str(story_id): _argv(argv, where=f"stages.{story_id}")
-        for story_id, argv in raw_stages.items()
-    }
-    return AcceptanceContract(full=full, stages=stages, source=str(path))
+    full: tuple[str, ...] = ()
+    source = ""
+    if path.is_file():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SpecificationError(f"{FILENAME} is not readable JSON: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise SpecificationError(f"{FILENAME} must contain a JSON object")
+        full = _argv(payload["full"], where="full") if payload.get("full") is not None else ()
+        source = str(path)
+    guidance = load_guidance(target_dir)
+    return AcceptanceContract(
+        full=full,
+        story_gates=guidance.governed_gates,
+        source=source or guidance.source,
+    )
 
 
 def write_contract(target_dir: Path, contract: AcceptanceContract) -> Path:
-    """Persist a contract into the Target. Used by ``drydock uat`` to seed from a fixture."""
+    """Persist the release gate into the Target. Used by ``drydock uat`` to seed from a fixture.
+
+    Story gates are not written here; they belong to ``STORY_GUIDANCE.json`` and are written by
+    ``drydock.story_guidance.write_guidance``.
+    """
     path = target_dir / FILENAME
     payload: dict[str, object] = {}
     if contract.full:
         payload["full"] = list(contract.full)
-    if contract.stages:
-        payload["stages"] = {name: list(argv) for name, argv in sorted(contract.stages.items())}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
     return path
 
 
 def contract_from_config(payload: object, *, where: str) -> AcceptanceContract:
-    """Build a contract from a fixture's ``acceptance`` block. Rejects a malformed declaration."""
+    """Build a contract from a fixture's ``acceptance`` block. Rejects a malformed declaration.
+
+    A fixture declares story gates under ``story_guidance`` (or the retired ``stages`` key); both
+    are Commander-supplied because a kit input precedes every Drydock command.
+    """
     if payload is None:
         return AcceptanceContract()
     if not isinstance(payload, dict):
         raise SpecificationError(f"{where}: acceptance must be an object")
     full = _argv(payload["full"], where=f"{where}.full") if payload.get("full") is not None else ()
-    raw_stages = payload.get("stages") or {}
-    if not isinstance(raw_stages, dict):
-        raise SpecificationError(f"{where}: acceptance.stages must be an object")
-    stages = {
-        str(story_id): _argv(argv, where=f"{where}.stages.{story_id}")
-        for story_id, argv in raw_stages.items()
-    }
-    return AcceptanceContract(full=full, stages=stages, source=where)
+    guidance = guidance_from_config(payload, where=where)
+    return AcceptanceContract(full=full, story_gates=guidance.governed_gates, source=where)
 
 
 def build_identity(build_dir: Path) -> str:

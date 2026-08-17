@@ -284,33 +284,45 @@ foundational work that runs first, and running the corpus is terminal work that 
 plan contains several verification stories, exactly one of them is terminal and it is the one every
 other story precedes. Identify it by resolving `depends` before writing any suite criterion.
 
-**One story invokes the authoritative runner, and it is the terminal one.** No intermediate story's
-acceptance runs that runner, with or without a scoping flag, and no story exists whose purpose is to
-run the suite in slices — a "focused verification" or "bounded conformance" story is a defect, not a
-diagnostic. Two reasons, both load-bearing. A partial capability fails most of an authoritative
-corpus by construction, so the run reports the schedule rather than a defect. And the run is slow in
-exact proportion to how incomplete the code is, because unimplemented cases exhaust the runner's
-per-case timeout instead of returning: the invocation costs most at the point in the build where it
-teaches least, and a build agent that starts one mid-story typically abandons it and reports the
-suite as hung.
+**Only the terminal story runs the whole suite.** No intermediate story's acceptance invokes the
+runner unscoped. A partial capability fails most of an authoritative corpus by construction, so an
+unscoped mid-build run reports the schedule rather than a defect — and it is slow in exact
+proportion to how incomplete the code is, because unimplemented cases exhaust the runner's per-case
+timeout instead of returning. It costs most at the point in the build where it teaches least, and a
+build agent that starts one mid-story typically abandons it and reports the suite as hung.
 
-**A story that stages the suite is gated in list mode.** Staging is real work with a real
-obligation — the corpus parses, the exclusion list applies, the runner starts — and it is the one
-story for which "run the suite" and "assert a file exists" are both unavailable: the first belongs
-to the terminal story and the second is staging, not testing. Its criterion therefore invokes the
-runner's list or dry-run mode, which enumerates the corpus without executing a single case, and
-asserts the runner exits `0` and reports the expected count. This is the only permitted
-non-terminal invocation of the runner, it still supplies every environment variable the runner
-declares required, and it requires nothing of the code under test. Leaving such a story with no
-criterion at all is a defect: it produces a story that cannot be verified and a build block that
-closes advisory.
+**An intermediate story runs its own slice, and the slice executes.** Scoped to the cases that
+story implements, the run is neither slow nor red by construction: those are exactly the cases its
+code is supposed to pass, so the result is a verdict about the story rather than a report on the
+schedule. This is what makes build progress visible — the corpus goes green in the order the plan
+builds it, and a regression in an earlier story is caught by the later story that re-runs it.
 
-A story verifies its own increment with its own assertions. If an imported instruction states where
-the suite may run, that statement governs and is not softened by a scoping flag the runner happens
-to offer. Where no such instruction exists and a project's own suite is sliced across stories, size
-each slice from the runner's list or dry-run mode before writing the criterion — that is also how a
-text-matched selector that silently pulls in cases from unbuilt stories is caught at plan time
-rather than mid-build — and keep every non-terminal slice to a few hundred cases.
+Executing is the whole point, so:
+
+- The slice **runs cases**. A criterion that invokes the runner's list or dry-run mode executes
+  nothing, passes before the story's code exists, and proves only that the runner starts. Such a
+  criterion is a defect: it is green from the first build call to the last and steers no repair.
+- The slice is **selected by the story's capability**, using the runner's own scoping flag — not by
+  case count, not at random, and never by a selector that silently pulls in cases belonging to
+  unbuilt stories. Size and inspect each selector with the runner's list mode **while planning**;
+  that is where list mode belongs, not in a criterion.
+- Every slice invocation supplies each environment variable the runner declares required.
+
+**Together the slices cover the corpus.** Every case an authoritative suite contains belongs to
+some story's slice. A case no intermediate slice reaches is first executed by the terminal gate,
+where a failure arrives with the whole build already spent and no story to attribute it to.
+Overlap between slices is expected and costs nothing — a case exercised by two capabilities
+legitimately belongs to both — but a gap is a story whose work no one checked.
+
+**A story that only stages the suite asserts staging.** Where a story's obligation is that the
+corpus parses, the exclusion list applies, and the runner starts — and it implements none of the
+behavior under test — its criterion invokes the runner's list or dry-run mode and asserts the
+runner exits `0` and reports the expected count. This is the one criterion for which executing
+nothing is correct, because there is nothing of the product to execute yet. Leaving such a story
+with no criterion at all is a defect: it produces a story that cannot be verified and a build block
+that closes advisory.
+
+If an imported instruction states where the suite may run, that statement governs.
 
 ### What a criterion is worth
 

@@ -4095,16 +4095,32 @@ def test_a_retyped_expectation_is_disputed_and_the_block_still_closes(tmp_path):
 
 
 # ── governed acceptance ───────────────────────────────────────────────────────
-# A governed command is the only thing that can close a story verified. It comes from
-# ACCEPTANCE.json, which the Commander owns and no LLM-assisted command writes, and Drydock
-# executes its argv directly rather than inspecting a wrapper the model generated.
+# A governed command is the only thing that can close a story verified. The release gate comes
+# from ACCEPTANCE.json and the per-story gates from STORY_GUIDANCE.json; the Commander owns both
+# and no LLM-assisted command writes either. Drydock executes their argv directly rather than
+# inspecting a wrapper the model generated.
 
 
 def _governed(target_dir, stages=None, full=None):
     from drydock.acceptance_contract import AcceptanceContract, write_contract
+    from drydock.story_guidance import (
+        PROVENANCE_COMMANDER,
+        StoryGuidance,
+        StoryGuidanceEntry,
+        write_guidance,
+    )
 
-    write_contract(
-        target_dir, AcceptanceContract(full=tuple(full or ()), stages=dict(stages or {}))
+    write_contract(target_dir, AcceptanceContract(full=tuple(full or ())))
+    write_guidance(
+        target_dir,
+        StoryGuidance(
+            entries=tuple(
+                StoryGuidanceEntry(
+                    story_id=story_id, provenance=PROVENANCE_COMMANDER, gate=tuple(argv)
+                )
+                for story_id, argv in (stages or {}).items()
+            )
+        ),
     )
 
 

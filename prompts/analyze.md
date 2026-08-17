@@ -1,12 +1,12 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260731 V22
+version: 20260817 V23
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
 inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, RIGGING_MANIFEST, IMPORTED_SOURCES
-output: ANALYSIS.md, SEA_TRIALS.md, TECHNOLOGY_STACK.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question; discovery-sea-trials.json is written by Drydock and must never be emitted)
+output: ANALYSIS.md, SEA_TRIALS.md, TECHNOLOGY_STACK.md, STORY_GUIDANCE.json (conditional), BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question; discovery-sea-trials.json is written by Drydock and must never be emitted)
 ---
 
 # Agent for: blueprint analysis
@@ -681,6 +681,36 @@ and do not raise a stack questionnaire; the Commander edits this file directly.
 | Technology | Rigging | Notes |
 |---|---|---|
 | {Technology name as the product uses it} | {catalog filename or —} | {Short note, or empty} |
+=== END ARTIFACT ===
+```
+
+**Story Guidance rule.** Emit `STORY_GUIDANCE.json` **only when the imported material states its
+own build breakdown** — a conformance corpus grouped by chapter, a suite partitioned by feature, a
+specification whose sections name the units of work. Where the sources state no breakdown, omit
+the block entirely; inventing one adds nothing the Story List does not already carry.
+
+One entry per story the breakdown names, in build order. `id` is the story id you used in the
+Story List. `gate` is optional and is the argv Drydock runs to decide that story — supply it only
+when the sources stage a runner that accepts a scope selector, and scope it to the cases that
+story implements. `note` says which part of the source material the entry came from.
+
+Do not write a `provenance` field. Drydock assigns it. Every entry you emit is recorded as
+derived, never as Commander guidance: a gate written by the same model that plans the work is a
+criterion, not an oracle, and labelling it otherwise would make the plan its own examiner.
+Guidance the Commander supplied is already present in the injected inputs and is preserved
+whatever you emit — never restate, rename, or re-scope one of those ids.
+
+```
+=== BEGIN ARTIFACT STORY_GUIDANCE.json ===
+{
+  "stories": [
+    {
+      "id": "{story id from the Story List}",
+      "gate": ["{runner}", "{scope selector for this story's cases}"],
+      "note": "{the source section this breakdown came from}"
+    }
+  ]
+}
 === END ARTIFACT ===
 ```
 

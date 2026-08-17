@@ -2453,26 +2453,26 @@ def build_target(
             covered = sum(
                 1
                 for block in unit.steps
-                if acceptance_contract.stage_for(*_story_ids(block), block.block_id)
+                if acceptance_contract.story_gate_for(*_story_ids(block), block.block_id)
             )
             _emit(
                 on_text,
                 f"governed acceptance: {covered}/{len(unit.steps)} "
-                f"{'story' if len(unit.steps) == 1 else 'stories'} carry a stage gate",
+                f"{'story' if len(unit.steps) == 1 else 'stories'} carry a governed gate",
             )
-            # A stage keyed to a story id the plan never produced gates nothing at all, and it
+            # Guidance keyed to a story id the plan never produced gates nothing at all, and it
             # does so silently — the story ids are model-chosen, so a Commander writing the
-            # contract against a previous run's names is the expected way to get this wrong.
+            # guidance against a previous run's names is the expected way to get this wrong.
             known_ids = {block.block_id for block in plan.blocks} | {
                 story for block in plan.blocks for story in _story_ids(block)
             }
-            orphaned = sorted(set(acceptance_contract.stages) - known_ids)
+            orphaned = sorted(set(acceptance_contract.story_gates) - known_ids)
             if orphaned:
                 _emit(
                     on_text,
                     "governed acceptance: no story matches "
                     + ", ".join(orphaned)
-                    + " — these stage gates will never run",
+                    + " — these story gates will never run",
                 )
         unauthorized = []
         authorized_missing = []
@@ -3212,7 +3212,7 @@ def build_target(
             # the repair loop is steering by, which is the point of a stage gate.
             gate_results = {}
             for gated_block in unit.steps:
-                stage = acceptance_contract.stage_for(
+                stage = acceptance_contract.story_gate_for(
                     *_story_ids(gated_block), gated_block.block_id
                 )
                 if stage is None:
