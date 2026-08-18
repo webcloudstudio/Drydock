@@ -31,8 +31,13 @@ cp $KIT/inputs/SEA_TRIALS.md       $TARGET/SEA_TRIALS.md
 drydock status $PROJECT
 read
 drydock plan $PROJECT --override $OPTS
-drydock plan verify $PROJECT || drydock plan repair $PROJECT $OPTS
-drydock plan verify $PROJECT || { echo "criteria still cannot run — aborting"; exit 1; }
+if ! drydock plan verify $PROJECT; then
+  drydock plan repair $PROJECT $OPTS
+  if ! drydock plan verify $PROJECT; then
+    echo "criteria still cannot run — aborting"
+    exit 1
+  fi
+fi
 drydock status $PROJECT
 read
 
@@ -41,8 +46,15 @@ while drydock status $PROJECT --ready; do
   echo "************************"
   echo "* RUNNING BUILD ATTEMPT $n"
   echo "************************"
-  drydock build $PROJECT --override --repair-attempts 3 $OPTS || { echo "build failed with work left — aborting"; exit 1; }
-  n=$((n+1)); [ "$n" -ge "$max" ] && { echo "hit $max build iterations — aborting"; exit 1; }
+  if ! drydock build $PROJECT --override --repair-attempts 3 $OPTS; then
+    echo "build failed with work left — aborting"
+    exit 1
+  fi
+  n=$((n+1))
+  if [ "$n" -ge "$max" ]; then
+    echo "hit $max build iterations — aborting"
+    exit 1
+  fi
 done
 
 drydock status $PROJECT --check
