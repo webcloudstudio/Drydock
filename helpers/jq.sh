@@ -1,233 +1,88 @@
 #!/usr/bin/env bash
-# jq.sh — drive the jq UAT fixture interactively, one milestone at a time.
-#
-# Reproduces the command sequence `drydock uat jq` runs, with the same inputs and
-# the same order, so a failure here is the failure the harness would have hit.
-# Press ENTER at each pause; Ctrl-C to stop.
-
+# jq.sh — run the `drydock uat jq` command sequence by hand, one step at a time.
 set -u
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-export PROJECT=jq
-export PROJECT_DIR=/mnt/c/Users/barlo/projects
-export DRYDOCK_DIR=$PROJECT_DIR/drydock
-export KIT=$DRYDOCK_DIR/uat/$PROJECT
+PROJECT=jq
+PROJECT_DIR=/mnt/c/Users/barlo/projects
+DRYDOCK_DIR=$PROJECT_DIR/drydock
+KIT=$DRYDOCK_DIR/uat/$PROJECT
+SOURCE_DIR=$KIT/sources
+INPUT_DIR=$KIT/inputs
 
-# Where the fixture's files come from.
-export SOURCE_DIR=$KIT/sources          # imported User Sources, read-only
-export INPUT_DIR=$KIT/inputs            # lifecycle overrides copied over the Target
+export DRYDOCK_WORKSPACE=$DRYDOCK_DIR
+export DRYDOCK_BUILD_DIRECTORY=$PROJECT_DIR
+TARGET_DIR=$DRYDOCK_WORKSPACE/targets/$PROJECT
+BUILD_DIR=$DRYDOCK_BUILD_DIRECTORY/$PROJECT
 
-# Where Drydock works.
-export DRYDOCK_WORKSPACE=$DRYDOCK_DIR                    # Targets live in $WORKSPACE/targets
-export DRYDOCK_BUILD_DIRECTORY=$PROJECT_DIR              # application root is $BUILD_DIR/$PROJECT
-export TARGET_DIR=$DRYDOCK_WORKSPACE/targets/$PROJECT
-export BUILD_DIR=$DRYDOCK_BUILD_DIRECTORY/$PROJECT
-
-export OPTS="--llm-provider codex --model gpt-5.6-luna"
-#export OPTS="--llm-provider claude --model sonnet"
-
-export REPAIR_ATTEMPTS=3
-export MAX_BUILD_PASSES=20
+OPTS="--llm-provider codex --model gpt-5.6-luna"
+#OPTS="--llm-provider claude --model sonnet"
+REPAIR_ATTEMPTS=3
+MAX_BUILD_PASSES=20
 
 cd "$DRYDOCK_DIR" || exit 1
 
-# pause() announces the step that is ABOUT to run and blocks until ENTER. It
-# also closes out the previous step, so every step has a visible start and a
-# visible end and the script is never silently sitting on a finished task.
-LAST_STEP=""
-_hr() { printf '%s\n' "----------------------------------------------------------------------"; }
+p() { echo; echo "=== NEXT: $*  — ENTER to run, Ctrl-C to stop"; read -r; echo "=== RUN $(date +%T): $*"; }
+d() { echo "=== DONE $(date +%T)"; }
 
-step_done() {
-    [ -n "$LAST_STEP" ] || return 0
-    echo
-    _hr
-    echo "##### DONE: $LAST_STEP   ($(date +%H:%M:%S))"
-    _hr
-    LAST_STEP=""
-}
+p "0. wipe $TARGET_DIR and $BUILD_DIR"
+rm -rf "$TARGET_DIR" "$BUILD_DIR"; d
 
-pause() {
-    step_done
-    LAST_STEP="$*"
-    echo
-    _hr
-    echo "##### NEXT: $*"
-    _hr
-    printf '>>> press ENTER to run this step (Ctrl-C to stop): '
-    read -r
-    echo "##### RUNNING: $*   ($(date +%H:%M:%S))"
-    echo
-}
+p "1. init"
+drydock init $PROJECT $OPTS; d
 
-run() {
-    echo "+ $*"
-    "$@"
-    local rc=$?
-    [ "$rc" -ne 0 ] && echo "! exit $rc: $*"
-    return "$rc"
-}
-
-# ---------------------------------------------------------------------------
-# 0. Clean slate
-# ---------------------------------------------------------------------------
-date
-pause "0. remove $TARGET_DIR and $BUILD_DIR"
-rm -rf "$TARGET_DIR" "$BUILD_DIR"
-
-# ---------------------------------------------------------------------------
-# 1. init
-# ---------------------------------------------------------------------------
-pause "1. drydock init"
-run drydock init $PROJECT $OPTS
-
-# ---------------------------------------------------------------------------
-# 1a. Overwrite the init METADATA.md with the kit's copy
-#
-# analyze backfills stack, display_name, and short_description only when they
-# are blank, so the values declared here are the ones the whole run uses. The
-# file is copied whole, exactly as `drydock uat` seeds it; its lifecycle fields
-# are blank so the copy carries no state into a fresh Target.
-# ---------------------------------------------------------------------------
-pause "1a. copy $INPUT_DIR/METADATA.md over the init scaffold"
-run cp "$INPUT_DIR/METADATA.md" "$TARGET_DIR/METADATA.md"
-run cat "$TARGET_DIR/METADATA.md"
-
-# ---------------------------------------------------------------------------
-# 2. Seed the Compass and the governed JSON inputs
-#
-# The Compass is IMPORTED, not copied: `--format compass` normalizes
-# inputs/COMPASS.md into the Target's COMPASS.md. It is an input, not a source,
-# and is never derived from INSTRUCTIONS.md. --force overwrites the stub init
-# wrote. ACCEPTANCE.json is the governed release gate; STORY_GUIDANCE is empty
-# for this fixture but the file must exist.
-#
-# TECHNOLOGY_STACK.md and SEA_TRIALS.md are NOT seeded here — analyze generates
-# both, so the overrides are copied over them in step 4a.
-# ---------------------------------------------------------------------------
-pause "2. import Compass and seed governed inputs into $TARGET_DIR"
-run drydock import $PROJECT "$INPUT_DIR/COMPASS.md" --format compass --force $OPTS
+p "2. seed METADATA, Compass, and the governed JSON inputs"
+cp "$INPUT_DIR/METADATA.md" "$TARGET_DIR/METADATA.md"
+drydock import $PROJECT "$INPUT_DIR/COMPASS.md" --format compass --force $OPTS
 echo '{"full": ["sh", "sources/full_test.sh"]}' > "$TARGET_DIR/ACCEPTANCE.json"
 echo '{"stories": []}'                          > "$TARGET_DIR/STORY_GUIDANCE.json"
-ls -l "$TARGET_DIR"
+ls -l "$TARGET_DIR"; d
 
-# ---------------------------------------------------------------------------
-# 3. import — the whole source bundle in one pass
-#
-# INSTRUCTIONS.md jq-manual.txt jq.test exclusions.txt parser.y lexer.l
-# builtin.jq run_conformance.py full_test.sh
-# ---------------------------------------------------------------------------
-pause "3. drydock import from $SOURCE_DIR"
-run drydock import $PROJECT "$SOURCE_DIR" --format markdown $OPTS
-run drydock status $PROJECT
+p "3. import sources"
+drydock import $PROJECT "$SOURCE_DIR" --format markdown $OPTS; d
 
-# ---------------------------------------------------------------------------
-# 4. analyze
-# ---------------------------------------------------------------------------
-pause "4. drydock analyze"
-run drydock analyze $PROJECT $OPTS
-run drydock status $PROJECT
+p "4. analyze"
+drydock analyze $PROJECT $OPTS; d
 
-# ---------------------------------------------------------------------------
-# 4a. Override the analyze-generated lifecycle files
-#
-# analyze writes SEA_TRIALS.md and TECHNOLOGY_STACK.md itself. The fixture
-# pins both, so the overrides are copied over the generated files here — after
-# analyze, before plan — and never earlier, where analyze would overwrite them.
-# ---------------------------------------------------------------------------
-pause "4a. copy lifecycle overrides over the analyze output"
-run cp "$INPUT_DIR/TECHNOLOGY_STACK.md"  "$TARGET_DIR/TECHNOLOGY_STACK.md"
-run cp "$INPUT_DIR/SEA_TRIALS.md"        "$TARGET_DIR/SEA_TRIALS.md"
-run drydock status $PROJECT
+# analyze writes both of these itself, so the kit's copies go on after it, not before.
+p "4a. copy the stack and Sea Trials over the analyze output"
+cp "$INPUT_DIR/TECHNOLOGY_STACK.md" "$TARGET_DIR/TECHNOLOGY_STACK.md"
+cp "$INPUT_DIR/SEA_TRIALS.md"       "$TARGET_DIR/SEA_TRIALS.md"
+drydock status $PROJECT; d
 
-# ---------------------------------------------------------------------------
-# 5. plan, then verify the acceptance criteria can actually run
-#
-# plan verify is deterministic and free. Pay for plan repair only when it fails.
-# A second failure means the criteria still cannot run: stop, do not build.
-# ---------------------------------------------------------------------------
-pause "5. drydock plan"
-run drydock plan $PROJECT --override $OPTS
+p "5. plan"
+drydock plan $PROJECT --override $OPTS; d
 
-pause "5a. drydock plan verify"
+p "5a. plan verify (repair once, then stop)"
 if ! drydock plan verify $PROJECT; then
-    echo "!! criteria cannot run — one repair pass"
-    run drydock plan repair $PROJECT $OPTS
-    if ! drydock plan verify $PROJECT; then
-        echo "!! STOP: acceptance criteria still cannot run after one repair pass"
-        exit 1
-    fi
+    drydock plan repair $PROJECT $OPTS
+    drydock plan verify $PROJECT || { echo "!! STOP: criteria still cannot run"; exit 1; }
 fi
+drydock status $PROJECT; d
 
-pause "5b. status after plan"
-run drydock build status $PROJECT
-run drydock status $PROJECT
-run drydock status
-
-# ---------------------------------------------------------------------------
-# 6. build loop
-#
-# `status --ready` exits 0 while a pass can advance the Target and 1 once it
-# cannot. Non-zero BEFORE the first pass means the Manifest was never buildable
-# — a story parked at blocked/questions behind a blocking DECISIONS.json record
-# — which is a halt, not a finished build.
-# ---------------------------------------------------------------------------
-pause "6. build loop (up to $MAX_BUILD_PASSES passes)"
+# status --ready exits 0 while a pass can advance the Target. Non-zero before the first pass
+# means the Manifest was never buildable — a halt, not a finished build.
 passes=0
-while true; do
-    if ! drydock status $PROJECT --ready; then
-        if [ "$passes" -eq 0 ]; then
-            echo "!! nothing buildable before the first pass"
-            drydock status $PROJECT --check
-            case $? in
-                0) echo "   Target is already complete." ;;
-                2) echo "!! STOP: blocked. Answer the blocking records:"
-                   cat "$TARGET_DIR/DECISIONS.json"; exit 1 ;;
-                *) echo "!! STOP: no buildable frontier. Open DECISIONS.json and MANIFEST.md."
-                   cat "$TARGET_DIR/DECISIONS.json"; exit 1 ;;
-            esac
-        fi
-        break
-    fi
+while drydock status $PROJECT --ready; do
     passes=$((passes + 1))
-    if [ "$passes" -gt "$MAX_BUILD_PASSES" ]; then
-        echo "!! STOP: $MAX_BUILD_PASSES passes without emptying the frontier"
-        exit 1
-    fi
-    pause "6.$passes drydock build"
-    run drydock build $PROJECT --override --repair-attempts $REPAIR_ATTEMPTS $OPTS || {
-        echo "!! build exited non-zero with work still on the frontier"
-        exit 1
-    }
+    [ "$passes" -gt "$MAX_BUILD_PASSES" ] && { echo "!! STOP: $MAX_BUILD_PASSES passes"; exit 1; }
+    p "6.$passes build"
+    drydock build $PROJECT --override --repair-attempts $REPAIR_ATTEMPTS $OPTS || {
+        echo "!! STOP: build failed with work still on the frontier"; exit 1; }
+    d
 done
-
-pause "6z. status after build"
-run drydock status $PROJECT --check
-run drydock build status $PROJECT
-run drydock status $PROJECT
-run drydock status
-
-# ---------------------------------------------------------------------------
-# 7. the governed scoring run
-#
-# Runs from the application root. full_test.sh sets JQ itself.
-# ---------------------------------------------------------------------------
-pause "7. sh sources/full_test.sh in $BUILD_DIR"
-if [ -d "$BUILD_DIR" ]; then
-    ( cd "$BUILD_DIR" && run sh sources/full_test.sh )
-    echo "test exit: $?"
-else
-    echo "!! no application root at $BUILD_DIR — the build produced nothing"
+if [ "$passes" -eq 0 ]; then
+    drydock status $PROJECT --check
+    [ $? -eq 0 ] || { echo "!! STOP: nothing buildable"; cat "$TARGET_DIR/DECISIONS.json"; exit 1; }
 fi
 
-# ---------------------------------------------------------------------------
-# 8. scores
-# ---------------------------------------------------------------------------
-pause "8. drydock score"
-run drydock score ac $PROJECT $OPTS
-run drydock score release $PROJECT $OPTS
+p "6z. status after build"
+drydock status $PROJECT --check
+drydock build status $PROJECT
+drydock status $PROJECT; d
 
-step_done
-date
-echo "done."
+p "7. sh sources/full_test.sh in $BUILD_DIR"
+( cd "$BUILD_DIR" && sh sources/full_test.sh ); echo "test exit: $?"; d
+
+p "8. score"
+drydock score ac $PROJECT $OPTS
+drydock score release $PROJECT $OPTS; d
