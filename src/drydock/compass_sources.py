@@ -145,3 +145,50 @@ def seed_compass_from_sources(
     compass_path.write_text(content, encoding="utf-8", newline="\n")
     mark_compass_imported(target_dir, sources[0])
     return compass_path
+
+
+#: Compass sections that bind how a Blueprint artifact may be written, in the order a reader
+#: needs them. ``Verification Protocol`` is the section that governs acceptance criteria: which
+#: story may invoke a supplied harness, and what every invocation must supply. A repair pass
+#: that adds an assertion without it writes against rules it was never shown.
+NORMATIVE_COMPASS_HEADINGS = ("Constraints", "Guardrails", "Verification Protocol")
+
+_SECTION_HEADING_RE = re.compile(r"(?m)^(?P<hashes>#{1,6})\s+(?P<title>\S.*?)\s*$")
+
+
+def compass_section(text: str, heading: str) -> str:
+    """Return one Compass section including its heading, or an empty string.
+
+    The section runs to the next heading at the same or shallower depth, so subsections stay
+    with the section that owns them. Matching is case-insensitive on the heading text alone.
+    """
+    wanted = heading.strip().casefold()
+    matches = list(_SECTION_HEADING_RE.finditer(text))
+    for index, match in enumerate(matches):
+        if match.group("title").casefold() != wanted:
+            continue
+        depth = len(match.group("hashes"))
+        end = len(text)
+        for following in matches[index + 1 :]:
+            if len(following.group("hashes")) <= depth:
+                end = following.start()
+                break
+        return text[match.start() : end].rstrip()
+    return ""
+
+
+def normative_compass_sections(
+    target_dir: Path, headings: tuple[str, ...] = NORMATIVE_COMPASS_HEADINGS
+) -> str:
+    """Return the Compass sections that bind artifact authorship, or an empty string.
+
+    An absent Compass, or one that declares none of these sections, yields nothing: a prompt
+    gains a Compass block only when there is Compass to carry.
+    """
+    path = target_dir / "COMPASS.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    found = [section for section in (compass_section(text, name) for name in headings) if section]
+    return "\n\n".join(found)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from drydock.compass_sources import (
     clear_compass_import_pending,
     collect_compass_sources,
@@ -122,3 +124,41 @@ def test_seed_compass_combines_multiple_sources_with_source_comments(tmp_path):
     assert "<!-- Source: constitution.md -->" in text
     assert "# Intent" in text
     assert "# Constitution" in text
+
+
+def test_compass_section_stops_at_the_next_same_depth_heading(tmp_path: Path) -> None:
+    from drydock.compass_sources import compass_section
+
+    text = (
+        "# COMPASS: X\n\n## Constraints\n\n- one\n\n"
+        "## Verification Protocol\n\nrules\n\n### Invoking\n\nmore\n\n## Corpus\n\nlater\n"
+    )
+    section = compass_section(text, "Verification Protocol")
+    assert section.startswith("## Verification Protocol")
+    assert "### Invoking" in section
+    assert "later" not in section
+    assert compass_section(text, "Nothing Here") == ""
+
+
+def test_normative_compass_sections_collects_the_binding_sections(tmp_path: Path) -> None:
+    from drydock.compass_sources import normative_compass_sections
+
+    (tmp_path / "COMPASS.md").write_text(
+        "# COMPASS: X\n\n## Compass\n\nprose\n\n## Constraints\n\n- stdlib only\n\n"
+        "## Guardrails\n\n- no shelling out\n\n## Verification Protocol\n\n"
+        'Supply `env={**os.environ, "JQ": ...}`.\n',
+        encoding="utf-8",
+    )
+    collected = normative_compass_sections(tmp_path)
+    assert "## Constraints" in collected
+    assert "## Guardrails" in collected
+    assert "## Verification Protocol" in collected
+    assert "os.environ" in collected
+    # Narrative sections are not normative and do not travel.
+    assert "prose" not in collected
+
+
+def test_normative_compass_sections_is_empty_without_a_compass(tmp_path: Path) -> None:
+    from drydock.compass_sources import normative_compass_sections
+
+    assert normative_compass_sections(tmp_path) == ""

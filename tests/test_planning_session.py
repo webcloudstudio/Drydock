@@ -4606,6 +4606,47 @@ def test_the_artifact_repair_prompt_states_the_same_grammar():
     assert "<original-artifact" not in text
 
 
+def test_the_artifact_repair_prompt_carries_the_normative_compass(tmp_path):
+    """A repair pass told to add an assertion is shown the rules that bind assertions.
+
+    The observed failure: a repair pass with no Compass added a criterion that invoked a
+    staged harness without the environment variable the Compass requires of every invocation,
+    making the criterion false under every implementation and parking the story.
+    """
+    (tmp_path / "COMPASS.md").write_text(
+        "# COMPASS: Example\n\n## Compass\n\nnarrative prose\n\n"
+        "## Verification Protocol\n\n"
+        'Every invocation supplies `env={**os.environ, "JQ": ...}`.\n',
+        encoding="utf-8",
+    )
+
+    assembly = ps._artifact_repair_assembly(
+        blocks={"FEATURE-Status.md": "# FEATURE: Status"},
+        names=("FEATURE-Status.md",),
+        defect="a defect",
+        pass_number=1,
+        target_dir=tmp_path,
+    )
+    text = assembly.rendered_text
+
+    assert "## Verification Protocol" in text
+    assert "os.environ" in text
+    assert "narrative prose" not in text
+
+
+def test_the_artifact_repair_prompt_omits_the_compass_block_when_there_is_none(tmp_path):
+    """A prompt gains a Compass heading only when there is Compass to carry."""
+    assembly = ps._artifact_repair_assembly(
+        blocks={"FEATURE-Status.md": "# FEATURE: Status"},
+        names=("FEATURE-Status.md",),
+        defect="a defect",
+        pass_number=1,
+        target_dir=tmp_path,
+    )
+
+    assert "Normative Compass sections" not in assembly.rendered_text
+
+
 def test_an_unreadable_repair_reply_is_reported_rather_than_swallowed(tmp_path):
     """Proceeding is correct; proceeding silently is what cost the run."""
     _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)

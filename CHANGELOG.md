@@ -72,6 +72,21 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-17: `COMPASS.md` gains a normative `## Verification Protocol` section, and the Blueprint
+  artifact repair pass now carries the Compass sections that bind artifact authorship —
+  `## Constraints`, `## Guardrails`, and `## Verification Protocol` — quoted rather than
+  summarized. The repair prompt instructs the model to add a missing assertion while previously
+  supplying only the validation defect and the artifact bodies, so a repair pass authored
+  assertions against rules it had never been shown. The observed failure: a repair pass added an
+  acceptance criterion invoking a staged conformance harness without the environment variable the
+  project's Compass requires of every invocation, making the criterion false under every possible
+  implementation, which parked its story at `blocked/questions` and left the Manifest with no
+  buildable frontier. The section is normative and is the place to state which story may invoke a
+  supplied harness, what every invocation must supply, and which exit codes mean a harness fault
+  rather than a product verdict — a rule stated only in prose elsewhere in the Compass does not
+  reach a repair pass. A Target with no Compass, or a Compass declaring none of these sections,
+  produces no Compass block.
+
 - 2026-08-17: `ACCEPTANCE.json` now carries only `full`, the whole-project release gate. The
   per-story `stages` map moved to `STORY_GUIDANCE.json`, whose subject is the story list rather
   than acceptance; `AcceptanceContract.stages` is now `story_gates` and `stage_for` is

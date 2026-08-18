@@ -60,6 +60,7 @@ from drydock.build_plan import (
     parse_build_plan,
     set_applied_specs,
 )
+from drydock.compass_sources import normative_compass_sections
 from drydock.config import build_dir_for
 from drydock.decisions import (
     ARCHITECTURE_BLUEPRINT,
@@ -3638,9 +3639,23 @@ def _repairable_artifact_names(blocks: Mapping[str, str], defect: str) -> tuple[
 
 
 def _artifact_repair_assembly(
-    *, blocks: Mapping[str, str], names: tuple[str, ...], defect: str, pass_number: int
+    *,
+    blocks: Mapping[str, str],
+    names: tuple[str, ...],
+    defect: str,
+    pass_number: int,
+    target_dir: Path | None = None,
 ) -> PromptAssembly:
-    """Build a small repair prompt containing only artifacts named by the validator."""
+    """Build a small repair prompt containing the artifacts named by the validator.
+
+    The prompt instructs the model to add a missing assertion, so it carries the Compass
+    sections that bind how an assertion may be written. Without them a repair pass authors
+    against rules it was never shown — the observed failure being a criterion that invoked a
+    staged harness without the environment variable the Compass requires of every invocation,
+    producing an assertion false under every implementation. The Compass is quoted, not
+    summarized, and only its normative sections travel: the repair prompt stays small enough
+    to keep the defect and the artifact bodies in view.
+    """
     lines = [
         "# Plan Artifact Repair",
         "",
@@ -3658,6 +3673,15 @@ def _artifact_repair_assembly(
         "Deterministic validation defect:",
         defect.strip(),
     ]
+    compass = normative_compass_sections(target_dir) if target_dir is not None else ""
+    if compass:
+        lines.extend([
+            "",
+            "Normative Compass sections. They bind every assertion you write or retain, "
+            "including one you add to satisfy the defect above.",
+            "",
+            compass,
+        ])
     for name in names:
         lines.extend([
             "",
@@ -4957,6 +4981,7 @@ def create_plan(
                         names=names,
                         defect=str(repair_exc),
                         pass_number=repair_pass,
+                        target_dir=target_dir,
                     )
                     try:
                         repair_result = cast(
