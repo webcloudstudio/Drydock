@@ -19,7 +19,12 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
-from drydock.acceptance_runner import VALUES_BEGIN, VALUES_END
+from drydock.acceptance_runner import (
+    PROGRESS_BEGIN,
+    PROGRESS_END,
+    VALUES_BEGIN,
+    VALUES_END,
+)
 from drydock.acceptance_taxonomy import load_acceptance_failure_taxonomy
 from drydock.build_plan import BuildPlan, PlanBlock
 from drydock.child_sandbox import child_limits, kill_process_group
@@ -154,6 +159,27 @@ def assertion_location(stderr: str) -> str:
     return f"{Path(deepest.group('file')).name}:{deepest.group('line')}"
 
 
+def _split_fenced_block(text: str, begin: str, end: str) -> tuple[list[str], str]:
+    """Lift one fenced harness block out of a stream, returning ``(lines, remaining)``."""
+    if begin not in text:
+        return [], text
+    before, _, rest = text.partition(begin)
+    block, _, after = rest.partition(end)
+    lines = [line.rstrip() for line in block.splitlines() if line.strip()]
+    remaining = (before + after.lstrip("\n")) if after else before
+    return lines, remaining
+
+
+def split_captured_progress(stderr: str) -> tuple[list[str], str]:
+    """Separate the harness's tally block from the criterion's own stderr.
+
+    Returns ``(tally_lines, remaining_stderr)``. The tally is how much of a suite passed, which
+    is a measurement of the attempt rather than a diagnosis of the failure, so it is lifted out
+    before the failure is rendered and read on its own.
+    """
+    return _split_fenced_block(stderr or "", PROGRESS_BEGIN, PROGRESS_END)
+
+
 def split_captured_values(stderr: str) -> tuple[list[str], str]:
     """Separate the harness's value block from the criterion's own stderr.
 
@@ -161,14 +187,8 @@ def split_captured_values(stderr: str) -> tuple[list[str], str]:
     because they are the answer to the reader's question — what did the criterion actually
     observe — and burying them above a traceback puts the answer where nobody looks.
     """
-    text = stderr or ""
-    if VALUES_BEGIN not in text:
-        return [], text
-    before, _, rest = text.partition(VALUES_BEGIN)
-    block, _, after = rest.partition(VALUES_END)
-    values = [line.rstrip() for line in block.splitlines() if line.strip()]
-    remaining = (before + after.lstrip("\n")) if after else before
-    return values, remaining
+    _, text = split_captured_progress(stderr or "")
+    return _split_fenced_block(text, VALUES_BEGIN, VALUES_END)
 
 
 def _assertion_line_number(stderr: str) -> int | None:
@@ -276,8 +296,13 @@ def failure_detail(
     without the traceback the report states an ``AssertionError`` with no account of how it was
     reached. The traceback is that account, and it is on stderr.
     """
+    tally, _ = split_captured_progress(stderr)
     values, stderr = split_captured_values(stderr)
     lines = [f"{indent}assertion: {assertion_summary(stderr, error, override=override)}"]
+    # A suite-driving criterion fails identically whether one case is broken or every case is.
+    # The tally is the difference, and the repair pass is shown it for the same reason the
+    # operator is: it is the only statement of how far off the product actually is.
+    lines.extend(f"{indent}{line}" for line in tally)
     location = assertion_location(stderr)
     if location:
         lines.append(f"{indent}raised at: {location}")
@@ -1297,6 +1322,39 @@ def unresolved_globals(code: str) -> tuple[str, ...]:
 
     inspect(root)
     return tuple(sorted(unresolved))
+
+
+#: Calls that run a program and hand its output back as a value rather than to the console.
+_CAPTURING_CALLS = frozenset({"run", "check_output", "getoutput", "getstatusoutput", "Popen"})
+
+
+def captures_without_reporting(code: str) -> bool:
+    """True when a criterion runs a program, captures its output, and reports none of it.
+
+    A criterion in this shape answers one bit. Whatever the program printed — the suite tally,
+    the failing cases, the diagnostic that explains the exit code — is bound to a variable and
+    then thrown away, so the failure is reported as a bare assertion and two attempts that
+    differ by a hundred passing cases are indistinguishable. The acceptance harness recovers
+    what it can from the failing frame; printing is how the criterion states it outright.
+    """
+    try:
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return False
+    captures = False
+    reports = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = node.func.attr if isinstance(node.func, ast.Attribute) else None
+        if isinstance(node.func, ast.Name):
+            name = node.func.id
+        if name == "print":
+            reports = True
+        elif name in _CAPTURING_CALLS:
+            captures = True
+    return captures and not reports
 
 
 #: Where a build records criteria that were already green at their block's baseline — before that

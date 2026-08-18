@@ -240,6 +240,19 @@ def test_the_prompt_names_every_defective_criterion_and_carries_the_file(tmp_pat
     assert rendered.rstrip().endswith("BODY")
 
 
+def test_a_files_advisories_ride_along_with_the_call_it_is_already_paying_for(tmp_path):
+    """An advisory never buys a model call of its own; it goes with one already being made."""
+    silent = _BROKEN.replace("result = subprocess.run", "captured = None\nresult = subprocess.run")
+    target = _target(tmp_path, FEATURE_Path=silent)
+    runner = _runner(_FIXED_BLOCK)
+
+    repair("Demo", target, runner=runner)
+
+    prompt = runner.calls[0]["prompt"]
+    assert "Advisories for this file" in prompt
+    assert "prints none of it" in prompt
+
+
 def test_the_repair_prompt_forbids_changing_an_assertion():
     from drydock.prompts import load_prompt
 

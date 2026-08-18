@@ -122,6 +122,45 @@ def test_a_retyped_expectation_warns_and_does_not_gate(tmp_path):
     assert result.warnings
 
 
+_SILENT_SUITE = """# FEATURE: Conformance
+
+## Programmatic Acceptance
+
+=== AC suite-conformance ===
+Intent: The suite passes.
+
+import json, subprocess, sys
+
+result = subprocess.run([sys.executable, "run_suite.py", "--json"], capture_output=True, text=True)
+report = json.loads(result.stdout)
+assert report["summary"]["fail"] == 0
+=== END AC suite-conformance ===
+"""
+
+
+def test_a_criterion_that_captures_output_and_prints_none_warns_and_does_not_gate(tmp_path):
+    """It runs and judges correctly; what it costs is measurement, so it is advisory."""
+    result = verify("Demo", _target(tmp_path, FEATURE_Silent=_SILENT_SUITE))
+
+    assert result.ok
+    assert any("prints none of it" in warning for warning in result.warnings)
+
+
+def test_a_criterion_that_reports_what_it_captured_does_not_warn(tmp_path):
+    result = verify(
+        "Demo",
+        _target(
+            tmp_path,
+            FEATURE_Loud=_SILENT_SUITE.replace(
+                "report = json.loads(result.stdout)",
+                'report = json.loads(result.stdout)\nprint(report["summary"])',
+            ),
+        ),
+    )
+
+    assert result.warnings == ()
+
+
 def test_generated_files_are_not_verified(tmp_path):
     target = _target(tmp_path, FEATURE_Ok=_RUNNABLE)
     (target / "blueprint" / "MANIFEST.md").write_text(_MISSING_IMPORT, encoding="utf-8")

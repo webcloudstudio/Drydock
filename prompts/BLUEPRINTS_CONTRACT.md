@@ -488,6 +488,23 @@ Print the captured `stdout` and `stderr` first, so the console, the evidence fil
 pass all carry the runner's own account of the failure. Printing is for diagnosis; it is never the
 oracle.
 
+**A check that drives a suite prints its tally.** A criterion answers one yes-or-no question, so a
+run that fixes a hundred cases and a run that fixes none report the same failure, and the build
+reads that as a stalled repair and stops paying for calls that were working. The count is what
+separates them. Where the runner reports a machine-readable summary, parse it and print the
+counts on one line before asserting:
+
+```
+report = json.loads(result.stdout)
+summary = report["summary"]
+print(f"{summary['pass']} passed, {summary['fail']} failed, {summary['error']} errored")
+assert summary["fail"] == 0 and summary["error"] == 0
+```
+
+Print the counts even when the criterion asserts on the parsed object rather than on the text.
+Requesting `--json` and asserting straight off the parsed report leaves nothing on either stream,
+and a suite of hundreds of cases then reports its progress as a single bit.
+
 ```markdown
 ## Programmatic Acceptance
 

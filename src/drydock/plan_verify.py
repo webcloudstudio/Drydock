@@ -28,12 +28,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from drydock.acceptance import (
+    captures_without_reporting,
     parse_programmatic_acceptance,
     syntax_defect,
     unresolved_globals,
 )
 from drydock.errors import SpecificationError
 from drydock.story_guidance import load_guidance
+
+#: Advisories of one kind printed in full before they are rolled up into a count.
+_WARNING_DETAIL_LIMIT = 5
 
 #: Files under ``blueprint/`` that no Blueprint author wrote and no repair may touch.
 _GENERATED_FILES = frozenset({"MANIFEST.md", "TOPOLOGY.md", "SCORECARD.md"})
@@ -121,6 +125,18 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
             continue
         for check in checks:
             checked_criteria += 1
+            if captures_without_reporting(check.code):
+                # Advisory for the same reason as a re-typed expectation: the criterion runs and
+                # judges correctly, so refusing the Blueprint over it would be wrong. What it
+                # costs is measurement — a suite of hundreds of cases reporting its progress as
+                # one bit, which the build's repair loop reads as a stall. Raised before the
+                # defect checks short-circuit, because a criterion can carry both faults and a
+                # repair pass should be told about both in the one call it is paid for.
+                warnings.append(
+                    f"{path.name} [{check.check_id}]: captures a program's output and prints "
+                    "none of it; print its pass/fail counts before asserting so repair can see "
+                    "progress"
+                )
             # Order matters: a snippet that does not compile has no meaningful name analysis, so
             # reporting both would name the same fault twice and give repair two things to fix.
             if (reason := syntax_defect(check.code)) is not None:
@@ -165,8 +181,20 @@ def render(result: VerifyResult) -> str:
     lines = [f"plan verify: {result.target}", f"  {result.summary}"]
     for defect in result.defects:
         lines.append(f"  ✗  {defect.rendered}")
+    # An advisory that holds for most of a plan is one finding about the plan, not sixty
+    # findings. Printed one per line it buries the defects, which are the part that gates.
+    grouped: dict[str, list[str]] = {}
     for warning in result.warnings:
-        lines.append(f"  ⚠  {warning}")
+        where, _, detail = warning.partition(": ")
+        grouped.setdefault(detail or warning, []).append(where)
+    for detail, where in grouped.items():
+        if len(where) <= _WARNING_DETAIL_LIMIT:
+            lines += [f"  ⚠  {place}: {detail}" for place in where]
+            continue
+        lines.append(f"  ⚠  {len(where)} criteria: {detail}")
+        lines.append(
+            f"       {', '.join(where[:_WARNING_DETAIL_LIMIT])}, and {len(where) - _WARNING_DETAIL_LIMIT} more"
+        )
     if result.defects:
         lines.append(f"  Run: drydock plan repair {result.target}")
     return "\n".join(lines)

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import linecache
+import re
 import runpy
 import sys
 import traceback
@@ -29,6 +30,13 @@ from types import FrameType, ModuleType
 #: own section rather than as noise in front of a traceback.
 VALUES_BEGIN = "--- drydock: values at failure ---"
 VALUES_END = "--- drydock: end values ---"
+#: Fences around the machine-readable tally a harness-style criterion implies but does not print.
+#: A criterion that drives a suite answers one yes/no question, so a run that fixes a hundred
+#: cases and a run that fixes none report the same failure. The count that separates them is
+#: sitting in the failing frame — in the parsed report, or in the output the criterion captured
+#: — and is discarded with the frame unless it is lifted out here.
+PROGRESS_BEGIN = "--- drydock: progress ---"
+PROGRESS_END = "--- drydock: end progress ---"
 #: A value is quoted to diagnose a failure, not to dump a corpus. A staged suite's captured
 #: output can be megabytes; the head of it still identifies what went wrong.
 VALUE_REPR_LIMIT = 400
@@ -105,6 +113,140 @@ def value_lines(frame: FrameType, lineno: int) -> list[str]:
     return lines
 
 
+#: Words a suite uses for each outcome, normalised to letters only. A harness names its buckets
+#: in one of a handful of dialects; recognising the dialect is the whole trick, because the
+#: numbers themselves are always plain integers.
+_OUTCOME_WORDS: dict[str, tuple[str, ...]] = {
+    "pass": ("pass", "passed", "passes", "passing", "ok", "success", "successes", "succeeded"),
+    "fail": ("fail", "failed", "failures", "failure", "failing", "bad"),
+    "error": ("error", "errors", "errored", "exception", "exceptions"),
+    "skip": ("skip", "skipped", "skips", "skipping", "ignored", "xfail", "xfailed"),
+}
+_WORD_OUTCOME = {word: outcome for outcome, words in _OUTCOME_WORDS.items() for word in words}
+#: Explicit population, when the harness states one instead of leaving it to be summed.
+_TOTAL_WORDS = frozenset({"total", "totals", "count", "cases", "tests", "checks", "ran"})
+#: ``22 passed`` / ``pass=22`` / ``"fail": 159`` — the three shapes a printed tally takes.
+_TALLY_TOKEN_RE = re.compile(
+    r"(?P<n1>\d+)\s+(?P<w1>[A-Za-z]+)|(?P<w2>[A-Za-z_]+)\s*[:=]\s*\"?(?P<n2>\d+)"
+)
+#: How much of a captured stream to scan. A suite prints its tally last, and a corpus dump in
+#: front of it can be megabytes.
+_TALLY_SCAN_TAIL = 20_000
+#: How deep to look inside a parsed report for its summary. ``report["summary"]["pass"]`` is two.
+_TALLY_MAX_DEPTH = 4
+
+
+def _outcome_counts(pairs: list[tuple[str, int]]) -> dict[str, int] | None:
+    """Fold ``(word, number)`` observations into a tally, or ``None`` when they are not one.
+
+    A tally has to name a pass bucket and at least one way of not passing. One number beside the
+    word ``ok`` is a log line, not a measurement, and inventing a total from it would report
+    progress that was never measured.
+    """
+    counts: dict[str, int] = {}
+    total: int | None = None
+    for word, number in pairs:
+        if (outcome := _WORD_OUTCOME.get(word)) is not None:
+            counts.setdefault(outcome, number)
+        elif word in _TOTAL_WORDS and total is None:
+            total = number
+    if "pass" not in counts or not ({"fail", "error"} & counts.keys()):
+        return None
+    summed = sum(counts.values())
+    # Skipped cases stay in the population. A case that moves from skipped to passing must not
+    # change the denominator, or the comparison between two attempts is refused as incomparable.
+    counts["total"] = total if total is not None and total >= summed else summed
+    return counts
+
+
+def _dict_tally(value: object) -> dict[str, int] | None:
+    """Read a tally out of a mapping such as ``{"pass": 123, "fail": 159}``."""
+    if not isinstance(value, dict):
+        return None
+    pairs: list[tuple[str, int]] = []
+    for key, item in value.items():
+        if not isinstance(key, str) or not isinstance(item, int) or isinstance(item, bool):
+            continue
+        if item < 0:
+            continue
+        pairs.append(("".join(ch for ch in key if ch.isalpha()).lower(), item))
+    return _outcome_counts(pairs)
+
+
+def _text_tally(value: object) -> dict[str, int] | None:
+    """Read a tally out of printed output such as ``22 passed, 260 failed``."""
+    if not isinstance(value, str | bytes):
+        return None
+    text = value.decode("utf-8", "replace") if isinstance(value, bytes) else value
+    pairs = [
+        (
+            (match.group("w1") or match.group("w2")).strip("_").lower(),
+            int(match.group("n1") or match.group("n2")),
+        )
+        for match in _TALLY_TOKEN_RE.finditer(text[-_TALLY_SCAN_TAIL:])
+    ]
+    return _outcome_counts(pairs)
+
+
+def _values_to_search(frame: FrameType) -> list[tuple[str, object]]:
+    """Frame locals first, then the globals the criterion bound itself."""
+    named = list(frame.f_locals.items())
+    seen = {name for name, _ in named}
+    named += [
+        (name, value)
+        for name, value in frame.f_globals.items()
+        if name not in seen and not name.startswith("__")
+    ]
+    return named
+
+
+def _reachable(frame: FrameType) -> list[tuple[str, object]]:
+    """Every value the criterion holds, breadth first, named by the path that reaches it.
+
+    Only mappings and plain instance attributes are followed. A property is never read: this
+    runs inside a process that has already failed, and re-entering the product's own code to
+    fetch a number would risk a second failure on top of the one being reported.
+    """
+    pending = [(name, value, 0) for name, value in _values_to_search(frame)]
+    found: list[tuple[str, object]] = []
+    while pending:
+        path, current, depth = pending.pop(0)
+        found.append((path, current))
+        if depth >= _TALLY_MAX_DEPTH or isinstance(current, str | bytes):
+            continue
+        if isinstance(current, dict):
+            children = [(key, item) for key, item in current.items() if isinstance(key, str)]
+        else:
+            children = list(getattr(current, "__dict__", {}).items())
+        pending += [(f"{path}.{key}", item, depth + 1) for key, item in children]
+    return found
+
+
+def tally_lines(frame: FrameType) -> list[str]:
+    """The first tally discoverable in the failing frame, rendered for a machine to read.
+
+    Structured values are searched before captured text: a parsed report states what the harness
+    counted, whereas its printed output only describes it, and a corpus dump quotes both. The
+    search stops at the first tally so the block names one measurement and the reading stays
+    stable between attempts.
+    """
+    reachable = _reachable(frame)
+    for read in (_dict_tally, _text_tally):
+        for path, value in reachable:
+            if (tally := read(value)) is not None:
+                return [_render_tally(path, tally)]
+    return []
+
+
+def _render_tally(source: str, tally: dict[str, int]) -> str:
+    counts = " ".join(
+        f"{outcome}={tally[outcome]}"
+        for outcome in ("pass", "fail", "error", "skip", "total")
+        if outcome in tally
+    )
+    return f"cases: {counts} from={source}"
+
+
 def _criterion_traceback(exc: BaseException, path: str):
     """The traceback with this harness's own frames removed.
 
@@ -136,12 +278,16 @@ def main(argv: list[str]) -> int:
         while deepest is not None and deepest.tb_next is not None:
             deepest = deepest.tb_next
         if deepest is not None:
-            lines = value_lines(deepest.tb_frame, deepest.tb_lineno)
-            if lines:
-                print(VALUES_BEGIN, file=sys.stderr)
+            for begin, lines, end in (
+                (PROGRESS_BEGIN, tally_lines(deepest.tb_frame), PROGRESS_END),
+                (VALUES_BEGIN, value_lines(deepest.tb_frame, deepest.tb_lineno), VALUES_END),
+            ):
+                if not lines:
+                    continue
+                print(begin, file=sys.stderr)
                 for line in lines:
                     print(line, file=sys.stderr)
-                print(VALUES_END, file=sys.stderr)
+                print(end, file=sys.stderr)
         traceback.print_exception(type(exc), exc, tb or exc.__traceback__, file=sys.stderr)
         return 1
     return 0

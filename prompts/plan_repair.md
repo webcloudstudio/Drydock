@@ -31,7 +31,10 @@ Permitted:
 - add an `import` for a name the criterion reads but never binds;
 - bind a name the criterion clearly intends to use, in the obvious way;
 - correct a syntax error, preserving the evident meaning of the line;
-- reorder imports to the top of the criterion.
+- reorder imports to the top of the criterion;
+- add a `print(...)` of a suite's pass/fail counts immediately before the assertion that reads
+  them, when the criterion drives a suite and prints no tally. Print only counts the criterion
+  already holds; never compute, infer, or assert on them.
 
 Forbidden:
 

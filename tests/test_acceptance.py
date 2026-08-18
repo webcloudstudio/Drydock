@@ -380,6 +380,48 @@ def test_a_failed_criterion_reports_the_values_it_observed(tmp_path):
     assert acceptance.VALUES_BEGIN not in remaining
 
 
+def test_a_suite_tally_is_lifted_out_of_a_parsed_report(tmp_path):
+    """The jq shape: the criterion asks for JSON, prints nothing, and asserts on the counts."""
+    result = _run_one(
+        "report = {'summary': {'pass': 123, 'fail': 159, 'error': 0, 'skip': 0}}\n"
+        "assert report['summary']['fail'] == 0\n",
+        tmp_path,
+    )
+    tally, remaining = acceptance.split_captured_progress(result.stderr)
+    assert tally == ["cases: pass=123 fail=159 error=0 skip=0 total=282 from=report.summary"]
+    assert acceptance.PROGRESS_BEGIN not in remaining
+
+
+def test_a_suite_tally_is_lifted_out_of_captured_output(tmp_path):
+    result = _run_one(
+        "import subprocess, sys\n"
+        "result = subprocess.run([sys.executable, '-c', "
+        "\"print('22 passed, 260 failed')\"], capture_output=True, text=True)\n"
+        "assert 'failed' not in result.stdout\n",
+        tmp_path,
+    )
+    tally, _ = acceptance.split_captured_progress(result.stderr)
+    assert tally == ["cases: pass=22 fail=260 total=282 from=result.stdout"]
+
+
+def test_a_criterion_with_no_tally_emits_no_progress_block(tmp_path):
+    """One number beside a word is a log line, not a measurement, and must not be invented into one."""
+    result = _run_one("value = {'ok': 1}\nassert value['ok'] == 2\n", tmp_path)
+    assert acceptance.PROGRESS_BEGIN not in result.stderr
+    assert acceptance.split_captured_progress(result.stderr)[0] == []
+
+
+def test_the_tally_is_reported_beside_the_failed_assertion(tmp_path):
+    result = _run_one(
+        "report = {'summary': {'pass': 4, 'fail': 1}}\nassert report['summary']['fail'] == 0\n",
+        tmp_path,
+    )
+    detail = acceptance.failure_detail(
+        stderr=result.stderr, stdout=result.stdout, return_code=result.return_code
+    )
+    assert any(line.startswith("cases: pass=4 fail=1") for line in detail)
+
+
 def test_the_value_harness_leaves_the_traceback_and_location_untouched(tmp_path):
     result = _run_one("value = 1\nassert value == 2\n", tmp_path)
     assert acceptance.assertion_location(result.stderr) == "diagnostic-check.py:2"

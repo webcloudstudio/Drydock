@@ -133,13 +133,25 @@ def _blocks(text: str) -> dict[str, tuple[int, int, str]]:
 
 
 def _assemble(
-    body: str, *, rel_source: str, source_text: str, defects: list[Defect]
+    body: str,
+    *,
+    rel_source: str,
+    source_text: str,
+    defects: list[Defect],
+    advisories: tuple[str, ...] = (),
 ) -> PromptAssembly:
     """Build the repair prompt. Deterministic, so it is unit-testable without a process."""
     lines = ["## Criteria that cannot run", ""]
     for defect in defects:
         lines.append(f"- `{defect.check_id}` — {defect.detail}")
     lines.append("")
+    if advisories:
+        # Verification's non-fatal findings for this file. They never justify a call of their
+        # own — a criterion that runs is not worth a model call — but a call already being paid
+        # for can carry them.
+        lines += ["## Advisories for this file (act only while repairing it)", ""]
+        lines += [f"- {advisory}" for advisory in advisories]
+        lines.append("")
     return PromptAssembly(
         parts=(
             system_preamble_part(),
@@ -221,7 +233,13 @@ def repair(
             + " · 1 of 1 attempt"
         )
         assembly = _assemble(
-            prompt.body, rel_source=filename, source_text=original, defects=defects
+            prompt.body,
+            rel_source=filename,
+            source_text=original,
+            defects=defects,
+            advisories=tuple(
+                warning for warning in found.warnings if warning.startswith(f"{filename} [")
+            ),
         )
         result = run(
             assembly.rendered_text,

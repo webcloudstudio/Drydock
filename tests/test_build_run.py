@@ -2489,6 +2489,60 @@ assert score == 4
     assert "acceptance: call 4 · 1/1 AC passed" in messages
 
 
+def test_repair_loop_counts_subcase_progress_a_silent_criterion_never_printed(tmp_path):
+    """The jq shape: the criterion parses a JSON report, prints nothing, and asserts on it.
+
+    Nothing reaches either stream, so the printed-tally reading finds no numbers. The counts are
+    live in the failing frame, the acceptance harness lifts them out, and the repair loop must
+    read progress from that rather than calling four improving attempts a stall.
+    """
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """## Programmatic Acceptance
+
+### conformance
+Every conformance example passes.
+
+```python
+import json
+from pathlib import Path
+report = json.loads(Path("report.json").read_text(encoding="utf-8"))
+assert report["summary"]["fail"] == 0
+```
+""",
+        encoding="utf-8",
+    )
+    calls: list[int] = []
+    messages: list[str] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        attempt = kwargs["parameters"]["attempt"]
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        passed = attempt + 1
+        (work / "report.json").write_text(
+            json.dumps({"summary": {"pass": passed, "fail": 4 - passed}}), encoding="utf-8"
+        )
+        calls.append(attempt)
+        return FakeResult(text=_success_report(changed=("report.json",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        on_text=messages.append,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert result.steps[0].status == "built"
+    assert calls == [0, 1, 2, 3]
+    assert "acceptance: call 1 · 0/1 AC passed · failed: conformance (1/4 cases)" in messages
+    assert "acceptance: call 3 · 0/1 AC passed · failed: conformance (3/4 cases)" in messages
+    assert "acceptance: call 4 · 1/1 AC passed" in messages
+
+
 def test_repair_loop_stops_when_one_conformance_ac_regresses(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(

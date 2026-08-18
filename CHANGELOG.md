@@ -10,6 +10,27 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-18: The acceptance harness reports how much of a suite passed, so the build's repair
+  loop can see progress inside a criterion that is still red. A criterion answers one yes-or-no
+  question: a jq story that went from 22 to 123 of 282 conformance cases passing reported the
+  same failure both times, and the loop stopped it as a stall with four of its seven calls
+  unspent. `acceptance_runner.py` now searches the failing frame — the parsed report, the output
+  the criterion captured — for a pass/fail tally in any of the common dialects (`{"pass": 123,
+  "fail": 159}`, `123 passed, 159 failed`, `pass=123 fail=159`) and prints it in a fenced
+  `--- drydock: progress ---` block. `build_run` reads that block in preference to scraping
+  printed text, `failure_detail` shows the counts beside the failed assertion so the repair pass
+  is told how far off it is, and the existing subcase-progress comparison then governs the stall
+  decision. The detection is retroactive: it requires nothing of the criterion, so Blueprints
+  already on disk are measured without re-planning.
+
+  The authoring side is instructed as well. `BLUEPRINTS_CONTRACT.md` requires a suite-driving
+  criterion to print its counts before asserting, including when it asserts on a parsed report
+  rather than on text. `plan verify` raises a non-fatal advisory — rolled up to one line when it
+  holds across a plan — for a criterion that captures a program's output and prints none of it,
+  and `plan repair` is permitted to add the missing `print` and is given the file's advisories
+  alongside the defect it was already called for, so an advisory never buys a model call of its
+  own.
+
 - 2026-08-18: A UAT kit may declare `metadata` in `uat.json`, naming a `METADATA.md` seeded over
   the scaffold `drydock init` writes and before `import`. `analyze` backfills `stack`,
   `display_name`, and `short_description` only when they are blank, so a kit that declares them
