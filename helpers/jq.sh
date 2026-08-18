@@ -83,17 +83,19 @@ pause "1. drydock init"
 run drydock init $PROJECT $OPTS
 
 # ---------------------------------------------------------------------------
-# 2. Seed the lifecycle inputs
+# 2. Seed the Compass and the governed JSON inputs
 #
-# These are copied over the Target, not imported. The Compass comes from
-# inputs/COMPASS.md — it is an input, not a source, and is never derived from
-# INSTRUCTIONS.md. ACCEPTANCE.json is the governed release gate; STORY_GUIDANCE
-# is empty for this fixture but the file must exist.
+# The Compass is IMPORTED, not copied: `--format compass` normalizes
+# inputs/COMPASS.md into the Target's COMPASS.md. It is an input, not a source,
+# and is never derived from INSTRUCTIONS.md. --force overwrites the stub init
+# wrote. ACCEPTANCE.json is the governed release gate; STORY_GUIDANCE is empty
+# for this fixture but the file must exist.
+#
+# TECHNOLOGY_STACK.md and SEA_TRIALS.md are NOT seeded here — analyze generates
+# both, so the overrides are copied over them in step 4a.
 # ---------------------------------------------------------------------------
-pause "2. seed inputs into $TARGET_DIR"
-run cp "$INPUT_DIR/COMPASS.md"           "$TARGET_DIR/COMPASS.md"
-run cp "$INPUT_DIR/TECHNOLOGY_STACK.md"  "$TARGET_DIR/TECHNOLOGY_STACK.md"
-run cp "$INPUT_DIR/SEA_TRIALS.md"        "$TARGET_DIR/SEA_TRIALS.md"
+pause "2. import Compass and seed governed inputs into $TARGET_DIR"
+run drydock import $PROJECT "$INPUT_DIR/COMPASS.md" --format compass --force $OPTS
 echo '{"full": ["sh", "sources/full_test.sh"]}' > "$TARGET_DIR/ACCEPTANCE.json"
 echo '{"stories": []}'                          > "$TARGET_DIR/STORY_GUIDANCE.json"
 ls -l "$TARGET_DIR"
@@ -113,6 +115,18 @@ run drydock status $PROJECT
 # ---------------------------------------------------------------------------
 pause "4. drydock analyze"
 run drydock analyze $PROJECT $OPTS
+run drydock status $PROJECT
+
+# ---------------------------------------------------------------------------
+# 4a. Override the analyze-generated lifecycle files
+#
+# analyze writes SEA_TRIALS.md and TECHNOLOGY_STACK.md itself. The fixture
+# pins both, so the overrides are copied over the generated files here — after
+# analyze, before plan — and never earlier, where analyze would overwrite them.
+# ---------------------------------------------------------------------------
+pause "4a. copy lifecycle overrides over the analyze output"
+run cp "$INPUT_DIR/TECHNOLOGY_STACK.md"  "$TARGET_DIR/TECHNOLOGY_STACK.md"
+run cp "$INPUT_DIR/SEA_TRIALS.md"        "$TARGET_DIR/SEA_TRIALS.md"
 run drydock status $PROJECT
 
 # ---------------------------------------------------------------------------
