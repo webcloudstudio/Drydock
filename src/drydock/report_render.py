@@ -95,12 +95,19 @@ def _hash_file(path: Path, base: Path) -> FileRecord:
 def _iter_files(root: Path, base: Path, *, skip: Iterable[Path] = ()) -> Iterator[FileRecord]:
     if not root.is_dir():
         return
+    # ``root`` is resolved once and every walked path is already absolute beneath it, so a
+    # skipped directory is recognised by prefix. Resolving each ancestor of each file instead
+    # costs one ``realpath`` per directory component per file, which on a network or DrvFs mount
+    # turns a kit rebuild into tens of thousands of syscalls.
+    resolved_root = root.resolve()
     skipped = {path.resolve() for path in skip}
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.is_symlink():
             continue
-        if any(parent.resolve() in skipped for parent in path.parents):
-            continue
+        if skipped:
+            walked = resolved_root / path.relative_to(root)
+            if any(parent in skipped for parent in walked.parents):
+                continue
         if path.parent == base and path.name in _KIT_OUTPUTS:
             continue
         yield _hash_file(path, base)

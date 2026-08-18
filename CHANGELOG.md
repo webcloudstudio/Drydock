@@ -150,6 +150,26 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-17: A UAT run whose Manifest was unbuildable on arrival now halts at the build stage
+  instead of reporting a clean run and crashing below it. `drydock status <Target> --ready`
+  returns the same non-zero code for a Target that finished and one whose stories are all parked
+  at `blocked/questions` behind blocking `DECISIONS.json` records, so the harness read an empty
+  frontier before the first build pass as a completed build. It now confirms that reading with
+  `drydock status <Target> --check` — 0 complete, 1 incomplete, 2 blocked — and stops the run
+  with `STOP_NOW.md` naming the decisions to answer unless the Target is genuinely complete. A
+  resumed stage that arrives with its work already done still passes. `drydock uat` also creates
+  the `build/<Target>` application root when it lays out the run directory, so a build that wrote
+  nothing fails its scoring command on the evidence rather than raising `FileNotFoundError` out
+  of the run and destroying `result.json` and every measurement below it. Command semantics are
+  unchanged; the fix is in the harness workflow.
+
+- 2026-08-17: `drydock uat --report` no longer degrades toward unusable as runs accumulate. The
+  kit file inventory resolved the real path of every ancestor directory of every file, on every
+  rebuild, and did so even when no directories were being skipped — tens of thousands of
+  `realpath` calls per report on a kit of a few thousand files, which on a DrvFs or network mount
+  turned a report into a multi-minute stall. Skipped directories are now matched by prefix
+  against a root resolved once.
+
 - 2026-08-16: An acceptance criterion that invokes a staged source asset without the environment
   that asset requires is now supplied that environment at build time, so the criterion produces a
   verdict instead of consuming the repair budget. Detection at plan time reports the defect but

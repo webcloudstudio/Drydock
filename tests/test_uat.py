@@ -1942,3 +1942,81 @@ def test_no_prior_run_seeds_nothing(tmp_path: Path) -> None:
     fixture = discover_fixtures(tmp_path)[0]
     case_root = fixture_root / "runs" / "20260202.000000"
     assert seed_prior_decisions(fixture, case_root / "workspace", case_root) is None
+
+
+def test_an_unbuildable_manifest_stops_the_run_before_the_first_build_pass(
+    tmp_path: Path,
+) -> None:
+    """A frontier that was empty on arrival is a halt, not a completed build.
+
+    ``status --ready`` returns the same nonzero code for a Target that finished and one whose
+    stories are all parked behind blocking decisions. Before the first pass the two are
+    opposites, and ``status --check`` separates them.
+    """
+    from drydock.stop_condition import read_stop
+
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    runner, seen = _staged_runner(
+        tmp_path,
+        failing=("initial-unstarted-check",),
+        ready_passes=0,
+    )
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    result = results[0]
+    assert result.status == "failed"
+    assert result.build_passes == 0
+    assert any(
+        "no buildable frontier before the first build pass" in item for item in result.degraded
+    )
+    assert "stopped at initial" in result.error
+    # Nothing below the build is measured: there is no application to measure.
+    assert not any(label.endswith("-test") for label in seen)
+    assert not any("score-" in label for label in seen)
+
+    target_dir = (
+        fixtures_root
+        / "ReadingList"
+        / "runs"
+        / sorted((fixtures_root / "ReadingList" / "runs").iterdir())[-1].name
+        / "workspace"
+        / "targets"
+        / "ReadingList"
+    )
+    stop = read_stop(target_dir)
+    assert stop is not None
+    assert "DECISIONS.json" in stop.reason
+
+
+def test_a_complete_target_still_passes_with_an_empty_frontier_at_pass_zero(
+    tmp_path: Path,
+) -> None:
+    """A resumed stage may legitimately arrive with the work already done."""
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    runner, seen = _staged_runner(tmp_path, failing=(), ready_passes=0)
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    result = results[0]
+    assert result.status == "passed"
+    assert not result.degraded
+    assert any(label.endswith("initial-unstarted-check") for label in seen)

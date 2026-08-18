@@ -1213,7 +1213,20 @@ def run_fixture(
     input_root = case_root / "inputs"
     evidence_dir = case_root / "evidence"
     command_logs = evidence_dir / "commands"
-    for path in (workspace, build_root, source_root, input_root, evidence_dir, command_logs):
+    # The application root is created up front, not left for the build to make. The scoring
+    # command runs from it, and handing ``subprocess`` a directory that does not exist raises
+    # ``FileNotFoundError`` out of the run, destroying the result record and every measurement
+    # below it. A build that wrote nothing then fails its scoring command on the evidence, which
+    # is a verdict; a missing working directory is a crash, which is not.
+    for path in (
+        workspace,
+        build_root,
+        build_root / fixture.target,
+        source_root,
+        input_root,
+        evidence_dir,
+        command_logs,
+    ):
         path.mkdir(parents=True, exist_ok=True)
     # Resuming past `import` must not restore the base sources: an update already applied to the
     # bundle is part of the state the resumed stage is expected to see.
@@ -1317,13 +1330,22 @@ def run_fixture(
             degraded.append("test not run: the build did not complete")
             test_skipped = True
             return
+        work_dir = build_root / fixture.target
+        if not work_dir.is_dir():
+            # The scoring command runs from the application root the build writes. Handing
+            # ``subprocess`` a directory that does not exist raises ``FileNotFoundError`` out of
+            # the run entirely, losing the result record and every measurement below it. A build
+            # that produced no tree is a shortfall to report, not a crash.
+            degraded.append(f"test not run: the build produced no application root at {work_dir}")
+            test_skipped = True
+            return
         nonlocal sequence
         sequence += 1
         if on_event:
             on_event(f"{fixture.name}: test")
         result = runner(
             fixture.test_command,
-            build_root / fixture.target,
+            work_dir,
             env,
             command_logs,
             f"{sequence:02d}-test",
@@ -1341,6 +1363,37 @@ def run_fixture(
         execute(("build", "status", fixture.target), f"{stage}-build-status", required=False)
         execute(("status", fixture.target), f"{stage}-target-status", required=False)
         execute(("status",), f"{stage}-workspace-status", required=False)
+
+    def refuse_unstarted_build(stage: str) -> None:
+        """Stop a build stage whose frontier was empty before it ran a single pass.
+
+        ``status --ready`` answers one question — may a build pass advance this Target — and
+        returns the same nonzero code for a Target that has finished and one that never had
+        buildable work. Read across a whole stage the two are opposites: nonzero after a pass is
+        completion, nonzero before the first pass means the Manifest was unbuildable on arrival,
+        which is what a story parked at ``blocked/questions`` produces. Left undetected it reads
+        as a clean build, and every stage below scores a tree the build never wrote.
+
+        ``status --check`` separates them: 0 complete, 1 incomplete, 2 blocked. A resumed stage
+        may legitimately arrive complete, so only a non-complete verdict halts the run.
+        """
+        checked = execute(
+            ("status", fixture.target, "--check"), f"{stage}-unstarted-check", required=False
+        )
+        if checked.returncode == 0:
+            return
+        reason = (
+            "blocked before the first build pass"
+            if checked.returncode == 2
+            else "no buildable frontier before the first build pass"
+        )
+        degraded.append(f"{stage}: {reason}")
+        declare_stop(
+            stage,
+            f"The build stage found {reason}. Answer the blocking DECISIONS.json records "
+            "parking the Manifest's stories, then rerun; a score taken over a build that never "
+            "ran grades an empty tree, not the product.",
+        )
 
     def build_until_no_work_remains(stage: str) -> None:
         """Run build passes until the frontier is empty, or declare a stop condition.
@@ -1367,6 +1420,8 @@ def run_fixture(
         while True:
             ready = execute(("status", fixture.target, "--ready"), f"{stage}-ready", required=False)
             if ready.returncode != 0:
+                if stage_passes == 0:
+                    refuse_unstarted_build(stage)
                 break
             stage_passes += 1
             build_passes += 1
