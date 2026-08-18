@@ -33,8 +33,41 @@ export MAX_BUILD_PASSES=20
 
 cd "$DRYDOCK_DIR" || exit 1
 
-pause() { echo; echo "===== $* ====="; read -r; }
-run() { echo "+ $*"; "$@"; }
+# pause() announces the step that is ABOUT to run and blocks until ENTER. It
+# also closes out the previous step, so every step has a visible start and a
+# visible end and the script is never silently sitting on a finished task.
+LAST_STEP=""
+_hr() { printf '%s\n' "----------------------------------------------------------------------"; }
+
+step_done() {
+    [ -n "$LAST_STEP" ] || return 0
+    echo
+    _hr
+    echo "##### DONE: $LAST_STEP   ($(date +%H:%M:%S))"
+    _hr
+    LAST_STEP=""
+}
+
+pause() {
+    step_done
+    LAST_STEP="$*"
+    echo
+    _hr
+    echo "##### NEXT: $*"
+    _hr
+    printf '>>> press ENTER to run this step (Ctrl-C to stop): '
+    read -r
+    echo "##### RUNNING: $*   ($(date +%H:%M:%S))"
+    echo
+}
+
+run() {
+    echo "+ $*"
+    "$@"
+    local rc=$?
+    [ "$rc" -ne 0 ] && echo "! exit $rc: $*"
+    return "$rc"
+}
 
 # ---------------------------------------------------------------------------
 # 0. Clean slate
@@ -169,5 +202,6 @@ pause "8. drydock score"
 run drydock score ac $PROJECT $OPTS
 run drydock score release $PROJECT $OPTS
 
+step_done
 date
 echo "done."
