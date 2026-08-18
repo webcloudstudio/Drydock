@@ -28,6 +28,7 @@ from drydock.config import DEFAULT_REPAIR_ATTEMPTS
 from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
+from drydock.metadata import METADATA_NAME, parse_metadata
 from drydock.stop_condition import StopCondition, clear_stop, read_stop, write_stop
 from drydock.story_guidance import StoryGuidance, guidance_from_config, write_guidance
 from drydock.uat_console import StepSink
@@ -103,6 +104,11 @@ class UATFixture:
     #: product defect that Drydock correctly reports as FAILED is a UAT *pass*: the harness worked.
     #: Declared as ``"expect": {"verdict": "..."}`` in ``uat.json``; defaults to PASSED.
     expected_verdict: str = "PASSED"
+    #: Optional ``METADATA.md`` seeded into the Target after ``init``. ``analyze`` backfills
+    #: ``stack``, ``display_name``, and ``short_description`` only when they are blank, so a kit
+    #: that declares them here keeps its own project identity for the whole run instead of taking
+    #: whatever the model proposed. Lifecycle fields must be left blank; the run owns them.
+    metadata: Path | None = None
 
 
 Runner = Callable[[Sequence[str], Path, dict[str, str], Path, str], CommandResult]
@@ -291,6 +297,51 @@ def _fixture_stack(path: Path | None) -> Path | None:
     return path
 
 
+#: METADATA.md fields the run owns. A kit that declares one would either replay a stale
+#: lifecycle state into a fresh Target or, in the case of ``build_dir``, redirect the build out
+#: of the run's own build root and destroy its isolation.
+_RUN_OWNED_METADATA_FIELDS = (
+    "version",
+    "build_state",
+    "build_sub_state",
+    "last_analyzed",
+    "last_planned",
+    "last_built",
+    "build_dir",
+)
+
+
+def _fixture_metadata(path: Path | None, target: str) -> Path | None:
+    """Return the fixture's authored ``METADATA.md``, validated, or ``None``.
+
+    The file is copied whole over the scaffold ``init`` wrote, so it must be a complete
+    METADATA.md for this Target and must not carry lifecycle state. Both faults are silent
+    otherwise: a mismatched ``name`` renames the Target mid-run, and a populated ``build_state``
+    would tell every later command the run is further along than it is.
+    """
+    if path is None:
+        return None
+    try:
+        fields = parse_metadata(path)
+    except OSError as exc:
+        raise SpecificationError(f"Unreadable UAT fixture metadata: {path}") from exc
+    if not fields:
+        raise SpecificationError(f"UAT fixture metadata declares no fields: {path}")
+    declared_name = fields.get("name", "").strip()
+    if declared_name != target:
+        raise SpecificationError(
+            f"UAT fixture metadata declares name {declared_name!r}, expected {target!r}: {path}"
+        )
+    populated = [key for key in _RUN_OWNED_METADATA_FIELDS if fields.get(key, "").strip()]
+    if populated:
+        raise SpecificationError(
+            "UAT fixture metadata must leave run-owned fields blank ("
+            + ", ".join(populated)
+            + f"): {path}"
+        )
+    return path
+
+
 def _fixture_compass(path: Path | None) -> Path | None:
     """Return the fixture's authored ``COMPASS.md``, validated, or ``None``.
 
@@ -374,6 +425,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         raw_sea_trials = config.get("sea_trials")
         raw_stack = config.get("technology_stack")
         raw_compass = config.get("compass")
+        raw_metadata = config.get("metadata")
         expected_verdict = _expected_verdict(config.get("expect"), where=str(config_path))
         if (
             not isinstance(raw_sources, list)
@@ -423,6 +475,9 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         declared_sea_trials = resolve_optional_path(raw_sea_trials, "sea_trials")
         declared_stack = resolve_optional_path(raw_stack, "technology_stack")
         declared_compass = _fixture_compass(resolve_optional_path(raw_compass, "compass"))
+        declared_metadata = _fixture_metadata(
+            resolve_optional_path(raw_metadata, "metadata"), target
+        )
         source_names = [source.name for source in sources]
         if len(source_names) != len(set(source_names)):
             raise SpecificationError(
@@ -459,6 +514,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 acceptance,
                 story_guidance,
                 expected_verdict,
+                declared_metadata,
             )
         )
     if not fixtures:
@@ -805,6 +861,25 @@ def seed_compass(fixture: UATFixture, workspace: Path) -> Path | None:
     # One Compass. Imported material routed to the Compass disposition by the Analysis is not
     # appended to a Compass the kit authored.
     mark_compass_authored(target_dir)
+    return destination
+
+
+def seed_metadata(fixture: UATFixture, workspace: Path) -> Path | None:
+    """Place the fixture's authored ``METADATA.md`` over the scaffold ``init`` wrote.
+
+    ``analyze`` backfills ``stack``, ``display_name``, and ``short_description`` with
+    ``overwrite=False``, so a value present here is the value the whole run uses and the model's
+    proposal is discarded. The file is copied whole rather than merged: the kit's copy and the
+    Target's copy are then the same artifact, which is what makes a hand-run of the same sequence
+    reproduce the harness exactly. Lifecycle fields are validated blank at fixture load, so the
+    copy cannot carry state into a Target that has none.
+    """
+    if fixture.metadata is None:
+        return None
+    target_dir = workspace / "targets" / fixture.target
+    target_dir.mkdir(parents=True, exist_ok=True)
+    destination = target_dir / METADATA_NAME
+    shutil.copyfile(fixture.metadata, destination)
     return destination
 
 
@@ -1234,7 +1309,7 @@ def run_fixture(
         for source in fixture.sources:
             shutil.copyfile(source, source_root / source.name)
     if start <= stage_index("init"):
-        for lifecycle_input in (fixture.sea_trials, fixture.stack):
+        for lifecycle_input in (fixture.sea_trials, fixture.stack, fixture.metadata):
             if lifecycle_input is not None:
                 shutil.copyfile(lifecycle_input, input_root / lifecycle_input.name)
 
@@ -1480,6 +1555,7 @@ def run_fixture(
     try:
         if start <= stage_index("init"):
             execute(("init", fixture.target), "init")
+            seed_metadata(fixture, workspace)
             seed_technology_stack(fixture, workspace)
             seed_sea_trials(fixture, workspace)
             seed_compass(fixture, workspace)

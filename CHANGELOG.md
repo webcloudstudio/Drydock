@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-18: A UAT kit may declare `metadata` in `uat.json`, naming a `METADATA.md` seeded over
+  the scaffold `drydock init` writes and before `import`. `analyze` backfills `stack`,
+  `display_name`, and `short_description` only when they are blank, so a kit that declares them
+  fixes the Target's identity for the whole run rather than accepting whatever the model proposed.
+  Discovery rejects a kit `METADATA.md` whose `name` is not the Target's, or that populates a
+  run-owned field (`version`, `build_state`, `build_sub_state`, `last_analyzed`, `last_planned`,
+  `last_built`, `build_dir`) — a stale lifecycle value would tell later commands the run is
+  further along than it is, and a `build_dir` would redirect the build out of the run's own build
+  root. The jq kit ships `inputs/METADATA.md`.
+
 - 2026-08-17: `drydock plan verify` and `drydock plan repair` close the gap between detecting an
   unrunnable acceptance criterion and doing something about it. `plan verify` is deterministic,
   read-only, and free: it parses every criterion in `blueprint/` and exits non-zero when one

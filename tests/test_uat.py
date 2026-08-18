@@ -11,6 +11,7 @@ import pytest
 
 from drydock import sea_trials, technology_stack
 from drydock.errors import SpecificationError
+from drydock.metadata import render_metadata
 from drydock.uat import (
     CommandResult,
     discover_fixtures,
@@ -269,6 +270,95 @@ def test_a_seeded_compass_survives_analyze_as_a_populated_file(tmp_path: Path) -
     assert written == tmp_path / "workspace" / "targets" / "ReadingList" / "COMPASS.md"
     assert written.read_text(encoding="utf-8") == _COMPASS
     assert _is_compass_unpopulated(written) is False
+
+
+_METADATA = (
+    "# AUTHORITATIVE PROJECT METADATA — FIELDS SHOULD BE CURRENT\n\n"
+    "name: ReadingList\n"
+    "display_name: Reading List\n"
+    "short_description: A list of books.\n"
+    "stack: Python\n"
+    "version: \n"
+    "build_state: \n"
+    "build_sub_state: \n"
+    "last_analyzed: \n"
+    "last_planned: \n"
+    "last_built: \n"
+    "build_dir: \n"
+    "brand: \n"
+    "git_repo: \n"
+    "release_tag: \n"
+)
+
+
+def _kit_metadata(fixture: Path, text: str = _METADATA) -> Path:
+    path = fixture / "inputs" / "METADATA.md"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    _declare(fixture, metadata="inputs/METADATA.md")
+    return path
+
+
+def test_discover_fixture_reads_declared_metadata(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    path = _kit_metadata(fixture)
+
+    assert discover_fixtures(tmp_path)[0].metadata == path.resolve()
+
+
+def test_discover_fixture_without_metadata_keeps_the_init_scaffold(tmp_path: Path) -> None:
+    _fixture(tmp_path)
+
+    assert discover_fixtures(tmp_path)[0].metadata is None
+
+
+def test_discover_fixture_rejects_metadata_naming_another_target(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    _kit_metadata(fixture, _METADATA.replace("name: ReadingList", "name: Other"))
+
+    with pytest.raises(SpecificationError, match="declares name 'Other'"):
+        discover_fixtures(tmp_path)
+
+
+def test_discover_fixture_rejects_metadata_carrying_lifecycle_state(tmp_path: Path) -> None:
+    """A populated lifecycle field would tell every later command the run is already advanced."""
+    fixture = _fixture(tmp_path)
+    _kit_metadata(
+        fixture,
+        _METADATA.replace("build_state: ", "build_state: built").replace(
+            "build_dir: ", "build_dir: /elsewhere"
+        ),
+    )
+
+    with pytest.raises(SpecificationError, match="build_state, build_dir"):
+        discover_fixtures(tmp_path)
+
+
+def test_seeded_metadata_overwrites_the_init_scaffold_and_survives_analyze(
+    tmp_path: Path,
+) -> None:
+    """analyze backfills these fields only when blank, so the kit's values are the run's."""
+    from drydock.metadata import parse_metadata, set_field
+    from drydock.uat import seed_metadata
+
+    fixture_dir = _fixture(tmp_path)
+    _kit_metadata(fixture_dir)
+    fixture = discover_fixtures(tmp_path)[0]
+    target_dir = tmp_path / "workspace" / "targets" / "ReadingList"
+    target_dir.mkdir(parents=True)
+    (target_dir / "METADATA.md").write_text(
+        render_metadata("ReadingList"), encoding="utf-8", newline="\n"
+    )
+
+    written = seed_metadata(fixture, tmp_path / "workspace")
+
+    assert written == target_dir / "METADATA.md"
+    set_field(written, "stack", "Node.js", overwrite=False)
+    set_field(written, "display_name", "Proposed", overwrite=False)
+    fields = parse_metadata(written)
+    assert fields["stack"] == "Python"
+    assert fields["display_name"] == "Reading List"
+    assert fields["build_state"] == ""
 
 
 def test_the_shipped_jq_compass_governs_harness_invocation_and_the_terminal_story():

@@ -83,6 +83,18 @@ pause "1. drydock init"
 run drydock init $PROJECT $OPTS
 
 # ---------------------------------------------------------------------------
+# 1a. Overwrite the init METADATA.md with the kit's copy
+#
+# analyze backfills stack, display_name, and short_description only when they
+# are blank, so the values declared here are the ones the whole run uses. The
+# file is copied whole, exactly as `drydock uat` seeds it; its lifecycle fields
+# are blank so the copy carries no state into a fresh Target.
+# ---------------------------------------------------------------------------
+pause "1a. copy $INPUT_DIR/METADATA.md over the init scaffold"
+run cp "$INPUT_DIR/METADATA.md" "$TARGET_DIR/METADATA.md"
+run cat "$TARGET_DIR/METADATA.md"
+
+# ---------------------------------------------------------------------------
 # 2. Seed the Compass and the governed JSON inputs
 #
 # The Compass is IMPORTED, not copied: `--format compass` normalizes
