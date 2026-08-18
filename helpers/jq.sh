@@ -17,8 +17,12 @@ read
 drydock init $PROJECT $OPTS
 
 # METADATA and COMPASS go on before analyze; analyze only fills fields it finds blank.
+# The Compass is copied, never imported. `--format compass` is the one import format that runs an
+# LLM: it rewrites the document and drops sections. `state: authored` is what `drydock uat` writes
+# for a kit-supplied Compass; it stops analyze appending an imported source to the author's rules.
 cp $KIT/inputs/METADATA.md $TARGET/METADATA.md
-drydock import $PROJECT $KIT/inputs/COMPASS.md --format compass --force $OPTS
+cp $KIT/inputs/COMPASS.md  $TARGET/COMPASS.md
+printf 'state: authored\n' > $TARGET/.drydock-compass
 echo '{"full": ["sh", "sources/full_test.sh"]}' > $TARGET/ACCEPTANCE.json
 echo '{"stories": []}'                          > $TARGET/STORY_GUIDANCE.json
 read
@@ -46,7 +50,7 @@ while drydock status $PROJECT --ready; do
   echo "************************"
   echo "* RUNNING BUILD ATTEMPT $n"
   echo "************************"
-  if ! drydock build $PROJECT --override --repair-attempts 3 $OPTS; then
+  if ! drydock build $PROJECT --override $OPTS; then
     echo "build failed with work left — aborting"
     exit 1
   fi
