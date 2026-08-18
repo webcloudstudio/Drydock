@@ -53,7 +53,7 @@ PROMPT_NAME = "plan_repair"
 _IMPOSSIBLE_RE = re.compile(r"^\s*REPAIR_IMPOSSIBLE:\s*(?P<id>\S+)\s*[-—:]?\s*(?P<why>.*)$", re.M)
 
 _BLOCK_RE = re.compile(
-    r"^=== AC (?P<id>[^=\n]+?) ===\s*$\n(?P<body>.*?)^=== END AC (?P=id) ===\s*$\n?",
+    r"^=== AC (?P<id>[^=\n]+?) ===[ \t]*$\n(?P<body>.*?)^=== END AC (?P=id) ===[ \t]*$\n?",
     re.MULTILINE | re.DOTALL,
 )
 
@@ -290,7 +290,9 @@ def repair(
                     RepairItem(filename, defect.check_id, "not-emitted", old, "no block returned")
                 )
                 continue
-            text = text[:start] + replacement[2] + text[end:]
+            # The emitted block may arrive without its final newline; the span it replaces always
+            # ends with one. Normalise so the delimiter can never be glued to the following line.
+            text = text[:start] + replacement[2].rstrip("\n") + "\n" + text[end:]
             applied.append(defect.check_id)
 
         if not applied:

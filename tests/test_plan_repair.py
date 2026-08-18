@@ -100,6 +100,20 @@ def test_a_repaired_criterion_is_spliced_in_and_verifies(tmp_path):
     assert 'assert json.loads("[1]") == [1]' in text
 
 
+def test_a_block_emitted_without_a_trailing_newline_still_splices(tmp_path):
+    """A model that ends its last block at EOF must not glue the delimiter to the next section."""
+    spec = _BROKEN + "\n## User Acceptance\n\n- None.\n"
+    target = _target(tmp_path, FEATURE_Path=spec)
+
+    result = repair("Demo", target, runner=_runner(_FIXED_BLOCK.rstrip("\n")))
+
+    assert result.ok, [item.rendered for item in result.outstanding]
+    text = (target / "blueprint" / "FEATURE_Path.md").read_text(encoding="utf-8")
+    assert "=== END AC path-filter ===\n" in text
+    assert "## User Acceptance" in text
+    assert verify("Demo", target).ok
+
+
 def test_only_the_defective_criterion_is_replaced(tmp_path):
     """A bonus block for a healthy criterion is ignored; repair rewrites what it was asked to."""
     target = _target(tmp_path, FEATURE_Path=_BROKEN)
