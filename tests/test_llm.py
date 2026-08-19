@@ -403,6 +403,63 @@ def test_run_claude_prints_fatal_block_for_rate_limit(tmp_path, monkeypatch, cap
     assert _records(tmp_path)[0]["result"]["error"] == result.stderr
 
 
+def test_run_claude_prints_fatal_block_for_spend_limit_without_error_status(
+    tmp_path, monkeypatch, capsys
+):
+    """A refused Claude turn names its own limit even with no ``api_error_status`` to read."""
+    message = "You've hit your monthly spend limit · raise it at claude.ai/settings/usage"
+    raw = "\n".join([
+        json.dumps({
+            "type": "rate_limit_event",
+            "rate_limit_info": {"status": "rejected", "rateLimitType": "five_hour"},
+        }),
+        json.dumps({"type": "result", "is_error": True, "result": message}),
+    ])
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command,
+            stdout_text=raw + "\n",
+            returncode=1,
+            **kwargs,
+        ),
+    )
+
+    result = run_prompt("Work", tmp_path, llm="claude", command_name="build")
+
+    stderr = capsys.readouterr().err
+    assert not result.ok
+    assert "FATAL ERROR - PROVIDER RATE LIMIT" in stderr
+    assert message in stderr
+
+
+def test_run_claude_allowed_quota_window_is_not_reported_as_the_failure(tmp_path, monkeypatch):
+    """Claude reports quota state on healthy calls; an allowed window never explains a failure."""
+    raw = "\n".join([
+        json.dumps({
+            "type": "rate_limit_event",
+            "rate_limit_info": {"status": "allowed", "rateLimitType": "five_hour"},
+        }),
+        json.dumps({"type": "result", "result": "partial work"}),
+    ])
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command,
+            stdout_text=raw + "\n",
+            returncode=1,
+            **kwargs,
+        ),
+    )
+
+    result = run_prompt("Work", tmp_path, llm="claude", command_name="build")
+
+    assert not result.ok
+    assert "rate limit" not in (result.stderr or "")
+
+
 def test_run_codex_prints_fatal_block_for_usage_limit(tmp_path, monkeypatch, capsys):
     """Codex reports an exhausted quota as a stream event, not a terminal ``result`` record."""
     message = "You've hit your usage limit. Upgrade to Pro or try again at Aug 20th, 2026 3:39 AM."

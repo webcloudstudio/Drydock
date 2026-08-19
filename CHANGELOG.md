@@ -208,7 +208,10 @@ command surface and Typed Specification contract are unstable and may change bet
   alongside `rate limit` and `session limit`. The failure surfaces as the existing
   `FATAL ERROR - PROVIDER RATE LIMIT` block carrying the provider's message and reset time,
   `build_run` classifies it `provider rate limit`, and `diagnose.should_diagnose` blocks the
-  doomed second call.
+  doomed second call. The Claude path is held to the same contract: a refused turn carrying no
+  `api_error_status` is still classified as a rate limit from its message ("monthly spend limit",
+  "usage limit reached"), and an `allowed` quota window — which Claude reports on every healthy
+  call — is no longer offered as the cause of an unrelated non-zero exit.
 
 - 2026-08-17: A UAT run whose Manifest was unbuildable on arrival now halts at the build stage
   instead of reporting a clean run and crashing below it. `drydock status <Target> --ready`

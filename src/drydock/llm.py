@@ -687,6 +687,8 @@ def _provider_error(llm: str, raw: str) -> str | None:
         if status is not None:
             return f"provider error {status}: {message or 'execution failed'}"
         if message:
+            if _is_rate_limit_error(message):
+                return f"provider rate limit: {message}"
             return f"provider error: {message}"
 
     rate_limit = next(
@@ -697,8 +699,13 @@ def _provider_error(llm: str, raw: str) -> str | None:
         if isinstance(info, dict):
             limit_type = str(info.get("rateLimitType") or "rate limit")
             status = str(info.get("status") or "rejected")
-            return f"provider rate limit: {limit_type} {status}"
-        return "provider rate limit"
+            # Claude reports quota state on every healthy call too. Only a refusal is an error;
+            # naming an ``allowed`` window the cause would misclassify an unrelated failure as a
+            # rate limit and send the operator away to wait for a reset that changes nothing.
+            if not status.startswith("allowed"):
+                return f"provider rate limit: {limit_type} {status}"
+        else:
+            return "provider rate limit"
 
     message = _stream_error_message(events)
     if message:
@@ -752,10 +759,17 @@ def _login_command(llm: str) -> str:
     return f"{llm} login"
 
 
-#: Providers name the same exhausted-quota condition differently: Claude blocks on a "rate limit"
-#: or "session limit", Codex on a "usage limit". All are the same operator action — wait for the
-#: reset or switch provider — so all must classify as a rate limit.
-_RATE_LIMIT_MARKERS = ("rate limit", "session limit", "usage limit", "quota")
+#: Providers name the same exhausted-quota condition differently: Claude blocks on a "rate limit",
+#: "session limit", or "spend limit", Codex on a "usage limit". All are the same operator action —
+#: wait for the reset, raise the limit, or switch provider — so all must classify as a rate limit.
+_RATE_LIMIT_MARKERS = (
+    "rate limit",
+    "session limit",
+    "usage limit",
+    "spend limit",
+    "limit reached",
+    "quota",
+)
 
 
 def _is_rate_limit_error(*texts: str | None) -> bool:
