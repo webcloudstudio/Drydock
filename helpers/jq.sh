@@ -67,4 +67,5 @@ read
 ( cd $PROJECT_DIR/$PROJECT && sh sources/full_test.sh )
 drydock score ac $PROJECT $OPTS
 drydock score release $PROJECT $OPTS
+drydock score report $PROJECT $OPTS
 date

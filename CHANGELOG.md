@@ -196,6 +196,20 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-19: An exhausted provider quota now names itself and stops the run cleanly instead of
+  failing as an anonymous non-zero exit. Codex reports a refused turn as its own stream event
+  (`{"type": "error", ...}` / `{"type": "turn.failed", ...}`); `llm._provider_error` read only the
+  Claude-shaped terminal `result` record, so the provider's own explanation — "You've hit your
+  usage limit … try again at …" — was written to the raw transcript and discarded everywhere
+  else. The build printed `rc=1` with the generic detail "The provider process exited non-zero",
+  the evidence file recorded the same, and the standoff diagnosis then spent a second call
+  against the same exhausted quota and returned nothing. `_provider_error` now reads the
+  stream-level error events, and the rate-limit classifier recognizes `usage limit` and `quota`
+  alongside `rate limit` and `session limit`. The failure surfaces as the existing
+  `FATAL ERROR - PROVIDER RATE LIMIT` block carrying the provider's message and reset time,
+  `build_run` classifies it `provider rate limit`, and `diagnose.should_diagnose` blocks the
+  doomed second call.
+
 - 2026-08-17: A UAT run whose Manifest was unbuildable on arrival now halts at the build stage
   instead of reporting a clean run and crashing below it. `drydock status <Target> --ready`
   returns the same non-zero code for a Target that finished and one whose stories are all parked

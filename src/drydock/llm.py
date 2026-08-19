@@ -699,6 +699,34 @@ def _provider_error(llm: str, raw: str) -> str | None:
             status = str(info.get("status") or "rejected")
             return f"provider rate limit: {limit_type} {status}"
         return "provider rate limit"
+
+    message = _stream_error_message(events)
+    if message:
+        if _is_rate_limit_error(message):
+            return f"provider rate limit: {message}"
+        return f"provider error: {message}"
+    return None
+
+
+#: Codex reports a refused turn as its own stream event rather than a terminal ``result`` record.
+#: Both carry the operator-facing explanation (quota exhausted, provider outage), so the message is
+#: read from whichever event the provider emitted.
+_STREAM_ERROR_EVENT_TYPES = ("turn.failed", "error", "stream_error")
+
+
+def _stream_error_message(events: list[dict[str, Any]]) -> str | None:
+    """Return the message from a stream-level provider error event, when one is present."""
+    for event in reversed(events):
+        if event.get("type") not in _STREAM_ERROR_EVENT_TYPES:
+            continue
+        error = event.get("error")
+        if isinstance(error, dict):
+            message = str(error.get("message") or "").strip()
+        else:
+            message = str(error or "").strip()
+        message = message or str(event.get("message") or "").strip()
+        if message:
+            return message
     return None
 
 
@@ -724,10 +752,16 @@ def _login_command(llm: str) -> str:
     return f"{llm} login"
 
 
+#: Providers name the same exhausted-quota condition differently: Claude blocks on a "rate limit"
+#: or "session limit", Codex on a "usage limit". All are the same operator action — wait for the
+#: reset or switch provider — so all must classify as a rate limit.
+_RATE_LIMIT_MARKERS = ("rate limit", "session limit", "usage limit", "quota")
+
+
 def _is_rate_limit_error(*texts: str | None) -> bool:
     """True when provider output indicates a quota/session/rate-limit block."""
     haystack = "\n".join(text for text in texts if text).lower()
-    return "rate limit" in haystack or "session limit" in haystack
+    return any(marker in haystack for marker in _RATE_LIMIT_MARKERS)
 
 
 def provider_unavailable_reason(*texts: str | None) -> str | None:

@@ -103,6 +103,12 @@ def test_rate_limit_failure_is_blocked(tmp_path):
     assert should_diagnose(record=record) is False
 
 
+def test_usage_limit_failure_is_blocked(tmp_path):
+    """Codex names an exhausted quota a usage limit; a second call would fail the same way."""
+    record = make_record(tmp_path, detail="You've hit your usage limit. Try again tomorrow.")
+    assert should_diagnose(record=record) is False
+
+
 @pytest.mark.parametrize(
     "exc",
     [

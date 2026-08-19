@@ -403,6 +403,58 @@ def test_run_claude_prints_fatal_block_for_rate_limit(tmp_path, monkeypatch, cap
     assert _records(tmp_path)[0]["result"]["error"] == result.stderr
 
 
+def test_run_codex_prints_fatal_block_for_usage_limit(tmp_path, monkeypatch, capsys):
+    """Codex reports an exhausted quota as a stream event, not a terminal ``result`` record."""
+    message = "You've hit your usage limit. Upgrade to Pro or try again at Aug 20th, 2026 3:39 AM."
+    raw = "\n".join([
+        json.dumps({"type": "thread.started", "thread_id": "t-1"}),
+        json.dumps({"type": "turn.started"}),
+        json.dumps({"type": "error", "message": message}),
+        json.dumps({"type": "turn.failed", "error": {"message": message}}),
+    ])
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command,
+            stdout_text=raw + "\n",
+            returncode=1,
+            **kwargs,
+        ),
+    )
+
+    result = run_prompt("Work", tmp_path, llm="codex", command_name="build")
+
+    stderr = capsys.readouterr().err
+    assert not result.ok
+    assert "FATAL ERROR - PROVIDER RATE LIMIT" in stderr
+    assert message in stderr
+    assert result.stderr == f"provider rate limit: {message}"
+    assert _records(tmp_path)[0]["result"]["error"] == result.stderr
+
+
+def test_run_codex_surfaces_non_quota_stream_error(tmp_path, monkeypatch):
+    raw = "\n".join([
+        json.dumps({"type": "turn.started"}),
+        json.dumps({"type": "turn.failed", "error": {"message": "upstream connection reset"}}),
+    ])
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command,
+            stdout_text=raw + "\n",
+            returncode=1,
+            **kwargs,
+        ),
+    )
+
+    result = run_prompt("Work", tmp_path, llm="codex", command_name="build")
+
+    assert not result.ok
+    assert result.stderr == "provider error: upstream connection reset"
+
+
 def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, monkeypatch):
     raw = json.dumps({
         "type": "item.completed",
