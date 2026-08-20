@@ -153,6 +153,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-20: The `drydock score report` receipt no longer reports a failure a later rerun
+  cleared. The `Error` tab quoted the last nonzero exit in the journal regardless of what
+  followed it, so a `drydock score release` that failed and was rerun clean minutes later still
+  opened the receipt with the failed attempt's transcript, and the `Every recorded command
+  exited clean` check still failed. A nonzero exit is now outstanding only when no later
+  invocation of the same command exited 0; options are ignored when matching, so a rerun that
+  changed provider or model counts as the same step, and a `--help` invocation clears nothing.
+  Status queries (`drydock status`, `drydock <verb> status`) are excluded entirely — their exit
+  code reports the Target's state, not a fault. With no outstanding failure the `Error` tab is
+  not rendered at all, and the commands check reads `every one either exited 0 or was rerun
+  clean`. Every attempt remains in the `Commands` table with its own result and rerun label.
+
 - 2026-08-20: The QuarterDeck's scorecard board reads the acceptance table `drydock score` writes
   today. It located the criterion and verdict columns by position and required six of them, so
   the current five-column `ID | Type | Criterion | Verdict | Observed` table rendered nothing:

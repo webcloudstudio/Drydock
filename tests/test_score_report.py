@@ -681,6 +681,95 @@ def test_a_rerun_command_is_kept_and_labelled(workspace, target_dir, build_dir):
     assert "FAIL 1" in page
 
 
+def test_a_failure_a_later_rerun_cleared_is_not_reported_as_an_error(
+    workspace, target_dir, build_dir
+):
+    """The run's outcome is the last attempt's, so a cleared failure opens no Error tab."""
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record(
+                "score release widget",
+                stamp="20260101.091000.000Z",
+                return_code=1,
+                transcript="the release score refused",
+            ),
+            _record("score release widget", stamp="20260101.092000.000Z"),
+        ],
+    )
+    build_dir.mkdir(parents=True)
+    page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+    assert "Recorded failure output" not in page
+    assert 'data-panel="error"' not in page
+    assert "was rerun clean" in page
+
+
+def test_a_rerun_that_changed_model_still_clears_the_earlier_failure(
+    workspace, target_dir, build_dir
+):
+    """The same step run again is the same command, whatever provider or model drove it."""
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record(
+                "build widget --llm-provider codex --model m",
+                stamp="20260101.091000.000Z",
+                return_code=1,
+            ),
+            _record(
+                "build widget --llm-provider claude --model haiku", stamp="20260101.092000.000Z"
+            ),
+        ],
+    )
+    build_dir.mkdir(parents=True)
+    page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+    assert 'data-panel="error"' not in page
+
+
+def test_a_failure_no_later_run_cleared_is_still_reported_as_an_error(
+    workspace, target_dir, build_dir
+):
+    """A rerun clears only the command it repeats; an uncleared failure keeps its Error tab."""
+    log = workspace / "logs" / "20260101.091000.000Z_widget_score.log"
+    log.write_text("the release score refused\n", encoding="utf-8")
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record(
+                "score release widget",
+                stamp="20260101.091000.000Z",
+                return_code=1,
+                transcript=f"logs/{log.name}",
+            ),
+            _record("score ac widget", stamp="20260101.092000.000Z"),
+        ],
+    )
+    build_dir.mkdir(parents=True)
+    page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+    assert 'data-panel="error"' in page
+    assert "the release score refused" in page
+    assert "with no later clean rerun" in page
+
+
+def test_a_status_query_that_reports_unfinished_work_is_not_an_error(
+    workspace, target_dir, build_dir
+):
+    """``drydock build status`` returns the Target's state; nonzero is the answer, not a fault."""
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("build status widget", stamp="20260101.091000.000Z", return_code=1),
+        ],
+    )
+    build_dir.mkdir(parents=True)
+    page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+    assert 'data-panel="error"' not in page
+
+
 def test_write_report_seals_the_published_receipt(published):
     """The receipt is a published artifact in its own right, so it is hashed like a UAT kit."""
     sums = published.parent / "SHA256SUMS"

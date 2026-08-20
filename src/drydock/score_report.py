@@ -653,20 +653,17 @@ def _receipt_checks(report_root: Path, result: Mapping[str, object]) -> tuple[Ch
             Check(name, _exit_state(code), f"drydock score {key} exited {code}.", evidence)
         )
 
-    failures = [
-        command
-        for command in commands
-        if command.get("returncode") not in (0, None) and _verb_of(command) != "status"
-    ]
+    failures = _outstanding_failures(commands)
     checks.append(
         Check(
             "Every recorded command exited clean",
             "pass" if not failures else "fail",
             f"{len(commands)} commands recorded"
             + (
-                "; every one exited 0."
+                "; every one either exited 0 or was rerun clean."
                 if not failures
-                else f"; {len(failures)} exited nonzero, the last at {failures[-1].get('label')}."
+                else f"; {len(failures)} exited nonzero with no later clean rerun, the last at "
+                f"{failures[-1].get('label')}."
             ),
             _RECORD_NAME,
         )
@@ -675,9 +672,55 @@ def _receipt_checks(report_root: Path, result: Mapping[str, object]) -> tuple[Ch
     return tuple(checks)
 
 
-def _verb_of(command: Mapping[str, object]) -> str:
-    argv = [str(part) for part in command.get("argv") or []]
-    return argv[1] if len(argv) > 1 else ""
+def _is_status_query(command: Mapping[str, object]) -> bool:
+    """True for ``drydock status`` and ``drydock <verb> status``.
+
+    A status query's exit code reports the Target's state, not a fault in the command. Counting
+    one as a failure would report the work Drydock has not finished yet as an error in the run.
+    """
+    key = _command_key(command).split()
+    return "status" in key[1:3]
+
+
+def _command_key(command: Mapping[str, object]) -> str:
+    """The command's identity for supersession: its verb chain and Target, without options.
+
+    Options are dropped so a rerun that changed provider, model, or attempt budget still counts
+    as the same command being run again — the operator reran the same step.
+    """
+    key: list[str] = []
+    for part in _command_text(command.get("argv") or []).split():
+        if part.startswith("-"):
+            break
+        key.append(part)
+    return " ".join(key)
+
+
+def _outstanding_failures(
+    commands: Sequence[Mapping[str, object]],
+) -> list[Mapping[str, object]]:
+    """The nonzero exits no later clean rerun of the same command cleared.
+
+    A step Drydock ran, failed, and ran again to green is history, not a defect: the run's
+    outcome is the last attempt's. Both rows stay in the Commands table with their own results;
+    only a failure nothing later cleared is still an error. ``--help`` never clears anything —
+    it exits 0 without doing the work.
+    """
+    cleared: set[str] = set()
+    failures: list[Mapping[str, object]] = []
+    for command in reversed(list(commands)):
+        key = _command_key(command)
+        argv = [str(part) for part in command.get("argv") or []]
+        if command.get("returncode") == 0:
+            if "--help" not in argv:
+                cleared.add(key)
+            continue
+        if command.get("returncode") is None or _is_status_query(command):
+            continue
+        if key not in cleared:
+            failures.append(command)
+    failures.reverse()
+    return failures
 
 
 # ── publishing ───────────────────────────────────────────────────────────────────────
@@ -1180,11 +1223,7 @@ def _render(
         + _table(("#", "When", "Command", "Result", "Elapsed", "Transcript"), command_rows)
     )
 
-    failed = [
-        command
-        for command in commands
-        if command.get("returncode") not in (0, None) and _verb_of(command) != "status"
-    ]
+    failed = _outstanding_failures(commands)
     excerpt = ""
     if failed:
         last = failed[-1]
