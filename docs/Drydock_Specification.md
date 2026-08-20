@@ -203,38 +203,41 @@ options:
 ## End-to-End Command Flow
 
 A Target runs from source material to a scored release and through subsequent change with the
-following commands.
+following commands. This is the Target build order that `drydock uat` executes in its isolated
+run workspace. UAT also seeds its kit inputs after `init`, runs its declared full test command
+from the delivered application directory before scoring, and retains the evidence for every step.
 
 ```bash
-# Build Specifications into Code With Agile and Test Driven Development
-# Runs on your Claude/Codex/Other subscription CLI. No API keys or per-token-billing.
-
 # ── S ── SET UP ──────────────────────────────────────────────────────────
-drydock config set llm_provider claude      # or codex
-drydock init            MyApp               # create the Target workspace
+drydock init MyApp                            # Create the Target workspace.
 
-# ── A ── ANALYZE ─────────────────────────────────────────────────────────
-drydock import          MyApp ./notes       # notes, a source tree, or Spec Kit
-drydock analyze         MyApp               # → stories, acceptance criteria, blockers
-drydock run quarterdeck MyApp               # the Commander answers the open questions
-drydock plan            MyApp               # → Blueprint + MANIFEST.md dependency graph
-drydock validate        MyApp               # typed specification conformance. no LLM.
+# ── A ── ANALYZE AND PLAN ─────────────────────────────────────────────────
+drydock import MyApp ./notes                  # Load the current specification material.
+drydock analyze MyApp                         # Derive stories, questions, and acceptance criteria.
+drydock run quarterdeck MyApp                 # Review analysis; resolve blockers and approve decisions.
+drydock plan MyApp                            # Create Blueprints and the Manifest.
+drydock plan verify MyApp                     # Confirm that acceptance criteria can run.
+# If verification fails: repair in QuarterDeck or run `drydock plan repair MyApp`, then verify again.
+drydock run quarterdeck MyApp                 # Review and edit the Manifest, decisions, and Blueprints.
 
 # ── I ── IMPLEMENT ───────────────────────────────────────────────────────
-while drydock status MyApp --ready; do      # build the runnable frontier, one step at a time
-  drydock build         MyApp               # scoped context in, code + evidence out
-  drydock build status  MyApp               # what is done, blocked, and next
+while drydock status MyApp --ready; do
+  drydock build MyApp                         # Build every ready block until the frontier is empty.
 done
+drydock status MyApp --check                  # Confirm that the Manifest is complete.
 
-drydock score ac        MyApp               # every assertion, deterministically → SOUNDINGS.md
-drydock score release   MyApp               # Sea Trials release gate → SCORECARD.md
+# UAT executes its fixture's declared full test command here, from the delivered application directory.
+drydock score ac MyApp                        # Run LLM acceptance review.
+drydock score build MyApp                     # Score the build evidence.
+drydock score release MyApp                   # Apply the release gate.
 
 # ── L ── LOOP ────────────────────────────────────────────────────────────
-# The Blueprint changes first; the software follows.
-drydock refit           MyApp               # change tickets → conformed manifest work
-drydock build           MyApp               # rebuild what the change touched
-drydock document        MyApp               # documentation generated from the Blueprint
-drydock rigging update  MyApp               # propagate shared rules and templates
+# After a source change, UAT imports the update, refits the plan, and repeats the build loop.
+drydock import MyApp --update                 # Load the changed specification material.
+drydock refit MyApp --sources                 # Map the change into new Blueprint and Manifest work.
+while drydock status MyApp --ready; do
+  drydock build MyApp                         # Build the change until the frontier is empty.
+done
 ```
 
 ## SAIL Phase 1 — Set Up: Laying the Keel

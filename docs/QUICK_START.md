@@ -181,6 +181,38 @@ From QuarterDeck you can see the stages of the build and the details of each sta
   <figcaption><em>The Manifest groups related stories into build blocks and shows which work is ready or blocked.</em></figcaption>
 </figure>
 
+### Full build order
+
+This is the build order that `drydock uat` runs. UAT supplies its fixture inputs after `init`,
+runs in an isolated workspace, and records evidence; the Target lifecycle is the same.
+
+```bash
+drydock init ReadingList                         # Create the Target workspace.
+drydock import ReadingList ./reading-list.md     # Load the current specification.
+drydock analyze ReadingList                      # Derive stories, questions, and acceptance.
+
+drydock run quarterdeck ReadingList              # Review analysis; answer blockers and approve decisions.
+
+drydock plan ReadingList                         # Create Blueprints and the Manifest.
+drydock plan verify ReadingList                  # Check that acceptance criteria can run.
+# If verification fails: repair in QuarterDeck or run `drydock plan repair ReadingList`, then verify again.
+
+drydock run quarterdeck ReadingList              # Review the Manifest, Kanban board, decisions, and Blueprints.
+
+while drydock status ReadingList --ready; do
+  drydock build ReadingList                      # Build every ready block; repeat until none remain.
+done
+drydock status ReadingList --check               # Confirm that the Manifest is complete.
+
+# UAT runs the kit's declared full test command here, from the delivered application directory.
+drydock score ac ReadingList                      # Run LLM acceptance review.
+drydock score build ReadingList                   # Score build evidence.
+drydock score release ReadingList                 # Apply the release gate.
+```
+
+For a changed specification, UAT replaces the declared source, runs `drydock import <Target> --update`,
+then `drydock refit <Target> --sources`, and repeats the build loop before testing and scoring again.
+
 ## 5. Build
 
 ```bash

@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-20: The main specification and Quick Start now state the complete Target lifecycle:
+  initialize, import, analyze, QuarterDeck review, plan verification and repair, iterative build,
+  completion check, and scoring. Their compact Bash examples identify the review points and state
+  that this is the build order `drydock uat` executes, including its refit-and-rebuild path for
+  declared source updates.
 - 2026-08-20: `drydock score <Target>` summarizes the score family in one screen. It reports the
   workflow state the Target is in, then one row per score sub-verb — `spec`, `ac`, `build`,
   `release`, `report` — naming when each last ran, the exit code it returned, and the artifact
