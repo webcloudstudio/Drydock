@@ -196,7 +196,6 @@ def get_model(cli_override: str | None = None) -> str:
     """Resolve the LLM model for this invocation.
 
     Resolution order: cli_override → DRYDOCK_MODEL (env or config file) → ``sonnet``.
-    Prompt frontmatter ``model:`` values are hints only and are ignored here.
     """
     if cli_override:
         return cli_override.strip()
