@@ -25,6 +25,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-20: The `drydock score report` Workflow table now renders all eleven legitimate
+  lifecycle states. States not held in `PROJECT_STATUS.jsonl` appear as `NOT ESTABLISHED`, with
+  no timestamp or command, rather than being omitted; the receipt therefore shows why an
+  otherwise all-pass table remains incomplete and distinguishes an unrun gate from a failure.
 - 2026-08-20: `PROJECT_STATUS.jsonl` voids a workflow state only when the artifact it was
   verified against has been re-authored. Previously any recording voided every state above it on
   the ladder, so re-running a passing verification silently deleted the passing states above it:

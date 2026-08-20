@@ -950,9 +950,27 @@ def _detail_line(result: Mapping[str, object]) -> str:
 
 
 def _ladder_table(workflow: Sequence[Mapping[str, object]]) -> str:
-    """Render the workflow ladder: one row per state the Target attempted, in order."""
+    """Render every legitimate workflow state, in lifecycle order.
+
+    ``PROJECT_STATUS.jsonl`` holds only states the Target established.  A receipt must also
+    show the unestablished rungs, otherwise a table of passing held states can look complete
+    even though the score and publication gates have never run.
+    """
+    from drydock.project_status import LABEL_LADDER
+
+    held = {str(step.get("label") or ""): step for step in workflow if isinstance(step, Mapping)}
     rows = []
-    for step in workflow:
+    for lifecycle_state in LABEL_LADDER:
+        step = held.get(lifecycle_state)
+        if step is None:
+            rows.append([
+                _cell(lifecycle_state),
+                '<td><span class="tag raw">NOT ESTABLISHED</span></td>',
+                _cell("—", css="nowrap"),
+                _cell("—"),
+                _cell("This lifecycle gate has not run.", css="detail"),
+            ])
+            continue
         attempts = int(step.get("attempts") or 1)
         detail = str(step.get("detail") or "")
         if attempts > 1:
@@ -961,7 +979,7 @@ def _ladder_table(workflow: Sequence[Mapping[str, object]]) -> str:
         state = "pass" if step.get("passed") else "fail"
         label = "PASS" if step.get("passed") else "FAIL"
         rows.append([
-            _cell(str(step.get("label") or "")),
+            _cell(lifecycle_state),
             f'<td><span class="tag {state}">{label}</span></td>',
             _cell(_local_time(step.get("at")) or "unrecorded", css="nowrap"),
             f"<td><code>{html.escape(str(step.get('command') or ''))}</code></td>",
@@ -969,9 +987,9 @@ def _ladder_table(workflow: Sequence[Mapping[str, object]]) -> str:
         ])
     return (
         "<h2>Workflow</h2>"
-        '<p class="note">Every lifecycle state this Target recorded, in order. A state that '
-        "was never attempted is not listed.</p>"
-        + _table(("State", "Result", "When", "Command", "Detail"), rows)
+        '<p class="note">Every lifecycle state, in order. States not held in '
+        "<code>PROJECT_STATUS.jsonl</code> are marked <em>not established</em>; they are not "
+        "failures.</p>" + _table(("State", "Result", "When", "Command", "Detail"), rows)
     )
 
 

@@ -844,12 +844,15 @@ def test_the_page_stamps_the_product_verdict_and_names_the_delivered_code(publis
     assert html.escape(str(build_dir)) in page
 
 
-def test_the_page_ladders_the_states_the_target_recorded(published):
+def test_the_page_ladders_every_legitimate_state(published):
     page = published.read_text(encoding="utf-8")
     assert "Workflow" in page
-    assert "SCORE BUILD" in page
-    assert "FINALIZED" in page
-    assert "INITIALIZED" not in page  # never attempted in this run
+    from drydock.project_status import LABEL_LADDER
+
+    for label in LABEL_LADDER:
+        assert label in page
+    assert '<span class="tag raw">NOT ESTABLISHED</span>' in page
+    assert "This lifecycle gate has not run." in page
 
 
 def test_an_unfinished_run_is_stamped_in_progress_not_rejected(workspace, target_dir, build_dir):
