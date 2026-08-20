@@ -1082,6 +1082,7 @@ def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
     from drydock.plan_repair import render, repair
     from drydock.plan_verify import render as render_verify
     from drydock.plan_verify import verify
+    from drydock.project_status import record_status
 
     target_dir = require_target_dir(target)
     result = repair(
@@ -1094,11 +1095,27 @@ def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
     )
     print(render(result))
     if result.nothing_to_repair:
+        record_status(
+            target_dir, "PLAN REPAIRED", passed=True, command=f"drydock plan repair {target}"
+        )
         return 0
     # Re-verify from disk rather than trusting the repair's own bookkeeping. The plan is about to
     # be built against these files, so the last word belongs to the same check the build uses.
     print(render_verify(verify(target, target_dir)))
-    return result.exit_code()
+    exit_code = result.exit_code()
+    if exit_code:
+        record_status(
+            target_dir,
+            "PLAN REPAIRED",
+            passed=False,
+            detail=f"repair failed with code {exit_code}",
+            command=f"drydock plan repair {target}",
+        )
+    else:
+        record_status(
+            target_dir, "PLAN REPAIRED", passed=True, command=f"drydock plan repair {target}"
+        )
+    return exit_code
 
 
 def cmd_plan(args: argparse.Namespace) -> int:
@@ -1111,6 +1128,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         require_target_dir,
     )
     from drydock.planning_session import PlanDeferredResult, create_plan
+    from drydock.project_status import record_status
     from drydock.quarterdeck_state import commanders_chair_command
 
     sub_verb, target = _parse_plan_args(args)
@@ -1160,6 +1178,13 @@ def cmd_plan(args: argparse.Namespace) -> int:
     if isinstance(result, PlanDeferredResult):
         print()
         print(_render_plan_deferred(result, target=args.Target))
+        record_status(
+            target_dir,
+            "PLAN CREATED",
+            passed=False,
+            detail="plan deferred",
+            command=f"drydock plan {args.Target}",
+        )
         return 2
     print()
     mode_label = {
@@ -1182,6 +1207,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print(f"Review: {result.quarterdeck_dir}")
     _print_override_summary(getattr(result, "waivers", ()))
     if not getattr(args, "debug", False):
+        record_status(
+            target_dir, "PLAN CREATED", passed=True, command=f"drydock plan {args.Target}"
+        )
         return 0
     if result.conformed_files:
         print(
@@ -1217,6 +1245,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
             print(f"  - {warning}")
     print()
     print("Next step: review the manifest build tree in the Planning Session.")
+    record_status(target_dir, "PLAN CREATED", passed=True, command=f"drydock plan {args.Target}")
     return 0
 
 
@@ -2053,8 +2082,11 @@ def cmd_build(args: argparse.Namespace) -> int:
     from drydock.manifest_edit import (
         optimize_build_blocks,
     )
+    from drydock.project_status import record_status
 
     target_dir = require_target_dir(args.Target)
+    # Record BUILDING status at entry
+    record_status(target_dir, "BUILDING", passed=True, command=f"drydock build {args.Target}")
     from drydock.errors import clear_error_record
 
     clear_error_record(target_dir)
@@ -2269,14 +2301,37 @@ def cmd_build(args: argparse.Namespace) -> int:
                     for step in (failures or result.failed())
                 ),
             )
+            record_status(
+                target_dir,
+                "BUILT",
+                passed=False,
+                detail=f"{len(result.failed())} step(s) failed",
+                command=f"drydock build {args.Target}",
+            )
         elif result.stalled():
             emit_failure(
                 f"build stalled for {args.Target}: "
                 f"{len(result.stalled_blocks)} block(s) outstanding and none could advance",
                 tuple(result.stalled_blocks[:20]),
             )
+            record_status(
+                target_dir,
+                "BUILT",
+                passed=False,
+                detail=f"{len(result.stalled_blocks)} block(s) stalled",
+                command=f"drydock build {args.Target}",
+            )
         else:
             emit_failure(f"build did not complete for {args.Target}")
+            record_status(
+                target_dir,
+                "BUILT",
+                passed=False,
+                detail="build did not complete",
+                command=f"drydock build {args.Target}",
+            )
+    elif exit_code == 0:
+        record_status(target_dir, "BUILT", passed=True, command=f"drydock build {args.Target}")
     return exit_code
 
 
@@ -2365,6 +2420,7 @@ def _ac_mark(status: str) -> str:
 
 def cmd_score_ac(target: str, step: str | None = None) -> int:
     from drydock.config import require_target_dir
+    from drydock.project_status import record_status
     from drydock.score import (
         PREPASSED,
         UNVERIFIED,
@@ -2442,6 +2498,20 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
             f"acceptance verification failed for {target}: {failed} of "
             f"{len(report.verdicts)} criteria",
             ac_failure_lines(report),
+        )
+        record_status(
+            target_dir,
+            "LLM ACCEPTANCE CHECKS OK",
+            passed=False,
+            detail=f"{failed} of {len(report.verdicts)} failed",
+            command=f"drydock score ac {target}",
+        )
+    else:
+        record_status(
+            target_dir,
+            "LLM ACCEPTANCE CHECKS OK",
+            passed=True,
+            command=f"drydock score ac {target}",
         )
     return exit_code
 
@@ -2657,6 +2727,7 @@ def cmd_score_release(target: str) -> int:
         get_workspace,
         require_target_dir,
     )
+    from drydock.project_status import record_status
     from drydock.quarterdeck_state import refresh_commanders_chair
     from drydock.score import emit_failure, score_release
 
@@ -2685,6 +2756,17 @@ def cmd_score_release(target: str) -> int:
         emit_failure(
             f"release gate {result.verdict} for {target}",
             result.blockers or (f"see {result.scorecard_path}",),
+        )
+        record_status(
+            target_dir,
+            "SCORE RELEASE",
+            passed=False,
+            detail=f"release gate {result.verdict}",
+            command=f"drydock score release {target}",
+        )
+    else:
+        record_status(
+            target_dir, "SCORE RELEASE", passed=True, command=f"drydock score release {target}"
         )
     return exit_code
 
