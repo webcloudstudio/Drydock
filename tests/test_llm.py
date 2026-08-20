@@ -1418,3 +1418,82 @@ def test_an_explicit_effort_beats_the_configured_level(monkeypatch, tmp_path):
         announce=False,
     )
     assert captured["effort"] == "low"
+
+
+def test_full_cli_and_sub_command_are_recorded_in_execution_record(monkeypatch, tmp_path):
+    """New fields full_cli and sub_command are captured in llm.jsonl records."""
+    from drydock import llm as llm_module
+    from drydock.llm_usage import read_records
+
+    def fake_command(*args, **kwargs):
+        return ("true",)
+
+    monkeypatch.setattr(llm_module, "_command", fake_command)
+
+    result = llm_module.run_prompt(
+        "hello",
+        tmp_path,
+        llm="claude",
+        model="haiku",
+        command_name="analyze",
+        target="test-project",
+        log_dir=tmp_path,
+        announce=False,
+        full_cli="drydock analyze --llm=claude --model=haiku test-project",
+        sub_command="codex",
+    )
+
+    assert result.ok
+    records, _ = read_records(tmp_path / "llm.jsonl")
+    assert len(records) == 1
+
+    record = records[0]
+    job = record.get("job", {})
+    result_section = record.get("result", {})
+
+    # Check new fields in job
+    assert job.get("full_cli") == "drydock analyze --llm=claude --model=haiku test-project"
+    assert job.get("sub_command") == "codex"
+
+    # Check timing in result
+    assert "timing" in result_section
+    timing = result_section.get("timing", {})
+    assert timing.get("client_elapsed_ms") is not None
+    assert isinstance(timing.get("client_elapsed_ms"), int)
+    assert timing.get("client_elapsed_ms") >= 0
+    # llm_server_duration_ms may be None if provider doesn't report it
+    assert "llm_server_duration_ms" in timing
+
+
+def test_new_record_fields_are_optional(monkeypatch, tmp_path):
+    """Existing code that doesn't pass full_cli/sub_command still works."""
+    from drydock import llm as llm_module
+    from drydock.llm_usage import read_records
+
+    def fake_command(*args, **kwargs):
+        return ("true",)
+
+    monkeypatch.setattr(llm_module, "_command", fake_command)
+
+    # Call run_prompt WITHOUT full_cli and sub_command
+    result = llm_module.run_prompt(
+        "hello",
+        tmp_path,
+        llm="claude",
+        model="haiku",
+        command_name="plan",
+        target="other-project",
+        log_dir=tmp_path,
+        announce=False,
+    )
+
+    assert result.ok
+    records, _ = read_records(tmp_path / "llm.jsonl")
+    assert len(records) == 1
+
+    record = records[0]
+    job = record.get("job", {})
+
+    # Fields should be present but None
+    assert job.get("full_cli") is None
+    assert job.get("sub_command") is None

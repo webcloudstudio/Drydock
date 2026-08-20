@@ -971,6 +971,8 @@ def _record(
     error: str | None,
     timed_out: bool,
     prompt_assembly: PromptAssembly,
+    full_cli: str | None = None,
+    sub_command: str | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -986,6 +988,8 @@ def _record(
             "argv": list(command),
             "working_directory": str(working_directory),
             "parameters": dict(parameters),
+            "full_cli": full_cli,
+            "sub_command": sub_command,
         },
         "prompt": {
             "path": str(artifacts.prompt_file),
@@ -998,6 +1002,10 @@ def _record(
         "result": {
             "returncode": returncode,
             "stats": asdict(stats),
+            "timing": {
+                "client_elapsed_ms": _elapsed_ms(started_at, completed_at),
+                "llm_server_duration_ms": stats.duration_ms,
+            },
             "raw_sha256": sha256_file(artifacts.raw_file) if artifacts.raw_file.exists() else None,
             "output_sha256": (
                 sha256_file(artifacts.output_file) if artifacts.output_file.exists() else None
@@ -1342,6 +1350,8 @@ def run_prompt(
     on_event: EventCallback | None = None,
     announce: bool = True,
     prompt_assembly: PromptAssembly | None = None,
+    full_cli: str | None = None,
+    sub_command: str | None = None,
 ) -> LlmResult:
     """Run a fully assembled prompt and persist reproducible execution evidence.
 
@@ -1505,6 +1515,8 @@ def run_prompt(
             error=error,
             timed_out=timed_out,
             prompt_assembly=assembly,
+            full_cli=full_cli,
+            sub_command=sub_command,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(
@@ -1575,6 +1587,8 @@ def run_prompt(
             error=str(exc),
             timed_out=False,
             prompt_assembly=assembly,
+            full_cli=full_cli,
+            sub_command=sub_command,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(
@@ -1610,6 +1624,8 @@ def run_prompt(
             error="execution interrupted",
             timed_out=False,
             prompt_assembly=assembly,
+            full_cli=full_cli,
+            sub_command=sub_command,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(

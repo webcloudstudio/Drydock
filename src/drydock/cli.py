@@ -619,32 +619,46 @@ def cmd_init(args: argparse.Namespace) -> int:
         record_activity,
     )
     from drydock.init_target import init_target
+    from drydock.project_status import record_status
 
     logger.debug("cmd_init: target=%s", args.Target)
     targets_root = get_target_directory()
-    result = init_target(
-        args.Target,
-        targets_root,
-        display_name=getattr(args, "display_name", ""),
-        short_description=getattr(args, "short_description", ""),
-    )
+    try:
+        result = init_target(
+            args.Target,
+            targets_root,
+            display_name=getattr(args, "display_name", ""),
+            short_description=getattr(args, "short_description", ""),
+        )
 
-    print(f"Target: {result.target_dir}")
-    # .gitkeep placeholders are directory scaffolding, not project artifacts; the
-    # directory they hold open is what the operator cares about.
-    for path in result.created:
-        if path.name == ".gitkeep":
-            continue
-        print(f"  CREATED  {path.relative_to(result.target_dir)}")
-    if result.skipped:
-        print(f"  ({len(result.skipped)} existing baseline files preserved)")
-    if not result.created:
-        print("  Nothing to do — target baseline is already initialized.")
+        print(f"Target: {result.target_dir}")
+        # .gitkeep placeholders are directory scaffolding, not project artifacts; the
+        # directory they hold open is what the operator cares about.
+        for path in result.created:
+            if path.name == ".gitkeep":
+                continue
+            print(f"  CREATED  {path.relative_to(result.target_dir)}")
+        if result.skipped:
+            print(f"  ({len(result.skipped)} existing baseline files preserved)")
+        if not result.created:
+            print("  Nothing to do — target baseline is already initialized.")
 
-    _sync_workspace_skills(get_workspace())
+        _sync_workspace_skills(get_workspace())
 
-    record_activity("init", target=args.Target)
-    return 0
+        record_activity("init", target=args.Target)
+        record_status(
+            result.target_dir, "INITIALIZED", passed=True, command=f"drydock init {args.Target}"
+        )
+        return 0
+    except Exception as e:
+        record_status(
+            targets_root / args.Target,
+            "INITIALIZED",
+            passed=False,
+            detail=str(e)[:500],
+            command=f"drydock init {args.Target}",
+        )
+        raise
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -907,6 +921,7 @@ def cmd_rigging_add(args: argparse.Namespace) -> int:
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
     from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
+    from drydock.project_status import record_status
     from drydock.quarterdeck_state import commanders_chair_command
 
     target_dir = require_target_dir(args.Target)
@@ -922,6 +937,13 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     print()
     if not result.ok:
         print(f"Error: {result.error}", file=sys.stderr)
+        record_status(
+            target_dir,
+            "ANALYZED",
+            passed=False,
+            detail=str(result.error)[:500],
+            command=f"drydock analyze {args.Target}",
+        )
         return 1
     tdir = result.target_dir
     print(f"  ANALYSIS.md   →  {result.analysis_path.relative_to(tdir)}")
@@ -956,6 +978,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print(f"  drydock plan {args.Target}")
     else:
         print(_render_analyze_blockers(args.Target, result.blockers_path))
+    record_status(target_dir, "ANALYZED", passed=True, command=f"drydock analyze {args.Target}")
     return 0
 
 
@@ -1303,101 +1326,136 @@ def _commit_and_stamp(target_dir: Path, message: str) -> str | None:
 def cmd_import(args: argparse.Namespace) -> int:
     from drydock.config import get_target_directory
     from drydock.import_markdown import detect_import_format
+    from drydock.project_status import record_status
 
     td = get_target_directory()
+    target_dir = td / args.Target
 
-    # --update refreshes the snapshot from the import root recorded in LINEAGE.json, so no
-    # <Source> argument is accepted or needed.
-    if getattr(args, "update", False):
-        from drydock.source_refit import update_import
+    try:
+        # --update refreshes the snapshot from the import root recorded in LINEAGE.json, so no
+        # <Source> argument is accepted or needed.
+        if getattr(args, "update", False):
+            from drydock.source_refit import update_import
 
-        if args.Source is not None:
-            raise UsageError("--update refreshes the recorded source root; do not pass <Source>")
-        target_dir = td / args.Target
-        result = update_import(target_dir)
-        _commit_and_stamp(target_dir, "Refresh imported source snapshot")
-        print(
-            f"Source update: {len(result.added)} added, {len(result.changed)} changed, "
-            f"{len(result.deleted)} deleted, {len(result.unchanged)} unchanged"
-        )
-        if result.pending_versions:
+            if args.Source is not None:
+                raise UsageError(
+                    "--update refreshes the recorded source root; do not pass <Source>"
+                )
+            result = update_import(target_dir)
+            _commit_and_stamp(target_dir, "Refresh imported source snapshot")
             print(
-                f"  {result.pending_versions} source version(s) pending; "
-                f"run: drydock refit {args.Target} --sources"
+                f"Source update: {len(result.added)} added, {len(result.changed)} changed, "
+                f"{len(result.deleted)} deleted, {len(result.unchanged)} unchanged"
             )
-        return 0
-
-    if args.Source is None:
-        raise UsageError("import requires <Source> (or --update to refresh a prior import)")
-
-    source = Path(args.Source)
-    fmt = args.format
-    if fmt == "auto":
-        if source.expanduser().is_dir():
-            raise UsageError(
-                "--format auto requires a file; specify --format markdown, source, or speckit for a directory"
+            if result.pending_versions:
+                print(
+                    f"  {result.pending_versions} source version(s) pending; "
+                    f"run: drydock refit {args.Target} --sources"
+                )
+            record_status(
+                target_dir,
+                "IMPORTED",
+                passed=True,
+                command=f"drydock import {args.Target} --update",
             )
-        fmt = detect_import_format(source)
+            return 0
 
-    def print_import_result(
-        source_path: Path, imported: tuple[Path, ...] | list[Path], destination: Path
-    ) -> None:
-        print(f"Source: {source_path}")
-        print(f"Target: {destination}/")
-        for path in imported:
-            print(Path(path).relative_to(destination))
+        if args.Source is None:
+            raise UsageError("import requires <Source> (or --update to refresh a prior import)")
 
-    if fmt == "markdown":
-        from drydock.import_markdown import import_markdown
-        from drydock.source_refit import commit_target
+        source = Path(args.Source)
+        fmt = args.format
+        if fmt == "auto":
+            if source.expanduser().is_dir():
+                raise UsageError(
+                    "--format auto requires a file; specify --format markdown, source, or speckit for a directory"
+                )
+            fmt = detect_import_format(source)
 
-        result = import_markdown(args.Target, args.Target, source, td)
-        _commit_and_stamp(td / args.Target, "Import source snapshot")
-        print_import_result(result.source, result.imported, result.blueprint_dir / "sources")
-        return 0
+        def print_import_result(
+            source_path: Path, imported: tuple[Path, ...] | list[Path], destination: Path
+        ) -> None:
+            print(f"Source: {source_path}")
+            print(f"Target: {destination}/")
+            for path in imported:
+                print(Path(path).relative_to(destination))
 
-    if fmt == "source":
-        from drydock.import_source import import_source
-        from drydock.source_refit import commit_target
+        if fmt == "markdown":
+            from drydock.import_markdown import import_markdown
+            from drydock.source_refit import commit_target
 
-        source_result = import_source(args.Target, args.Target, source, td)
-        _commit_and_stamp(td / args.Target, "Import source snapshot")
-        print_import_result(
-            source_result.source, source_result.imported, source_result.blueprint_dir / "sources"
+            result = import_markdown(args.Target, args.Target, source, td)
+            _commit_and_stamp(target_dir, "Import source snapshot")
+            print_import_result(result.source, result.imported, result.blueprint_dir / "sources")
+            record_status(
+                target_dir, "IMPORTED", passed=True, command=f"drydock import {args.Target}"
+            )
+            return 0
+
+        if fmt == "source":
+            from drydock.import_source import import_source
+            from drydock.source_refit import commit_target
+
+            source_result = import_source(args.Target, args.Target, source, td)
+            _commit_and_stamp(target_dir, "Import source snapshot")
+            print_import_result(
+                source_result.source,
+                source_result.imported,
+                source_result.blueprint_dir / "sources",
+            )
+            record_status(
+                target_dir, "IMPORTED", passed=True, command=f"drydock import {args.Target}"
+            )
+            return 0
+
+        if fmt == "speckit":
+            from drydock.import_speckit import import_speckit
+            from drydock.source_refit import commit_target
+
+            speckit_result = import_speckit(args.Target, args.Target, source, td)
+            _commit_and_stamp(target_dir, "Import source snapshot")
+            print_import_result(
+                speckit_result.source,
+                speckit_result.imported,
+                speckit_result.blueprint_dir / "sources",
+            )
+            record_status(
+                target_dir, "IMPORTED", passed=True, command=f"drydock import {args.Target}"
+            )
+            return 0
+
+        if fmt in {"compass", "intent"}:
+            from drydock.config import get_llm_provider, get_model, get_workspace
+            from drydock.import_markdown import import_intent
+            from drydock.source_refit import commit_target
+
+            result = import_intent(
+                args.Target,
+                source,
+                td,
+                force=bool(getattr(args, "force", False)),
+                model=get_model(getattr(args, "model", None)),
+                llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+                log_dir=get_workspace() / "logs",
+            )
+            commit_target(target_dir, "Import Compass source")
+            print_import_result(result.source, result.imported, result.blueprint_dir)
+            print("normalized")
+            record_status(
+                target_dir, "IMPORTED", passed=True, command=f"drydock import {args.Target}"
+            )
+            return 0
+
+        raise UsageError(f"Unknown format: {fmt!r}")
+    except Exception as e:
+        record_status(
+            target_dir,
+            "IMPORTED",
+            passed=False,
+            detail=str(e)[:500],
+            command=f"drydock import {args.Target}",
         )
-        return 0
-
-    if fmt == "speckit":
-        from drydock.import_speckit import import_speckit
-        from drydock.source_refit import commit_target
-
-        speckit_result = import_speckit(args.Target, args.Target, source, td)
-        _commit_and_stamp(td / args.Target, "Import source snapshot")
-        print_import_result(
-            speckit_result.source, speckit_result.imported, speckit_result.blueprint_dir / "sources"
-        )
-        return 0
-
-    if fmt in {"compass", "intent"}:
-        from drydock.config import get_llm_provider, get_model, get_workspace
-        from drydock.import_markdown import import_intent
-        from drydock.source_refit import commit_target
-
-        result = import_intent(
-            args.Target,
-            source,
-            td,
-            force=bool(getattr(args, "force", False)),
-            model=get_model(getattr(args, "model", None)),
-            llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
-            log_dir=get_workspace() / "logs",
-        )
-        commit_target(td / args.Target, "Import Compass source")
-        print_import_result(result.source, result.imported, result.blueprint_dir)
-        print("normalized")
-        return 0
-
-    raise UsageError(f"Unknown format: {fmt!r}")
+        raise
 
 
 def cmd_document_assemble(argv: list[str]) -> int:

@@ -84,6 +84,10 @@ class RunUsage:
     prompt_tokens_estimate: int
     prompt_bytes: int
     activity: RunActivity = field(default_factory=RunActivity)
+    full_cli: str | None = None
+    sub_command: str | None = None
+    client_elapsed_ms: int | None = None
+    llm_server_duration_ms: int | None = None
 
     @property
     def fresh_input_tokens(self) -> int:
@@ -431,6 +435,7 @@ def _run_from_record(record: Mapping[str, Any], target: str) -> RunUsage:
     job = record.get("job") if isinstance(record.get("job"), Mapping) else {}
     result = record.get("result") if isinstance(record.get("result"), Mapping) else {}
     stats = result.get("stats") if isinstance(result.get("stats"), Mapping) else {}
+    timing = result.get("timing") if isinstance(result.get("timing"), Mapping) else {}
     prompt = record.get("prompt") if isinstance(record.get("prompt"), Mapping) else {}
     parameters = job.get("parameters") if isinstance(job.get("parameters"), Mapping) else {}
 
@@ -458,6 +463,10 @@ def _run_from_record(record: Mapping[str, Any], target: str) -> RunUsage:
         elapsed_ms=_int(stats.get("elapsed_ms")),
         prompt_tokens_estimate=_int(prompt.get("total_tokens_estimate")),
         prompt_bytes=_int(prompt.get("bytes")),
+        full_cli=_text(job.get("full_cli")) or None,
+        sub_command=_text(job.get("sub_command")) or None,
+        client_elapsed_ms=_int(timing.get("client_elapsed_ms")) or None,
+        llm_server_duration_ms=_int(timing.get("llm_server_duration_ms")) or None,
     )
 
 
