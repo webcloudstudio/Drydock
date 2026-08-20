@@ -678,7 +678,27 @@ def test_a_rerun_command_is_kept_and_labelled(workspace, target_dir, build_dir):
     page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
     assert "rerun 1 of 2" in page
     assert "rerun 2 of 2" in page
-    assert "FAIL 1" in page
+    assert (
+        '<span class="tag pass" title="exit 1; later rerun exited 0"><span '
+        'class="failure-history">FAIL<br>RERUN</span></span>'
+    ) in page
+
+
+def test_an_unrepaired_command_failure_shows_its_return_code_in_the_receipt(
+    workspace, target_dir, build_dir
+):
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("build widget", stamp="20260101.091000.000Z", return_code=1),
+        ],
+    )
+    build_dir.mkdir(parents=True)
+
+    page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+
+    assert '<span class="tag fail" title="exit 1">FAIL<br>rc=1</span>' in page
 
 
 def test_a_failure_a_later_rerun_cleared_is_not_reported_as_an_error(

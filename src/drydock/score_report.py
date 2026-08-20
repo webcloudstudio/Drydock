@@ -1029,6 +1029,44 @@ def _rerun_notes(commands: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
     return tuple(notes)
 
 
+def _repaired_command_indices(commands: Sequence[Mapping[str, object]]) -> frozenset[int]:
+    """Return failed command rows that a later clean run of the same step repaired."""
+    cleared: set[str] = set()
+    repaired: set[int] = set()
+    for index in range(len(commands) - 1, -1, -1):
+        command = commands[index]
+        key = _command_key(command)
+        argv = [str(part) for part in command.get("argv") or []]
+        if command.get("returncode") == 0:
+            if "--help" not in argv:
+                cleared.add(key)
+            continue
+        if command.get("returncode") is None or _is_status_query(command):
+            continue
+        if key in cleared:
+            repaired.add(index)
+    return frozenset(repaired)
+
+
+def _receipt_command_status_cell(
+    command: Mapping[str, object], *, repaired: bool, headline: str
+) -> str:
+    """Render a receipt Commands result, retaining repaired failures as visible history."""
+    returncode = command.get("returncode")
+    argv = command.get("argv") or []
+    if repaired:
+        return (
+            f'<td><span class="tag pass" title="exit {html.escape(str(returncode))}; '
+            'later rerun exited 0"><span class="failure-history">FAIL<br>RERUN</span></span></td>'
+        )
+    if returncode not in (0, None) and not _is_status_query(command):
+        return (
+            f'<td><span class="tag fail" title="exit {html.escape(str(returncode))}">'
+            f"FAIL<br>rc={html.escape(str(returncode))}</span></td>"
+        )
+    return _status_cell(returncode, argv, headline)
+
+
 #: One tab per plan document, in reading order: ``(slug, label, filename, note)``.
 #:
 #: These are rendered in the page, not listed as links. A table of file names with byte counts
@@ -1208,6 +1246,7 @@ def _render(
     owned = _command_calls(commands, calls)
     models = _command_models(owned)
     notes = _rerun_notes(commands)
+    repaired = _repaired_command_indices(commands)
 
     command_rows: list[list[str]] = []
     for index, command in enumerate(commands):
@@ -1224,10 +1263,10 @@ def _render(
                 css="nowrap",
             ),
             f"<td><code>{text}</code>{annotation}{rerun}</td>",
-            _status_cell(
-                command.get("returncode"),
-                command.get("argv") or [],
-                recorded_status_headline(report_root, stdout, command.get("argv") or []),
+            _receipt_command_status_cell(
+                command,
+                repaired=index in repaired,
+                headline=recorded_status_headline(report_root, stdout, command.get("argv") or []),
             ),
             _cell(f"{int(command.get('elapsed_ms') or 0) / 1000:.1f}s", css="num"),
             _stream_link(report_root, stdout, "transcript"),
