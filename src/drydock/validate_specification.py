@@ -89,7 +89,6 @@ _GENERATED_FILES = {
 
 _TERMINAL_SECTIONS_REQUIRED = {
     "Programmatic Acceptance",
-    "User Acceptance",
     "Guardrails",
 }
 _COMPASS_EXTRA_SECTIONS = {"Compass", "Constraints", "Success Criteria"}
@@ -110,12 +109,17 @@ _NO_TERMINAL_NEEDED = {
 _TYPED_HEADING_RE = re.compile(r"^#\s+[A-Za-z][A-Za-z0-9_-]*:\s+.+")
 
 
+def _is_compact_file(fname: str) -> bool:
+    """Return whether *fname* is a generated Blueprint compact."""
+    return fname.endswith("_compact.md") or fname.endswith("_compact.skip.md")
+
+
 def _has_section(text: str, heading: str) -> bool:
     return bool(re.search(rf"^## {re.escape(heading)}$", text, re.MULTILINE))
 
 
 def _file_needs_typed_heading(fname: str) -> bool:
-    if "_compact." in fname:
+    if _is_compact_file(fname):
         return False
     if fname in _NO_TERMINAL_NEEDED:
         return False
@@ -281,11 +285,11 @@ def validate_specification(
     bad_names = 0
     for md_file in sorted(spec_dir.glob("*.md")):
         fname = md_file.name
+        if _is_compact_file(fname):
+            p(section, f"{fname} (generated compact)")
+            continue
         if fname in _ALLOWED_ROOT_NAMES:
             p(section, f"{fname} (standard file)")
-            continue
-        if re.match(r"^(ARCHITECTURE|DATABASE)_compact(\.skip)?\.md$", fname):
-            p(section, f"{fname} (generated compact)")
             continue
         if any(fname.startswith(prefix) for prefix in _SPEC_FILE_PREFIXES):
             p(section, f"{fname} (spec file)")
@@ -315,7 +319,7 @@ def validate_specification(
     section = "Terminal sections"
     for md_file in sorted(spec_dir.glob("*.md")):
         fname = md_file.name
-        if "_compact." in fname:
+        if _is_compact_file(fname):
             continue
         if fname in _NO_TERMINAL_NEEDED or fname in _GENERATED_FILES:
             continue

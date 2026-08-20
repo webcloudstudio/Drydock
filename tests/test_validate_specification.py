@@ -123,16 +123,18 @@ class TestNonSpecBlueprintFiles:
         assert result.has_failures()
         assert any("AGENTS.md is forbidden in blueprint/" in message for message in messages)
 
-    def test_generated_compacts_are_allowed(self, tmp_target_root):
+    def test_generated_compacts_are_ignored(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
         blueprint = target_dir / "blueprint"
         (blueprint / "ARCHITECTURE_compact.md").write_text("# Compact\n", encoding="utf-8")
         (blueprint / "DATABASE_compact.md").write_text("# Compact\n", encoding="utf-8")
+        (blueprint / "builtin_compact.md").write_text("# Compact\n", encoding="utf-8")
 
         result = validate_specification("TestProject", target_dir)
         messages = [f.message for f in result.findings]
         assert "Unexpected file name: ARCHITECTURE_compact.md" not in messages
         assert "Unexpected file name: DATABASE_compact.md" not in messages
+        assert "Unexpected file name: builtin_compact.md" not in messages
 
     def test_generated_compacts_do_not_require_terminal_sections(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
@@ -151,6 +153,22 @@ class TestNonSpecBlueprintFiles:
         assert "DATABASE_compact.md missing ## User Acceptance" not in messages
         assert "DATABASE_compact.md missing ## Guardrails" not in messages
         assert "DATABASE_compact.md missing ## Questions" not in messages
+
+
+class TestOptionalUserAcceptance:
+    def test_missing_user_acceptance_is_not_reported(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        feature = target_dir / "blueprint" / "FEATURE-OPTIONAL.md"
+        feature.write_text(
+            "# Feature: Optional\n\n"
+            "## Programmatic Acceptance\n\n- None.\n\n"
+            "## Guardrails\n\n- None.\n",
+            encoding="utf-8",
+        )
+
+        result = validate_specification("TestProject", target_dir)
+
+        assert not any("User Acceptance" in finding.message for finding in result.findings)
 
 
 class TestExampleFileWarnings:
