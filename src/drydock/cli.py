@@ -2579,6 +2579,7 @@ def cmd_score_build(target: str) -> int:
     """Print the deterministic post-build report. Reads evidence and usage logs only."""
     from drydock.build_report import build_score_report
     from drydock.config import get_workspace, require_target_dir
+    from drydock.project_status import record_status
     from drydock.score import emit_failure
 
     target_dir = require_target_dir(target)
@@ -2590,6 +2591,13 @@ def cmd_score_build(target: str) -> int:
     print()
     if not report.blocks:
         emit_failure(f"no build evidence for {target}", (f"run: drydock build {target}",))
+        record_status(
+            target_dir,
+            "SCORE BUILD",
+            passed=False,
+            detail="no build evidence",
+            command=f"drydock score build {target}",
+        )
         return 1
     if report.failed_blocks:
         emit_failure(
@@ -2604,13 +2612,22 @@ def cmd_score_build(target: str) -> int:
                 for block in report.failed_blocks
             ),
         )
+        record_status(
+            target_dir,
+            "SCORE BUILD",
+            passed=False,
+            detail=f"{len(report.failed_blocks)} block(s) unverified",
+            command=f"drydock score build {target}",
+        )
         return 1
+    record_status(target_dir, "SCORE BUILD", passed=True, command=f"drydock score build {target}")
     return 0
 
 
 def cmd_score_report(target: str) -> int:
     """Publish the Target's build receipt. Reads the journals and Target only; runs nothing."""
     from drydock.config import build_dir_for, get_workspace, require_target_dir
+    from drydock.project_status import record_status
     from drydock.score_report import ReportError, write_report
 
     target_dir = require_target_dir(target)
@@ -2619,9 +2636,17 @@ def cmd_score_report(target: str) -> int:
         index = write_report(target, get_workspace(), target_dir, build_dir)
     except ReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        record_status(
+            target_dir,
+            "FINALIZED",
+            passed=False,
+            detail=str(exc)[:500],
+            command=f"drydock score report {target}",
+        )
         return 1
     print(f"Receipt: {index}")
     print(f"Open with: file://{index}")
+    record_status(target_dir, "FINALIZED", passed=True, command=f"drydock score report {target}")
     return 0
 
 
