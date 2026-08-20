@@ -27,11 +27,10 @@ def _child_acs(blocks: tuple[PlanBlock, ...], step_id: str) -> tuple[PlanBlock, 
 
 
 def verify_build_step(manifest_path: Path, step_id: str) -> BuildVerifyResult:
-    """Mark one implemented story/spike and its child ACs ``closed/verified``.
+    """Mark one built story/spike and its child ACs ``closed/verified``.
 
-    ``drydock build`` moves steps with acceptance checks to ``implemented``.
-    This function records the human review decision that the step satisfies its
-    acceptance checks and can unblock dependent work.
+    ``drydock build`` produces stories in ``closed/implemented`` state.
+    This transitions them to ``closed/verified``, unblocking dependents.
     """
     plan = parse_build_plan(manifest_path)
     by_id = plan.by_id()
@@ -48,9 +47,9 @@ def verify_build_step(manifest_path: Path, step_id: str) -> BuildVerifyResult:
             ac_ids=tuple(ac.block_id for ac in acs),
             already_verified=True,
         )
-    if step.state != "implemented":
+    if step.state != "closed/implemented":
         raise SpecificationError(
-            f"{step_id!r} is {step.state!r}; only implemented steps can be verified"
+            f"{step_id!r} is {step.state!r}; only closed/implemented steps can be verified"
         )
 
     if not acs:

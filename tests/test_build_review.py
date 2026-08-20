@@ -13,7 +13,7 @@ state: approved
 
 ## story 1: Foundation
 id: foundation
-state: implemented
+state: closed/implemented
 
 ## ac 1: Starts
 id: ac-starts
@@ -56,14 +56,16 @@ def test_verify_build_step_closes_step_and_child_acs(tmp_path):
 
 
 def test_verify_build_step_requires_implemented_state(tmp_path):
-    path = _write(tmp_path, _MANIFEST.replace("state: implemented", "state: pending", 1))
+    path = _write(tmp_path, _MANIFEST.replace("state: closed/implemented", "state: pending", 1))
 
-    with pytest.raises(SpecificationError, match="only implemented"):
+    with pytest.raises(SpecificationError, match="only closed/implemented"):
         verify_build_step(path, "foundation")
 
 
 def test_verify_build_step_is_idempotent_for_verified_step(tmp_path):
-    path = _write(tmp_path, _MANIFEST.replace("state: implemented", "state: closed/verified", 1))
+    path = _write(
+        tmp_path, _MANIFEST.replace("state: closed/implemented", "state: closed/verified", 1)
+    )
 
     result = verify_build_step(path, "foundation")
 
