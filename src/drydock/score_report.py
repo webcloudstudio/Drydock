@@ -391,144 +391,87 @@ def _command_llm_logs(
     return tuple(tuple(paths) for paths in logs)
 
 
-#: The lifecycle state each recorded command establishes. ``drydock plan`` names two states,
-#: separated by its sub-verb; ``drydock score`` names one per sub-verb.
-_VERB_LABELS = {
-    "init": "INITIALIZED",
-    "import": "IMPORTED",
-    "analyze": "ANALYZED",
-    "plan": "PLAN CREATED",
-    "build": "BUILT",
-}
-_SCORE_LABELS = {
-    "ac": "LLM ACCEPTANCE CHECKS OK",
-    "build": "SCORE BUILD",
-    "release": "SCORE RELEASE",
-    "report": "FINALIZED",
-}
+def _workflow(target_dir: Path) -> list[dict[str, object]]:
+    """The workflow ladder: the states ``PROJECT_STATUS.jsonl`` holds, in ladder order.
 
-#: Sub-verbs of ``drydock build`` that inspect a build rather than perform one.
-_BUILD_SUBVERBS = frozenset({"status", "score"})
-
-#: Exit 2 is a usage error or a deferred command. Neither reached the state its verb names,
-#: so neither belongs on the ladder — as a pass or as a failure.
-_NOT_AN_ATTEMPT = 2
-
-
-def _ladder_label(argv: Sequence[object]) -> str:
-    """The workflow state a recorded command establishes, or ``""`` if it establishes none."""
-    tokens = [str(part) for part in argv][1:]  # drop the "drydock" shim
-    if not tokens:
-        return ""
-    verb = tokens[0]
-    if verb == "plan":
-        return "PLAN REPAIRED" if "repair" in tokens[1:] else "PLAN CREATED"
-    if verb == "build" and len(tokens) > 1 and tokens[1] in _BUILD_SUBVERBS:
-        return ""  # `build status` and `build score` read a build; they do not make one
-    if verb == "score":
-        # A bare `drydock score <Target>` is the acceptance score, as `_score_exit_codes` reads it.
-        sub = next((token for token in tokens[1:] if token in _SCORE_VERBS), "ac")
-        return _SCORE_LABELS.get(sub, "")
-    return _VERB_LABELS.get(verb, "")
-
-
-def _workflow(
-    target_dir: Path, commands: Sequence[Mapping[str, object]]
-) -> list[dict[str, object]]:
-    """The workflow ladder for this run: one row per state the Target actually attempted.
-
-    Two sources, in increasing authority. Every recorded command names the state it
-    establishes, which gives a ladder for Targets built before Drydock persisted one.
-    ``PROJECT_STATUS.jsonl`` then overrides what it holds, because a command that recorded
-    its own outcome knows more than its exit code does — a build that exits 0 with stalled
-    blocks is not BUILT. That file is a state machine, not a journal: it already voids every
-    state below the one last recorded, so it needs no reduction here.
-
-    A state never attempted is absent. It is never rendered as a failure or as a claim.
+    One receipt row per state row, and nothing else. The state machine is the only source:
+    it already voids every state below the one last recorded, so there is nothing to reduce
+    and no second opinion to reconcile. A state it does not hold was either never attempted
+    or was voided by a later one; either way the receipt has no claim to make about it.
     """
-    from drydock.project_status import LABEL_LADDER, latest_per_label, read_status
+    from drydock.project_status import read_status
 
-    steps: dict[str, dict[str, object]] = {}
-    for command in commands:
-        label = _ladder_label(command.get("argv") or [])
-        code = command.get("returncode")
-        if not label or code == _NOT_AN_ATTEMPT:
-            continue
-        text = _command_text(command.get("argv") or [])
-        steps[label] = {
-            "label": label,
-            "passed": code == 0,
-            "at": _iso(str(command.get("stamp") or "")),
-            "detail": "" if code == 0 else f"exited {code}",
-            "command": text,
-            "attempts": int(steps.get(label, {}).get("attempts", 0)) + 1,
-        }
-
-    recorded = latest_per_label(read_status(target_dir))
-    # The state machine is authoritative and complete: a state it does not hold was voided by
-    # a later one, so the history-derived rung below it must not survive as a stale claim.
-    if recorded:
-        floor = max(LABEL_LADDER.index(label) for label in recorded)
-        steps = {
-            label: step
-            for label, step in steps.items()
-            if label in recorded or LABEL_LADDER.index(label) < floor
-        }
-    for label, entry in recorded.items():
-        steps[label] = {
-            "label": label,
+    return [
+        {
+            "label": entry.label,
             "passed": entry.passed,
             "at": entry.at,
             "detail": entry.detail,
             "command": entry.command,
             "attempts": entry.attempts,
         }
-
-    # BUILDING is the marker `drydock build` writes on entry. Once the build reported an
-    # outcome it says nothing the BUILT row does not, so it is shown only while it stands alone.
-    if "BUILT" in steps:
-        steps.pop("BUILDING", None)
-
-    # FINALIZED describes an earlier publication of this receipt, which the one being written
-    # supersedes. Carrying it forward would let a second `drydock score report` finalize a run
-    # on the strength of the first, so the state is only ever earned by `_finalize`.
-    steps.pop("FINALIZED", None)
-
-    return [steps[label] for label in LABEL_LADDER if label in steps]
+        for entry in read_status(target_dir)
+    ]
 
 
-def _workflow_state(workflow: Sequence[Mapping[str, object]]) -> str:
-    """Grade the ladder: ``fail`` on any failed state, ``pass`` once finalized, else ``warn``."""
-    if any(not step.get("passed") for step in workflow):
+def _workflow_state(result: Mapping[str, object]) -> str:
+    """Grade the run from the state the machine holds: ``fail``, ``pass``, or ``warn``."""
+    state = result.get("state")
+    if not isinstance(state, Mapping) or not state.get("label"):
+        return "warn"
+    if not state.get("passed"):
         return "fail"
-    if any(step.get("label") == "FINALIZED" for step in workflow):
-        return "pass"
-    return "warn"
+    return "pass" if state.get("label") == "FINALIZED" else "warn"
 
 
-def _finalize(workflow: list[dict[str, object]], target: str) -> list[dict[str, object]]:
-    """Add the FINALIZED row this receipt is itself earning, when the run has earned it.
+def _reconcile_acceptance(target: str, target_dir: Path, acceptance: Mapping[str, object]) -> None:
+    """Fail LLM ACCEPTANCE CHECKS OK in the machine when the evidence contradicts it.
 
-    Publishing the receipt is the finalizing act, so the document cannot wait for a state it
-    is in the middle of establishing. It is only claimed for a run that failed nothing and
-    was scored: a receipt published over an unscored build reports an unfinished project,
-    which is what the amber stamp is for.
+    ``drydock score ac`` owns that state and normally records its own failure. This catches
+    the case where the board on disk reports failures the recorded state does not, and it
+    corrects the machine rather than the rendered page, so the file and the receipt cannot
+    disagree. Recording the failure voids the scores that ran on top of it.
     """
-    if any(not step.get("passed") for step in workflow):
-        return workflow
-    scored = any(step.get("label") == "SCORE BUILD" for step in workflow)
-    if not scored:
-        return workflow
-    workflow = [step for step in workflow if step.get("label") != "FINALIZED"]
-    workflow.append({
-        "label": "FINALIZED",
-        "passed": True,
-        "at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.") + "000Z",
-        "detail": "receipt published",
-        "command": f"drydock score report {target}",
-        "attempts": 1,
-    })
-    return workflow
+    from drydock.project_status import latest_per_label, read_status, record_status
+
+    if not acceptance.get("failed"):
+        return
+    standing = latest_per_label(read_status(target_dir))
+    entry = standing.get("LLM ACCEPTANCE CHECKS OK")
+    if entry is None or not entry.passed:
+        return
+    failures = acceptance.get("failures") or ()
+    record_status(
+        target_dir,
+        "LLM ACCEPTANCE CHECKS OK",
+        passed=False,
+        detail=f"{len(failures)} criteria failed",
+        command=f"drydock score report {target}",
+    )
+
+
+def _earn_finalized(target: str, target_dir: Path) -> None:
+    """Record FINALIZED when publishing this receipt is what earns it.
+
+    Publishing is the finalizing act, so the state is written before the document renders and
+    the document then reads it like any other. It is earned only by a ladder that failed
+    nothing and was scored: a receipt published over an unscored build leaves the project
+    unfinished, which is what the amber stamp reports.
+    """
+    from drydock.project_status import read_status, record_status
+
+    entries = read_status(target_dir)
+    if not entries or any(not entry.passed for entry in entries):
+        return
+    if not any(entry.label == "SCORE BUILD" for entry in entries):
+        return
+    record_status(
+        target_dir,
+        "FINALIZED",
+        passed=True,
+        detail="",
+        command=f"drydock score report {target}",
+    )
 
 
 def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
@@ -588,18 +531,15 @@ def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
     acceptance = _acceptance(target_dir)
     build = _build_facts(target, target_dir, logs_dir / _RECORDS_NAME)
 
-    # The verdict is the lifecycle the Target recorded, not an inference from one artifact.
-    # An acceptance failure is a failed state on the ladder like any other, so it lands in the
+    # The verdict is the state the machine holds, not an inference from one artifact. An
+    # acceptance failure is a failed state on the ladder like any other, so it lands in the
     # same place; a board that was never recorded withholds nothing, because the states that
     # did run still say exactly how far the project got.
-    workflow = _workflow(target_dir, commands)
-    if acceptance["failed"]:
-        for step in workflow:
-            if step["label"] == "LLM ACCEPTANCE CHECKS OK":
-                step["passed"] = False
-                step["detail"] = f"{len(acceptance['failures'])} criteria failed"
-    workflow = _finalize(workflow, target)
-    status = {"pass": "passed", "fail": "failed", "warn": "incomplete"}[_workflow_state(workflow)]
+    workflow = _workflow(target_dir)
+    state = dict(workflow[-1]) if workflow else {}
+    status = {"pass": "passed", "fail": "failed", "warn": "incomplete"}[
+        _workflow_state({"state": state})
+    ]
 
     from drydock import __version__
 
@@ -607,6 +547,7 @@ def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
         "target": target,
         "run_id": start_key,
         "status": status,
+        "state": state,
         "workflow": workflow,
         "commands": commands,
         "score_exit_codes": _score_exit_codes(commands),
@@ -890,25 +831,21 @@ def _run_facts(result: Mapping[str, object], delivered: str) -> list[tuple[str, 
 
 
 def _detail_line(result: Mapping[str, object]) -> str:
-    """State how far the recorded lifecycle got, and stop there."""
-    workflow = [step for step in result.get("workflow") or () if isinstance(step, dict)]
+    """Name the one state the project is in, and stop there."""
+    state = result.get("state")
     target = html.escape(str(result.get("target") or ""))
-    if not workflow:
+    if not isinstance(state, Mapping) or not state.get("label"):
         return (
             f"{target} has recorded no lifecycle state. The commands below are everything "
             "this receipt can show."
         )
-    failed = [step for step in workflow if not step.get("passed")]
-    reached = str(workflow[-1].get("label") or "")
-    if failed:
-        names = ", ".join(html.escape(str(step.get("label"))) for step in failed)
-        return f"{target} reached {html.escape(reached)}; {names} failed."
-    if reached == "FINALIZED":
-        return f"{target} reached FINALIZED; every recorded state passed."
-    return (
-        f"{target} reached {html.escape(reached)}; every recorded state passed, but the "
-        "project is not finished."
-    )
+    label = html.escape(str(state.get("label") or ""))
+    if not state.get("passed"):
+        detail = html.escape(str(state.get("detail") or ""))
+        return f"{target} is in state {label}, which failed{f': {detail}' if detail else ''}."
+    if state.get("label") == "FINALIZED":
+        return f"{target} is in state FINALIZED; every state it holds passed."
+    return f"{target} is in state {label}; it passed, but the project is not finished."
 
 
 def _ladder_table(workflow: Sequence[Mapping[str, object]]) -> str:
@@ -1053,7 +990,7 @@ def _render(
     """Render the receipt an operator opens from the Target's workspace."""
     target = str(result.get("target") or report_root.name)
     workflow = [step for step in result.get("workflow") or () if isinstance(step, dict)]
-    state = _workflow_state(workflow)
+    state = _workflow_state(result)
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
     checks = _receipt_checks(report_root, result)
 
@@ -1301,6 +1238,11 @@ def write_report(target: str, workspace: Path, target_dir: Path, build_dir: Path
     Returns the written ``index.html``. Raises :class:`ReportError` when the Target has
     recorded nothing to report.
     """
+    # The machine is settled before the record is collected, so the document only ever
+    # reports states the file holds — including the FINALIZED this publication earns.
+    _reconcile_acceptance(target, target_dir, _acceptance(target_dir))
+    _earn_finalized(target, target_dir)
+
     result = collect_run(target, workspace, target_dir)
     report_root = target_dir / REPORT_DIRNAME
     _publish(target, workspace, target_dir, build_dir, report_root, result)

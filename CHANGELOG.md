@@ -20,13 +20,26 @@ command surface and Typed Specification contract are unstable and may change bet
   appended forever and the state was re-derived by ranking labels by ladder position, so a
   Target accumulated hundreds of records, re-running a mid-ladder command left stale downstream
   states standing, and a project whose newest evidence was a rescore still reported
-  `FINALIZED`. `project_status.current_state` is the single reducer; `drydock score report`
-  reads it instead of re-deriving the ladder, and no longer lets a command-history rung survive
-  below a state the machine voided. The hand-rolled markdown parser is gone, taking with it the
-  single-line escaping constraint on `detail`. Each row carries an `attempts` count so the
-  receipt still reports repeated attempts without retaining a journal; the count resets when
-  the state is voided. The legacy `PROJECT_STATUS.md` is removed on first write, and its
-  contents are not migrated — existing Targets rebuild their ladder as commands re-record.
+  `FINALIZED`. `project_status.current_state` is the single reducer. The hand-rolled markdown
+  parser is gone, taking with it the single-line escaping constraint on `detail`. Each row
+  carries an `attempts` count so the receipt still reports repeated attempts without retaining
+  a journal; the count resets when the state is voided. The legacy `PROJECT_STATUS.md` is
+  removed on first write, and its contents are not migrated — existing Targets rebuild their
+  ladder as commands re-record.
+- 2026-08-20: The `drydock score report` receipt renders the state machine and nothing else.
+  The workflow ladder is one row per row of `PROJECT_STATUS.jsonl`, and the header states the
+  one state the project is in rather than re-deriving how far the run got. The receipt
+  previously merged a second ladder inferred from `logs/history.jsonl` exit codes, graded it
+  with its own reducer, and appended a `FINALIZED` row that existed only in the rendered page —
+  so the document could claim a state the Target did not hold, and the header and ladder could
+  disagree. `FINALIZED` is now recorded to the machine before the page renders, still earned
+  only by a ladder that failed nothing and reached `SCORE BUILD`, and `drydock score report`
+  prints the resulting state. An acceptance board on disk that contradicts a passing
+  `LLM ACCEPTANCE CHECKS OK` corrects the machine — voiding the scores above it — instead of
+  correcting the rendered row. `drydock score report`, `score build`, and `score release` are
+  additionally journaled under the Target they name; they were recorded under `report`,
+  `build`, and `release` as though those were Target names, which kept them out of their own
+  Target's history and out of the receipt's command list.
 - 2026-08-20: The repair ladder in `drydock score build` reports what each pass settled instead
   of whether it closed its block. Every pass that did not close was labelled `failed`, so a
   block that verified on repair 5 printed five failures above one success, and a pass overturned

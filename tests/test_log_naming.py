@@ -172,6 +172,9 @@ def test_llm_log_is_created_only_when_activity_is_recorded(tmp_path):
         ({"args": ["commonmark_2", "--reset"]}, "commonmark_2"),
         ({"args": ["status", "commonmark_2"]}, "commonmark_2"),  # drydock build status <Target>
         ({"args": ["ac", "commonmark_2"]}, "commonmark_2"),  # drydock score ac <Target>
+        ({"args": ["build", "commonmark_2"]}, "commonmark_2"),  # drydock score build <Target>
+        ({"args": ["report", "commonmark_2"]}, "commonmark_2"),  # drydock score report <Target>
+        ({"args": ["release", "commonmark_2"]}, "commonmark_2"),  # drydock score release <Target>
         ({"args": ["commonmark_2", "--check"]}, "commonmark_2"),
         ({"args": ["--check", "commonmark_2"]}, "commonmark_2"),  # switch before the Target
         ({"args": ["--step", "feature-parser", "commonmark_2"]}, "commonmark_2"),

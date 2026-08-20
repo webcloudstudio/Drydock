@@ -276,8 +276,16 @@ def test_collect_run_records_the_score_exit_code_whichever_operand_order_was_use
 # ── verdict ──────────────────────────────────────────────────────────────────────────
 
 
-def _built(workspace: Path) -> None:
-    """A history that ran the lifecycle through to a recorded build score."""
+def _ladder(target_dir: Path, *labels: str) -> None:
+    """Drive the Target's state machine through *labels* in order."""
+    from drydock.project_status import record_status
+
+    for label in labels:
+        record_status(target_dir, label, passed=True, command=f"drydock {label.lower()} widget")
+
+
+def _built(workspace: Path, target_dir: Path | None = None) -> None:
+    """A run that reached a recorded build score, in both the journal and the machine."""
     _history(
         workspace,
         [
@@ -286,108 +294,112 @@ def _built(workspace: Path) -> None:
             _record("score build widget", stamp="20260101.092000.000Z"),
         ],
     )
+    if target_dir is not None:
+        _ladder(target_dir, "INITIALIZED", "BUILT", "SCORE BUILD")
 
 
-def test_verdict_passes_when_the_recorded_lifecycle_finished(workspace, target_dir):
+def test_the_ladder_is_the_states_the_machine_holds(workspace, target_dir):
     _soundings(target_dir, [VERIFIED_PASS, VERIFIED_PASS])
-    _built(workspace)
+    _built(workspace, target_dir)
     result = collect_run("widget", workspace, target_dir)
-    assert result["status"] == "passed"
     assert result["acceptance"]["passed"] == 2
     assert [step["label"] for step in result["workflow"]] == [
         "INITIALIZED",
         "BUILT",
         "SCORE BUILD",
-        "FINALIZED",
     ]
+    assert result["state"]["label"] == "SCORE BUILD"
+    assert result["status"] == "incomplete"  # scored, but not yet published
+
+
+def test_publishing_a_clean_scored_run_earns_finalized(workspace, target_dir, build_dir):
+    from drydock.project_status import current_state
+
+    _built(workspace, target_dir)
+    build_dir.mkdir(parents=True)
+    write_report("widget", workspace, target_dir, build_dir)
+    assert current_state(target_dir).label == "FINALIZED"
+    assert collect_run("widget", workspace, target_dir)["status"] == "passed"
 
 
 def test_verdict_fails_on_a_failed_criterion_even_when_every_command_exited_clean(
-    workspace, target_dir
+    workspace, target_dir, build_dir
 ):
     """The product's verdict, not the harness's: clean exits do not earn a PASSED stamp."""
+    from drydock.project_status import current_state
+
     _soundings(target_dir, [VERIFIED_PASS, VERIFIED_FAIL])
-    _history(
-        workspace,
-        [
-            _record("init widget", stamp="20260101.090000.000Z"),
-            _record("score ac widget", stamp="20260101.091000.000Z"),
-            _record("score build widget", stamp="20260101.092000.000Z"),
-        ],
-    )
+    _built(workspace, target_dir)
+    _ladder(target_dir, "LLM ACCEPTANCE CHECKS OK", "SCORE BUILD")
+    build_dir.mkdir(parents=True)
+    write_report("widget", workspace, target_dir, build_dir)
+
+    # The board on disk contradicts the recorded state, so the machine is corrected — which
+    # voids the scores above it and leaves the run unpublishable.
+    state = current_state(target_dir)
+    assert state.label == "LLM ACCEPTANCE CHECKS OK"
+    assert state.passed is False
+    assert state.detail == "1 criteria failed"
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "failed"
     assert result["acceptance"]["failures"] == ("ac-2",)
     assert "FINALIZED" not in [step["label"] for step in result["workflow"]]
 
 
-def test_an_unverified_criterion_does_not_fail_the_run(workspace, target_dir):
+def test_an_unverified_criterion_does_not_fail_the_run(workspace, target_dir, build_dir):
     _soundings(target_dir, [VERIFIED_PASS, VERIFIED_UNVERIFIED])
-    _built(workspace)
+    _built(workspace, target_dir)
+    build_dir.mkdir(parents=True)
+    write_report("widget", workspace, target_dir, build_dir)
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "passed"
     assert result["acceptance"]["unverified"] == 1
 
 
-def test_a_built_and_scored_target_passes_without_an_acceptance_board(workspace, target_dir):
-    """The verdict is the lifecycle the Target recorded, not the presence of one artifact."""
-    _built(workspace)
+def test_a_built_and_scored_target_passes_without_an_acceptance_board(
+    workspace, target_dir, build_dir
+):
+    """The verdict is the state the machine holds, not the presence of one artifact."""
+    _built(workspace, target_dir)
+    build_dir.mkdir(parents=True)
+    write_report("widget", workspace, target_dir, build_dir)
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "passed"
     assert result["acceptance"]["recorded"] is False
 
 
-def test_an_unscored_run_is_incomplete_rather_than_failed(workspace, target_dir):
-    _history(
-        workspace,
-        [
-            _record("init widget", stamp="20260101.090000.000Z"),
-            _record("analyze widget", stamp="20260101.091000.000Z"),
-        ],
-    )
+def test_an_unscored_run_is_incomplete_rather_than_failed(workspace, target_dir, build_dir):
+    _history(workspace, [_record("init widget", stamp="20260101.090000.000Z")])
+    _ladder(target_dir, "INITIALIZED", "ANALYZED")
+    build_dir.mkdir(parents=True)
+    write_report("widget", workspace, target_dir, build_dir)
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "incomplete"
     assert [step["label"] for step in result["workflow"]] == ["INITIALIZED", "ANALYZED"]
 
 
-def test_a_failed_command_fails_the_state_it_was_establishing(workspace, target_dir):
-    _history(
-        workspace,
-        [
-            _record("init widget", stamp="20260101.090000.000Z"),
-            _record("build widget", stamp="20260101.091000.000Z", return_code=1),
-            _record("score build widget", stamp="20260101.092000.000Z"),
-        ],
-    )
-    result = collect_run("widget", workspace, target_dir)
-    assert result["status"] == "failed"
-    built = next(step for step in result["workflow"] if step["label"] == "BUILT")
-    assert built["passed"] is False
-    assert built["detail"] == "exited 1"
-
-
-def test_the_recorded_status_file_outranks_the_exit_code(workspace, target_dir):
+def test_a_recorded_failure_fails_the_state_and_voids_the_scores(workspace, target_dir):
     """A build can exit 0 with stalled blocks; the command that knew that recorded it."""
     from drydock.project_status import record_status
 
-    _built(workspace)
+    _built(workspace, target_dir)
     record_status(target_dir, "BUILT", passed=False, detail="2 block(s) stalled")
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "failed"
-    built = next(step for step in result["workflow"] if step["label"] == "BUILT")
-    assert built["detail"] == "2 block(s) stalled"
+    assert [step["label"] for step in result["workflow"]] == ["INITIALIZED", "BUILT"]
+    assert result["state"]["detail"] == "2 block(s) stalled"
 
 
 def test_a_reattempted_state_reports_how_many_attempts_it_took(workspace, target_dir):
     from drydock.project_status import record_status
 
-    _built(workspace)
+    _built(workspace, target_dir)
     record_status(target_dir, "BUILT", passed=False, detail="1 step(s) failed")
     record_status(target_dir, "BUILT", passed=True)
     result = collect_run("widget", workspace, target_dir)
     built = next(step for step in result["workflow"] if step["label"] == "BUILT")
     assert built["passed"] is True
-    assert built["attempts"] == 2
+    assert built["attempts"] == 3
 
 
 # ── publishing ───────────────────────────────────────────────────────────────────────
@@ -443,6 +455,7 @@ def published(workspace: Path, target_dir: Path, build_dir: Path) -> Path:
             _record("score build widget", stamp="20260101.091000.000Z"),
         ],
     )
+    _ladder(target_dir, "BUILT", "SCORE BUILD")
     (build_dir / "src").mkdir(parents=True)
     (build_dir / "src" / "app.py").write_text("print('hi')\n", encoding="utf-8")
     (build_dir / "src" / "__pycache__").mkdir()
@@ -629,47 +642,41 @@ def test_the_delivered_tree_omits_caches_without_deleting_them(published, build_
     assert "__pycache__" not in published.read_text(encoding="utf-8")
 
 
-def test_a_usage_error_is_not_a_lifecycle_attempt(workspace, target_dir):
-    """`drydock score jq` with no sub-verb exits 2; it never reached the state it names."""
-    _built(workspace)
-    _history(
-        workspace,
-        [
-            _record("init widget", stamp="20260101.090000.000Z"),
-            _record("build widget", stamp="20260101.091000.000Z"),
-            _record("score build widget", stamp="20260101.092000.000Z"),
-            _record("score widget", stamp="20260101.093000.000Z", return_code=2),
-        ],
-    )
-    result = collect_run("widget", workspace, target_dir)
-    assert result["status"] == "passed"
-    assert "LLM ACCEPTANCE CHECKS OK" not in [step["label"] for step in result["workflow"]]
+def test_the_command_journal_never_puts_a_state_on_the_ladder(workspace, target_dir):
+    """Exit codes are not states. Only a command that recorded one establishes one.
 
-
-def test_reading_a_build_is_not_building_one(workspace, target_dir):
+    A usage error, a read-only ``build status``, and a clean ``score build`` all appear in the
+    journal; none of them may invent a rung the machine does not hold.
+    """
     _history(
         workspace,
         [
             _record("init widget", stamp="20260101.090000.000Z"),
             _record("build status widget", stamp="20260101.091000.000Z", return_code=1),
+            _record("score build widget", stamp="20260101.092000.000Z"),
+            _record("score widget", stamp="20260101.093000.000Z", return_code=2),
         ],
     )
+    _ladder(target_dir, "INITIALIZED")
     result = collect_run("widget", workspace, target_dir)
     assert [step["label"] for step in result["workflow"]] == ["INITIALIZED"]
+    assert result["state"]["label"] == "INITIALIZED"
 
 
-def test_a_previous_publication_cannot_finalize_this_one(workspace, target_dir):
-    """Reporting twice is not an achievement; FINALIZED is earned by the run, not inherited."""
-    from drydock.project_status import record_status
+def test_a_rebuild_voids_the_finalized_state_a_previous_publication_earned(
+    workspace, target_dir, build_dir
+):
+    """Reporting twice is not an achievement; FINALIZED cannot outlive the build under it."""
+    from drydock.project_status import current_state, record_status
 
-    _history(
-        workspace,
-        [
-            _record("init widget", stamp="20260101.090000.000Z"),
-            _record("build widget", stamp="20260101.091000.000Z"),
-        ],
-    )
-    record_status(target_dir, "FINALIZED", passed=True)
+    _built(workspace, target_dir)
+    build_dir.mkdir(parents=True)
+    write_report("widget", workspace, target_dir, build_dir)
+    assert current_state(target_dir).label == "FINALIZED"
+
+    record_status(target_dir, "BUILT", passed=True, command="drydock build widget")
+
+    assert current_state(target_dir).label == "BUILT"
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "incomplete"
     assert "FINALIZED" not in [step["label"] for step in result["workflow"]]

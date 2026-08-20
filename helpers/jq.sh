@@ -8,6 +8,7 @@ export DRYDOCK_BUILD_DIRECTORY=$PROJECT_DIR
 export TARGET=$DRYDOCK_WORKSPACE/targets/$PROJECT
 
 # current price differences for Claude:  Sonnet costing exactly 2x Haiku and Opus costing 5x Haiku (or 2.5x Sonnet)
+# current price differences for Codex:   gpt-5.6-luna=1, gpt-5.6-terra=10, gpt-5.6-sol=25
 export OPTS="--llm-provider codex --model gpt-5.6-luna"
 #export OPTS="--llm-provider claude --model sonnet"
 export OPTS="--llm-provider claude --model haiku"
