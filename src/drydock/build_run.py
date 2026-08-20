@@ -3820,6 +3820,10 @@ def build_target(
             steps.append(step_result)
             if on_step is not None:
                 on_step(step_result)
+            if not dry_run:
+                from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
+
+                _refresh_chair(target_dir)
         if status == "failed" or step_id is not None or story_id is not None:
             break
 

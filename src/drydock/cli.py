@@ -1997,6 +1997,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     )
 
     target_dir = require_target_dir(args.Target)
+    from drydock.errors import clear_error_record
+
+    clear_error_record(target_dir)
     if getattr(args, "step", None) and getattr(args, "story", None):
         raise UsageError("--step and --story are mutually exclusive.")
     if getattr(args, "continue_", False) and getattr(args, "reset", False):
