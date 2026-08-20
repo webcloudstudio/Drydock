@@ -42,10 +42,6 @@ _LADDER_INDEX = {label: index for index, label in enumerate(LABEL_LADDER)}
 
 STATUS_FILENAME = "PROJECT_STATUS.jsonl"
 
-#: The append-only markdown journal this file replaces. A Target still carrying one is
-#: migrated on first read and the journal removed, so no Target keeps two status files.
-_LEGACY_FILENAME = "PROJECT_STATUS.md"
-
 
 @dataclass(frozen=True)
 class StatusEntry:
@@ -118,8 +114,6 @@ def read_status(target_dir: Path) -> tuple[StatusEntry, ...]:
     whose real work already succeeded.
     """
     path = target_dir / STATUS_FILENAME
-    if not path.exists():
-        _migrate_legacy(target_dir)
     try:
         content = path.read_text(encoding="utf-8")
     except OSError:
@@ -168,80 +162,6 @@ def latest_per_label(entries: tuple[StatusEntry, ...]) -> dict[str, StatusEntry]
     return {label: found[label] for label in LABEL_LADDER if label in found}
 
 
-def _migrate_legacy(target_dir: Path) -> None:
-    """Fold a legacy ``PROJECT_STATUS.md`` journal into the state machine, then remove it.
-
-    The journal is replayed in recorded order under the same void rule live recording uses,
-    which is the only reading of it that yields one state: its records are attempts, and an
-    attempt at a state always invalidated whatever stood above it. A record with no parsable
-    instant keeps its file position, because file order is the order the commands ran.
-    """
-    legacy = target_dir / _LEGACY_FILENAME
-    try:
-        content = legacy.read_text(encoding="utf-8")
-    except OSError:
-        return
-
-    standing: list[StatusEntry] = []
-    for record in _parse_legacy(content):
-        if record.label not in _LADDER_INDEX:
-            continue
-        rank = _LADDER_INDEX[record.label]
-        previous = next((entry for entry in standing if entry.label == record.label), None)
-        standing = [entry for entry in standing if _LADDER_INDEX[entry.label] < rank]
-        standing.append(
-            StatusEntry(
-                label=record.label,
-                passed=record.passed,
-                at=record.at,
-                detail=record.detail,
-                command=record.command,
-                attempts=(previous.attempts + 1) if previous is not None else 1,
-            )
-        )
-
-    _write(target_dir, standing)
-    if not standing:
-        # `_write` only unlinks the journal when it wrote something. A journal holding no
-        # ladder state has nothing to carry forward, so it goes too.
-        try:
-            legacy.unlink(missing_ok=True)
-        except OSError:
-            return
-
-
-def _parse_legacy(content: str) -> list[StatusEntry]:
-    """Parse the legacy markdown journal into its records, in file order."""
-    records: list[StatusEntry] = []
-    fields: dict[str, str] = {}
-
-    def flush() -> None:
-        if "label" in fields:
-            records.append(
-                StatusEntry(
-                    label=fields["label"],
-                    passed=fields.get("result") == "pass",
-                    at=fields.get("at", ""),
-                    detail=fields.get("detail", ""),
-                    command=fields.get("command", ""),
-                )
-            )
-
-    for line in content.splitlines():
-        line = line.rstrip()
-        if line.startswith("## "):
-            flush()
-            fields = {"label": line[3:].strip()}
-        else:
-            for key in ("result", "at", "detail", "command"):
-                prefix = f"{key}: "
-                if line.startswith(prefix):
-                    fields[key] = line[len(prefix) :].strip()
-                    break
-    flush()
-    return records
-
-
 def _write(target_dir: Path, entries: list[StatusEntry]) -> None:
     """Rewrite the snapshot: the state rows, then the derived summary row."""
     lines = [
@@ -267,7 +187,6 @@ def _write(target_dir: Path, entries: list[StatusEntry]) -> None:
         )
     try:
         (target_dir / STATUS_FILENAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
-        (target_dir / _LEGACY_FILENAME).unlink(missing_ok=True)
     except OSError:
         return
 

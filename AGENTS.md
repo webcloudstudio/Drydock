@@ -1,36 +1,31 @@
 # AGENTS.md — Drydock
 
-Drydock is a specification-driven software design and delivery methodology implemented as an installable Python CLI. It plans, builds, tests, reviews, and evolves software from specifications expressed with typed front matter known as Blueprints.
+Drydock is a specification-driven software design and delivery methodology implemented as an
+installable Python CLI. It plans, builds, tests, reviews, and evolves software from specifications
+expressed with typed front matter known as Blueprints.
 
-## Master User Facing Documentation at `docs/Drydock_Specification.md`
+Beta software: no legacy contract. Changes need not be backwards compatible.
 
-IMPORTANT: NO LLM IS AUTHORIZED TO WRITE ANYTHING TO docs/Drydock_Specification.md unless
+## `docs/Drydock_Specification.md` — Master User-Facing Documentation
+
+IMPORTANT: NO LLM IS AUTHORIZED TO WRITE ANYTHING TO `docs/Drydock_Specification.md` unless
 specifically authorized. Each block edit must be approved individually. There are no exceptions.
 
-The following rules apply only to that document.
+Rules below apply only to that document.
 
-**Editing protocol** — Obtain the author's explicit approval before any edits.
-
-**Content** — user-facing normative statements of intended behavior, scope, and contracts. It is
-syntactically precise and does not explain how the system works. No rationale, reasoning, open
-questions, status, history, alternatives, or hedging ("we could / should probably / might / plan
-to").
-
-**Voice** — present-tense, declarative, third-person ("`drydock build` executes the Manifest."). No future, no conditional, no first person.
-
-**Command-entry template** — every command section uses this exact structure and order, with no
-added or reordered sections. One section per command; duplicate or overlapping command headings are violations to fix.
-1. CLI syntax (synopsis)
-2. Behavior description
-3. Input files
-4. Output files
-5. Exit codes
+- **Content** — user-facing normative statements of behavior, scope, and contracts. Syntactically
+  precise; does not explain how the system works. No rationale, open questions, status, history,
+  alternatives, or hedging.
+- **Voice** — present-tense, declarative, third-person ("`drydock build` executes the Manifest.").
+  No future, conditional, or first person.
+- **Command entries** — one section per command, in this exact order, nothing added or reordered:
+  CLI syntax, behavior description, input files, output files, exit codes. Duplicate or
+  overlapping command headings are violations to fix.
 
 ## Git Behavior
-At the completion of any operation, all files should be committed in git even if you did not touch it. Other
-processes may be working on files so commit the latest copy of the code each run.
 
-Notify and stop on any merge issues.
+Commit all files at the completion of any operation, including files you did not touch — other
+processes may be writing concurrently. Notify and stop on any merge issue.
 
 ## Project Layout
 
@@ -49,14 +44,9 @@ Drydock/
   targets/<PROJECT>  Generated Target workspace; see Data Locations
 ```
 
-Shell and PowerShell files in `bin/` only locate the environment and invoke the package entry
-point.
-
-`Rigging/` is Drydock's source of shared business rules, templates, stack guidance, and branding.
 `Rigging/` and `prompts/` are packaged into the wheel via Hatchling `force-include` at
-`drydock/resources/Rigging/` and `drydock/resources/prompts/`, and resolved through
-`src/drydock/paths.py`. Both source-tree and installed resolution paths must work. The packaged
-copies under `drydock/resources/` are build-generated and are not independently editable sources.
+`drydock/resources/`, resolved through `src/drydock/paths.py`. Both source-tree and installed
+resolution must work; the packaged copies are build-generated, not editable sources.
 
 ### Boundaries
 
@@ -67,6 +57,7 @@ copies under `drydock/resources/` are build-generated and are not independently 
 | `src/drydock/config.py` | User-scoped configuration and configured root resolution |
 | `src/drydock/paths.py` | Source-tree and installed-resource resolution |
 | `src/drydock/llm.py` | Single adapter for subscription-authenticated CLI agent execution |
+| `bin/` | Locate the environment and invoke the package entry point; nothing else |
 | `Rigging/` | Drydock's own shared governed inputs |
 | `prompts/` | Versioned task prompts used by LLM-assisted commands |
 | `tests/` | Unit, CLI contract, and integration tests |
@@ -75,55 +66,40 @@ copies under `drydock/resources/` are build-generated and are not independently 
 
 | Data | Location |
 |---|---|
-| Drydock authoritative product specification | `docs/Drydock_Specification.md` |
+| Authoritative product specification | `docs/Drydock_Specification.md` |
 | Target Blueprint files | `$DRYDOCK_WORKSPACE/targets/<Target>/blueprint/` |
 | Imported User Sources (read-only) | `$DRYDOCK_WORKSPACE/targets/<Target>/blueprint/sources/` |
 | `METADATA.md`, `MANIFEST.md`, `BUILD_COMPASS.md`, `SCORECARD.md`, Sea Trials, Soundings, evidence, logs, QuarterDeck state | `$DRYDOCK_WORKSPACE/targets/<Target>/` |
-| Drydock distributable rules and templates | `Rigging/` and the packaged resource copy |
-| User configuration | User-scoped configuration managed by `drydock config` |
+| Distributable rules and templates | `Rigging/` and the packaged resource copy |
+| User configuration | Managed by `drydock config` |
 
-Commands must resolve `<Target>` under `$DRYDOCK_WORKSPACE/targets/` and the Blueprint as that
-Target's `blueprint/` subtree. They must not depend on the caller being in the Drydock
-repository.
+Commands resolve `<Target>` under `$DRYDOCK_WORKSPACE/targets/` and the Blueprint as that Target's
+`blueprint/` subtree. They must not depend on the caller being in the Drydock repository.
 
-`targets/` and the Build `<TARGET>` directory are the temporary workspace managed by the build
-process. Read them freely; do not edit them without a specific instruction. Hand edits are
-reserved for avoiding an unneeded rerun. Fix defects in `src/drydock/` with a test, never by
-patching generated Target data.
+`targets/` is the build process's temporary workspace. Read freely; edit only on specific
+instruction, and only to avoid an unneeded rerun. Fix defects in `src/drydock/` with a test, never
+by patching generated Target data.
 
 ## Development Rules
 
-- Implement one coherent capability at a time.
+- Implement one coherent capability at a time, as a vertical slice: derive syntax, inputs,
+  outputs, side effects, and exit codes from the specification; separate deterministic logic from
+  filesystem and LLM execution; implement it in an importable module; wire it into `cli.py`;
+  replace any deferred-command stub test with behavior and integration tests; update `README.md`
+  and repository guidance so implementation status is truthful.
+- Keep separate contracts for path resolution, plan parsing, prompt assembly, process execution,
+  and evidence. Do not collapse them into one module.
 - Keep the public interface under `drydock <verb> [<sub-verb>]`.
-- Add focused unit tests and CLI contract tests for every implemented command.
-- Multiple contributors may edit this directory concurrently. Before committing, inspect the
-  current diff and preserve changes made by other writers. Never stage or commit changes outside
-  the active task.
-- When constructing an agent prompt, include only the relevant specification sections. Do not inject the full specification unless the task is cross-cutting.
-- Test both source-tree and installed-wheel behavior when a change touches Rigging or packaging.
-- Never call an API-key-backed LLM provider. Use a subscription-authenticated CLI agent. Which
-  agent and model is configuration, not policy — selected by `--llm-provider` / `--model` or the
-  `LLM_PROVIDER` / `DRYDOCK_MODEL` environment and config settings. Do not treat any one vendor as
-  required.
+- Exit codes: `0` success, `1` operational failure, `2` usage error or deferred command.
 - Target Python `>=3.11`. Do not add Typer, Click, Rich, Pydantic, databases, or application
   frameworks without approval.
-- Exit codes: `0` success, `1` operational failure, `2` usage error or deferred command.
-
-## Implementing a Capability
-
-Implement commands as vertical slices:
-
-1. Define command syntax, inputs, outputs, side effects, and exit codes from the specification.
-2. Separate deterministic logic from filesystem operations and LLM execution.
-3. Implement deterministic logic in an importable module.
-4. Wire the module into `cli.py`.
-5. Replace any deferred-command stub test with behavior tests, and add integration tests for
-   filesystem changes and failure handling.
-6. Update `README.md` when a command moves from deferred to working.
-7. Update repository guidance and tests so implementation status is represented truthfully.
-
-Preserve clear, separate contracts for path resolution, plan parsing, prompt assembly, process
-execution, and evidence; do not collapse them into a single module.
+- Never call an API-key-backed LLM provider. Use a subscription-authenticated CLI agent. Agent and
+  model are configuration, not policy — `--llm-provider` / `--model`, or `LLM_PROVIDER` /
+  `DRYDOCK_MODEL`. No vendor is required.
+- When constructing an agent prompt, include only the relevant specification sections. Inject the
+  full specification only for cross-cutting tasks.
+- Multiple contributors edit this directory concurrently. Inspect the current diff before
+  committing and preserve other writers' changes. Never stage changes outside the active task.
 
 ### Verification Contract
 
@@ -136,10 +112,10 @@ execution, and evidence; do not collapse them into a single module.
 | Lint | `ruff check src/ tests/` |
 | Full suite | `python -m pytest` |
 | Package test | Required when changing Rigging resolution, package data, or launch behavior |
-| Implementation evidence | Matching tests and user-facing repository documentation updated truthfully |
+| Implementation evidence | Matching tests and user-facing documentation updated truthfully |
 
-LLM-assisted commands must isolate process execution behind an adapter so tests can use a fake
-runner. Tests must never spend API credits or require network access.
+LLM-assisted commands isolate process execution behind an adapter so tests use a fake runner. Tests
+never spend API credits or require network access.
 
 ### Development Commands
 
@@ -154,64 +130,55 @@ python -m hatchling build         # build wheel and sdist
 
 ## LLM-Assisted Command Pattern
 
-Commands that call an LLM follow one shape, first established by `drydock rigging compact`:
+One shape, first established by `drydock rigging compact`:
 
-1. **Load** the prompt with `prompts.load_prompt("<command>_<subcommand>")`. The loader validates
+1. **Load** the prompt with `prompts.load_prompt("<command>_<subcommand>")`; the loader validates
    frontmatter and exposes metadata including `model`.
-2. **Assemble** the final prompt deterministically: the prompt body plus an injected job block
-   (source paths, dates, per-item objective, fenced source content). Keep assembly in the module so
-   it is unit-testable without a process.
-3. **Execute** through `llm.run_prompt(...)`, which persists reproducible evidence
-   (`logs/llm.jsonl`, per-run prompt/raw/output/stderr files). Pass an `on_text`/`on_item`
-   callback for console progress.
+2. **Assemble** the prompt deterministically in the module (body plus an injected job block of
+   source paths, dates, per-item objective, fenced source content) so it is unit-testable.
+3. **Execute** through `llm.run_prompt(...)`, which persists evidence (`logs/llm.jsonl`, per-run
+   prompt/raw/output/stderr). Pass `on_text`/`on_item` for console progress.
 4. **Write outputs in the module**, not from the model. The model emits text; the module
    post-processes and writes files.
-5. **Inject the runner.** The capability function takes a `runner` parameter defaulting to
-   `run_prompt`, resolved at call time so tests can substitute a fake.
+5. **Inject the runner** — a `runner` parameter defaulting to `run_prompt`, resolved at call time.
 
 ### Prompt Contract Standard
 
-- **Naming:** `prompts/<command>_<subcommand>[_<modifier>].md`, lowercase.
-  Example: `drydock rigging compact` → `rigging_compact.md`.
-- **Frontmatter:** a leading `---` YAML block with required `name`, `description`, `version`,
-  `intent` and optional `command`, `model`, `output`. Parsed by `prompts.load_prompt` (no YAML
-  dependency).
+- **Naming:** `prompts/<command>_<subcommand>[_<modifier>].md`, lowercase
+  (`drydock rigging compact` → `rigging_compact.md`).
+- **Frontmatter:** leading `---` block, required `name`, `description`, `version`, `intent`;
+  optional `command`, `model`, `output`. Parsed by `prompts.load_prompt` (no YAML dependency).
 - **Registry:** `prompts/prompts.json` maps prompts to their target documentation and is read by
   `prompt_headers.py`. Update it when adding or renaming a prompt.
 
-# Changelog
+## Changelog
 
-`CHANGELOG.md` is the maintained high-level project history and a source for technically focused
-developer writing. Write for an experienced reader who wants to know what changed, why it matters
-to the system, and how the design or operator workflow now differs. Do not simplify into marketing
-language.
+`CHANGELOG.md` is the maintained project history, written for an experienced reader who wants to
+know what changed, why it matters, and how the design or operator workflow now differs. Technical,
+not marketing.
 
-Record work that materially changes one or more of the following:
-
-- product behavior, command contracts, file formats, schemas, or public interfaces;
-- architecture, execution flow, planning or verification policy, or other governing design;
-- reliability, safety, determinism, performance, observability, or recovery behavior;
-- developer, operator, installation, packaging, or integration workflow;
-- a release, milestone, public demonstration, paper, or other project event that materially
-  changes what users or contributors can do or understand.
-
-Date each entry with the date the change entered repository history. Describe the resulting
-capability, not the commit sequence, and name the affected command, artifact, interface, or
-subsystem. Preserve precise names, flags, file names, data formats, state names, and failure
-behavior. Group related commits into one entry when they deliver one capability; split them when
-their user impact or technical theme differs. Identify a material non-code deliverable as
-documentation, research, presentation, release, or publishing work.
+Record changes to: product behavior, command contracts, file formats, schemas, or public
+interfaces; architecture, execution flow, or planning and verification policy; reliability, safety,
+determinism, performance, observability, or recovery; developer, operator, installation, packaging,
+or integration workflow; releases, milestones, papers, and other events that change what users can
+do. Identify material non-code deliverables as documentation, research, presentation, release, or
+publishing work.
 
 Do not record individual commits, routine refactors, formatting, test-only churn, generated-file
-updates, intermediate debugging, or implementation mechanics that do not change behavior. Verify
-the diff, tests, and release metadata rather than inferring behavior from a commit subject.
+updates, or implementation mechanics that do not change behavior.
 
-Use the Keep-a-Changelog headings (`Added`, `Changed`, `Fixed`, `Removed`) without creating
-duplicate category headings, and keep entries reverse chronological within a section. Keep
-unreleased work under `## [Unreleased]`; add a version heading, date, and shipped capabilities when
-a release is cut. Do not leave a shipped release represented only as `[Unreleased]`, and do not
-describe unreleased work as shipped. Releases are cut with `publish_pypi.sh` after the version is
-updated manually.
+- Date each entry with the date the change entered repository history.
+- Describe the resulting capability, not the commit sequence, and name the affected command,
+  artifact, interface, or subsystem. Preserve precise names, flags, file names, formats, state
+  names, and failure behavior.
+- Group related commits delivering one capability; split them when user impact or theme differs.
+- Verify the diff, tests, and release metadata; do not infer behavior from a commit subject.
+- Use Keep-a-Changelog headings (`Added`, `Changed`, `Fixed`, `Removed`) with no duplicates, newest
+  first within a section. Unreleased work stays under `## [Unreleased]`; a release gets a version
+  heading and date. Never leave a shipped release as `[Unreleased]` or describe unreleased work as
+  shipped. Releases are cut with `publish_pypi.sh` after the version is updated manually.
 
-# Voice and Responses
-The user does not like wordy responses or over explained ones.  Before emitting output to user questions, reduce the word count so that it ideally fits onto a single screen especially when answering simple questions. If the answers are too long, they are not completely read and errors will enter the code so be precise and short.  Do not omit material information but do not over explain as the user is technical and will understand your responses if they are short.
+## Voice and Responses
+
+Answers are terse and technical, ideally one screen. Long answers are not read fully, which lets
+errors into the code. Omit no material information; explain nothing the reader already knows.

@@ -96,64 +96,6 @@ class TestRecordStatus:
         assert not missing.exists()
         assert read_status(missing) == ()
 
-    def test_supersedes_the_legacy_markdown_journal(self, tmp_path):
-        legacy = tmp_path / "PROJECT_STATUS.md"
-        legacy.write_text("## FINALIZED\nresult: pass\n", encoding="utf-8")
-
-        record_status(tmp_path, "INITIALIZED", passed=True)
-
-        assert not legacy.exists()
-        assert [e.label for e in read_status(tmp_path)] == ["INITIALIZED"]
-
-
-class TestLegacyMigration:
-    """The append-only markdown journal folds into the machine under the same void rule."""
-
-    def _journal(self, tmp_path, *records: tuple[str, str, str]) -> None:
-        lines = []
-        for label, result, at in records:
-            lines += [f"## {label}", f"result: {result}", f"at: {at}", "detail: ", "command: x", ""]
-        (tmp_path / "PROJECT_STATUS.md").write_text("\n".join(lines), encoding="utf-8")
-
-    def test_replaying_the_journal_voids_states_a_later_record_invalidated(self, tmp_path):
-        """A rescore after finalizing is what the journal could never express as one state."""
-        self._journal(
-            tmp_path,
-            ("FINALIZED", "pass", "2026-08-20T05:18:19.695+00:00"),
-            ("FINALIZED", "pass", "2026-08-20T05:32:46.556+00:00"),
-            ("SCORE BUILD", "pass", "2026-08-20T14:04:35.023+00:00"),
-            ("LLM ACCEPTANCE CHECKS OK", "pass", "2026-08-20T14:32:11.785+00:00"),
-            ("FINALIZED", "pass", "2026-08-20T14:33:04.068+00:00"),
-            ("SCORE BUILD", "pass", "2026-08-20T14:34:50.625+00:00"),
-            ("SCORE BUILD", "pass", "2026-08-20T14:38:51.886+00:00"),
-        )
-
-        entries = read_status(tmp_path)
-
-        assert [e.label for e in entries] == ["LLM ACCEPTANCE CHECKS OK", "SCORE BUILD"]
-        assert current_state(tmp_path).label == "SCORE BUILD"
-        assert entries[1].attempts == 2  # reset when the acceptance state voided it
-
-    def test_the_journal_is_removed_once_it_is_folded_in(self, tmp_path):
-        self._journal(tmp_path, ("BUILT", "pass", "2026-08-20T00:00:00.000+00:00"))
-
-        read_status(tmp_path)
-
-        assert not (tmp_path / "PROJECT_STATUS.md").exists()
-        assert (tmp_path / STATUS_FILENAME).is_file()
-
-    def test_a_journal_holding_no_ladder_state_is_discarded(self, tmp_path):
-        self._journal(tmp_path, ("MADE UP", "pass", "2026-08-20T00:00:00.000+00:00"))
-
-        assert read_status(tmp_path) == ()
-        assert not (tmp_path / "PROJECT_STATUS.md").exists()
-
-    def test_an_existing_snapshot_is_never_overwritten_by_a_journal(self, tmp_path):
-        record_status(tmp_path, "BUILT", passed=True)
-        self._journal(tmp_path, ("FINALIZED", "pass", "2026-08-20T00:00:00.000+00:00"))
-
-        assert [e.label for e in read_status(tmp_path)] == ["BUILT"]
-
 
 class TestFileFormat:
     def test_last_row_names_the_state_the_project_is_in(self, tmp_path):
