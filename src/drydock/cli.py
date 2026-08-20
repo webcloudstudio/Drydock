@@ -2151,11 +2151,6 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"{len(result.steps) - len(result.built()) - len(result.failed())} unchanged"
     )
     print(f"elapsed: {_elapsed_text(time.monotonic() - build_started)}")
-    if not result.steps:
-        print("nothing buildable — no pending step has all dependencies verified")
-        reviewable = _reviewable_build_steps(target_dir)
-        if reviewable:
-            print("legacy implemented steps remain; rebuild or revise them to run acceptance")
     if result.stalled():
         # A stalled run used to be indistinguishable from a finished Target. Name the outstanding
         # work and fail, so an unattended driver stops here instead of reporting success.
@@ -2260,17 +2255,6 @@ def _build_running_command(args: argparse.Namespace) -> str:
             # following the configuration.
             command.extend((option, str(value)))
     return " ".join(command)
-
-
-def _reviewable_build_steps(target_dir: Path) -> list[tuple[str, str]]:
-    from drydock.build_plan import parse_build_plan
-
-    plan = parse_build_plan(target_dir / "MANIFEST.md")
-    return [
-        (block.block_id, block.name)
-        for block in plan.blocks
-        if block.block_type in {"story", "spike"} and block.state == "implemented"
-    ]
 
 
 def cmd_build_score(args: argparse.Namespace) -> int:
@@ -2726,12 +2710,7 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     plan = load_target_plan(target, get_target_directory())
     report = build_status(plan)
 
-    reviewable = _reviewable_build_steps(target_path)
-    if reviewable:
-        print("Next: resolve legacy implemented steps by rebuilding or revising them")
-    elif report.steps_implemented:
-        print(f"Next: drydock verify {target}")
-    elif report.buildable_ids:
+    if report.buildable_ids:
         print(f"Next: drydock build {target}")
     elif report.failed_ids:
         first = report.failed_ids[0]
@@ -2796,24 +2775,6 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     score_state = score_evidence_state(target, target_path)
     detail = f" ({'; '.join(score_state.reasons)})" if score_state.reasons else ""
     print(f"Build score evidence: {score_state.state}{detail}")
-    return 0
-
-
-def cmd_build_verify(target: str, step_id: str) -> int:
-    from drydock.build_review import verify_build_step
-    from drydock.config import require_target_dir
-    from drydock.quarterdeck_state import refresh_commanders_chair
-
-    target_dir = require_target_dir(target)
-    result = verify_build_step(target_dir / "MANIFEST.md", step_id)
-    if result.already_verified:
-        print(f"Already verified: {result.step_id}  {result.step_name}")
-    else:
-        print(f"Verified: {result.step_id}  {result.step_name}")
-    if result.ac_ids:
-        print("Acceptance checks: " + ", ".join(result.ac_ids))
-    refresh_commanders_chair(target_dir)
-    print(f"Next: drydock build status {target}")
     return 0
 
 
@@ -3391,7 +3352,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock build <Target> --normalize-order  — normalize MANIFEST order, then build\n"
             "drydock build <Target> --dry-run       — preview next build block without writes\n"
             "drydock build status <Target>   — show build state\n"
-            "drydock build verify <Target> [<step-id>] — list or verify legacy implemented steps\n"
             "drydock build score <Target>    — generate SCORECARD.md"
         ),
         epilog="Build operands:\n" + _build_help_details(),
@@ -3663,27 +3623,6 @@ def _dispatch_build(args: argparse.Namespace) -> int:
             from drydock.config import record_activity
 
             record_activity("build status", tokens[1], tokens[1])
-        return rc
-    elif first == "verify":
-        if len(tokens) < 2:
-            raise UsageError("Usage: drydock build verify <Target> [<step-id>]")
-        if len(tokens) == 2:
-            from drydock.config import get_target_directory
-
-            target_dir = get_target_directory() / tokens[1]
-            steps = _reviewable_build_steps(target_dir)
-            if not steps:
-                print("No legacy implemented steps.")
-            else:
-                print("Legacy implemented steps:")
-                for step_id, name in steps:
-                    print(f"  {step_id}  # {name}")
-            return 0
-        rc = cmd_build_verify(tokens[1], tokens[2])
-        if rc == 0:
-            from drydock.config import record_activity
-
-            record_activity("build verify", tokens[1], tokens[1])
         return rc
     elif first == "score":
         if len(tokens) != 2:

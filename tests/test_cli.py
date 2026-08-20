@@ -1415,37 +1415,6 @@ state: pending
         assert rc == 2
         assert "Usage: drydock build status" in err
 
-    def test_build_verify_marks_step_and_acs_verified(
-        self, tmp_target_root, isolated_config, monkeypatch
-    ):
-        self._setup(tmp_target_root, monkeypatch)
-
-        rc, out, err = run_cli("build", "verify", "ExampleTarget", "awaiting-checks")
-
-        assert rc == 0, err
-        assert "Verified: awaiting-checks" in out
-        assert "Acceptance checks: system-starts" in out
-        manifest = (tmp_target_root / "ExampleTarget" / "MANIFEST.md").read_text(encoding="utf-8")
-        assert "id: awaiting-checks\nstate: closed/verified" in manifest
-        assert "id: system-starts\nparent: awaiting-checks\nstate: closed/verified" in manifest
-
-    def test_build_verify_already_verified_is_success(
-        self, tmp_target_root, isolated_config, monkeypatch
-    ):
-        self._setup(tmp_target_root, monkeypatch)
-        run_cli("build", "verify", "ExampleTarget", "awaiting-checks")
-
-        rc, out, err = run_cli("build", "verify", "ExampleTarget", "awaiting-checks")
-
-        assert rc == 0, err
-        assert "Already verified: awaiting-checks" in out
-
-    def test_build_verify_usage_error(self):
-        rc, out, err = run_cli("build", "verify")
-
-        assert rc == 2
-        assert "Usage: drydock build verify" in err
-
     def test_build_executes_buildable_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
@@ -2012,7 +1981,6 @@ state: pending
         assert "Review and normalize in QuarterDeck" in err
         assert "Story Retry: drydock build ExampleTarget --step awaiting-checks" in err
         assert "drydock build status ExampleTarget" in err
-        assert "drydock build verify ExampleTarget awaiting-checks" not in out
 
 
 class TestPlanningSession:

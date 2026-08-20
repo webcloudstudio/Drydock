@@ -5,8 +5,7 @@ to reflect the target's current lifecycle phase (analyzed → planned → buildi
 Each phase shows the KPIs and story detail that are meaningful at that stage.
 
 Called as a best-effort side-effect at the end of ``analyze``, ``plan create``,
-``build``, and ``build verify``.  Any exception is swallowed so callers never
-abort on a display failure.
+and ``build``.  Any exception is swallowed so callers never abort on a display failure.
 """
 
 from __future__ import annotations
@@ -638,17 +637,5 @@ def _build_next_step(status, plan, target: str) -> str:
         return f"drydock build {target}"
     if status.steps_verified == status.steps_total:
         return f"drydock score release {target}"
-    if status.steps_implemented:
-        first_review = next(
-            (
-                step.block.block_id
-                for group in status.groups
-                for step in group.steps
-                if step.block.state == "implemented"
-            ),
-            None,
-        )
-        if first_review:
-            return f"drydock build verify {target} {first_review}"
-    remaining = status.steps_pending + status.steps_questions
+    remaining = status.steps_pending + status.steps_questions + status.steps_built
     return f"drydock build {target}  ({remaining} step{'s' if remaining != 1 else ''} remaining)"

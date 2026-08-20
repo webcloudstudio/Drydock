@@ -138,7 +138,6 @@ ai  drydock refit             MyApp            # Diff -> ticket -> dependency gr
 
 ```text
     drydock build status      MyApp            # Show build state
-    drydock build verify      MyApp <step>     # Display/Verify build graph
 ai  drydock build score       MyApp            # Generate SCORECARD.md
 ai  drydock uat               [Project]        # Scored UAT testing
     drydock uat --report      [run]            # Rebuild a run's HTML proof kit
