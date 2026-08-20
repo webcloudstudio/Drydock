@@ -25,21 +25,34 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-20: A Target repository checkpoint now recovers from a stale Git lock instead of
+  failing permanently. When a git invocation against `targets/<Target>` reports `Unable to
+  create '<path>.lock': File exists`, Drydock deletes that lock, prints `Target - cleared stale
+  git lock <name>`, and retries the invocation once. A Target repository is written only by
+  Drydock, one command at a time, so a lock left behind means an earlier command was killed
+  before it could unlink one — a routine outcome on a Windows-mounted workspace that previously
+  aborted every later command against that Target until the file was removed by hand. Each
+  command that writes to a Target continues to produce exactly one checkpoint commit at the end
+  of the invocation; the redundant mid-command commits in `drydock refit --sources` and Compass
+  `drydock import` are removed, leaving only the import lineage stamp, which must commit early
+  because a lineage record names the commit that introduced a source version.
 - 2026-08-20: The `drydock score report` receipt is pared down to a page an operator can host
   and keep in version control. It no longer copies in the delivered application, the
-  Blueprint, the provider wire transcripts (`*.raw.jsonl`), or any dot directory. Previously
-  it carried all of them, and publishing a receipt for a Target whose build directory still
-  held a receipt from the pre-`drydock_receipt` layout copied that receipt in as delivered
-  code: one jq run produced a 278 MB directory, of which 139 MB was a stale nested receipt,
-  43 MB was wire transcripts, and much of the rest was one generated HTML viewer per copied
-  file. The receipt now carries the readable evidence for the run — command transcripts,
-  assembled prompts, model output, the `.llm.log`, and the `history.jsonl` and `llm.jsonl`
-  slices the page is rendered from — plus the Target's top-level artifacts with its
-  `evidence/` and `QuarterDeck/` subtrees, and it links `QuarterDeck/commanders_chair.html`
-  from the plan panel. The `OUTPUT` and `INPUT` tabs are gone, the delivered code is named by
-  its build directory in the run facts rather than copied, and the LLM table drops its
-  raw-transcript column. Everything omitted stays where the run wrote it, under the operator's
-  own version control; every file the page links is still carried and hashed in `SHA256SUMS`.
+  Blueprint, the provider wire transcripts (`*.raw.jsonl`), the assembled prompts
+  (`*.prompt.md`), or any dot directory. Previously it carried all of them, and publishing a
+  receipt for a Target whose build directory still held a receipt from the pre-`drydock_receipt`
+  layout copied that receipt in as delivered code: one jq run produced a 278 MB directory, of
+  which 139 MB was a stale nested receipt, 43 MB was wire transcripts, 19 MB was prompts that
+  re-injected the specification and Blueprint once per block, and much of the rest was one
+  generated HTML viewer per copied file. The same run now publishes at roughly 2 MB. The
+  receipt carries the readable evidence — command transcripts, model output, the `.llm.log`,
+  and the `history.jsonl` and `llm.jsonl` slices the page is rendered from — plus the Target's
+  top-level artifacts with its `evidence/` and `QuarterDeck/` subtrees, and it links
+  `QuarterDeck/commanders_chair.html` from the plan panel. The `OUTPUT` and `INPUT` tabs are
+  gone, the delivered code is named by its build directory in the run facts rather than copied,
+  and the LLM table drops its prompt and raw-transcript columns. Everything omitted stays where
+  the run wrote it in the Target's own `logs/`; every file the page links is still carried and
+  hashed in `SHA256SUMS`.
 - 2026-08-20: `METADATA.md` is now the sole Target identity record. QuarterDeck persists
   `discovery-identity.json` answers for `display_name` and `short_description` to
   `METADATA.md`, then reloads the questionnaire from those persisted values; Analyze likewise

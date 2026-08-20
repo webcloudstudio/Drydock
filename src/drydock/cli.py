@@ -796,7 +796,7 @@ def cmd_refit(args: argparse.Namespace) -> int:
         return 0
 
     if getattr(args, "sources", False):
-        from drydock.source_refit import commit_target, source_refit_target
+        from drydock.source_refit import source_refit_target
 
         result = source_refit_target(
             target_dir,
@@ -816,7 +816,6 @@ def cmd_refit(args: argparse.Namespace) -> int:
         # consumers now or defer them.
         for consumer in result.downstream:
             print(f"  [downstream]      {consumer}")
-        commit_target(target_dir, "Author source-driven refit tickets")
         print(f"RESULT: {len(result.items)} change ticket(s) authored")
         return 0
 
@@ -1410,7 +1409,6 @@ def cmd_import(args: argparse.Namespace) -> int:
 
         if fmt == "markdown":
             from drydock.import_markdown import import_markdown
-            from drydock.source_refit import commit_target
 
             result = import_markdown(args.Target, args.Target, source, td)
             _commit_and_stamp(target_dir, "Import source snapshot")
@@ -1422,7 +1420,6 @@ def cmd_import(args: argparse.Namespace) -> int:
 
         if fmt == "source":
             from drydock.import_source import import_source
-            from drydock.source_refit import commit_target
 
             source_result = import_source(args.Target, args.Target, source, td)
             _commit_and_stamp(target_dir, "Import source snapshot")
@@ -1438,7 +1435,6 @@ def cmd_import(args: argparse.Namespace) -> int:
 
         if fmt == "speckit":
             from drydock.import_speckit import import_speckit
-            from drydock.source_refit import commit_target
 
             speckit_result = import_speckit(args.Target, args.Target, source, td)
             _commit_and_stamp(target_dir, "Import source snapshot")
@@ -1455,7 +1451,6 @@ def cmd_import(args: argparse.Namespace) -> int:
         if fmt in {"compass", "intent"}:
             from drydock.config import get_llm_provider, get_model, get_workspace
             from drydock.import_markdown import import_intent
-            from drydock.source_refit import commit_target
 
             result = import_intent(
                 args.Target,
@@ -1466,7 +1461,6 @@ def cmd_import(args: argparse.Namespace) -> int:
                 llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
                 log_dir=get_workspace() / "logs",
             )
-            commit_target(target_dir, "Import Compass source")
             print_import_result(result.source, result.imported, result.blueprint_dir)
             print("normalized")
             record_status(

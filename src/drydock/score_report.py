@@ -92,11 +92,13 @@ _LOG_NAME_RE = re.compile(r"^(?P<stamp>\d{8}\.\d{6}\.\d{3}Z)_(?P<rest>.+)$")
 #: which is what an operator means by "the latest run" for a project they have built repeatedly.
 _RUN_START_VERB = "init"
 
-#: Evidence a person reads: the command transcript, the prompt that was sent, and the output
-#: that came back. The provider's wire transcript (``*.raw.jsonl``) is machine IO — it is the
-#: bulk of what a run writes and it is not what this audit is about, so it stays in the
-#: Target's own ``logs/`` where the operator can still reach it.
-_LOG_SUFFIXES = (".log", ".output.txt", ".prompt.md")
+#: Evidence a person reads: the command transcript and the output that came back. What is left
+#: out is what a run writes most of. The provider's wire transcript (``*.raw.jsonl``) is
+#: machine IO. The assembled prompt (``*.prompt.md``) is readable but not this audit's subject:
+#: it injects the specification and Blueprint on every call, so a build repeats substantially
+#: the same payload once per block and is by itself larger than everything else combined. Both
+#: stay in the Target's own ``logs/``, where the operator can still reach them.
+_LOG_SUFFIXES = (".log", ".output.txt")
 
 #: The Target subtrees the receipt carries. Top-level artifacts — Manifest, Metadata, board,
 #: status — come with them. The Blueprint does not: it is a versioned input held elsewhere,
@@ -741,8 +743,8 @@ def _publish(
 ) -> None:
     """Copy every artifact the receipt links into the report directory.
 
-    What that is, and only that: the readable transcripts, the assembled prompts, the model
-    output, the two journals the page is rendered from, and the Target's top-level artifacts
+    What that is, and only that: the readable transcripts, the model output, the two
+    journals the page is rendered from, and the Target's top-level artifacts
     with its evidence and QuarterDeck. A receipt that links a file it did not carry is a claim
     its reader cannot check — so what is not carried is not linked, and ``_stream_link`` drops
     the link for any artifact this pass left behind.
@@ -799,8 +801,8 @@ def _report_groups(report_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
     groups = [
         ArtifactGroup(
             "Evidence",
-            "Command transcripts, assembled prompts, model output, and the command and "
-            "execution journals for this run.",
+            "Command transcripts, model output, and the command and execution journals for "
+            "this run.",
             tuple(_iter_files(report_root / _LOGS_DIR, report_root, hidden=False)),
         ),
         ArtifactGroup(
@@ -1098,9 +1100,8 @@ def _render(
             _cell(f"{int(call['output_tokens']):,}", css="num"),
             # Linked through the existence check, not blindly: a record can name an artifact
             # the run never wrote, and a receipt that links a missing file makes a claim its
-            # reader cannot check. The provider's wire transcript is named by the record but
-            # is not carried, so it is not offered here.
-            _stream_link(report_root, str(call["prompt"]), "prompt"),
+            # reader cannot check. The assembled prompt and the wire transcript are named by
+            # the record but are not carried, so neither is offered here.
             _stream_link(report_root, str(call["output"]), "output"),
             _stream_link(report_root, str(call["llm_log"]), "llm"),
         ]
@@ -1110,8 +1111,8 @@ def _render(
     llm_panel = (
         "".join([
             "<h2>LLM executions</h2>",
-            '<p class="note">One row per model invocation, with the exact prompt sent and the '
-            "output returned.</p>",
+            '<p class="note">One row per model invocation, with its token accounting and the '
+            "output it returned.</p>",
             _meta([
                 ("Calls", html.escape(str(usage.get("calls", 0)))),
                 ("Usage", html.escape(_tokens(dict(usage)))),
@@ -1130,7 +1131,6 @@ def _render(
                     "Cached",
                     "Uncached",
                     "Output",
-                    "",
                     "",
                     "llm",
                 ),
@@ -1158,7 +1158,7 @@ def _render(
     evidence_files = _files_of(groups, "Evidence")
     evidence_tree = (
         "<h2>Evidence</h2>"
-        f'<p class="note">Transcripts, prompts, model output, and the journals for this run. '
+        f'<p class="note">Transcripts, model output, and the journals for this run. '
         f"{len(evidence_files)} files, {sum(record.bytes for record in evidence_files):,} "
         "bytes.</p>" + _tree(evidence_files, _LOGS_DIR, f"{_LOGS_DIR}/")
         if evidence_files

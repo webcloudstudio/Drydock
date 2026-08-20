@@ -488,7 +488,6 @@ def test_write_report_carries_the_evidence_the_page_links(published):
     root = published.parent
     assert (root / "result.json").is_file()
     assert (root / "logs" / "20260101.090000.000Z_widget_build_codex.log").is_file()
-    assert (root / "logs" / "20260101.090000.000Z_widget_build_codex.prompt.md").is_file()
     assert (root / "logs" / "20260101.090000.000Z_widget_build_codex.llm.log").is_file()
     assert (root / "logs" / "history.jsonl").is_file()
     assert (root / "logs" / "llm.jsonl").is_file()
@@ -513,11 +512,16 @@ def test_write_report_carries_the_quarterdeck_and_the_build_evidence(published):
     assert (root / "evidence" / "block-1.md").is_file()
 
 
-def test_write_report_does_not_carry_the_provider_wire_transcript(published):
-    """``*.raw.jsonl`` is machine IO and the bulk of a run; the prompt and output stay."""
+def test_write_report_carries_neither_the_wire_transcript_nor_the_assembled_prompt(published):
+    """Between them they are almost everything a run writes, and neither is the audit.
+
+    A prompt injects the specification and Blueprint on every call, so a build repeats
+    substantially the same payload once per block. The transcript and the output stay.
+    """
     logs = published.parent / "logs"
     assert not list(logs.glob("*.raw.jsonl"))
-    assert (logs / "20260101.090000.000Z_widget_build_codex.prompt.md").is_file()
+    assert not list(logs.glob("*.prompt.md"))
+    assert (logs / "20260101.090000.000Z_widget_build_codex.log").is_file()
 
 
 def test_write_report_copies_no_dot_directory_from_the_target(published):

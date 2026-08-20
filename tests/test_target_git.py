@@ -74,6 +74,19 @@ def test_commit_target_reports_one_line_checkpoint(tmp_path, capsys):
     assert sha == head_commit(target)
 
 
+def test_commit_target_clears_a_stale_index_lock_and_completes(tmp_path, capsys):
+    target = _repo(tmp_path)
+    _write(target, "a.md", "a\n")
+    lock = target / ".git" / "index.lock"
+    lock.write_text("", encoding="utf-8")
+
+    sha = commit_target(target, "Refresh imported source snapshot")
+
+    assert sha == head_commit(target)
+    assert not lock.exists()
+    assert "Target - cleared stale git lock index.lock" in capsys.readouterr().out
+
+
 def test_commit_target_raises_when_git_commit_fails(tmp_path, monkeypatch):
     target = _repo(tmp_path)
     _write(target, "a.md", "a\n")

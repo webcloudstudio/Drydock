@@ -14,6 +14,7 @@ without shelling out, and gives one place to enforce the rules a Target reposito
 
 from __future__ import annotations
 
+import re
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -22,6 +23,8 @@ from pathlib import Path
 from drydock.errors import SpecificationError
 
 _TIMEOUT = 30
+
+_LOCK_PATTERN = re.compile(r"Unable to create '([^']+\.lock)'")
 
 
 @dataclass(frozen=True)
@@ -37,7 +40,37 @@ def is_repo(target_dir: Path) -> bool:
     return (target_dir / ".git").exists()
 
 
+def _clear_lock(target_dir: Path, output: str) -> bool:
+    """Delete the lock file a failed git invocation named, and report whether one was removed.
+
+    A Target repository is written only by Drydock, one command at a time, and never by an
+    interactive editor. A lock left behind therefore means a previous command was killed before it
+    could unlink one — which on a Windows-mounted workspace is common enough that the lock would
+    otherwise brick every later command against that Target until it was removed by hand. There is
+    no live writer to protect, so the lock is cleared and the invocation retried once.
+    """
+    match = _LOCK_PATTERN.search(output)
+    if not match:
+        return False
+    lock = Path(match.group(1))
+    if not lock.is_absolute():
+        lock = target_dir / lock
+    try:
+        lock.unlink()
+    except OSError:
+        return False
+    print(f"Target - cleared stale git lock {lock.name}")
+    return True
+
+
 def _run(target_dir: Path, *args: str, timeout: int = _TIMEOUT) -> tuple[int, str]:
+    code, output = _invoke(target_dir, *args, timeout=timeout)
+    if code != 0 and _clear_lock(target_dir, output):
+        code, output = _invoke(target_dir, *args, timeout=timeout)
+    return code, output
+
+
+def _invoke(target_dir: Path, *args: str, timeout: int) -> tuple[int, str]:
     try:
         completed = subprocess.run(
             ["git", *args],
