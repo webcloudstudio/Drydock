@@ -2541,7 +2541,7 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
         )
         record_status(
             target_dir,
-            "LLM ACCEPTANCE CHECKS OK",
+            "SCORE AC",
             passed=False,
             detail=f"{failed} of {len(report.verdicts)} failed",
             command=f"drydock score ac {target}",
@@ -2549,7 +2549,7 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
     else:
         record_status(
             target_dir,
-            "LLM ACCEPTANCE CHECKS OK",
+            "SCORE AC",
             passed=True,
             command=f"drydock score ac {target}",
         )

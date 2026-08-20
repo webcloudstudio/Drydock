@@ -67,32 +67,32 @@ class TestRecordStatus:
         ]
 
     def test_re_running_a_verification_voids_no_other_state(self, tmp_path):
-        for label in ("BUILT", "LLM ACCEPTANCE CHECKS OK", "SCORE BUILD", "FINALIZED"):
+        for label in ("BUILT", "SCORE AC", "SCORE BUILD", "FINALIZED"):
             record_status(tmp_path, label, passed=True)
 
-        record_status(tmp_path, "LLM ACCEPTANCE CHECKS OK", passed=True)
+        record_status(tmp_path, "SCORE AC", passed=True)
 
         # No evidence changed, so the scores taken on top of acceptance still stand.
         assert [e.label for e in read_status(tmp_path)] == [
             "BUILT",
-            "LLM ACCEPTANCE CHECKS OK",
+            "SCORE AC",
             "SCORE BUILD",
             "FINALIZED",
         ]
         assert current_state(tmp_path).label == "FINALIZED"
 
     def test_a_failed_verification_invalidates_only_itself(self, tmp_path):
-        for label in ("BUILT", "LLM ACCEPTANCE CHECKS OK", "SCORE BUILD", "FINALIZED"):
+        for label in ("BUILT", "SCORE AC", "SCORE BUILD", "FINALIZED"):
             record_status(tmp_path, label, passed=True)
 
-        record_status(tmp_path, "LLM ACCEPTANCE CHECKS OK", passed=False, detail="2 failed")
+        record_status(tmp_path, "SCORE AC", passed=False, detail="2 failed")
 
         standing = latest_per_label(read_status(tmp_path))
-        assert standing["LLM ACCEPTANCE CHECKS OK"].passed is False
+        assert standing["SCORE AC"].passed is False
         assert standing["SCORE BUILD"].passed is True
         assert standing["FINALIZED"].passed is True
         # The rows survive; acceptance is now the rung blocking the workflow.
-        assert current_state(tmp_path).label == "LLM ACCEPTANCE CHECKS OK"
+        assert current_state(tmp_path).label == "SCORE AC"
         assert last_good(read_status(tmp_path)).label == "BUILT"
 
     def test_last_good_skips_the_ladder_s_optional_rungs(self, tmp_path):
@@ -184,14 +184,14 @@ class TestFileFormat:
         }
 
     def test_summary_names_the_blocking_rung_not_the_states_above_it(self, tmp_path):
-        for label in ("BUILT", "LLM ACCEPTANCE CHECKS OK", "FINALIZED"):
+        for label in ("BUILT", "SCORE AC", "FINALIZED"):
             record_status(tmp_path, label, passed=True)
 
-        record_status(tmp_path, "LLM ACCEPTANCE CHECKS OK", passed=False, detail="2 failed")
+        record_status(tmp_path, "SCORE AC", passed=False, detail="2 failed")
 
         # FINALIZED is still recorded, but acceptance has to be cleared before it means
         # anything, so that is what the summary reports.
-        assert _rows(tmp_path)[-1]["state"] == "LLM ACCEPTANCE CHECKS OK"
+        assert _rows(tmp_path)[-1]["state"] == "SCORE AC"
         assert _rows(tmp_path)[-1]["result"] == "fail"
 
     def test_one_json_object_per_line(self, tmp_path):

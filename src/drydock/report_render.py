@@ -374,6 +374,7 @@ table.tree td.name strong { font-weight: 700; }
 .tag.raw { color: var(--muted); font-weight: 400; }
 .tag.unknown { color: var(--warn); }
 .tag.pass .failure-history { color: var(--fail); }
+.tag.pass .failure-history .rerun { color: var(--pass); }
 
 /* ── receipt ────────────────────────────────────────────────── */
 .receipt { border: 1px solid var(--hard); margin: 0 0 1.25rem; }

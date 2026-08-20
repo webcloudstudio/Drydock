@@ -142,7 +142,7 @@ class TestStanding:
             ("20260820.110000.000Z", ["score", "ac", "T"], 0),
         )
         record_status(target_dir, "SCORE BUILD", passed=True)
-        record_status(target_dir, "LLM ACCEPTANCE CHECKS OK", passed=True)
+        record_status(target_dir, "SCORE AC", passed=True)
 
         summary = summarize_scores("T", tmp_path, target_dir)
 
@@ -154,12 +154,12 @@ class TestStanding:
         target_dir = _target(tmp_path)
         _journal(tmp_path, ("20260820.100000.000Z", ["score", "build", "T"], 0))
         record_status(target_dir, "SCORE BUILD", passed=True)
-        record_status(target_dir, "LLM ACCEPTANCE CHECKS OK", passed=False, detail="2 failed")
+        record_status(target_dir, "SCORE AC", passed=False, detail="2 failed")
 
         summary = summarize_scores("T", tmp_path, target_dir)
 
         assert _row(summary, "build").standing == "held"
-        assert summary.state == "LLM ACCEPTANCE CHECKS OK"
+        assert summary.state == "SCORE AC"
         assert summary.state_result == "fail"
 
     def test_a_failed_state_reports_failed(self, tmp_path):
@@ -179,7 +179,7 @@ class TestStanding:
         """The journal and the state machine are reported side by side, never reconciled."""
         target_dir = _target(tmp_path)
         _journal(tmp_path, ("20260820.100000.000Z", ["score", "ac", "T"], 1))
-        record_status(target_dir, "LLM ACCEPTANCE CHECKS OK", passed=True)
+        record_status(target_dir, "SCORE AC", passed=True)
 
         row = _row(summarize_scores("T", tmp_path, target_dir), "ac")
 

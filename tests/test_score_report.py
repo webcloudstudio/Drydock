@@ -331,14 +331,14 @@ def test_verdict_fails_on_a_failed_criterion_even_when_every_command_exited_clea
 
     _soundings(target_dir, [VERIFIED_PASS, VERIFIED_FAIL])
     _built(workspace, target_dir)
-    _ladder(target_dir, "LLM ACCEPTANCE CHECKS OK", "SCORE BUILD")
+    _ladder(target_dir, "SCORE AC", "SCORE BUILD")
     build_dir.mkdir(parents=True)
     write_report("widget", workspace, target_dir, build_dir)
 
     # The board on disk contradicts the recorded state, so the machine is corrected — which
     # voids the scores above it and leaves the run unpublishable.
     state = current_state(target_dir)
-    assert state.label == "LLM ACCEPTANCE CHECKS OK"
+    assert state.label == "SCORE AC"
     assert state.passed is False
     assert state.detail == "1 criteria failed"
     result = collect_run("widget", workspace, target_dir)
@@ -638,9 +638,9 @@ def test_a_plan_document_the_target_never_wrote_gets_no_tab(planned):
     assert 'id="panel-plan-build-compass"' not in planned
 
 
-def test_the_plan_tab_still_offers_the_hashed_workspace_inventory(planned):
+def test_the_build_tab_still_offers_the_hashed_workspace_inventory(planned):
     """Every carried file stays reachable and checkable, rendered tabs or not."""
-    assert 'id="panel-plan-workspace"' in planned
+    assert 'id="panel-output"' in planned
 
 
 def test_the_command_row_names_the_model_instead_of_linking_its_log(published):
@@ -680,7 +680,7 @@ def test_a_rerun_command_is_kept_and_labelled(workspace, target_dir, build_dir):
     assert "rerun 2 of 2" in page
     assert (
         '<span class="tag pass" title="exit 1; later rerun exited 0"><span '
-        'class="failure-history">FAIL<br>RERUN</span></span>'
+        'class="failure-history">FAIL<br><span class="rerun">RE-RUN</span></span></span>'
     ) in page
 
 
@@ -839,7 +839,7 @@ def test_the_page_stamps_the_product_verdict_and_names_the_delivered_code(publis
     """The code is named so a reader can find it, and not copied so the page stays hostable."""
     page = published.read_text(encoding="utf-8")
     assert "Build Receipt" in page
-    assert "widget: PASSED" in page
+    assert "widget: FINALIZED" in page
     assert "Accepted" in page
     assert html.escape(str(build_dir)) in page
 
@@ -859,7 +859,7 @@ def test_an_unfinished_run_is_stamped_in_progress_not_rejected(workspace, target
     _history(workspace, [_record("analyze widget", stamp="20260101.090000.000Z")])
     build_dir.mkdir(parents=True)
     page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
-    assert "widget: INCOMPLETE" in page
+    assert "widget: NO STATE" in page
     assert "In progress" in page
     assert 'class="stamp warn"' in page
 

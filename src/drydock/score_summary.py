@@ -31,7 +31,7 @@ SCORE_VERBS = ("spec", "ac", "build", "release", "report")
 #: The workflow state each score establishes, where it establishes one. ``score spec`` audits
 #: imported sources and claims no ladder state, so it has no standing to report.
 _VERB_STATE = {
-    "ac": "LLM ACCEPTANCE CHECKS OK",
+    "ac": "SCORE AC",
     "build": "SCORE BUILD",
     "release": "SCORE RELEASE",
     "report": "FINALIZED",

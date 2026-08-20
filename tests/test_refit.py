@@ -661,7 +661,7 @@ class TestRefitVoidsVerifications:
     def _ladder(self, target_dir):
         from drydock.project_status import read_status, record_status
 
-        for label in ("PLAN CREATED", "BUILT", "LLM ACCEPTANCE CHECKS OK", "FINALIZED"):
+        for label in ("PLAN CREATED", "BUILT", "SCORE AC", "FINALIZED"):
             record_status(target_dir, label, passed=True)
         return read_status
 
@@ -682,6 +682,6 @@ class TestRefitVoidsVerifications:
         assert [e.label for e in read_status(target_dir)] == [
             "PLAN CREATED",
             "BUILT",
-            "LLM ACCEPTANCE CHECKS OK",
+            "SCORE AC",
             "FINALIZED",
         ]

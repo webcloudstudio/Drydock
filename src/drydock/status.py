@@ -52,7 +52,7 @@ _WORKFLOW_LABELS = (
     "PLAN CREATED",
     "PLAN REPAIRED",
     "BUILT",
-    "LLM ACCEPTANCE CHECKS OK",
+    "SCORE AC",
     "SCORE BUILD",
     "SCORE RELEASE",
     "FINALIZED",
@@ -65,7 +65,7 @@ _WORKFLOW_DISPLAY = {
     "PLAN CREATED": "Plan",
     "PLAN REPAIRED": "Plan repair",
     "BUILT": "Build",
-    "LLM ACCEPTANCE CHECKS OK": "Acceptance checks",
+    "SCORE AC": "Acceptance checks",
     "SCORE BUILD": "Build score",
     "SCORE RELEASE": "Release score",
     "FINALIZED": "Receipt",
@@ -260,7 +260,7 @@ def _workflow_label(record: dict) -> str | None:
     if argv[0] == "build" and argv[1:2] != ["status"] and "--help" not in argv:
         return "BUILT"
     if argv[:2] == ["score", "ac"]:
-        return "LLM ACCEPTANCE CHECKS OK"
+        return "SCORE AC"
     if argv[:2] == ["score", "build"]:
         return "SCORE BUILD"
     if argv[:2] == ["score", "release"]:

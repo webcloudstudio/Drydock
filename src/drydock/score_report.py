@@ -453,7 +453,7 @@ def _workflow_state(result: Mapping[str, object]) -> str:
 
 
 def _reconcile_acceptance(target: str, target_dir: Path, acceptance: Mapping[str, object]) -> None:
-    """Fail LLM ACCEPTANCE CHECKS OK in the machine when the evidence contradicts it.
+    """Fail SCORE AC in the machine when the evidence contradicts it.
 
     ``drydock score ac`` owns that state and normally records its own failure. This catches
     the case where the board on disk reports failures the recorded state does not, and it
@@ -467,13 +467,13 @@ def _reconcile_acceptance(target: str, target_dir: Path, acceptance: Mapping[str
     if not acceptance.get("failed"):
         return
     standing = latest_per_label(read_status(target_dir))
-    entry = standing.get("LLM ACCEPTANCE CHECKS OK")
+    entry = standing.get("SCORE AC")
     if entry is None or not entry.passed:
         return
     failures = acceptance.get("failures") or ()
     record_status(
         target_dir,
-        "LLM ACCEPTANCE CHECKS OK",
+        "SCORE AC",
         passed=False,
         detail=f"{len(failures)} criteria failed",
         command=f"drydock score report {target}",
@@ -931,22 +931,29 @@ def _run_facts(result: Mapping[str, object], delivered: str) -> list[tuple[str, 
     ]
 
 
-def _detail_line(result: Mapping[str, object]) -> str:
-    """Name the one state the project is in, and stop there."""
-    state = result.get("state")
+def _state_headline(result: Mapping[str, object]) -> str:
+    """The project's state name, standing in for a pass/fail verdict word.
+
+    The overview leads with the one state the project holds, not with a completion word:
+    ``INCOMPLETE`` describes the ladder, not the state, and reads as a verdict this receipt
+    does not make.
+    """
     target = html.escape(str(result.get("target") or ""))
+    state = result.get("state")
+    label = state.get("label") if isinstance(state, Mapping) else None
+    return f"{target}: {html.escape(str(label))}" if label else f"{target}: NO STATE"
+
+
+def _detail_line(result: Mapping[str, object]) -> str:
+    """Name the datestamp the state was recorded at, and stop there."""
+    state = result.get("state")
     if not isinstance(state, Mapping) or not state.get("label"):
-        return (
-            f"{target} has recorded no lifecycle state. The commands below are everything "
-            "this receipt can show."
-        )
-    label = html.escape(str(state.get("label") or ""))
+        return "No lifecycle state is recorded. The commands below are everything this receipt can show."
+    when = _local_time(state.get("at")) or "time not recorded"
     if not state.get("passed"):
         detail = html.escape(str(state.get("detail") or ""))
-        return f"{target} is in state {label}, which failed{f': {detail}' if detail else ''}."
-    if state.get("label") == "FINALIZED":
-        return f"{target} is in state FINALIZED; every state it holds passed."
-    return f"{target} is in state {label}; it passed, but the project is not finished."
+        return f"{when}{f' — {detail}' if detail else ''}"
+    return when
 
 
 def _ladder_table(workflow: Sequence[Mapping[str, object]]) -> str:
@@ -1075,7 +1082,8 @@ def _receipt_command_status_cell(
     if repaired:
         return (
             f'<td><span class="tag pass" title="exit {html.escape(str(returncode))}; '
-            'later rerun exited 0"><span class="failure-history">FAIL<br>RERUN</span></span></td>'
+            'later rerun exited 0"><span class="failure-history">FAIL<br>'
+            '<span class="rerun">RE-RUN</span></span></span></td>'
         )
     if returncode not in (0, None) and not _is_status_query(command):
         return (
@@ -1383,17 +1391,8 @@ def _render(
     scores_panel = scores_block + _render_receipt(report_root, checks, tags=_RECEIPT_TAGS)
 
     workspace_files = _files_of(groups, "Workspace")
-    evidence_files = _files_of(groups, "Evidence")
-    evidence_tree = (
-        "<h2>Evidence</h2>"
-        f'<p class="note">Transcripts, model output, and the journals for this run. '
-        f"{len(evidence_files)} files, {sum(record.bytes for record in evidence_files):,} "
-        "bytes.</p>" + _tree(evidence_files, _LOGS_DIR, f"{_LOGS_DIR}/")
-        if evidence_files
-        else ""
-    )
     workspace_tree = (
-        "<h2>Workspace</h2>"
+        "<h2>Output</h2>"
         f'<p class="note">The Target Drydock drove. {len(workspace_files)} files, '
         f"{sum(record.bytes for record in workspace_files):,} bytes.</p>"
         + _tree(workspace_files, _WORKSPACE_DIR, f"{_WORKSPACE_DIR}/")
@@ -1415,11 +1414,10 @@ def _render(
         if part
     )
     marks = {"pass": "Accepted", "fail": "Not accepted", "warn": "In progress"}
-    status = str(result.get("status") or "")
     overview = "\n".join([
         _verdict(
             state == "pass",
-            f"{target}: {status.upper()}",
+            _state_headline(result),
             _detail_line(result),
         ),
         _ladder_table(workflow),
@@ -1432,14 +1430,11 @@ def _render(
             ("error", "Error", excerpt),
             ("llm", "LLM", llm_panel),
             ("scores", "Scores", scores_panel),
-            ("evidence", "Evidence", evidence_tree),
+            ("output", "Output", workspace_tree),
         ],
         group="build",
     )
-    plan_panel = _tabs(
-        [*_plan_panels(report_root, result), ("plan-workspace", "Workspace", workspace_tree)],
-        group="plan",
-    )
+    plan_panel = _tabs(_plan_panels(report_root, result), group="plan")
     return _page(
         f"Drydock build receipt — {target}",
         "\n".join([
