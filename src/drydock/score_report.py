@@ -402,6 +402,13 @@ _SCORE_LABELS = {
     "report": "FINALIZED",
 }
 
+#: Sub-verbs of ``drydock build`` that inspect a build rather than perform one.
+_BUILD_SUBVERBS = frozenset({"status", "score"})
+
+#: Exit 2 is a usage error or a deferred command. Neither reached the state its verb names,
+#: so neither belongs on the ladder — as a pass or as a failure.
+_NOT_AN_ATTEMPT = 2
+
 
 def _ladder_label(argv: Sequence[object]) -> str:
     """The workflow state a recorded command establishes, or ``""`` if it establishes none."""
@@ -411,6 +418,8 @@ def _ladder_label(argv: Sequence[object]) -> str:
     verb = tokens[0]
     if verb == "plan":
         return "PLAN REPAIRED" if "repair" in tokens[1:] else "PLAN CREATED"
+    if verb == "build" and len(tokens) > 1 and tokens[1] in _BUILD_SUBVERBS:
+        return ""  # `build status` and `build score` read a build; they do not make one
     if verb == "score":
         # A bare `drydock score <Target>` is the acceptance score, as `_score_exit_codes` reads it.
         sub = next((token for token in tokens[1:] if token in _SCORE_VERBS), "ac")
@@ -436,9 +445,9 @@ def _workflow(
     steps: dict[str, dict[str, object]] = {}
     for command in commands:
         label = _ladder_label(command.get("argv") or [])
-        if not label:
-            continue
         code = command.get("returncode")
+        if not label or code == _NOT_AN_ATTEMPT:
+            continue
         text = _command_text(command.get("argv") or [])
         steps[label] = {
             "label": label,
@@ -467,6 +476,11 @@ def _workflow(
     # outcome it says nothing the BUILT row does not, so it is shown only while it stands alone.
     if "BUILT" in steps:
         steps.pop("BUILDING", None)
+
+    # FINALIZED describes an earlier publication of this receipt, which the one being written
+    # supersedes. Carrying it forward would let a second `drydock score report` finalize a run
+    # on the strength of the first, so the state is only ever earned by `_finalize`.
+    steps.pop("FINALIZED", None)
 
     return [steps[label] for label in LABEL_LADDER if label in steps]
 

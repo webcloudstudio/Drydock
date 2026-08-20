@@ -627,3 +627,49 @@ def test_the_delivered_tree_omits_caches_without_deleting_them(published, build_
     """A report has no business removing files from the operator's build directory."""
     assert (build_dir / "src" / "__pycache__" / "app.pyc").is_file()
     assert "__pycache__" not in published.read_text(encoding="utf-8")
+
+
+def test_a_usage_error_is_not_a_lifecycle_attempt(workspace, target_dir):
+    """`drydock score jq` with no sub-verb exits 2; it never reached the state it names."""
+    _built(workspace)
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("build widget", stamp="20260101.091000.000Z"),
+            _record("score build widget", stamp="20260101.092000.000Z"),
+            _record("score widget", stamp="20260101.093000.000Z", return_code=2),
+        ],
+    )
+    result = collect_run("widget", workspace, target_dir)
+    assert result["status"] == "passed"
+    assert "LLM ACCEPTANCE CHECKS OK" not in [step["label"] for step in result["workflow"]]
+
+
+def test_reading_a_build_is_not_building_one(workspace, target_dir):
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("build status widget", stamp="20260101.091000.000Z", return_code=1),
+        ],
+    )
+    result = collect_run("widget", workspace, target_dir)
+    assert [step["label"] for step in result["workflow"]] == ["INITIALIZED"]
+
+
+def test_a_previous_publication_cannot_finalize_this_one(workspace, target_dir):
+    """Reporting twice is not an achievement; FINALIZED is earned by the run, not inherited."""
+    from drydock.project_status import record_status
+
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("build widget", stamp="20260101.091000.000Z"),
+        ],
+    )
+    record_status(target_dir, "FINALIZED", passed=True)
+    result = collect_run("widget", workspace, target_dir)
+    assert result["status"] == "incomplete"
+    assert "FINALIZED" not in [step["label"] for step in result["workflow"]]
