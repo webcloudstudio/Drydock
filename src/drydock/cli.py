@@ -3610,8 +3610,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock score drydock                    — adversarial self-assessment of Drydock; writes\n"
             "                                            ranked feature files to docs/drydock_planning/\n"
             "drydock score <Target>                   — summarize the scores above: when each last ran,\n"
-            "                                            whether it passed, whether that result still\n"
-            "                                            stands, and where its output is (reads only)\n\n"
+            "                                            whether it passed, and where its output is\n"
+            "                                            (reads only)\n\n"
             "--step <id> is accepted only with score ac.\n"
             "--effort <low|medium|high|xhigh|max> applies to any LLM-assisted command."
         ),

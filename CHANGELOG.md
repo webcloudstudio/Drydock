@@ -12,16 +12,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 - 2026-08-20: `drydock score <Target>` summarizes the score family in one screen. It reports the
   workflow state the Target is in, then one row per score sub-verb — `spec`, `ac`, `build`,
-  `release`, `report` — naming when each last ran, the exit code it returned, whether the
-  workflow state it established still stands (`held`, `voided`, `failed`), and the artifact it
-  writes with that file's modification time; the acceptance row additionally tallies the
-  recorded Soundings board. The command journal and the state machine are reported side by
-  side and never reconciled, so a score that passed but was voided by later work, or a run that
-  failed while its recorded state still says pass, is visible rather than averaged away. It
-  closes by naming the scores that have not been run. The invocation reads only: it is not
-  journaled to `logs/history.jsonl` and does not checkpoint the Target's Git store. Previously a
-  bare `drydock score <Target>` was a usage error, and the receipt counted any such invocation
-  as an `ac` exit code.
+  `release`, `report` — naming when each last ran, the exit code it returned, and the artifact
+  it writes with that file's modification time; the acceptance row additionally tallies the
+  recorded Soundings board. It closes by naming the scores that have not been run. The invocation
+  reads only: it is not journaled to `logs/history.jsonl` and does not checkpoint the Target's
+  Git store. Previously a bare `drydock score <Target>` was a usage error, and the receipt
+  counted any such invocation as an `ac` exit code.
 
 ### Changed
 

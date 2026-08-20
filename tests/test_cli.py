@@ -432,7 +432,7 @@ class TestHelpAndVersion:
         rc, out, _ = run_cli("score", "--help")
         assert rc == 0
         assert "drydock score <Target>" in out
-        assert "still" in out  # names what the summary reports: whether a result still stands
+        assert "where its output is" in out
 
     def test_score_with_a_bare_target_summarizes_the_other_scores(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))

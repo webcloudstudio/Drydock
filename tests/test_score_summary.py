@@ -118,74 +118,6 @@ class TestLastRun:
         assert all(run.result == "not run" for run in summary.runs)
 
 
-class TestStanding:
-    def test_a_score_whose_state_still_stands_is_held(self, tmp_path):
-        target_dir = _target(tmp_path)
-        _journal(tmp_path, ("20260820.100000.000Z", ["score", "build", "T"], 0))
-        record_status(target_dir, "SCORE BUILD", passed=True)
-
-        assert _row(summarize_scores("T", tmp_path, target_dir), "build").standing == "held"
-
-    def test_a_score_voided_by_later_work_reports_voided(self, tmp_path):
-        target_dir = _target(tmp_path)
-        _journal(tmp_path, ("20260820.100000.000Z", ["score", "build", "T"], 0))
-        record_status(target_dir, "SCORE BUILD", passed=True)
-        record_status(target_dir, "BUILT", passed=True)  # voids every state above it
-
-        assert _row(summarize_scores("T", tmp_path, target_dir), "build").standing == "voided"
-
-    def test_re_running_acceptance_leaves_the_scores_above_it_held(self, tmp_path):
-        target_dir = _target(tmp_path)
-        _journal(
-            tmp_path,
-            ("20260820.100000.000Z", ["score", "build", "T"], 0),
-            ("20260820.110000.000Z", ["score", "ac", "T"], 0),
-        )
-        record_status(target_dir, "SCORE BUILD", passed=True)
-        record_status(target_dir, "SCORE AC", passed=True)
-
-        summary = summarize_scores("T", tmp_path, target_dir)
-
-        # Re-verifying changes no evidence, so the build score is not invalidated by it.
-        assert _row(summary, "build").standing == "held"
-        assert _row(summary, "ac").standing == "held"
-
-    def test_a_failed_acceptance_rerun_does_not_void_the_scores_above_it(self, tmp_path):
-        target_dir = _target(tmp_path)
-        _journal(tmp_path, ("20260820.100000.000Z", ["score", "build", "T"], 0))
-        record_status(target_dir, "SCORE BUILD", passed=True)
-        record_status(target_dir, "SCORE AC", passed=False, detail="2 failed")
-
-        summary = summarize_scores("T", tmp_path, target_dir)
-
-        assert _row(summary, "build").standing == "held"
-        assert summary.state == "SCORE AC"
-        assert summary.state_result == "fail"
-
-    def test_a_failed_state_reports_failed(self, tmp_path):
-        target_dir = _target(tmp_path)
-        _journal(tmp_path, ("20260820.100000.000Z", ["score", "build", "T"], 1))
-        record_status(target_dir, "SCORE BUILD", passed=False, detail="no evidence")
-
-        assert _row(summarize_scores("T", tmp_path, target_dir), "build").standing == "failed"
-
-    def test_score_spec_claims_no_workflow_state(self, tmp_path):
-        target_dir = _target(tmp_path)
-        _journal(tmp_path, ("20260820.100000.000Z", ["score", "spec", "T"], 0))
-
-        assert _row(summarize_scores("T", tmp_path, target_dir), "spec").standing == ""
-
-    def test_a_run_result_can_contradict_the_state_it_recorded(self, tmp_path):
-        """The journal and the state machine are reported side by side, never reconciled."""
-        target_dir = _target(tmp_path)
-        _journal(tmp_path, ("20260820.100000.000Z", ["score", "ac", "T"], 1))
-        record_status(target_dir, "SCORE AC", passed=True)
-
-        row = _row(summarize_scores("T", tmp_path, target_dir), "ac")
-
-        assert (row.result, row.standing) == ("fail", "held")
-
-
 class TestOutputs:
     def test_names_each_scores_artifact_and_whether_it_exists(self, tmp_path):
         target_dir = _target(tmp_path)
@@ -258,6 +190,12 @@ class TestRender:
         assert "PASS · " in page
         for verb in ("spec", "ac", "build", "release", "report"):
             assert f"\n{verb}" in page
+
+    def test_does_not_render_the_removed_standing_column(self, tmp_path):
+        page = "\n".join(render_summary(summarize_scores("T", tmp_path, _target(tmp_path))))
+
+        assert "Standing" not in page
+        assert "voided" not in page
 
     def test_lists_the_scores_that_have_not_been_run(self, tmp_path):
         target_dir = _target(tmp_path)
