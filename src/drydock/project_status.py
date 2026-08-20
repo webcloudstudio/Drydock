@@ -49,6 +49,11 @@ def record_status(
 ) -> None:
     """Append one state-attempt record to PROJECT_STATUS.md.
 
+    Recording is an observability side effect, never a failure mode: it is skipped when the
+    Target directory does not exist (nothing was attempted against a Target that is not
+    there) and filesystem errors are swallowed, so the calling command's own exit-code
+    contract is never altered by this write.
+
     Args:
         target_dir: the Target's directory ($DRYDOCK_WORKSPACE/targets/<Target>)
         label: one of LABEL_LADDER
@@ -56,33 +61,57 @@ def record_status(
         detail: if passed=False, error message (one line); if passed=True, empty
         command: the drydock command string (e.g. "drydock build jq")
     """
+    if not target_dir.is_dir():
+        return
+
     status_file = target_dir / _STATUS_FILENAME
 
     # Generate ISO 8601 UTC timestamp
     now = datetime.now(UTC)
     timestamp = now.isoformat(timespec="milliseconds")
 
-    # Format the entry
+    # Format the entry. The record is line-oriented, so detail is collapsed to one line.
     result = "pass" if passed else "fail"
     lines = [
         f"## {label}",
         f"result: {result}",
         f"at: {timestamp}",
-        f"detail: {detail}",
-        f"command: {command}",
+        f"detail: {_one_line(detail)}",
+        f"command: {_one_line(command)}",
         "",  # blank line between entries
     ]
 
-    # Append to file (create if missing)
-    if status_file.exists():
-        content = status_file.read_text(encoding="utf-8")
-        if not content.endswith("\n"):
-            content += "\n"
-        content += "\n".join(lines)
-    else:
-        content = "\n".join(lines)
+    try:
+        # Append to file (create if missing)
+        if status_file.exists():
+            content = status_file.read_text(encoding="utf-8")
+            if not content.endswith("\n"):
+                content += "\n"
+            content += "\n".join(lines)
+        else:
+            content = "\n".join(lines)
 
-    status_file.write_text(content, encoding="utf-8")
+        status_file.write_text(content, encoding="utf-8")
+    except OSError:
+        return
+
+
+def _one_line(text: str) -> str:
+    """Collapse whitespace so one record field never spans lines."""
+    return " ".join(text.split())
+
+
+def record_failure(target_dir: Path, label: str, exc: BaseException, *, command: str = "") -> None:
+    """Record a failed attempt at `label`, unless the cause was a usage error.
+
+    A malformed invocation never reached the state it names, so it is not an attempt and
+    must not appear on the ladder.
+    """
+    from drydock.errors import UsageError
+
+    if isinstance(exc, UsageError):
+        return
+    record_status(target_dir, label, passed=False, detail=str(exc)[:500], command=command)
 
 
 def read_status(target_dir: Path) -> tuple[StatusEntry, ...]:

@@ -619,7 +619,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         record_activity,
     )
     from drydock.init_target import init_target
-    from drydock.project_status import record_status
+    from drydock.project_status import record_failure, record_status
 
     logger.debug("cmd_init: target=%s", args.Target)
     targets_root = get_target_directory()
@@ -651,11 +651,10 @@ def cmd_init(args: argparse.Namespace) -> int:
         )
         return 0
     except Exception as e:
-        record_status(
+        record_failure(
             targets_root / args.Target,
             "INITIALIZED",
-            passed=False,
-            detail=str(e)[:500],
+            e,
             command=f"drydock init {args.Target}",
         )
         raise
@@ -1355,7 +1354,7 @@ def _commit_and_stamp(target_dir: Path, message: str) -> str | None:
 def cmd_import(args: argparse.Namespace) -> int:
     from drydock.config import get_target_directory
     from drydock.import_markdown import detect_import_format
-    from drydock.project_status import record_status
+    from drydock.project_status import record_failure, record_status
 
     td = get_target_directory()
     target_dir = td / args.Target
@@ -1477,11 +1476,10 @@ def cmd_import(args: argparse.Namespace) -> int:
 
         raise UsageError(f"Unknown format: {fmt!r}")
     except Exception as e:
-        record_status(
+        record_failure(
             target_dir,
             "IMPORTED",
-            passed=False,
-            detail=str(e)[:500],
+            e,
             command=f"drydock import {args.Target}",
         )
         raise
