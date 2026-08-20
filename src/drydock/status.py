@@ -28,12 +28,11 @@ class AnalysisSummary:
 
 @dataclass(frozen=True)
 class PlanSummary:
-    state: str = ""
     total: int = 0
-    verified: int = 0
-    pending: int = 0
-    implemented: int = 0
-    failed: int = 0
+    story_states: tuple[tuple[str, int], ...] = ()
+
+    def count(self, state: str) -> int:
+        return dict(self.story_states).get(state, 0)
 
 
 @dataclass
@@ -203,15 +202,22 @@ def _read_workspace_history(history_path: Path, target: str, limit: int = 5) -> 
 
 
 def _summarize_plan(plan) -> PlanSummary:
-    counts = plan.state_counts()
+    from drydock.manifest import STATES
+
+    counts = Counter(block.state for block in plan.blocks if block.block_type in {"story", "spike"})
+    states = [(state, counts.pop(state)) for state in STATES if state in counts]
+    states.extend(sorted(counts.items()))
     return PlanSummary(
-        state=plan.state,
-        total=len(plan.blocks),
-        verified=counts.get("closed/verified", 0),
-        pending=counts.get("pending", 0),
-        implemented=counts.get("implemented", 0),
-        failed=counts.get("closed/failed", 0),
+        total=sum(count for _, count in states),
+        story_states=tuple(states),
     )
+
+
+def format_story_states(summary: PlanSummary) -> str:
+    """Render only the declared states of executable Manifest stories."""
+    if not summary.story_states:
+        return "no executable stories"
+    return " · ".join(f"{count} {state}" for state, count in summary.story_states)
 
 
 def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
@@ -291,21 +297,13 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
             phase = "Arrange"
             detail = "Draft plan created — review the Planning Session build tree"
             next_op = f"drydock run quarterdeck {name}"
-        elif plan_summary.total > 0 and plan_summary.verified == plan_summary.total:
+        elif plan_summary.total > 0 and plan_summary.count("closed/verified") == plan_summary.total:
             phase = "Loop"
-            detail = f"All {plan_summary.total} blocks verified — ready for Refit"
+            detail = format_story_states(plan_summary)
             next_op = f"drydock refit {name} BOTH <Scope> <Change>"
         else:
-            parts = [
-                f"{plan_summary.verified}/{plan_summary.total} verified",
-                f"{plan_summary.pending} pending",
-            ]
-            if plan_summary.implemented:
-                parts.append(f"{plan_summary.implemented} implemented")
-            if plan_summary.failed:
-                parts.append(f"{plan_summary.failed} FAILED")
             phase = "Implement"
-            detail = "  ·  ".join(parts)
+            detail = format_story_states(plan_summary)
             if frontier:
                 next_op = (
                     f"drydock build {name}"

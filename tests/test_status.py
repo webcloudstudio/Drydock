@@ -188,6 +188,25 @@ class TestStatusBlueprintTarget:
         assert result.target_info is not None
         assert result.target_info.authored_blueprints == 1
 
+    def test_plan_summary_uses_declared_story_states(self, tmp_target_root):
+        tgt = tmp_target_root / "TestTarget"
+        blueprint = tgt / "blueprint"
+        blueprint.mkdir(parents=True)
+        (tgt / "METADATA.md").write_text(
+            "name: TestTarget\ndisplay_name: TestTarget\n", encoding="utf-8"
+        )
+        (tgt / "MANIFEST.md").write_text(
+            "# MANIFEST: TestTarget\nstate: approved\n\n"
+            "## story 1: Done\nid: done\nstate: closed/implemented\n",
+            encoding="utf-8",
+        )
+
+        result = status_blueprint_target("TestTarget", "TestTarget", blueprint, tmp_target_root)
+
+        assert result.target_info is not None
+        assert result.target_info.plan_summary is not None
+        assert result.target_info.plan_summary.story_states == (("closed/implemented", 1),)
+
     def test_compact_recommendations_include_missing_required_context_compacts(
         self, tmp_target_root
     ):

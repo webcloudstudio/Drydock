@@ -1833,15 +1833,11 @@ def _render_status(result) -> None:
                         print(f"       → {finding.remediation}")
 
     if result.plan is not None:
-        counts = result.plan.state_counts()
-        total = len(result.plan.blocks)
-        verified = counts.get("closed/verified", 0)
-        pending = counts.get("pending", 0)
-        impl = counts.get("implemented", 0)
-        failed = counts.get("closed/failed", 0)
-        progress = f"{result.plan.state} · {verified}/{total} verified"
-        detail = f"pending {pending} · implemented {impl} · failed {failed}"
-        print(f"  {'Plan':<{col}}  {progress:<22}  {detail}")
+        from drydock.status import format_story_states
+
+        summary = result.target_info.plan_summary if result.target_info is not None else None
+        detail = format_story_states(summary) if summary is not None else "no executable stories"
+        print(f"  {'Plan':<{col}}  {detail}")
 
         if result.frontier:
             for i, block in enumerate(result.frontier):
@@ -2011,12 +2007,9 @@ def _render_workspace_status(ws) -> None:
                 f" · {info.analysis.blocker_count} blockers"
             )
         if info.plan_summary is not None:
-            print(
-                f"   {'Plan:':<{label_width}} "
-                f"{info.plan_summary.state}"
-                f" · {info.plan_summary.verified}/{info.plan_summary.total} verified"
-                f" · {info.plan_summary.pending} pending"
-            )
+            from drydock.status import format_story_states
+
+            print(f"   {'Plan:':<{label_width}} {format_story_states(info.plan_summary)}")
         if info.blockers_present or info.questionnaire_count or info.decision_blocker_count:
             review = (
                 f"BLOCKERS.md {'present' if info.blockers_present else 'none'}"
