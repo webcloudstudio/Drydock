@@ -274,6 +274,46 @@ def test_collect_run_records_the_score_exit_code_whichever_operand_order_was_use
     }
 
 
+def test_collect_run_keeps_score_commands_with_a_legacy_subverb_target(workspace, target_dir):
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record(
+                "score build widget",
+                target="build",
+                stamp="20260101.100000.000Z",
+            ),
+            _record(
+                "score report widget",
+                target="report",
+                stamp="20260101.110000.000Z",
+            ),
+        ],
+    )
+
+    result = collect_run("widget", workspace, target_dir)
+
+    assert result["score_exit_codes"] == {"build": 0, "report": 0}
+    assert [run["verb"] for run in result["score_summary"]] == [
+        "spec",
+        "ac",
+        "build",
+        "release",
+        "report",
+    ]
+    assert (
+        next(run for run in result["score_summary"] if run["verb"] == "build")["result"] == "pass"
+    )
+
+    page = write_report("widget", workspace, target_dir, workspace / "build").read_text(
+        encoding="utf-8"
+    )
+    overview = _panel(page, "overview")
+    assert "<td>build</td>" in overview
+    assert "2026-01-01" in overview
+
+
 # ── verdict ──────────────────────────────────────────────────────────────────────────
 
 
@@ -626,6 +666,15 @@ def test_the_scorecard_is_rendered_as_a_verdict_board(planned):
     assert "AC-1 — Widget answers" in panel
     assert '<span class="badge badge-verified">✓ MET</span>' in panel
     assert '<span class="badge badge-failed">✗ NOT MET</span>' in panel
+
+
+def test_overview_renders_the_canonical_score_summary(planned):
+    overview = _panel(planned, "overview")
+
+    assert "<h2>Scores</h2>" in overview
+    assert "Last run" in overview
+    assert "SPECIFICATION_SCORECARD.md" in overview
+    assert "SOUNDINGS.md" in overview
 
 
 def test_a_markdown_plan_document_gets_its_own_rendered_tab(planned):

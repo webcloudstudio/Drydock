@@ -28,6 +28,7 @@ import json
 import re
 import shutil
 from collections.abc import Mapping, Sequence
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -164,11 +165,29 @@ def _iso(stamp: str) -> str:
 
 
 def _target_history(workspace: Path, target: str) -> list[Mapping[str, object]]:
-    """Every recorded command for one Target, oldest first."""
+    """Every command whose operands name one Target, oldest first.
+
+    The journal's legacy ``target`` field held a score sub-verb for some score commands.
+    Target resolution therefore follows the command operands, the same contract as
+    ``drydock score <Target>``.
+    """
     from drydock.config import read_command_history
 
-    records = read_command_history(workspace, target=target, limit=1_000_000)
+    records = [
+        record
+        for record in read_command_history(workspace, limit=1_000_000)
+        if target in _history_tokens(record)[1:]
+    ]
     return sorted(records, key=_stamp_key)
+
+
+def _history_tokens(record: Mapping[str, object]) -> list[str]:
+    """The Drydock operands a journal record invoked, without the executable shim."""
+    argv = record.get("argv")
+    if isinstance(argv, list) and argv:
+        tokens = [str(item) for item in argv]
+        return tokens[1:] if tokens[0] == "drydock" else tokens
+    return str(record.get("command") or "").split()[1:]
 
 
 def _run_window(records: Sequence[Mapping[str, object]]) -> list[Mapping[str, object]]:
@@ -560,6 +579,9 @@ def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
     )
     acceptance = _acceptance(target_dir)
     build = _build_facts(target, target_dir, logs_dir / _RECORDS_NAME)
+    from drydock.score_summary import summarize_scores
+
+    score_summary = summarize_scores(target, workspace, target_dir)
 
     # The verdict is the state the machine holds, not an inference from one artifact. An
     # acceptance failure is a failed state on the ladder like any other, so it lands in the
@@ -581,6 +603,7 @@ def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
         "workflow": workflow,
         "commands": commands,
         "score_exit_codes": _score_exit_codes(commands),
+        "score_summary": [asdict(run) for run in score_summary.runs],
         "acceptance": dict(acceptance),
         "build": build,
         "usage": _usage_totals(llm_records),
@@ -835,7 +858,7 @@ def _publish(
     _write_journal_slice(
         logs_dir / _HISTORY_NAME,
         destination / _HISTORY_NAME,
-        lambda record: record.get("target") == target and _stamp_key(record) >= start_key,
+        lambda record: target in _history_tokens(record)[1:] and _stamp_key(record) >= start_key,
     )
     from drydock.llm_usage import record_target
 
@@ -997,6 +1020,37 @@ def _ladder_table(workflow: Sequence[Mapping[str, object]]) -> str:
         '<p class="note">Every lifecycle state, in order. States not held in '
         "<code>PROJECT_STATUS.jsonl</code> are marked <em>not established</em>; they are not "
         "failures.</p>" + _table(("State", "Result", "When", "Command", "Detail"), rows)
+    )
+
+
+def _score_summary_table(runs: Sequence[Mapping[str, object]]) -> str:
+    """Render the same last-run score facts as ``drydock score <Target>``."""
+    rows = []
+    for run in runs:
+        result = str(run.get("result") or "not run")
+        if result == "pass":
+            result_cell = '<td><span class="tag pass">PASS</span></td>'
+        elif result == "fail":
+            result_cell = '<td><span class="tag fail">FAIL</span></td>'
+        else:
+            result_cell = '<td><span class="tag raw">NOT RUN</span></td>'
+        output = str(run.get("output") or "—")
+        detail = " · ".join(
+            part for part in (str(run.get("output_at") or ""), str(run.get("note") or "")) if part
+        )
+        output_cell = html.escape(output)
+        if detail:
+            output_cell += f'<br><span class="note">{html.escape(detail)}</span>'
+        rows.append([
+            _cell(str(run.get("verb") or "")),
+            _cell(str(run.get("at") or "—"), css="nowrap"),
+            result_cell,
+            f"<td>{output_cell}</td>",
+        ])
+    return (
+        "<h2>Scores</h2>"
+        '<p class="note">The last recorded run and output for every score command.</p>'
+        + _table(("Score", "Last run", "Result", "Output"), rows)
     )
 
 
@@ -1377,17 +1431,8 @@ def _render(
         else ""
     )
 
-    scores = (
-        result.get("score_exit_codes") if isinstance(result.get("score_exit_codes"), dict) else {}
-    )
-    score_rows = [[_cell(name), _status_cell(code)] for name, code in sorted(scores.items())]
-    scores_block = (
-        "<h2>Recorded scores</h2>"
-        '<p class="note">The exit code each score last reported for this Target.</p>'
-        + _table(("Score", "Result"), score_rows)
-        if score_rows
-        else ""
-    )
+    score_summary = [run for run in result.get("score_summary") or () if isinstance(run, Mapping)]
+    scores_block = _score_summary_table(score_summary)
     scores_panel = scores_block + _render_receipt(report_root, checks, tags=_RECEIPT_TAGS)
 
     workspace_files = _files_of(groups, "Workspace")
@@ -1421,6 +1466,7 @@ def _render(
             _detail_line(result),
         ),
         _ladder_table(workflow),
+        _score_summary_table(score_summary),
         _meta(_run_facts(result, delivered)),
         run_notes(),
     ])

@@ -21,6 +21,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-20: The `drydock score report` receipt Overview now renders the same score summary as
+  `drydock score <Target>`: every score command's last run, result, and output artifact. Receipt
+  assembly now resolves a command's Target from its operands rather than the legacy journal
+  `target` field, which recorded a score sub-verb for some older score commands and omitted them
+  from the receipt.
 - 2026-08-20: The `drydock score report` Workflow table now renders all eleven legitimate
   lifecycle states. States not held in `PROJECT_STATUS.jsonl` appear as `NOT ESTABLISHED`, with
   no timestamp or command, rather than being omitted; the receipt therefore shows why an
