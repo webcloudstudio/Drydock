@@ -2798,6 +2798,7 @@ class TestStatus:
         assert "Plan            1 pending · 1 closed/verified" in out
         assert "approved" not in out
         assert "verified/" not in out
+        assert "Name" in out
 
     def test_status_blueprint_reports_validation_summary(
         self, tmp_target_root, isolated_config, monkeypatch

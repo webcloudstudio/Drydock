@@ -35,11 +35,49 @@ class PlanSummary:
         return dict(self.story_states).get(state, 0)
 
 
+@dataclass(frozen=True)
+class WorkflowOutcome:
+    """The latest outcome held for one project workflow step."""
+
+    label: str
+    passed: bool
+    at: str
+    attempts: int = 1
+
+
+_WORKFLOW_LABELS = (
+    "INITIALIZED",
+    "IMPORTED",
+    "ANALYZED",
+    "PLAN CREATED",
+    "PLAN REPAIRED",
+    "BUILT",
+    "LLM ACCEPTANCE CHECKS OK",
+    "SCORE BUILD",
+    "SCORE RELEASE",
+    "FINALIZED",
+)
+_WORKFLOW_INDEX = {label: index for index, label in enumerate(_WORKFLOW_LABELS)}
+_WORKFLOW_DISPLAY = {
+    "INITIALIZED": "Initialize",
+    "IMPORTED": "Import",
+    "ANALYZED": "Analyze",
+    "PLAN CREATED": "Plan",
+    "PLAN REPAIRED": "Plan repair",
+    "BUILT": "Build",
+    "LLM ACCEPTANCE CHECKS OK": "Acceptance checks",
+    "SCORE BUILD": "Build score",
+    "SCORE RELEASE": "Release score",
+    "FINALIZED": "Receipt",
+}
+
+
 @dataclass
 class TargetInfo:
     name: str
     target_dir: Path
     display_name: str
+    short_description: str
     phase: str  # Set Up | Arrange | Implement | Loop | Unknown
     phase_detail: str
     metadata_state: str = ""
@@ -58,6 +96,7 @@ class TargetInfo:
     next_operation: str = ""
     history: list[dict] = field(default_factory=list)
     history_path: Path | None = None
+    workflow: tuple[WorkflowOutcome, ...] = ()
     compact_recs: list = field(default_factory=list)
     active_error: object | None = None
 
@@ -183,7 +222,7 @@ def _count_decision_blockers(target_dir: Path) -> int:
     )
 
 
-def _read_workspace_history(history_path: Path, target: str, limit: int = 5) -> list[dict]:
+def _read_workspace_history(history_path: Path, target: str, limit: int | None = 5) -> list[dict]:
     """Return the most-recent *limit* records for *target* from the workspace history log."""
     if not history_path.exists():
         return []
@@ -198,7 +237,74 @@ def _read_workspace_history(history_path: Path, target: str, limit: int = 5) -> 
                 records.append(rec)
         except Exception:
             pass
-    return records[-limit:]
+    return records[-limit:] if limit is not None else records
+
+
+def _workflow_label(record: dict) -> str | None:
+    """Map one recorded CLI invocation to its workflow step, if it has one."""
+    argv = record.get("argv")
+    if not isinstance(argv, list) or not all(isinstance(item, str) for item in argv):
+        return None
+    if not argv:
+        return None
+    if argv[0] == "init":
+        return "INITIALIZED"
+    if argv[0] == "import":
+        return "IMPORTED"
+    if argv[0] == "analyze":
+        return "ANALYZED"
+    if argv[:2] == ["plan", "repair"]:
+        return "PLAN REPAIRED"
+    if argv[0] == "plan" and argv[1:2] not in (["verify"], ["repair"]):
+        return "PLAN CREATED"
+    if argv[0] == "build" and argv[1:2] != ["status"] and "--help" not in argv:
+        return "BUILT"
+    if argv[:2] == ["score", "ac"]:
+        return "LLM ACCEPTANCE CHECKS OK"
+    if argv[:2] == ["score", "build"]:
+        return "SCORE BUILD"
+    if argv[:2] == ["score", "release"]:
+        return "SCORE RELEASE"
+    if argv[:2] == ["score", "report"]:
+        return "FINALIZED"
+    return None
+
+
+def _workflow_from_history(target_dir: Path, history: list[dict]) -> tuple[WorkflowOutcome, ...]:
+    """Replay lifecycle attempts into one current outcome per workflow step."""
+    standing: dict[str, WorkflowOutcome] = {}
+
+    def record(label: str, passed: bool, at: str, attempts: int = 1) -> None:
+        rank = _WORKFLOW_INDEX[label]
+        for later in tuple(standing):
+            if _WORKFLOW_INDEX[later] > rank:
+                del standing[later]
+        prior = standing.get(label)
+        standing[label] = WorkflowOutcome(
+            label=label,
+            passed=passed,
+            at=at,
+            attempts=attempts if attempts > 1 else (prior.attempts + 1 if prior else 1),
+        )
+
+    for item in history:
+        label = _workflow_label(item)
+        if label is None:
+            continue
+        record(label, item.get("return_code") == 0, str(item.get("time") or ""))
+
+    from drydock.project_status import read_status
+
+    for item in read_status(target_dir):
+        if item.label in _WORKFLOW_INDEX:
+            record(item.label, item.passed, item.at, item.attempts)
+    return tuple(standing[label] for label in _WORKFLOW_LABELS if label in standing)
+
+
+def format_workflow_outcome(outcome: WorkflowOutcome) -> str:
+    """Render a workflow outcome without exposing its originating CLI command."""
+    state = "complete" if outcome.passed else "failed"
+    return f"{state} at {outcome.at}"
 
 
 def _summarize_plan(plan) -> PlanSummary:
@@ -228,6 +334,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
     logger.debug("Reading %s", metadata_path)
     meta = parse_metadata(metadata_path)
     display_name = get_field(meta, "display_name") or name
+    short_description = get_field(meta, "short_description")
     metadata_state = get_build_state(target_dir)
     metadata_sub_state = get_field(meta, "build_sub_state") or ""
 
@@ -248,7 +355,9 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
     has_content = _has_blueprint_content(blueprint_dir)
     logger.debug("Reading %s", build_plan_path)
     logger.debug("Reading %s", history_path)
-    history = _read_workspace_history(history_path, name)
+    all_history = _read_workspace_history(history_path, name, limit=None)
+    history = all_history[-5:]
+    workflow = _workflow_from_history(target_dir, all_history)
 
     plan_summary: PlanSummary | None = None
     frontier: tuple = ()
@@ -273,6 +382,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
                 name=name,
                 target_dir=target_dir,
                 display_name=display_name,
+                short_description=short_description,
                 phase=phase,
                 phase_detail=detail,
                 metadata_state=metadata_state,
@@ -288,6 +398,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
                 next_operation=next_op,
                 history=history,
                 history_path=history_path,
+                workflow=workflow,
                 compact_recs=[],
                 active_error=active_error,
             )
@@ -341,6 +452,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
         name=name,
         target_dir=target_dir,
         display_name=display_name,
+        short_description=short_description,
         phase=phase,
         phase_detail=detail,
         metadata_state=metadata_state,
@@ -356,6 +468,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
         next_operation=next_op,
         history=history,
         history_path=history_path,
+        workflow=workflow,
         compact_recs=compact_recs,
         active_error=active_error,
     )
@@ -479,6 +592,7 @@ def status_workspace(
                         name=entry.name,
                         target_dir=entry,
                         display_name=entry.name,
+                        short_description="",
                         phase="Unknown",
                         phase_detail="Error reading target state",
                     )

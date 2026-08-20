@@ -1754,10 +1754,7 @@ def _render_status(result) -> None:
         noun = singular if value == 1 else (plural or f"{singular}s")
         return f"{value} {noun}"
 
-    header = f"Drydock status — {result.blueprint}"
-    if result.target:
-        header += f" / {result.target}"
-    print(header)
+    print("Drydock status")
     print()
 
     col = 14
@@ -1767,10 +1764,20 @@ def _render_status(result) -> None:
 
     if result.target_info is not None:
         info = result.target_info
+        print(f"  {'Name':<{col}}  {info.display_name}")
+        if info.short_description:
+            description_width = max(
+                40, shutil.get_terminal_size(fallback=(120, 24)).columns - col - 4
+            )
+            description = textwrap.wrap(info.short_description, width=description_width)
+            visible_description = description[:2]
+            if len(description) > len(visible_description):
+                visible_description[-1] = visible_description[-1].rstrip(".") + "…"
+            print(f"  {'Description':<{col}}  {visible_description[0]}")
+            for line in visible_description[1:]:
+                print(f"  {'':<{col}}  {line}")
         print(f"  {'Phase':<{col}}  {info.phase}")
         print(f"  {'State':<{col}}  {info.phase_detail}")
-        if info.display_name and info.display_name != info.name:
-            print(f"  {'Display name':<{col}}  {info.display_name}")
         metadata_detail = info.metadata_state or "init"
         if info.metadata_sub_state:
             metadata_detail += f" · {info.metadata_sub_state}"
@@ -1847,6 +1854,16 @@ def _render_status(result) -> None:
             print(f"  {'Frontier':<{col}}  (none)")
     elif result.target:
         print(f"  {'Plan':<{col}}  not created")
+
+    if result.target_info is not None and result.target_info.workflow:
+        from drydock.status import _WORKFLOW_DISPLAY, format_workflow_outcome
+
+        print(f"  {'Workflow':<{col}}  {len(result.target_info.workflow)} steps")
+        for outcome in result.target_info.workflow:
+            print(
+                f"  {'':<{col}}  {_WORKFLOW_DISPLAY[outcome.label]:<18} "
+                f"{format_workflow_outcome(outcome)}"
+            )
 
     if result.target_info is not None and result.target_info.next_operation:
         print(f"  {'Next step':<{col}}  {result.target_info.next_operation}")

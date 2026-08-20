@@ -207,6 +207,55 @@ class TestStatusBlueprintTarget:
         assert result.target_info.plan_summary is not None
         assert result.target_info.plan_summary.story_states == (("closed/implemented", 1),)
 
+    def test_workflow_replays_history_and_overlays_project_status(self, tmp_target_root):
+        import json
+
+        target_dir = tmp_target_root / "TestTarget"
+        target_dir.mkdir()
+        workspace = tmp_target_root.parent
+        logs = workspace / "logs"
+        logs.mkdir()
+        (target_dir / "METADATA.md").write_text("name: TestTarget\n", encoding="utf-8")
+        history = [
+            {
+                "target": "TestTarget",
+                "argv": ["init", "TestTarget"],
+                "return_code": 0,
+                "time": "one",
+            },
+            {
+                "target": "TestTarget",
+                "argv": ["build", "TestTarget"],
+                "return_code": 1,
+                "time": "two",
+            },
+            {
+                "target": "TestTarget",
+                "argv": ["build", "TestTarget"],
+                "return_code": 0,
+                "time": "three",
+            },
+        ]
+        (logs / "history.jsonl").write_text(
+            "".join(json.dumps(row) + "\n" for row in history), encoding="utf-8"
+        )
+        (target_dir / "PROJECT_STATUS.jsonl").write_text(
+            json.dumps({"label": "SCORE BUILD", "result": "pass", "at": "four", "attempts": 2})
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = status_blueprint_target(
+            "TestTarget", "TestTarget", target_dir / "blueprint", tmp_target_root
+        )
+
+        assert result.target_info is not None
+        assert [(item.label, item.passed, item.at) for item in result.target_info.workflow] == [
+            ("INITIALIZED", True, "one"),
+            ("BUILT", True, "three"),
+            ("SCORE BUILD", True, "four"),
+        ]
+
     def test_compact_recommendations_include_missing_required_context_compacts(
         self, tmp_target_root
     ):
