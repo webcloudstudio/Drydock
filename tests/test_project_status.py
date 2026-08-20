@@ -9,10 +9,12 @@ from drydock.project_status import (
     LABEL_LADDER,
     STATUS_FILENAME,
     current_state,
+    last_good,
     latest_per_label,
     read_status,
     record_failure,
     record_status,
+    void_above,
 )
 
 
@@ -42,7 +44,7 @@ class TestRecordStatus:
         assert entry.detail == ""
         assert entry.attempts == 2
 
-    def test_recording_a_state_voids_every_state_below_it(self, tmp_path):
+    def test_recording_a_mutating_state_voids_every_state_above_it(self, tmp_path):
         for label in ("INITIALIZED", "BUILT", "SCORE BUILD", "FINALIZED"):
             record_status(tmp_path, label, passed=True)
 
@@ -50,12 +52,81 @@ class TestRecordStatus:
 
         assert [e.label for e in read_status(tmp_path)] == ["INITIALIZED", "BUILT"]
 
-    def test_a_failed_attempt_also_voids_downstream_states(self, tmp_path):
+    def test_importing_voids_nothing(self, tmp_path):
+        # Reading sources into a Target changes nothing a later state was verified against.
+        for label in ("INITIALIZED", "IMPORTED", "BUILT", "FINALIZED"):
+            record_status(tmp_path, label, passed=True)
+
+        record_status(tmp_path, "IMPORTED", passed=True)
+
+        assert [e.label for e in read_status(tmp_path)] == [
+            "INITIALIZED",
+            "IMPORTED",
+            "BUILT",
+            "FINALIZED",
+        ]
+
+    def test_re_running_a_verification_voids_no_other_state(self, tmp_path):
+        for label in ("BUILT", "LLM ACCEPTANCE CHECKS OK", "SCORE BUILD", "FINALIZED"):
+            record_status(tmp_path, label, passed=True)
+
+        record_status(tmp_path, "LLM ACCEPTANCE CHECKS OK", passed=True)
+
+        # No evidence changed, so the scores taken on top of acceptance still stand.
+        assert [e.label for e in read_status(tmp_path)] == [
+            "BUILT",
+            "LLM ACCEPTANCE CHECKS OK",
+            "SCORE BUILD",
+            "FINALIZED",
+        ]
+        assert current_state(tmp_path).label == "FINALIZED"
+
+    def test_a_failed_verification_invalidates_only_itself(self, tmp_path):
+        for label in ("BUILT", "LLM ACCEPTANCE CHECKS OK", "SCORE BUILD", "FINALIZED"):
+            record_status(tmp_path, label, passed=True)
+
+        record_status(tmp_path, "LLM ACCEPTANCE CHECKS OK", passed=False, detail="2 failed")
+
+        standing = latest_per_label(read_status(tmp_path))
+        assert standing["LLM ACCEPTANCE CHECKS OK"].passed is False
+        assert standing["SCORE BUILD"].passed is True
+        assert standing["FINALIZED"].passed is True
+        # The rows survive; acceptance is now the rung blocking the workflow.
+        assert current_state(tmp_path).label == "LLM ACCEPTANCE CHECKS OK"
+        assert last_good(read_status(tmp_path)).label == "BUILT"
+
+    def test_last_good_skips_the_ladder_s_optional_rungs(self, tmp_path):
+        # PLAN REPAIRED and BUILDING run only conditionally; their absence is not a failure.
+        for label in ("INITIALIZED", "PLAN CREATED", "BUILT"):
+            record_status(tmp_path, label, passed=True)
+
+        assert current_state(tmp_path).label == "BUILT"
+
+
+class TestVoidAbove:
+    def test_drops_every_state_above_the_named_one(self, tmp_path):
+        for label in ("PLAN CREATED", "PLAN REPAIRED", "BUILT", "FINALIZED"):
+            record_status(tmp_path, label, passed=True)
+
+        void_above(tmp_path, "PLAN REPAIRED")
+
+        assert [e.label for e in read_status(tmp_path)] == ["PLAN CREATED", "PLAN REPAIRED"]
+
+    def test_keeps_the_named_state_and_ignores_an_unknown_one(self, tmp_path):
+        record_status(tmp_path, "BUILT", passed=True)
+
+        void_above(tmp_path, "NOT A STATE")
+
+        assert [e.label for e in read_status(tmp_path)] == ["BUILT"]
+
+    def test_a_failed_mutating_attempt_also_voids_downstream_states(self, tmp_path):
         record_status(tmp_path, "BUILT", passed=True)
         record_status(tmp_path, "FINALIZED", passed=True)
 
         record_status(tmp_path, "BUILT", passed=False, detail="boom")
 
+        # A build that got partway and stopped has already rewritten the tree the receipt
+        # was published over, so it voids like any other build.
         assert [e.label for e in read_status(tmp_path)] == ["BUILT"]
         assert current_state(tmp_path).passed is False
 
@@ -111,6 +182,17 @@ class TestFileFormat:
             "at": rows[-2]["at"],
             "attempts": 1,
         }
+
+    def test_summary_names_the_blocking_rung_not_the_states_above_it(self, tmp_path):
+        for label in ("BUILT", "LLM ACCEPTANCE CHECKS OK", "FINALIZED"):
+            record_status(tmp_path, label, passed=True)
+
+        record_status(tmp_path, "LLM ACCEPTANCE CHECKS OK", passed=False, detail="2 failed")
+
+        # FINALIZED is still recorded, but acceptance has to be cleared before it means
+        # anything, so that is what the summary reports.
+        assert _rows(tmp_path)[-1]["state"] == "LLM ACCEPTANCE CHECKS OK"
+        assert _rows(tmp_path)[-1]["result"] == "fail"
 
     def test_one_json_object_per_line(self, tmp_path):
         record_status(tmp_path, "BUILT", passed=False, detail="a\nb")

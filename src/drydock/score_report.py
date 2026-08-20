@@ -409,27 +409,41 @@ def _workflow(target_dir: Path) -> list[dict[str, object]]:
     """The workflow ladder: the states ``PROJECT_STATUS.jsonl`` holds, in ladder order.
 
     One receipt row per state row, and nothing else. The state machine is the only source:
-    it already voids every state below the one last recorded, so there is nothing to reduce
-    and no second opinion to reconcile. A state it does not hold was either never attempted
-    or was voided by a later one; either way the receipt has no claim to make about it.
+    it already drops the states a re-authored plan or build invalidated, so there is nothing
+    to reduce and no second opinion to reconcile. A state it does not hold was either never
+    attempted or was voided; either way the receipt has no claim to make about it.
     """
     from drydock.project_status import read_status
 
-    return [
-        {
-            "label": entry.label,
-            "passed": entry.passed,
-            "at": entry.at,
-            "detail": entry.detail,
-            "command": entry.command,
-            "attempts": entry.attempts,
-        }
-        for entry in read_status(target_dir)
-    ]
+    return [_row_of(entry) for entry in read_status(target_dir)]
+
+
+def _standing_row(target_dir: Path) -> dict[str, object]:
+    """The standing state as a receipt row: the blocking rung, else the last good one."""
+    from drydock.project_status import read_status, standing_state
+
+    entry = standing_state(read_status(target_dir))
+    return _row_of(entry) if entry is not None else {}
+
+
+def _row_of(entry) -> dict[str, object]:
+    """One :class:`~drydock.project_status.StatusEntry` as the receipt's row shape."""
+    return {
+        "label": entry.label,
+        "passed": entry.passed,
+        "at": entry.at,
+        "detail": entry.detail,
+        "command": entry.command,
+        "attempts": entry.attempts,
+    }
 
 
 def _workflow_state(result: Mapping[str, object]) -> str:
-    """Grade the run from the state the machine holds: ``fail``, ``pass``, or ``warn``."""
+    """Grade the run from the state the machine holds: ``fail``, ``pass``, or ``warn``.
+
+    ``state`` is the standing state, which is the blocking rung whenever one exists, so a
+    failure anywhere on the ladder reaches this as a failure.
+    """
     state = result.get("state")
     if not isinstance(state, Mapping) or not state.get("label"):
         return "warn"
@@ -444,7 +458,9 @@ def _reconcile_acceptance(target: str, target_dir: Path, acceptance: Mapping[str
     ``drydock score ac`` owns that state and normally records its own failure. This catches
     the case where the board on disk reports failures the recorded state does not, and it
     corrects the machine rather than the rendered page, so the file and the receipt cannot
-    disagree. Recording the failure voids the scores that ran on top of it.
+    disagree. The failure invalidates acceptance only: no evidence changed, so the scores
+    taken on top of it keep whatever standing they had. What it does move is the last good
+    state, which now stops below acceptance.
     """
     from drydock.project_status import latest_per_label, read_status, record_status
 
@@ -550,9 +566,9 @@ def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
     # same place; a board that was never recorded withholds nothing, because the states that
     # did run still say exactly how far the project got.
     workflow = _workflow(target_dir)
-    state = dict(workflow[-1]) if workflow else {}
+    state = _standing_row(target_dir)
     status = {"pass": "passed", "fail": "failed", "warn": "incomplete"}[
-        _workflow_state({"state": state})
+        _workflow_state({"state": state, "workflow": workflow})
     ]
 
     from drydock import __version__

@@ -134,6 +134,34 @@ class TestStanding:
 
         assert _row(summarize_scores("T", tmp_path, target_dir), "build").standing == "voided"
 
+    def test_re_running_acceptance_leaves_the_scores_above_it_held(self, tmp_path):
+        target_dir = _target(tmp_path)
+        _journal(
+            tmp_path,
+            ("20260820.100000.000Z", ["score", "build", "T"], 0),
+            ("20260820.110000.000Z", ["score", "ac", "T"], 0),
+        )
+        record_status(target_dir, "SCORE BUILD", passed=True)
+        record_status(target_dir, "LLM ACCEPTANCE CHECKS OK", passed=True)
+
+        summary = summarize_scores("T", tmp_path, target_dir)
+
+        # Re-verifying changes no evidence, so the build score is not invalidated by it.
+        assert _row(summary, "build").standing == "held"
+        assert _row(summary, "ac").standing == "held"
+
+    def test_a_failed_acceptance_rerun_does_not_void_the_scores_above_it(self, tmp_path):
+        target_dir = _target(tmp_path)
+        _journal(tmp_path, ("20260820.100000.000Z", ["score", "build", "T"], 0))
+        record_status(target_dir, "SCORE BUILD", passed=True)
+        record_status(target_dir, "LLM ACCEPTANCE CHECKS OK", passed=False, detail="2 failed")
+
+        summary = summarize_scores("T", tmp_path, target_dir)
+
+        assert _row(summary, "build").standing == "held"
+        assert summary.state == "LLM ACCEPTANCE CHECKS OK"
+        assert summary.state_result == "fail"
+
     def test_a_failed_state_reports_failed(self, tmp_path):
         target_dir = _target(tmp_path)
         _journal(tmp_path, ("20260820.100000.000Z", ["score", "build", "T"], 1))

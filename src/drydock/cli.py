@@ -848,6 +848,14 @@ def cmd_refit(args: argparse.Namespace) -> int:
     for error in result.drift_errors:
         print(f"  [blocked]         {error}")
 
+    # A conform or a reset re-authors the specification the build was made against. The refit
+    # claims no rung of its own, so it voids by hand: everything above the plan was verified
+    # against a Target that no longer exists.
+    if result.conformed() or result.resets:
+        from drydock.project_status import void_above
+
+        void_above(target_dir, "PLAN REPAIRED")
+
     if not result.items and not result.resets and not result.drift_errors:
         print("  No change tickets or specification drift found — nothing to do.")
 

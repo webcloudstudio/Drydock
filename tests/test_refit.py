@@ -628,3 +628,60 @@ class TestDriftReconciliation:
         assert "DATABASE.md" not in plan.applied_specs
         # SCREEN-A.md was stamped by the reset screen-a block, so it is dropped too.
         assert "SCREEN-A.md" not in plan.applied_specs
+
+
+class TestRefitVoidsVerifications:
+    """A conform re-authors the build, so the states verified against it stop standing."""
+
+    def _run(self, tmp_path, monkeypatch, result_items, resets=()):
+        import argparse
+
+        from drydock import cli
+        from drydock.refit import RefitItem, RefitResult
+
+        target_dir = tmp_path / "targets" / "widget"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(cli, "_stream_stdout", lambda *a, **k: None, raising=False)
+        monkeypatch.setattr("drydock.config.require_target_dir", lambda _t: target_dir)
+        monkeypatch.setattr("drydock.config.get_workspace", lambda: tmp_path)
+        monkeypatch.setattr("drydock.config.get_model", lambda _m: "model")
+        monkeypatch.setattr("drydock.config.get_llm_provider", lambda _p: "fake")
+        monkeypatch.setattr(
+            "drydock.refit.refit_target",
+            lambda *a, **k: RefitResult(
+                target_dir=target_dir,
+                items=[RefitItem(ticket=target_dir / t, status=s) for t, s in result_items],
+                resets=list(resets),
+            ),
+        )
+        args = argparse.Namespace(Target="widget", sources=False, relineage=False)
+        cli.cmd_refit(args)
+        return target_dir
+
+    def _ladder(self, target_dir):
+        from drydock.project_status import read_status, record_status
+
+        for label in ("PLAN CREATED", "BUILT", "LLM ACCEPTANCE CHECKS OK", "FINALIZED"):
+            record_status(target_dir, label, passed=True)
+        return read_status
+
+    def test_a_conform_voids_every_state_above_the_plan(self, tmp_path, monkeypatch, capsys):
+        target_dir = self._run(tmp_path, monkeypatch, [("T-1.md", "conformed")])
+        read_status = self._ladder(target_dir)
+        self._run(tmp_path, monkeypatch, [("T-1.md", "conformed")])
+        capsys.readouterr()
+
+        assert [e.label for e in read_status(target_dir)] == ["PLAN CREATED"]
+
+    def test_a_refit_that_conformed_nothing_voids_nothing(self, tmp_path, monkeypatch, capsys):
+        target_dir = self._run(tmp_path, monkeypatch, [])
+        read_status = self._ladder(target_dir)
+        self._run(tmp_path, monkeypatch, [("T-1.md", "skipped-no-amends")])
+        capsys.readouterr()
+
+        assert [e.label for e in read_status(target_dir)] == [
+            "PLAN CREATED",
+            "BUILT",
+            "LLM ACCEPTANCE CHECKS OK",
+            "FINALIZED",
+        ]

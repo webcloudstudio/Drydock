@@ -9,8 +9,9 @@ Two independent records are joined, because they answer different questions:
 * ``logs/history.jsonl`` — the last invocation of each score sub-verb and the exit code it
   reported. This is *what the command did*.
 * ``PROJECT_STATUS.jsonl`` — the workflow states the Target currently stands in. This is
-  *whether that result still holds*. A score is voided by any later command below it on the
-  ladder, so a passing run can stop standing without ever being re-run.
+  *whether that result still holds*. A score is voided when a later command re-authors the
+  plan or the build it was taken against, so a passing run can stop standing without ever
+  being re-run. Another score running — or failing — never does that to it.
 
 Reading is the whole contract: nothing here rescores, executes a proof, or calls a model.
 """
@@ -81,11 +82,11 @@ class ScoreSummary:
 
 def summarize_scores(target: str, workspace: Path, target_dir: Path) -> ScoreSummary:
     """Join the command journal, the state machine, and the artifacts on disk. Writes nothing."""
-    from drydock.project_status import latest_per_label, read_status
+    from drydock.project_status import latest_per_label, read_status, standing_state
 
     entries = read_status(target_dir)
     standing = latest_per_label(entries)
-    current = entries[-1] if entries else None
+    current = standing_state(entries)
     last_runs = _last_score_runs(workspace, target)
 
     runs = tuple(

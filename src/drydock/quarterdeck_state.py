@@ -146,15 +146,17 @@ def _with_state_panel(html: str, target_dir: Path) -> str:
     analyzed, planned, building). This is the recorded ladder instead: the eleven states
     ``PROJECT_STATUS.jsonl`` holds, with the one the project is in called out. A state the
     machine does not hold was never reached or was voided by a later one, so it renders as
-    pending rather than as a claim either way.
+    pending rather than as a claim either way. The state called out is where the workflow
+    stands — the blocking rung if one failed, otherwise the furthest reached — not the last
+    row written, which may sit above a failure that has to be cleared first.
     """
-    from drydock.project_status import LABEL_LADDER, latest_per_label, read_status
+    from drydock.project_status import LABEL_LADDER, latest_per_label, read_status, standing_state
 
-    standing = latest_per_label(read_status(target_dir))
-    if not standing:
+    entries = read_status(target_dir)
+    standing = latest_per_label(entries)
+    current = standing_state(entries)
+    if current is None:
         return html
-
-    current = list(standing.values())[-1]
     verdict = "pass" if current.passed else "fail"
     attempts = f" · attempt {current.attempts}" if current.attempts > 1 else ""
     detail = f"<span>{escape(current.detail)}</span>" if current.detail else ""

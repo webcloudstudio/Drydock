@@ -25,6 +25,24 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-20: `PROJECT_STATUS.jsonl` voids a workflow state only when the artifact it was
+  verified against has been re-authored. Previously any recording voided every state above it on
+  the ladder, so re-running a passing verification silently deleted the passing states above it:
+  a second `drydock score ac` removed `SCORE BUILD`, `SCORE RELEASE`, and `FINALIZED` without
+  touching any evidence, and `drydock score` then reported three passing scores as `voided`.
+  Voiding is now a property of the command. `ANALYZED`, `PLAN CREATED`, `PLAN REPAIRED`,
+  `BUILDING`, and `BUILT` void everything above them, pass or fail, because the command ran and
+  rewrote the tree. `INITIALIZED` and `IMPORTED` void nothing — creating a Target and reading
+  sources into it invalidate no later verification. The acceptance and score states void nothing
+  either: a verification that fails on rerun invalidates itself alone, and the states above it
+  keep whatever standing they had. `drydock refit` voids every state above `PLAN REPAIRED` when
+  it conforms a ticket or resets a drifted Blueprint, which it previously did not record at all.
+- 2026-08-20: States are no longer mutually exclusive, so the `PROJECT_STATUS.jsonl` summary row,
+  `drydock score`, the `drydock score report` receipt, and the Commander's Chair lifecycle strip
+  now name the *standing* state: the lowest failed rung when one exists, otherwise the furthest
+  rung reached. A failed rung outranks the passing states recorded above it, because the workflow
+  runs bottom-up and stops there. Optional rungs (`PLAN REPAIRED`, `BUILDING`) no longer have to
+  be present for the rungs above them to count.
 - 2026-08-20: The `drydock score report` receipt renders the plan of record instead of indexing
   it. The `PLAN` tab was a table of file names, byte counts, and `open` links to generated viewer
   pages; it is now one tab per artifact — `Manifest`, `Scorecard`, `Analysis`, `Metadata`,

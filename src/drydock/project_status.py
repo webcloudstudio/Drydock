@@ -1,18 +1,20 @@
 """Project workflow state: the PROJECT_STATUS.jsonl state machine.
 
-A Target is in exactly one state. ``PROJECT_STATUS.jsonl`` holds one row per workflow state
-the Target currently stands in, in ladder order, followed by one summary row naming the
-state the project is in. It is a snapshot, not a journal: recording a state rewrites the
-file, and there is no attempt history to reduce.
+``PROJECT_STATUS.jsonl`` holds one row per workflow state the Target currently stands in, in
+ladder order, followed by one summary row naming the state the project is in. It is a
+snapshot, not a journal: recording a state rewrites the file, and there is no attempt history
+to reduce. The states are not mutually exclusive — a failed rung can sit below passing ones.
 
-The ladder is linear, so the transition rule is linear too. Recording any state voids every
-state below it: starting a build un-finalizes the project, re-running acceptance voids the
-scores built on it, and re-importing voids everything downstream of the import. A voided
-state is removed outright — absent means "not established", which is the same thing it
-means for a state never attempted.
+Voiding is a property of the *command*, not of ladder position. A state is voided only when
+the thing it verified has changed underneath it — a new plan or a new build in the same
+space. Re-running a verification does not: the evidence is untouched, so every other state
+still stands whatever the rerun reports. A verification that fails invalidates itself and
+nothing else. A voided state is removed outright — absent means "not established", which is
+the same thing it means for a state never attempted.
 
-The summary row is derived, never authoritative. It is rewritten from the state rows on
-every record so an external reader can ``tail -1`` the file for the answer.
+The summary row is derived, never authoritative, and names where the workflow stands: the
+lowest failed state if there is one, otherwise the last good state. That is the rung the
+workflow stopped on, so an external reader can ``tail -1`` the file for the answer.
 """
 
 from __future__ import annotations
@@ -22,8 +24,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-#: Workflow states, in ladder order. Position is the transition rule: recording a state
-#: voids every state after it. A state not listed here is not part of the machine.
+#: Workflow states, in ladder order. Position orders the workflow and nothing more; it is
+#: not the transition rule. A state not listed here is not part of the machine.
 LABEL_LADDER = (
     "INITIALIZED",
     "IMPORTED",
@@ -39,6 +41,21 @@ LABEL_LADDER = (
 )
 
 _LADDER_INDEX = {label: index for index, label in enumerate(LABEL_LADDER)}
+
+#: States whose command rewrites the artifact under test, so reaching one voids every state
+#: above it. ``INITIALIZED`` and ``IMPORTED`` are not here: creating a Target and reading
+#: sources into it change nothing a later state was established against. Everything from
+#: analysis onward produces a new plan or a new build in the same space, which does.
+#:
+#: The verification states — the acceptance and score ladder — are absent by construction.
+#: They read evidence; they never author it.
+MUTATING_LABELS = frozenset({
+    "ANALYZED",
+    "PLAN CREATED",
+    "PLAN REPAIRED",
+    "BUILDING",
+    "BUILT",
+})
 
 STATUS_FILENAME = "PROJECT_STATUS.jsonl"
 
@@ -58,7 +75,16 @@ class StatusEntry:
 def record_status(
     target_dir: Path, label: str, *, passed: bool, detail: str = "", command: str = ""
 ) -> None:
-    """Move the Target to *label*, voiding every state below it on the ladder.
+    """Record an attempt at *label*, voiding states above it only if *label* is mutating.
+
+    An attempt at a state in :data:`MUTATING_LABELS` re-authors the artifact everything above
+    it was verified against, so those states are dropped. An attempt at any other state
+    records itself and touches nothing else: a rerun of a verification changes no evidence,
+    so a state established earlier still stands regardless of what the rerun reports.
+
+    A failed verification is a claim about *this* state only and voids nothing. A failed
+    *mutating* attempt still voids, because it ran: a build that got partway through and
+    stopped has already rewritten the tree the scores above it were taken against.
 
     Recording is an observability side effect, never a failure mode: it is skipped when the
     Target directory does not exist (nothing was attempted against a Target that is not
@@ -68,8 +94,7 @@ def record_status(
     Args:
         target_dir: the Target's directory ($DRYDOCK_WORKSPACE/targets/<Target>)
         label: one of LABEL_LADDER; anything else is ignored
-        passed: whether the attempt succeeded. A failed attempt still voids downstream
-            states — a build that failed invalidates the scores that ran before it.
+        passed: whether the attempt succeeded
         detail: if passed=False, error message (collapsed to one line); if passed=True, empty
         command: the drydock command string (e.g. "drydock build jq")
     """
@@ -78,7 +103,12 @@ def record_status(
 
     rank = _LADDER_INDEX[label]
     standing = read_status(target_dir)
-    kept = [entry for entry in standing if _LADDER_INDEX[entry.label] < rank]
+    voids = label in MUTATING_LABELS
+    kept = [
+        entry
+        for entry in standing
+        if entry.label != label and (not voids or _LADDER_INDEX[entry.label] < rank)
+    ]
     previous = next((entry for entry in standing if entry.label == label), None)
     kept.append(
         StatusEntry(
@@ -91,6 +121,23 @@ def record_status(
         )
     )
     _write(target_dir, kept)
+
+
+def void_above(target_dir: Path, label: str) -> None:
+    """Drop every state above *label* without claiming a state.
+
+    For commands that re-author the artifact but occupy no rung of their own — ``drydock
+    refit`` conforms a new specification into an existing build, so every verification above
+    the plan was made against something that no longer exists. Same silent-side-effect
+    contract as :func:`record_status`.
+    """
+    if label not in _LADDER_INDEX or not target_dir.is_dir():
+        return
+    rank = _LADDER_INDEX[label]
+    standing = read_status(target_dir)
+    kept = [entry for entry in standing if _LADDER_INDEX[entry.label] <= rank]
+    if len(kept) != len(standing):
+        _write(target_dir, kept)
 
 
 def record_failure(target_dir: Path, label: str, exc: BaseException, *, command: str = "") -> None:
@@ -143,13 +190,42 @@ def read_status(target_dir: Path) -> tuple[StatusEntry, ...]:
 
 
 def current_state(target_dir: Path) -> StatusEntry | None:
-    """The one state the project is in, or None when it has established none.
+    """The state the project is in, or None when it has established none.
 
-    The highest ladder state present. Because every write voids what is below it, that is
-    also always the most recently recorded state.
+    See :func:`standing_state`. States are no longer mutually exclusive — a verification that
+    fails on rerun leaves the states it was built on in place — so "the highest row present"
+    is no longer the answer.
     """
-    entries = read_status(target_dir)
-    return entries[-1] if entries else None
+    return standing_state(read_status(target_dir))
+
+
+def standing_state(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:
+    """Where the workflow stands: the rung blocking it, or the last good one.
+
+    The workflow runs bottom-up and stops at its first failure, so a failed state is what an
+    operator must act on and outranks any state above it. With nothing failed, this is the
+    last good state — the furthest rung reached.
+    """
+    return blocking(entries) or last_good(entries)
+
+
+def blocking(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:
+    """The lowest failed state, which is the one the workflow would have stopped on."""
+    failures = [entry for entry in entries if not entry.passed]
+    return min(failures, key=lambda entry: _LADDER_INDEX[entry.label], default=None)
+
+
+def last_good(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:
+    """The highest passing entry ranked below the lowest failed one.
+
+    Ranking rather than position handles the ladder's optional rungs: ``PLAN REPAIRED`` runs
+    only after a failed verify and ``BUILDING`` only while work remains, so the passing states
+    are not required to be contiguous.
+    """
+    failed = blocking(entries)
+    ceiling = _LADDER_INDEX[failed.label] if failed is not None else len(LABEL_LADDER)
+    good = [entry for entry in entries if entry.passed and _LADDER_INDEX[entry.label] < ceiling]
+    return good[-1] if good else None
 
 
 def latest_per_label(entries: tuple[StatusEntry, ...]) -> dict[str, StatusEntry]:
@@ -163,7 +239,8 @@ def latest_per_label(entries: tuple[StatusEntry, ...]) -> dict[str, StatusEntry]
 
 
 def _write(target_dir: Path, entries: list[StatusEntry]) -> None:
-    """Rewrite the snapshot: the state rows, then the derived summary row."""
+    """Rewrite the snapshot: the state rows in ladder order, then the derived summary row."""
+    entries = sorted(entries, key=lambda entry: _LADDER_INDEX[entry.label])
     lines = [
         json.dumps({
             "label": entry.label,
@@ -175,8 +252,10 @@ def _write(target_dir: Path, entries: list[StatusEntry]) -> None:
         })
         for entry in entries
     ]
-    if entries:
-        state = entries[-1]
+    # The summary names where the workflow stands, not the last row written: a verification
+    # that failed on rerun is recorded above states that still stand, and is not the answer.
+    state = standing_state(tuple(entries))
+    if state is not None:
         lines.append(
             json.dumps({
                 "state": state.label,
