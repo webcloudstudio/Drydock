@@ -88,6 +88,9 @@ def refresh_commanders_chair(
         if html is None:
             return None
 
+        # The workflow ladder is applied first so it sits closest to the tabs: a recovery
+        # signal or a running command is the more urgent read and belongs above it.
+        html = _with_state_panel(html, target_dir)
         if projection.active_error is not None:
             html = _with_error_panel(html, projection.active_error)
         if running_command is not None:
@@ -128,6 +131,59 @@ def _with_running_panel(html: str, *, running_command: str, started_at: str) -> 
     )
     marker = '<nav class="chair-tabs"'
     return html.replace(marker, panel + "\n" + marker, 1)
+
+
+def _with_state_panel(html: str, target_dir: Path) -> str:
+    """Render the workflow state machine as the Chair's lifecycle strip.
+
+    The phase label above it is a four-way projection of the Target's artifacts (init,
+    analyzed, planned, building). This is the recorded ladder instead: the eleven states
+    ``PROJECT_STATUS.jsonl`` holds, with the one the project is in called out. A state the
+    machine does not hold was never reached or was voided by a later one, so it renders as
+    pending rather than as a claim either way.
+    """
+    from drydock.project_status import LABEL_LADDER, latest_per_label, read_status
+
+    standing = latest_per_label(read_status(target_dir))
+    if not standing:
+        return html
+
+    current = list(standing.values())[-1]
+    verdict = "pass" if current.passed else "fail"
+    attempts = f" · attempt {current.attempts}" if current.attempts > 1 else ""
+    detail = f"<span>{escape(current.detail)}</span>" if current.detail else ""
+
+    steps = []
+    for label in LABEL_LADDER:
+        entry = standing.get(label)
+        if entry is None:
+            css = "state-step"
+        elif label == current.label:
+            css = f"state-step state-current state-{verdict}"
+        else:
+            css = "state-step state-held" if entry.passed else "state-step state-fail"
+        steps.append(f'<li class="{css}">{escape(label)}</li>')
+
+    return html.replace(
+        '<nav class="chair-tabs"',
+        '<section class="state-panel">'
+        f"<strong>STATE: {escape(current.label)}"
+        f'<span class="state-verdict state-{verdict}">{verdict.upper()}</span></strong>'
+        f"{detail}"
+        f'<span class="state-when">{escape(_local_stamp(current.at))}{escape(attempts)}</span>'
+        f'<ol class="state-ladder">{"".join(steps)}</ol>'
+        "</section>\n"
+        '<nav class="chair-tabs"',
+        1,
+    )
+
+
+def _local_stamp(at: str) -> str:
+    """Render a recorded instant for a reader, or pass it through when it will not parse."""
+    try:
+        return datetime.fromisoformat(at).astimezone().strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return at
 
 
 def _with_error_panel(html: str, error) -> str:

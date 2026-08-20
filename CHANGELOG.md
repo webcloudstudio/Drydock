@@ -23,9 +23,17 @@ command surface and Typed Specification contract are unstable and may change bet
   `FINALIZED`. `project_status.current_state` is the single reducer. The hand-rolled markdown
   parser is gone, taking with it the single-line escaping constraint on `detail`. Each row
   carries an `attempts` count so the receipt still reports repeated attempts without retaining
-  a journal; the count resets when the state is voided. The legacy `PROJECT_STATUS.md` is
-  removed on first write, and its contents are not migrated — existing Targets rebuild their
-  ladder as commands re-record.
+  a journal; the count resets when the state is voided. A Target still carrying the legacy
+  `PROJECT_STATUS.md` is migrated on first read: the journal is replayed in recorded order
+  under the same void rule, which is the only reading of it that yields one state, and the
+  file is then removed.
+- 2026-08-20: The Commander's Chair carries a lifecycle strip naming the state the project is
+  in, its verdict, when it was recorded, and how many attempts it took, above the full
+  eleven-state ladder with held states marked. It sits below the BIG ERRORS and RUNNING
+  panels and is omitted for a Target that has recorded no state. The Chair previously showed
+  only `get_build_state`'s four-way artifact projection (init, analyzed, planned, building),
+  which cannot distinguish a built project from a scored or finalized one. That projection
+  still drives which phase view renders; the strip reports the recorded machine beside it.
 - 2026-08-20: The `drydock score report` receipt renders the state machine and nothing else.
   The workflow ladder is one row per row of `PROJECT_STATUS.jsonl`, and the header states the
   one state the project is in rather than re-deriving how far the run got. The receipt
