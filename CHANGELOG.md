@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-20: The repair ladder in `drydock score build` reports what each pass settled instead
+  of whether it closed its block. Every pass that did not close was labelled `failed`, so a
+  block that verified on repair 5 printed five failures above one success, and a pass overturned
+  by a governed gate or the regression sweep printed `failed` beside `2/2 AC` — a contradiction
+  on its face. A pass that is not the block's last now reads `incomplete`; the last pass carries
+  the block's verdict, `built` or `failed`. Block evidence additionally records `reason:` on any
+  pass that did not close, naming the gate, sweep, or acceptance failure that overturned it, and
+  the ladder prints that reason beneath the row. Evidence written before this change parses
+  unchanged and simply carries no reason.
+
 - 2026-08-20: `drydock score report` stamps the lifecycle a Target recorded rather than the
   presence of one artifact. A finished project whose acceptance board was never written was
   stamped `UNPROVEN` — jq, with every Manifest story `closed/implemented` and 537 of 537

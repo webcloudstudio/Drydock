@@ -2395,6 +2395,10 @@ def test_repair_loop_fixes_failed_acceptance_on_second_pass(tmp_path):
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
     assert "## Repair attempts" in evidence
     assert "attempt 1 (repair 1)" in evidence
+    # The pass that did not close names why, so the row is never a bare "failed".
+    assert "reason: programmatic acceptance failed" in evidence
+    assert "attempt 1 (repair 1): built" in evidence
+    assert "; reason:" not in evidence.split("attempt 1 (repair 1)")[1]
 
 
 def test_repair_loop_continues_while_deterministic_score_improves(tmp_path):

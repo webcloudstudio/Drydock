@@ -157,6 +157,66 @@ def test_repaired_block_reports_every_pass_with_its_own_score(tmp_path):
     assert report.repaired_blocks == (block,)
 
 
+def test_a_pass_that_did_not_close_a_verified_block_reads_incomplete_not_failed(tmp_path):
+    target_dir, records = _setup(
+        tmp_path,
+        {"feature-inline-parsing.md": _REPAIRED},
+        [
+            _record("exec-first", input_tokens=2000, cached=1600, output=80, elapsed=120000),
+            _record("exec-repair", input_tokens=1000, cached=900, output=40, elapsed=30000),
+        ],
+    )
+
+    report = build_score_report("commonmark", target_dir, records_path=records)
+    block = report.blocks[0]
+    first, second = block.attempts
+
+    # The recorded status stays as the build loop wrote it; the reported outcome is the block's.
+    assert first.status == "failed"
+    assert block.outcome_of(first) == "incomplete"
+    assert block.outcome_of(second) == "built"
+
+
+def test_the_last_pass_of_an_unverified_block_still_reads_failed(tmp_path):
+    target_dir, records = _setup(
+        tmp_path,
+        {"feature-filter-delivery.md": _FAILED},
+        [_record("exec-failed", input_tokens=500, cached=400, output=20, elapsed=10000)],
+    )
+
+    report = build_score_report("commonmark", target_dir, records_path=records)
+    block = report.blocks[0]
+
+    assert block.outcome_of(block.attempts[-1]) == "failed"
+
+
+def test_an_attempt_records_why_it_did_not_close(tmp_path):
+    # A pass can meet every criterion and still be overturned. Without the reason the row reads
+    # as a contradiction, so the reason is parsed and carried.
+    evidence = _REPAIRED.replace(
+        "- attempt 0 (initial build): failed; 1/2 checks; 243/243 cases "
+        "model=gpt-5.6-luna; execution exec-first",
+        "- attempt 0 (initial build): failed; 2/2 checks model=gpt-5.6-luna; "
+        "execution exec-first; stopped: budget spent; "
+        "reason: regression: inline-links, inline-code",
+    )
+    target_dir, records = _setup(
+        tmp_path,
+        {"feature-inline-parsing.md": evidence},
+        [
+            _record("exec-first", input_tokens=2000, cached=1600, output=80, elapsed=120000),
+            _record("exec-repair", input_tokens=1000, cached=900, output=40, elapsed=30000),
+        ],
+    )
+
+    report = build_score_report("commonmark", target_dir, records_path=records)
+    first = report.blocks[0].attempts[0]
+
+    assert first.stop_reason == "budget spent"
+    assert first.reason == "regression: inline-links, inline-code"
+    assert (first.passed_checks, first.total_checks) == (2, 2)
+
+
 def test_failed_block_carries_its_failing_criteria_and_stop_reason(tmp_path):
     target_dir, records = _setup(
         tmp_path,

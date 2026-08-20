@@ -36,7 +36,8 @@ _ATTEMPT_RE = re.compile(
     r"(?:;\s*(?P<cases>\d+)/(?P<total_cases>\d+)\s+cases)?"
     r"(?:\s*model=(?P<model>\S+?))?"
     r"(?:;\s*execution\s+(?P<execution>\S+?))?"
-    r"(?:;\s*stopped:\s*(?P<stopped>.+?))?\s*$"
+    r"(?:;\s*stopped:\s*(?P<stopped>.+?))?"
+    r"(?:;\s*reason:\s*(?P<reason>.+?))?\s*$"
 )
 
 
@@ -54,6 +55,8 @@ class AttemptScore:
     passed_cases: int | None = None
     total_cases: int | None = None
     stop_reason: str = ""
+    #: Why the pass did not close the block, when the evidence records one.
+    reason: str = ""
     # Joined from the execution record. Zero means "no usage recorded", never "free".
     total_input: int = 0
     cached_input: int = 0
@@ -138,6 +141,21 @@ class BlockScore:
     @property
     def stop_reason(self) -> str:
         return self.attempts[-1].stop_reason if self.attempts else ""
+
+    def outcome_of(self, attempt: AttemptScore) -> str:
+        """What one pass settled, read in the block's own terms.
+
+        The recorded per-pass ``status`` answers one question — did this pass close the block —
+        and the build loop writes ``failed`` for every answer of no. On a block that went on to
+        verify that word names the wrong thing twice over: the pass did not fail, it did not
+        finish, and the block it belongs to is green. Worse, a pass can meet every criterion and
+        still not close (a governed gate, a regression sweep), which prints as ``failed`` beside
+        ``2/2 AC``. Only the final pass carries the block's verdict; the ones before it are
+        incomplete.
+        """
+        if not self.attempts or attempt.index != self.attempts[-1].index:
+            return "incomplete"
+        return "built" if self.verified else "failed"
 
 
 @dataclass(frozen=True)
@@ -282,6 +300,7 @@ def _parse_evidence(text: str, block_id_hint: str) -> tuple[BlockScore, tuple[st
                         int(attempt.group("total_cases")) if attempt.group("total_cases") else None
                     ),
                     stop_reason=(attempt.group("stopped") or "").strip(),
+                    reason=(attempt.group("reason") or "").strip(),
                 )
             )
 

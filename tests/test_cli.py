@@ -3613,11 +3613,12 @@ class TestBuildScoreRendering:
     """The post-build report is formatting over a prepared report; no logs are read here."""
 
     class _Attempt:
-        def __init__(self, index, status, passed, total, cases=None, stop=""):
+        def __init__(self, index, status, passed, total, cases=None, stop="", reason=""):
             self.index, self.status = index, status
             self.passed_checks, self.total_checks = passed, total
             self.passed_cases, self.total_cases = cases, cases
             self.stop_reason = stop
+            self.reason = reason
             self.total_input, self.cached_input, self.fresh_input = 1000, 900, 100
             self.output, self.elapsed_ms = 50, 61000
 
@@ -3657,6 +3658,11 @@ class TestBuildScoreRendering:
         @property
         def stop_reason(self):
             return self.attempts[-1].stop_reason if self.attempts else ""
+
+        def outcome_of(self, attempt):
+            if not self.attempts or attempt.index != self.attempts[-1].index:
+                return "incomplete"
+            return "built" if self.verified else "failed"
 
     class _Report:
         def __init__(self, blocks, missing=()):
@@ -3727,8 +3733,29 @@ class TestBuildScoreRendering:
         out = "\n".join(_render_build_score(self._Report([block])))
 
         assert "Repairs" in out
-        assert "initial build  failed  1/2 AC · 243/243 cases" in out
-        assert "repair 1       built   2/2 AC · 375/375 cases" in out
+        # A pass that did not close a block that went on to verify is incomplete, not failed.
+        assert "initial build  incomplete 1/2 AC · 243/243 cases" in out
+        assert "repair 1       built      2/2 AC · 375/375 cases" in out
+
+    def test_a_pass_that_met_every_criterion_and_still_reopened_names_why(self):
+        from drydock.cli import _render_build_score
+
+        block = self._Block(
+            "Inline Parsing",
+            "feature-inline-parsing",
+            "closed/verified",
+            2,
+            2,
+            [
+                self._Attempt(0, "failed", 2, 2, reason="regression: inline-links"),
+                self._Attempt(1, "built", 2, 2),
+            ],
+        )
+        out = "\n".join(_render_build_score(self._Report([block])))
+
+        # "failed · 2/2 AC" was a contradiction; the reason is what the reader needs.
+        assert "initial build  incomplete 2/2 AC" in out
+        assert "regression: inline-links" in out
 
     def test_a_failed_block_names_its_criteria_and_stop_reason(self):
         from drydock.cli import _render_build_score

@@ -1265,6 +1265,10 @@ class AttemptRecord:
     case_tallies: tuple[tuple[str, int, int], ...]
     status: str
     stop_reason: str | None = None
+    #: Why this pass did not close the block. A pass can meet every acceptance criterion and
+    #: still be overturned — by a governed gate, a regression sweep, a dependency gate — and
+    #: without this the record reads as a bare contradiction: failed, all criteria green.
+    reason: str = ""
 
 
 #: Calls a block may spend and still be considered correctly sized: the initial build plus three
@@ -1951,6 +1955,9 @@ def _write_group_evidence(
                 f"- attempt {record.index} ({label}): {record.status}; {checks_note}"
                 f"{cases_note}{model_note}; execution {record.execution_id or '-'}"
                 + (f"; stopped: {record.stop_reason}" if record.stop_reason else "")
+                # Last, and unescaped: the reason is prose from the failing gate and may hold
+                # any punctuation, so nothing may be parsed after it.
+                + (f"; reason: {record.reason}" if record.reason else "")
             )
         lines.append("")
     if agent_report is not None and (agent_report[0] or agent_report[1]):
@@ -3373,6 +3380,7 @@ def build_target(
                     case_tallies=case_tallies,
                     status=status or "built",
                     stop_reason=stop_reason,
+                    reason=_clip(error or "", 160) if status == "failed" else "",
                 )
             )
             feedback_checks = tuple(check for check in acceptance if not check.passed)

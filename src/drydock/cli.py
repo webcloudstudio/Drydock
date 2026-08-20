@@ -2617,10 +2617,12 @@ def _render_build_score(report) -> list[str]:
                     else ""
                 )
                 lines.append(
-                    f"      {attempt.label:<14} {attempt.status:<7} {score}{cases} · "
+                    f"      {attempt.label:<14} {block.outcome_of(attempt):<11}{score}{cases} · "
                     f"{attempt.total_input:,} in · {_rate(attempt.cache_hit_rate)} hit · "
                     f"{_compact_clock(attempt.elapsed_ms)}"
                 )
+                if attempt.reason:
+                    lines.append(f"      {'':<14} {attempt.reason}")
                 if attempt.stop_reason:
                     lines.append(f"      {'':<14} stopped: {attempt.stop_reason}")
 
