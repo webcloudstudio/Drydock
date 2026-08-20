@@ -8,8 +8,38 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-08-20: `drydock score <Target>` summarizes the score family in one screen. It reports the
+  workflow state the Target is in, then one row per score sub-verb — `spec`, `ac`, `build`,
+  `release`, `report` — naming when each last ran, the exit code it returned, whether the
+  workflow state it established still stands (`held`, `voided`, `failed`), and the artifact it
+  writes with that file's modification time; the acceptance row additionally tallies the
+  recorded Soundings board. The command journal and the state machine are reported side by
+  side and never reconciled, so a score that passed but was voided by later work, or a run that
+  failed while its recorded state still says pass, is visible rather than averaged away. It
+  closes by naming the scores that have not been run. The invocation reads only: it is not
+  journaled to `logs/history.jsonl` and does not checkpoint the Target's Git store. Previously a
+  bare `drydock score <Target>` was a usage error, and the receipt counted any such invocation
+  as an `ac` exit code.
+
 ### Changed
 
+- 2026-08-20: The `drydock score report` receipt is pared down to a page an operator can host
+  and keep in version control. It no longer copies in the delivered application, the
+  Blueprint, the provider wire transcripts (`*.raw.jsonl`), or any dot directory. Previously
+  it carried all of them, and publishing a receipt for a Target whose build directory still
+  held a receipt from the pre-`drydock_receipt` layout copied that receipt in as delivered
+  code: one jq run produced a 278 MB directory, of which 139 MB was a stale nested receipt,
+  43 MB was wire transcripts, and much of the rest was one generated HTML viewer per copied
+  file. The receipt now carries the readable evidence for the run — command transcripts,
+  assembled prompts, model output, the `.llm.log`, and the `history.jsonl` and `llm.jsonl`
+  slices the page is rendered from — plus the Target's top-level artifacts with its
+  `evidence/` and `QuarterDeck/` subtrees, and it links `QuarterDeck/commanders_chair.html`
+  from the plan panel. The `OUTPUT` and `INPUT` tabs are gone, the delivered code is named by
+  its build directory in the run facts rather than copied, and the LLM table drops its
+  raw-transcript column. Everything omitted stays where the run wrote it, under the operator's
+  own version control; every file the page links is still carried and hashed in `SHA256SUMS`.
 - 2026-08-20: `METADATA.md` is now the sole Target identity record. QuarterDeck persists
   `discovery-identity.json` answers for `display_name` and `short_description` to
   `METADATA.md`, then reloads the questionnaire from those persisted values; Analyze likewise
@@ -30,10 +60,9 @@ command surface and Typed Specification contract are unstable and may change bet
   `FINALIZED`. `project_status.current_state` is the single reducer. The hand-rolled markdown
   parser is gone, taking with it the single-line escaping constraint on `detail`. Each row
   carries an `attempts` count so the receipt still reports repeated attempts without retaining
-  a journal; the count resets when the state is voided. A Target still carrying the legacy
-  `PROJECT_STATUS.md` is migrated on first read: the journal is replayed in recorded order
-  under the same void rule, which is the only reading of it that yields one state, and the
-  file is then removed.
+  a journal; the count resets when the state is voided. `PROJECT_STATUS.md` is not read and is
+  not migrated: there is no format to convert from, because a journal of every attempt cannot
+  be reduced to the one state a Target holds without inventing an ordering it never recorded.
 - 2026-08-20: The Commander's Chair carries a lifecycle strip naming the state the project is
   in, its verdict, when it was recorded, and how many attempts it took, above the full
   eleven-state ladder with held states marked. It sits below the BIG ERRORS and RUNNING

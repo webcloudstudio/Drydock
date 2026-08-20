@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import re
 from pathlib import Path
@@ -415,6 +416,9 @@ def published(workspace: Path, target_dir: Path, build_dir: Path) -> Path:
     """A published receipt for a Target with one command, evidence, and delivered code."""
     (workspace / "logs" / "20260101.090000.000Z_widget_build_codex.log").write_text("built\n")
     (workspace / "logs" / "20260101.090000.000Z_widget_build_codex.prompt.md").write_text("# ask\n")
+    (workspace / "logs" / "20260101.090000.000Z_widget_build_codex.raw.jsonl").write_text(
+        '{"type":"wire"}\n', encoding="utf-8"
+    )
     llm_log = workspace / "logs" / "20260101.090000.000Z_widget_build_codex.llm.log"
     llm_log.write_text("tokens: 10\n")
     (workspace / "logs" / "llm.jsonl").write_text(
@@ -443,6 +447,14 @@ def published(workspace: Path, target_dir: Path, build_dir: Path) -> Path:
     (target_dir / "blueprint" / "sources").mkdir(parents=True)
     (target_dir / "blueprint" / "FEATURE-Widget.md").write_text("# Widget\n", encoding="utf-8")
     (target_dir / "blueprint" / "sources" / "spec.md").write_text("# Imported\n", encoding="utf-8")
+    (target_dir / "QuarterDeck").mkdir(parents=True)
+    (target_dir / "QuarterDeck" / "commanders_chair.html").write_text(
+        "<h1>Chair</h1>\n", encoding="utf-8"
+    )
+    (target_dir / "evidence").mkdir(parents=True)
+    (target_dir / "evidence" / "block-1.md").write_text("# Block 1\n", encoding="utf-8")
+    (target_dir / ".git").mkdir()
+    (target_dir / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
     _soundings(target_dir, [VERIFIED_PASS])
     _history(
         workspace,
@@ -484,9 +496,33 @@ def test_write_report_carries_the_evidence_the_page_links(published):
     assert (root / "workspace" / "SOUNDINGS.md").is_file()
 
 
-def test_write_report_carries_the_delivered_code_it_documents(published):
-    """The receipt sits outside the build tree, so the delivered code travels with it."""
-    assert (published.parent / "delivered" / "src" / "app.py").is_file()
+def test_write_report_does_not_carry_the_delivered_code(published):
+    """The receipt is a hosted page kept in version control; the code is already versioned."""
+    assert not (published.parent / "delivered").exists()
+
+
+def test_write_report_does_not_carry_the_blueprint(published):
+    """The Blueprint is a versioned input, and importing sources makes it the largest tree."""
+    assert not (published.parent / "workspace" / "blueprint").exists()
+
+
+def test_write_report_carries_the_quarterdeck_and_the_build_evidence(published):
+    """The two Target subtrees the page reports over travel with it; nothing else does."""
+    root = published.parent / "workspace"
+    assert (root / "QuarterDeck" / "commanders_chair.html").is_file()
+    assert (root / "evidence" / "block-1.md").is_file()
+
+
+def test_write_report_does_not_carry_the_provider_wire_transcript(published):
+    """``*.raw.jsonl`` is machine IO and the bulk of a run; the prompt and output stay."""
+    logs = published.parent / "logs"
+    assert not list(logs.glob("*.raw.jsonl"))
+    assert (logs / "20260101.090000.000Z_widget_build_codex.prompt.md").is_file()
+
+
+def test_write_report_copies_no_dot_directory_from_the_target(published):
+    """``.git`` is excluded from the inventory, so a copied one is unhashed dead weight."""
+    assert not (published.parent / "workspace" / ".git").exists()
 
 
 def test_the_receipt_does_not_carry_a_copy_of_itself(published):
@@ -536,7 +572,7 @@ def test_write_report_seals_the_published_receipt(published):
     sums = published.parent / "SHA256SUMS"
     assert sums.is_file()
     lines = sums.read_text(encoding="utf-8").splitlines()
-    assert any(line.endswith("delivered/src/app.py") for line in lines)
+    assert any(line.endswith("workspace/MANIFEST.md") for line in lines)
     assert not any("index.html" in line for line in lines)
     for line in lines:
         digest, _, relative = line.partition("  ")
@@ -576,12 +612,13 @@ def test_the_page_states_no_absolute_path_from_the_generating_machine(published,
     assert str(workspace) not in record
 
 
-def test_the_page_stamps_the_product_verdict_and_names_the_delivered_code(published):
+def test_the_page_stamps_the_product_verdict_and_names_the_delivered_code(published, build_dir):
+    """The code is named so a reader can find it, and not copied so the page stays hostable."""
     page = published.read_text(encoding="utf-8")
     assert "Build Receipt" in page
     assert "widget: PASSED" in page
     assert "Accepted" in page
-    assert "app.py" in page
+    assert html.escape(str(build_dir)) in page
 
 
 def test_the_page_ladders_the_states_the_target_recorded(published):
@@ -606,8 +643,10 @@ def test_the_page_carries_two_tiers_of_tabs_that_do_not_collide(published):
     page = published.read_text(encoding="utf-8")
     assert 'data-tabgroup="receipt"' in page
     assert 'data-tabgroup="build"' in page
-    for label in ("OVERVIEW", "BUILD", "PLAN", "OUTPUT", "INPUT"):
+    for label in ("OVERVIEW", "BUILD", "PLAN"):
         assert f">{label}</button>" in page
+    for gone in ("OUTPUT", "INPUT"):
+        assert f">{gone}</button>" not in page
 
 
 def test_publishing_prunes_regenerable_caches_from_the_copy(published):
@@ -636,8 +675,9 @@ def test_the_written_record_round_trips(published):
     assert result["usage"]["calls"] == 1
 
 
-def test_the_delivered_tree_omits_caches_without_deleting_them(published, build_dir):
+def test_publishing_touches_nothing_in_the_build_directory(published, build_dir):
     """A report has no business removing files from the operator's build directory."""
+    assert (build_dir / "src" / "app.py").is_file()
     assert (build_dir / "src" / "__pycache__" / "app.pyc").is_file()
     assert "__pycache__" not in published.read_text(encoding="utf-8")
 

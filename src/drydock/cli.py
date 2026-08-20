@@ -2704,6 +2704,18 @@ def cmd_score_build(target: str) -> int:
     return 0
 
 
+def cmd_score_summary(target: str) -> int:
+    """Summarize what every other score command last reported. Reads journals only."""
+    from drydock.config import get_workspace, require_target_dir
+    from drydock.score_summary import render_summary, summarize_scores
+
+    target_dir = require_target_dir(target)
+    summary = summarize_scores(target, get_workspace(), target_dir)
+    for line in render_summary(summary):
+        print(line)
+    return 0
+
+
 def cmd_score_report(target: str) -> int:
     """Publish the Target's build receipt. Reads the journals and Target only; runs nothing."""
     from drydock.config import build_dir_for, get_workspace, require_target_dir
@@ -3549,7 +3561,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # score drydock (LLM-assisted self-assessment of Drydock itself; no Target).
     p_score = sub.add_parser(
         "score",
-        help="Audit specifications, verify acceptance, and judge release readiness.",
+        help=(
+            "Audit specifications, verify acceptance, and judge release readiness. "
+            "With a bare <Target>, summarize what those scores last reported."
+        ),
         description=(
             "drydock score spec <Target>             — audit imported raw specifications; writes\n"
             "                                            SPECIFICATION_SCORECARD.md\n"
@@ -3561,7 +3576,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock score report <Target>            — publish the build receipt to\n"
             "                                            targets/<Target>/drydock_receipt/index.html, sealed\n"
             "drydock score drydock                    — adversarial self-assessment of Drydock; writes\n"
-            "                                            ranked feature files to docs/drydock_planning/\n\n"
+            "                                            ranked feature files to docs/drydock_planning/\n"
+            "drydock score <Target>                   — summarize the scores above: when each last ran,\n"
+            "                                            whether it passed, whether that result still\n"
+            "                                            stands, and where its output is (reads only)\n\n"
             "--step <id> is accepted only with score ac.\n"
             "--effort <low|medium|high|xhigh|max> applies to any LLM-assisted command."
         ),
@@ -3894,6 +3912,11 @@ def _reject_score_drydock_operands(rest: list[str]) -> None:
     )
 
 
+#: The sub-verbs of ``drydock score``. A first token outside this set is a Target, which
+#: selects the summary rather than a score.
+_SCORE_SUB_VERBS = frozenset({"spec", "ac", "build", "release", "report", "drydock"})
+
+
 def _dispatch_score(args: argparse.Namespace) -> int:
     tokens = args.args
     first = tokens[0] if tokens else ""
@@ -3942,8 +3965,12 @@ def _dispatch_score(args: argparse.Namespace) -> int:
         return rc
     if first == "report" and len(tokens) == 2:
         return cmd_score_report(tokens[1])
+    # A bare Target names no sub-verb, so it scores nothing: it reports what the sub-verbs
+    # already did. Checked last so a sub-verb name is never mistaken for a Target.
+    if len(tokens) == 1 and first not in _SCORE_SUB_VERBS:
+        return cmd_score_summary(first)
     raise UsageError(
-        "Usage: drydock score <spec|ac|build|release|report> <Target> | drydock score drydock"
+        "Usage: drydock score [<spec|ac|build|release|report>] <Target> | drydock score drydock"
     )
 
 
@@ -4106,6 +4133,8 @@ def _log_command_history(
         return  # pure report
     if command == "config" and getattr(args, "config_command", None) in {"show", "env"}:
         return  # pure report
+    if _is_score_summary(args):
+        return  # `drydock score <Target>` summarizes the other scores and runs none of them
 
     from drydock.config import append_command_history, get_workspace
 
@@ -4852,9 +4881,17 @@ def _command_log_name(args: argparse.Namespace) -> str:
 _READ_ONLY_COMMANDS = frozenset({"status"})
 
 
+def _is_score_summary(args: argparse.Namespace) -> bool:
+    """Whether this invocation is ``drydock score <Target>``, which only reads the Target."""
+    if getattr(args, "command", None) != "score":
+        return False
+    tokens = [str(token) for token in (getattr(args, "args", None) or [])]
+    return len(tokens) == 1 and tokens[0] not in _SCORE_SUB_VERBS
+
+
 def _target_repository(args: argparse.Namespace) -> Path | None:
     """Resolve an existing Target workspace for invocation-level Git checkpoints."""
-    if getattr(args, "command", None) in _READ_ONLY_COMMANDS:
+    if getattr(args, "command", None) in _READ_ONLY_COMMANDS or _is_score_summary(args):
         return None
     target = _log_target(args)
     if not target:

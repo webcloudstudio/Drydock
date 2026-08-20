@@ -428,6 +428,36 @@ class TestHelpAndVersion:
         assert rc == 2
         assert "report" in err
 
+    def test_score_help_documents_the_bare_target_summary(self):
+        rc, out, _ = run_cli("score", "--help")
+        assert rc == 0
+        assert "drydock score <Target>" in out
+        assert "still" in out  # names what the summary reports: whether a result still stands
+
+    def test_score_with_a_bare_target_summarizes_the_other_scores(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        (tmp_path / "targets" / "Demo").mkdir(parents=True)
+
+        rc, out, _ = run_cli("score", "Demo")
+
+        assert rc == 0
+        assert "Target: Demo" in out
+        assert "Not yet run: drydock score spec" in out
+
+    def test_score_with_a_bare_target_is_not_journaled(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        (tmp_path / "targets" / "Demo").mkdir(parents=True)
+
+        assert run_cli("score", "Demo")[0] == 0
+
+        assert not (tmp_path / "logs" / "history.jsonl").exists()
+
+    def test_score_for_an_uninitialized_target_fails(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        rc, _, err = run_cli("score", "NoSuchTarget")
+        assert rc == 1
+        assert "NoSuchTarget" in err
+
     def test_score_report_for_an_uninitialized_target_fails(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
         rc, _, err = run_cli("score", "report", "NoSuchTarget")

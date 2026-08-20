@@ -69,9 +69,10 @@ from drydock.report_render import (
 __all__ = ["REPORT_DIRNAME", "collect_run", "write_report"]
 
 #: The receipt is published in the Target's own workspace, not inside the delivered
-#: application: the document describes the delivery, it is not part of it. Everything it
-#: shows — including the delivered code — is copied in, so the directory is a frozen,
-#: self-contained snapshot of the build at the moment the receipt was written.
+#: application: the document describes the delivery, it is not part of it. It is a web page
+#: an operator hosts and keeps in version control, so it carries the account of the run and
+#: nothing that is already stored elsewhere: not the delivered code, not the Blueprint, and
+#: not the machine-to-machine streams a person cannot read.
 REPORT_DIRNAME = "drydock_receipt"
 
 _INDEX_NAME = "index.html"
@@ -91,15 +92,16 @@ _LOG_NAME_RE = re.compile(r"^(?P<stamp>\d{8}\.\d{6}\.\d{3}Z)_(?P<rest>.+)$")
 #: which is what an operator means by "the latest run" for a project they have built repeatedly.
 _RUN_START_VERB = "init"
 
-_INVENTORY_TABS = {
-    "Delivered code": ("delivered", "Code"),
-    "Evidence": ("logs", "Evidence"),
-    "Workspace": ("workspace", "Workspace"),
-}
+#: Evidence a person reads: the command transcript, the prompt that was sent, and the output
+#: that came back. The provider's wire transcript (``*.raw.jsonl``) is machine IO — it is the
+#: bulk of what a run writes and it is not what this audit is about, so it stays in the
+#: Target's own ``logs/`` where the operator can still reach it.
+_LOG_SUFFIXES = (".log", ".output.txt", ".prompt.md")
 
-#: The delivered application is copied under the receipt, so its paths are addressed from
-#: the report directory like every other tree the document carries.
-_DELIVERED_PREFIX = "delivered"
+#: The Target subtrees the receipt carries. Top-level artifacts — Manifest, Metadata, board,
+#: status — come with them. The Blueprint does not: it is a versioned input held elsewhere,
+#: and it is large.
+_WORKSPACE_SUBDIRS = ("evidence", "QuarterDeck")
 
 
 #: A claim the run never settled is reported as not run, never as a verdict over the product:
@@ -322,8 +324,8 @@ _SCORE_VERBS = frozenset({"spec", "ac", "build", "release", "report", "drydock"}
 def _score_exit_codes(commands: Sequence[Mapping[str, object]]) -> dict[str, int]:
     """The exit code each score last reported, keyed by its sub-verb.
 
-    ``drydock score <Target>`` with no sub-verb is recorded under ``ac``: that is the score it
-    ran before the sub-verb was required.
+    ``drydock score <Target>`` names no sub-verb — it summarizes the others and scores nothing —
+    so it contributes no exit code to any of them.
     """
     codes: dict[str, int] = {}
     for command in commands:
@@ -333,7 +335,9 @@ def _score_exit_codes(commands: Sequence[Mapping[str, object]]) -> dict[str, int
         code = command.get("returncode")
         if not isinstance(code, int):
             continue
-        verb = next((token for token in argv[1:] if token in _SCORE_VERBS), "ac")
+        verb = next((token for token in argv[1:] if token in _SCORE_VERBS), "")
+        if not verb:
+            continue
         codes[verb] = code
     return codes
 
@@ -669,22 +673,48 @@ def _verb_of(command: Mapping[str, object]) -> str:
 # ── publishing ───────────────────────────────────────────────────────────────────────
 
 
-def _copy_tree(source: Path, destination: Path, *, skip: Path | None = None) -> None:
+def _ignore_hidden(directory: str, names: list[str]) -> set[str]:
+    """Never copy a dot entry. ``.git`` above all: the receipt excludes hidden files from its
+    inventory, so a copied one is unhashed, unlisted weight a reader is never shown."""
+    del directory
+    return {name for name in names if name.startswith(".")}
+
+
+def _copy_tree(source: Path, destination: Path) -> None:
     if not source.is_dir():
         return
-    ignore = None
-    if skip is not None:
-        skipped = skip.resolve()
+    shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=False, ignore=_ignore_hidden)
+    prune_generated(destination)
 
-        def ignore(directory: str, names: list[str]) -> set[str]:
-            return {name for name in names if (Path(directory) / name).resolve() == skipped}
 
-    shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=False, ignore=ignore)
+def _copy_workspace(target_dir: Path, destination: Path) -> None:
+    """Copy the Target's own account of itself: its top-level artifacts and the two subtrees
+    the receipt reports over.
+
+    Everything else the Target holds is either an input under version control of its own — the
+    Blueprint and the sources imported beneath it — or the receipt's own previous edition. A
+    receipt does not carry a copy of itself, and it does not republish its inputs.
+    """
+    if not target_dir.is_dir():
+        return
+    destination.mkdir(parents=True, exist_ok=True)
+    for path in sorted(target_dir.iterdir()):
+        if path.name.startswith("."):
+            continue
+        if path.is_file():
+            shutil.copy2(path, destination / path.name)
+        elif path.is_dir() and path.name in _WORKSPACE_SUBDIRS:
+            _copy_tree(path, destination / path.name)
     prune_generated(destination)
 
 
 def _write_journal_slice(source: Path, destination: Path, keep) -> None:
-    """Copy the records of one journal that belong to this run, in recorded order."""
+    """Copy the records of one journal that belong to this run, in recorded order.
+
+    ``history.jsonl`` and ``llm.jsonl`` are the only JSON Lines the receipt carries, and only
+    because the page is rendered from them — ``llm.jsonl`` drives the LLM table. Sliced to this
+    run, they are small; the wire transcripts they index are not, and are left behind.
+    """
     if not source.is_file():
         return
     lines = []
@@ -706,17 +736,19 @@ def _publish(
     target: str,
     workspace: Path,
     target_dir: Path,
-    build_dir: Path,
     report_root: Path,
     result: Mapping[str, object],
 ) -> None:
     """Copy every artifact the receipt links into the report directory.
 
-    Everything: transcripts, assembled prompts, provider output, the Target's own workspace,
-    and the delivered application itself. A receipt that links a file it did not carry is a
-    claim its reader cannot check, and the receipt now lives outside the build tree, so the
-    delivered code has to travel with it. What the document shows is the build as it stood
-    when the receipt was written, frozen; the operator's build directory is never modified.
+    What that is, and only that: the readable transcripts, the assembled prompts, the model
+    output, the two journals the page is rendered from, and the Target's top-level artifacts
+    with its evidence and QuarterDeck. A receipt that links a file it did not carry is a claim
+    its reader cannot check — so what is not carried is not linked, and ``_stream_link`` drops
+    the link for any artifact this pass left behind.
+
+    The delivered application is not copied. The receipt documents the delivery; the code is
+    committed in the build directory, which the receipt names and never modifies.
     """
     if report_root.exists():
         shutil.rmtree(report_root)
@@ -728,7 +760,8 @@ def _publish(
     destination = report_root / _LOGS_DIR
     destination.mkdir(parents=True, exist_ok=True)
     for path in _run_logs(logs_dir, target, start_key, siblings):
-        shutil.copy2(path, destination / path.name)
+        if path.name.endswith(_LOG_SUFFIXES):
+            shutil.copy2(path, destination / path.name)
 
     _write_journal_slice(
         logs_dir / _HISTORY_NAME,
@@ -746,10 +779,7 @@ def _publish(
         ),
     )
 
-    # The receipt's own previous edition lives inside the Target, so it is never copied into
-    # the workspace tree: a receipt does not carry a copy of itself.
-    _copy_tree(target_dir, report_root / _WORKSPACE_DIR, skip=report_root)
-    _copy_tree(build_dir, report_root / _DELIVERED_PREFIX)
+    _copy_workspace(target_dir, report_root / _WORKSPACE_DIR)
 
     record_path = report_root / _RECORD_NAME
     record_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -760,26 +790,23 @@ def _publish(
 
 
 def _report_groups(report_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
-    """The three trees a receipt shows, plus its own machine-readable record.
+    """The two trees a receipt shows, plus its own machine-readable record.
 
     Every file is hashed. The receipt is a published artifact in its own directory now, so it
     is sealed the way a UAT kit is: a reader who was handed the directory can verify it.
     """
+    del target
     groups = [
         ArtifactGroup(
-            "Delivered code",
-            f"Application drydock build produced for {target}, as the build left it.",
-            tuple(_iter_files(report_root / _DELIVERED_PREFIX, report_root, hidden=False)),
-        ),
-        ArtifactGroup(
             "Evidence",
-            "Command transcripts, assembled prompts, model output, provider transcripts, and "
-            "the command and execution journals for this run.",
+            "Command transcripts, assembled prompts, model output, and the command and "
+            "execution journals for this run.",
             tuple(_iter_files(report_root / _LOGS_DIR, report_root, hidden=False)),
         ),
         ArtifactGroup(
             "Workspace",
-            "The Target Drydock drove: Blueprint, Manifest, acceptance board, and evidence.",
+            "The Target Drydock drove: Manifest, Metadata, acceptance board, QuarterDeck, "
+            "and build evidence.",
             tuple(_iter_files(report_root / _WORKSPACE_DIR, report_root, hidden=False)),
         ),
         ArtifactGroup(
@@ -796,7 +823,12 @@ def _report_groups(report_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
 
 
 def _run_facts(result: Mapping[str, object], delivered: str) -> list[tuple[str, str]]:
-    """The provenance a reader needs before reading anything else the run wrote."""
+    """The provenance a reader needs before reading anything else the run wrote.
+
+    ``delivered`` is the build directory the application was written to. It is named, not
+    carried: the code is under version control where it was built, and copying it into every
+    receipt is what made this document unpublishable.
+    """
     environment = result.get("environment") if isinstance(result.get("environment"), dict) else {}
     usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
     build = result.get("build") if isinstance(result.get("build"), dict) else {}
@@ -938,7 +970,9 @@ _PLAN_DOCUMENTS = (
     "SEA_TRIALS.md",
     _SOUNDINGS_NAME,
     "SCORECARD.md",
+    "PROJECT_STATUS.md",
     "PROJECT_STATUS.jsonl",
+    "QuarterDeck/commanders_chair.html",
 )
 
 
@@ -976,16 +1010,15 @@ def _plan_panel(
     )
 
 
-def _under(files: Sequence[FileRecord], prefix: str) -> tuple[FileRecord, ...]:
-    return tuple(record for record in files if record.path.startswith(prefix))
-
-
 def _files_of(groups: Sequence[ArtifactGroup], name: str) -> tuple[FileRecord, ...]:
     return next((group.files for group in groups if group.name == name), ())
 
 
 def _render(
-    report_root: Path, result: Mapping[str, object], groups: Sequence[ArtifactGroup]
+    report_root: Path,
+    result: Mapping[str, object],
+    groups: Sequence[ArtifactGroup],
+    delivered: str,
 ) -> str:
     """Render the receipt an operator opens from the Target's workspace."""
     target = str(result.get("target") or report_root.name)
@@ -1065,10 +1098,10 @@ def _render(
             _cell(f"{int(call['output_tokens']):,}", css="num"),
             # Linked through the existence check, not blindly: a record can name an artifact
             # the run never wrote, and a receipt that links a missing file makes a claim its
-            # reader cannot check.
+            # reader cannot check. The provider's wire transcript is named by the record but
+            # is not carried, so it is not offered here.
             _stream_link(report_root, str(call["prompt"]), "prompt"),
             _stream_link(report_root, str(call["output"]), "output"),
-            _stream_link(report_root, str(call["raw"]), "transcript"),
             _stream_link(report_root, str(call["llm_log"]), "llm"),
         ]
         for call in calls
@@ -1077,8 +1110,8 @@ def _render(
     llm_panel = (
         "".join([
             "<h2>LLM executions</h2>",
-            '<p class="note">One row per model invocation, with the exact prompt sent, the '
-            "output returned, and the raw provider transcript.</p>",
+            '<p class="note">One row per model invocation, with the exact prompt sent and the '
+            "output returned.</p>",
             _meta([
                 ("Calls", html.escape(str(usage.get("calls", 0)))),
                 ("Usage", html.escape(_tokens(dict(usage)))),
@@ -1097,7 +1130,6 @@ def _render(
                     "Cached",
                     "Uncached",
                     "Output",
-                    "",
                     "",
                     "",
                     "llm",
@@ -1122,27 +1154,7 @@ def _render(
     )
     scores_panel = scores_block + _render_receipt(report_root, checks, tags=_RECEIPT_TAGS)
 
-    delivered = _files_of(groups, "Delivered code")
-    delivered_tree = (
-        "<h2>Delivered code</h2>"
-        f'<p class="note">The application this receipt documents, {len(delivered)} files, '
-        f"{sum(record.bytes for record in delivered):,} bytes, copied into this receipt as the "
-        "build left it.</p>" + _tree(delivered, _DELIVERED_PREFIX, f"{target}/")
-        if delivered
-        else ""
-    )
-
     workspace_files = _files_of(groups, "Workspace")
-    blueprint = _under(workspace_files, f"{_WORKSPACE_DIR}/blueprint/")
-    input_tree = (
-        "<h2>Blueprint</h2>"
-        f'<p class="note">The specification Drydock built from, including the user sources '
-        f"imported under <code>sources/</code>. {len(blueprint)} files, "
-        f"{sum(record.bytes for record in blueprint):,} bytes.</p>"
-        + _tree(blueprint, f"{_WORKSPACE_DIR}/blueprint", "blueprint/")
-        if blueprint
-        else ""
-    )
     evidence_files = _files_of(groups, "Evidence")
     evidence_tree = (
         "<h2>Evidence</h2>"
@@ -1183,7 +1195,7 @@ def _render(
             _detail_line(result),
         ),
         _ladder_table(workflow),
-        _meta(_run_facts(result, f"{_DELIVERED_PREFIX}/")),
+        _meta(_run_facts(result, delivered)),
         run_notes(),
     ])
     build_panel = _tabs(
@@ -1219,8 +1231,6 @@ def _render(
                     ("overview", "OVERVIEW", overview),
                     ("build", "BUILD", build_panel),
                     ("plan", "PLAN", plan_panel),
-                    ("output", "OUTPUT", delivered_tree),
-                    ("input", "INPUT", input_tree),
                 ],
                 group="receipt",
             ),
@@ -1245,21 +1255,15 @@ def write_report(target: str, workspace: Path, target_dir: Path, build_dir: Path
 
     result = collect_run(target, workspace, target_dir)
     report_root = target_dir / REPORT_DIRNAME
-    _publish(target, workspace, target_dir, build_dir, report_root, result)
+    _publish(target, workspace, target_dir, report_root, result)
     groups = _report_groups(report_root, target)
 
-    # Viewers are written before the receipt so every link it emits can point at one. The
-    # delivered application is linked raw: it is source code, read in the reader's own tools.
-    published = [
-        record.path
-        for group in groups
-        for record in group.files
-        if not record.path.startswith(f"{_DELIVERED_PREFIX}/")
-    ]
+    # Viewers are written before the receipt so every link it emits can point at one.
+    published = [record.path for group in groups for record in group.files]
     viewers = _write_viewers(report_root, published, "Run artifact", _INDEX_NAME)
     index = report_root / _INDEX_NAME
     with _viewers(viewers):
-        index.write_text(_render(report_root, result, groups), encoding="utf-8")
+        index.write_text(_render(report_root, result, groups, str(build_dir)), encoding="utf-8")
     # Sealed last, once every file the inventory names is final. index.html is excluded by
     # `_iter_files`, so the page can be regenerated without invalidating the seal.
     _write_sums(report_root, groups)

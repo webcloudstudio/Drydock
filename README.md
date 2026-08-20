@@ -152,6 +152,8 @@ ai  drydock rigging compact                    # Automanage compaction
     drydock score ac          MyApp            # Verify Story acceptance criteria
     drydock score build       MyApp            # Post-build report: repairs, tokens, cache
     drydock score report      MyApp            # Publish the build receipt with its evidence
+    drydock score             MyApp            # Summarize the scores above: last run, result,
+                                               #   whether it still stands, and its output file
 ai  drydock score drydock                      # Adversarial self-assessment
 ```
 
