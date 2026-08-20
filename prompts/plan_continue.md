@@ -4,7 +4,6 @@ description: Stage 2 Blueprint authoring instruction appended after plan_create 
 version: 20260802 V2
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
-model: sonnet
 output: A bounded batch of Blueprint specification files
 ---
 

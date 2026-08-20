@@ -4,7 +4,6 @@ description: Manifest-first planning for an already-populated Blueprint — pres
 version: 20260730 V6
 intent: Act as an Agile Development Team reviewing an existing Drydock Blueprint. Reuse the current typed spec files as authoritative where they already define the product correctly. Emit MANIFEST.md and only those Blueprint files that are truly missing and required to make the Blueprint buildable.
 command: drydock plan create
-model: sonnet
 inputs: COMPASS.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
 output: MANIFEST.md and any missing required Blueprint specification files
 ---

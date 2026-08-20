@@ -67,6 +67,10 @@ class BuildStatus:
         return self._step_count("closed/verified")
 
     @property
+    def steps_built(self) -> int:
+        return self._step_count("closed/implemented")
+
+    @property
     def steps_implemented(self) -> int:
         return self._step_count("implemented")
 

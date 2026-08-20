@@ -4,7 +4,6 @@ description: Observed project acceptance judgment against the finished tree.
 version: 20260814 V6
 intent: Grade every Sea Trial by observing the finished build now — reading its source, running its commands, and writing an ephemeral probe where nothing else settles the question — returning MET, NOT MET, or MANUAL.
 command: drydock score release
-model: opus
 inputs: SEA_TRIALS.md, the finished build tree, EVIDENCE
 output: JSON assessment consumed by Drydock
 ---

@@ -4,7 +4,6 @@ description: Repair acceptance criteria that cannot run as written — restore m
 version: 20260817 V1
 intent: Act as the Planning Crew repairing one Blueprint specification's Programmatic Acceptance criteria so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
-model: sonnet
 inputs: SPEC_FILE, DEFECTS
 output: One delimited AC block per repaired criterion
 ---

@@ -4,7 +4,6 @@ description: Attribute existing Manifest stories to the source requirements they
 version: 1
 intent: Recover the requirement-to-story provenance link for one imported source file by matching against a closed set of existing stories.
 command: drydock plan / drydock refit --relineage
-model: sonnet
 output: attribution tags
 ---
 

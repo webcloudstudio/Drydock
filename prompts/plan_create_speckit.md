@@ -4,7 +4,6 @@ description: Spec Kit translation planning — convert an imported Spec Kit proj
 version: 20260730 V4
 intent: Act as an Agile Development Team translating a Spec Kit project into a Drydock Blueprint per the Spec Kit Import Contract mapping table, then emit the executable Manifest and a conversion report documenting mapped, duplicated, ambiguous, and ignored content.
 command: drydock plan create
-model: sonnet
 inputs: COMPASS.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
 output: Blueprint specification files, MANIFEST.md, CONVERSION_REPORT.md
 ---

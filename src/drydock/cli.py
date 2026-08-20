@@ -2706,7 +2706,7 @@ def cmd_score_drydock(
 
 _BUILD_STATE_MARK = {
     "closed/verified": "[done]",
-    "closed/implemented": "[unverified]",
+    "closed/implemented": "[built]",
     "implemented": "[review]",
     "pending": "[pending]",
     "blocked/questions": "[QUESTIONS]",
@@ -2729,6 +2729,8 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     reviewable = _reviewable_build_steps(target_path)
     if reviewable:
         print("Next: resolve legacy implemented steps by rebuilding or revising them")
+    elif report.steps_implemented:
+        print(f"Next: drydock verify {target}")
     elif report.buildable_ids:
         print(f"Next: drydock build {target}")
     elif report.failed_ids:
@@ -2757,6 +2759,8 @@ def cmd_build_status(blueprint: str, target: str) -> int:
             mark = _BUILD_STATE_MARK.get(step.block.state, step.block.state)
             if step.block.state == "closed/failed":
                 arrow = "  <- resume (repairs in place)"
+            elif step.block.state == "closed/implemented":
+                arrow = "  <- verify"
             elif step.buildable:
                 arrow = "  <- next"
             else:
@@ -2776,6 +2780,7 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     print(
         f"Steps: {report.steps_total} total — "
         f"{report.steps_verified} done, "
+        f"{report.steps_built} built (await verify), "
         f"{report.steps_implemented} in review, "
         f"{report.steps_pending} pending, "
         f"{report.steps_questions} blocked by questions, "

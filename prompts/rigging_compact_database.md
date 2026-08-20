@@ -4,7 +4,6 @@ description: Extract the builder-facing persistence contract of a database file 
 version: 2
 intent: Produce a compact database API contract that preserves stores, reads, writes, schemas, interfaces, and persistence guardrails needed by downstream build steps.
 command: drydock rigging compact
-model: sonnet
 output: <stem>_compact.md
 ---
 

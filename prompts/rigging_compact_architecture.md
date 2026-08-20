@@ -4,7 +4,6 @@ description: Extract the builder-facing structural contract of an architecture f
 version: 2
 intent: Produce an architecture compact that preserves module boundaries, ownership rules, wiring shape, and technical constraints needed by downstream build steps.
 command: drydock rigging compact
-model: sonnet
 output: <stem>_compact.md
 ---
 

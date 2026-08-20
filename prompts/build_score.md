@@ -4,7 +4,6 @@ description: Evidence-bound technical quality and project acceptance assessment.
 version: 20260813 V4
 intent: Judge the completed project only from supplied deterministic facts and evidence; never infer missing proof.
 command: drydock build score
-model: opus
 inputs: SEA_TRIALS.md, MANIFEST.md, TYPED_SPEC, EVIDENCE
 output: JSON assessment consumed by Drydock
 ---

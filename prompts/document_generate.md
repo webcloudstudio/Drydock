@@ -4,7 +4,6 @@ description: Generate Target DOC-*.md documentation summaries from a Target Blue
 version: 1
 intent: Produce curated Target documentation Markdown files for assembly into the Drydock single-page documentation app.
 command: drydock document generate
-model: sonnet
 output: DOC-*.md blocks
 ---
 

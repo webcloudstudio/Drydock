@@ -4,7 +4,6 @@ description: Normalize an imported Commander intent document into the canonical 
 version: 20260714 V1
 intent: Act as a technical editor. Reformat the Commander's intent document into the canonical COMPASS.md sections without changing its meaning, framing, or terminology.
 command: drydock import --format compass
-model: opus
 inputs: INTENT_DOCUMENT
 output: COMPASS.md
 ---

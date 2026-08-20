@@ -4,7 +4,6 @@ description: Read a Blueprint or sources directory and generate per-command Surv
 version: 20260622 V2
 intent: Derive one SURVEY-<command>.md acceptance-criteria file per command or capability found in the specification, each with a distilled goal, code AC, spec AC, guardrails, and open questions.
 command: drydock survey
-model: opus
 output: SURVEY-<command>.md acceptance-criteria files
 ---
 

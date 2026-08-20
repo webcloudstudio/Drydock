@@ -4,7 +4,6 @@ description: Evaluate one Drydock prompt against the authoritative spec, matchin
 version: 20260615 V1
 intent: Produce a strict JSON critique with category scores, concrete findings, a best-fix plan, and only material open questions.
 command: drydock prompt review
-model: opus
 output: JSON review payload rendered by Drydock into docs/prompt_reviews/<component>.md
 ---
 

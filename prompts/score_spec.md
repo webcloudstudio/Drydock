@@ -4,7 +4,6 @@ description: Extract cited facts from imported raw Markdown for deterministic co
 version: 2
 intent: Produce strict source-cited fact records without assessing specification quality.
 command: drydock score spec
-model: sonnet
 output: json
 ---
 # Role

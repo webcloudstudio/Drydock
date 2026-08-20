@@ -4,7 +4,6 @@ description: Conform a change ticket to the Drydock typed spec format and genera
 version: 20260630 V1
 intent: Read the change ticket and parent spec; normalize the ticket header; generate manifest stories with inherited dependencies.
 command: drydock refit
-model: sonnet
 output: changes/TICKET-NNN.md, MANIFEST_ROWS
 ---
 

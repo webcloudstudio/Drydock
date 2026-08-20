@@ -4,7 +4,6 @@ description: Decompose an imported source change into Manifest stories seated on
 version: 2
 intent: Route a source diff into the minimum set of new stories, each seated on an existing Blueprint with an explicit scope and ordering.
 command: drydock refit --sources
-model: sonnet
 output: routed stories
 ---
 

@@ -4,7 +4,6 @@ description: Decide whether bounded text outside an otherwise valid plan artifac
 version: 20260727 V1
 intent: Approve removal only when bounded outside text cannot change or qualify any validated artifact.
 command: drydock plan (artifact waiver)
-model: sonnet
 inputs: Deterministic structure and validation status, bounded outside-text spans
 output: Exact APPROVE_TRIVIAL_OUTSIDE_TEXT or REJECT_OUTSIDE_TEXT decision
 ---

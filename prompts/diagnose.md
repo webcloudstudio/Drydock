@@ -4,7 +4,6 @@ description: Diagnose an opaque Drydock failure and tell the author what to do n
 version: 1
 intent: Turn a non-deterministic post-LLM failure into one cause line and up to three imperative actions the author can take immediately.
 command: drydock (standoff diagnosis)
-model: sonnet
 output: CAUSE and DO lines printed to the terminal and appended to ERRORS.md
 ---
 

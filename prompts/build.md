@@ -4,7 +4,6 @@ description: Implement one MANIFEST.md build step into the build working directo
 version: 20260817 V7
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
-model: opus
 output: evidence summary
 ---
 

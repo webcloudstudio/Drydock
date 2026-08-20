@@ -4,7 +4,6 @@ description: Extract the consumer-facing contract surface of a specification fil
 version: 2
 intent: Produce a contract compact for files whose downstream consumers mainly need routes, callable units, schemas, and integration constraints.
 command: drydock rigging compact
-model: sonnet
 output: <stem>_compact.md
 ---
 

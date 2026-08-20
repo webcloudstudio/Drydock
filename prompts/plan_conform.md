@@ -4,7 +4,6 @@ description: Conform one imported or legacy typed Blueprint spec into Drydock fo
 version: 20260722 V3
 intent: Act as an Agile Development Team conforming a single imported specification into Drydock format. Keep the spec's substance intact, restructure it into the standard typed header and the four terminal sections, and author several concrete Python-testable Programmatic Acceptance assertions from the spec body and any imported test material.
 command: drydock plan create
-model: sonnet
 inputs: SPEC_FILE
 output: The conformed specification as one delimited artifact block
 ---

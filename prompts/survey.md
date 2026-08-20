@@ -4,7 +4,6 @@ description: Score a target's commands against their acceptance criteria and emi
 version: 20260622 V2
 intent: Judge each acceptance criterion as pass/partial/fail with a one-line note, flag root causes, and propose generalized fixes — not over-specific ones — that an implementation agent can act on.
 command: drydock survey
-model: opus
 output: scores.jsonl records (JSON)
 ---
 

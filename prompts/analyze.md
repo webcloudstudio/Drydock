@@ -4,7 +4,6 @@ description: Scrum team Blueprint analysis — quality signal (Blocked/Questions
 version: 20260817 V23
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
-model: opus
 inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, RIGGING_MANIFEST, IMPORTED_SOURCES
 output: ANALYSIS.md, SEA_TRIALS.md, TECHNOLOGY_STACK.md, STORY_GUIDANCE.json (conditional), BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question; discovery-sea-trials.json is written by Drydock and must never be emitted)
 ---
