@@ -92,7 +92,20 @@ def _hash_file(path: Path, base: Path) -> FileRecord:
     return FileRecord(path.relative_to(base).as_posix(), size, digest.hexdigest())
 
 
-def _iter_files(root: Path, base: Path, *, skip: Iterable[Path] = ()) -> Iterator[FileRecord]:
+def _is_hidden(relative: Path) -> bool:
+    """Is any component of ``relative`` a dot entry or a tooling cache?
+
+    A repository's own bookkeeping — ``.git`` above all — has no evidentiary value, and
+    hashing its internals bloats the checksum file with thousands of lines nobody reads.
+    """
+    return any(
+        part.startswith(".") or part in PRUNED_DIRECTORIES for part in relative.parts[:-1]
+    ) or relative.parts[-1].startswith(".")
+
+
+def _iter_files(
+    root: Path, base: Path, *, skip: Iterable[Path] = (), hidden: bool = True
+) -> Iterator[FileRecord]:
     if not root.is_dir():
         return
     # ``root`` is resolved once and every walked path is already absolute beneath it, so a
@@ -104,6 +117,10 @@ def _iter_files(root: Path, base: Path, *, skip: Iterable[Path] = ()) -> Iterato
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.is_symlink():
             continue
+        # A kit accounts for a dot entry by naming it withheld, so it inventories one; a
+        # receipt simply has no use for a repository's own bookkeeping and drops it.
+        if not hidden and _is_hidden(path.relative_to(root)):
+            continue
         if skipped:
             walked = resolved_root / path.relative_to(root)
             if any(parent in skipped for parent in walked.parents):
@@ -111,6 +128,16 @@ def _iter_files(root: Path, base: Path, *, skip: Iterable[Path] = ()) -> Iterato
         if path.parent == base and path.name in _KIT_OUTPUTS:
             continue
         yield _hash_file(path, base)
+
+
+def _write_sums(base: Path, groups: Sequence[ArtifactGroup]) -> None:
+    """Seal a published report: one ``sha256  path`` line per inventoried file.
+
+    Written last, once every other file is final, so ``sha256sum -c`` run from inside the
+    directory verifies the document a reader was handed.
+    """
+    lines = [f"{record.sha256}  {record.path}" for group in groups for record in group.files]
+    (base / _SUMS_NAME).write_text("\n".join(lines) + "\n" if lines else "", encoding="utf-8")
 
 
 def _portable(value: object, base: Path) -> object:
@@ -293,6 +320,7 @@ h1 { font-size: 1.32rem; font-weight: 700; letter-spacing: .04em; margin: .3rem 
 .stamp .sub { display: block; font-size: .62rem; letter-spacing: .18em; margin-top: .2rem; }
 .stamp.pass { color: var(--pass); }
 .stamp.fail { color: var(--fail); }
+.stamp.warn { color: var(--warn); }
 
 /* ── verdict and metadata ───────────────────────────────────── */
 .verdict { margin: 0 0 1rem; font-size: .95rem; }
@@ -399,12 +427,17 @@ _SCRIPT = """
 document.addEventListener('click', function (event) {
   var tab = event.target.closest('nav.tabs button[data-panel]');
   if (!tab) return;
-  var root = tab.closest('main');
+  var root = tab.closest('[data-tabgroup]') || tab.closest('main');
+  // A nested strip lives inside its parent's panels, so only elements whose nearest
+  // tab group is this one are switched; an inner strip keeps its own selection.
+  var mine = function (element) {
+    return (element.closest('[data-tabgroup]') || root) === root;
+  };
   root.querySelectorAll('nav.tabs button[data-panel]').forEach(function (button) {
-    button.setAttribute('aria-selected', String(button === tab));
+    if (mine(button)) button.setAttribute('aria-selected', String(button === tab));
   });
   root.querySelectorAll('.panel').forEach(function (panel) {
-    panel.classList.toggle('active', panel.id === 'panel-' + tab.dataset.panel);
+    if (mine(panel)) panel.classList.toggle('active', panel.id === 'panel-' + tab.dataset.panel);
   });
 });
 """
@@ -577,16 +610,25 @@ def _write_viewers(base: Path, relatives: Iterable[str], kind: str, home: str) -
 
 
 def _letterhead(
-    kind: str, heading: str, docline: str, passed: bool, mark: str, sub: str = "Drydock UAT"
+    kind: str,
+    heading: str,
+    docline: str,
+    passed: bool | str,
+    mark: str,
+    sub: str = "Drydock UAT",
 ) -> str:
-    """Render the report's masthead: Drydock mark, document identity, and the verdict stamp."""
+    """Render the report's masthead: Drydock mark, document identity, and the verdict stamp.
+
+    ``passed`` is a boolean for a two-state document, or a state name — ``pass``, ``warn``, or
+    ``fail`` — for one that reports an unfinished middle as well as an outcome.
+    """
     logo = _logo_data_uri()
     brand = (
         f'<img class="logo" src="{logo}" alt="Drydock">'
         if logo
         else '<div class="wordmark">DRYDOCK</div>'
     )
-    state = "pass" if passed else "fail"
+    state = passed if isinstance(passed, str) else ("pass" if passed else "fail")
     return (
         f'<header class="letterhead">{brand}'
         f'<div class="ident"><div class="kind">{html.escape(kind)}</div>'
@@ -606,8 +648,13 @@ def _verdict(passed: bool, verdict: str, detail: str) -> str:
     )
 
 
-def _tabs(panels: Sequence[tuple[str, str, str]]) -> str:
-    """Render a tab strip and its panels from ``(slug, label, body)`` triples."""
+def _tabs(panels: Sequence[tuple[str, str, str]], group: str = "main") -> str:
+    """Render a tab strip and its panels from ``(slug, label, body)`` triples.
+
+    ``group`` names the strip. Every strip is emitted inside its own ``data-tabgroup``
+    container and the click handler resolves the nearest container first, so nested and
+    sibling strips switch their own panels only.
+    """
     panels = [panel for panel in panels if panel[2]]
     if not panels:
         return ""
@@ -620,7 +667,10 @@ def _tabs(panels: Sequence[tuple[str, str, str]]) -> str:
         f'<section class="panel{" active" if index == 0 else ""}" id="panel-{slug}">{body}</section>'
         for index, (slug, _, body) in enumerate(panels)
     )
-    return f'<nav class="tabs">{buttons}</nav>{sections}'
+    return (
+        f'<div class="tabgroup" data-tabgroup="{html.escape(group)}">'
+        f'<nav class="tabs">{buttons}</nav>{sections}</div>'
+    )
 
 
 def _table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
@@ -910,12 +960,22 @@ def local_run_window(environment: Mapping[str, object]) -> str:
 
 
 def _local_time(value: object) -> str:
+    """Render a recorded UTC instant in the reader's local time.
+
+    Both instant spellings Drydock writes are accepted: the log stamp's ``...Z`` and the
+    offset form ``...+00:00`` the workflow ladder records.
+    """
     if not isinstance(value, str) or not value:
         return ""
     try:
         moment = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=UTC)
     except ValueError:
-        return ""
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return ""
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=UTC)
     return moment.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
 

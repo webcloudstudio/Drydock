@@ -421,7 +421,7 @@ class TestHelpAndVersion:
         rc, out, _ = run_cli("score", "--help")
         assert rc == 0
         assert "score report" in out
-        assert "drydock/index.html" in out
+        assert "drydock_receipt/index.html" in out
 
     def test_score_report_without_a_target_is_a_usage_error(self):
         rc, _, err = run_cli("score", "report")

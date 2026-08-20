@@ -61,6 +61,7 @@ from drydock.report_render import (
     _tokens,
     _verdict,
     _viewers,
+    _write_sums,
     _write_viewers,
     inventory_panels,
     local_run_window,
@@ -346,11 +347,6 @@ def _write_ignore(base: Path, unpublished: Iterable[str]) -> None:
     ]
     lines.extend(f"/{path}" for path in sorted(unpublished))
     (base / _IGNORE_NAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def _write_sums(base: Path, groups: Sequence[ArtifactGroup]) -> None:
-    lines = [f"{record.sha256}  {record.path}" for group in groups for record in group.files]
-    (base / _SUMS_NAME).write_text("\n".join(lines) + "\n" if lines else "", encoding="utf-8")
 
 
 # The four directories a run writes, each rendered as its own tree. The run record is not a

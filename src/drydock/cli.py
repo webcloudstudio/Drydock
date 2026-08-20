@@ -3542,7 +3542,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "                                            cache hit rate (deterministic; reads logs only)\n"
             "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n"
             "drydock score report <Target>            — publish the build receipt to\n"
-            "                                            <build>/<Target>/drydock/index.html with its evidence\n"
+            "                                            targets/<Target>/drydock_receipt/index.html, sealed\n"
             "drydock score drydock                    — adversarial self-assessment of Drydock; writes\n"
             "                                            ranked feature files to docs/drydock_planning/\n\n"
             "--step <id> is accepted only with score ac.\n"

@@ -276,12 +276,30 @@ def test_collect_run_records_the_score_exit_code_whichever_operand_order_was_use
 # ── verdict ──────────────────────────────────────────────────────────────────────────
 
 
-def test_verdict_passes_when_every_recorded_criterion_passed(workspace, target_dir):
+def _built(workspace: Path) -> None:
+    """A history that ran the lifecycle through to a recorded build score."""
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("build widget", stamp="20260101.091000.000Z"),
+            _record("score build widget", stamp="20260101.092000.000Z"),
+        ],
+    )
+
+
+def test_verdict_passes_when_the_recorded_lifecycle_finished(workspace, target_dir):
     _soundings(target_dir, [VERIFIED_PASS, VERIFIED_PASS])
-    _history(workspace, [_record("init widget", stamp="20260101.090000.000Z")])
+    _built(workspace)
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "passed"
     assert result["acceptance"]["passed"] == 2
+    assert [step["label"] for step in result["workflow"]] == [
+        "INITIALIZED",
+        "BUILT",
+        "SCORE BUILD",
+        "FINALIZED",
+    ]
 
 
 def test_verdict_fails_on_a_failed_criterion_even_when_every_command_exited_clean(
@@ -289,32 +307,99 @@ def test_verdict_fails_on_a_failed_criterion_even_when_every_command_exited_clea
 ):
     """The product's verdict, not the harness's: clean exits do not earn a PASSED stamp."""
     _soundings(target_dir, [VERIFIED_PASS, VERIFIED_FAIL])
-    _history(workspace, [_record("init widget", stamp="20260101.090000.000Z", return_code=0)])
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("score ac widget", stamp="20260101.091000.000Z"),
+            _record("score build widget", stamp="20260101.092000.000Z"),
+        ],
+    )
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "failed"
     assert result["acceptance"]["failures"] == ("ac-2",)
+    assert "FINALIZED" not in [step["label"] for step in result["workflow"]]
 
 
 def test_an_unverified_criterion_does_not_fail_the_run(workspace, target_dir):
     _soundings(target_dir, [VERIFIED_PASS, VERIFIED_UNVERIFIED])
-    _history(workspace, [_record("init widget", stamp="20260101.090000.000Z")])
+    _built(workspace)
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "passed"
     assert result["acceptance"]["unverified"] == 1
 
 
-def test_a_target_with_no_acceptance_board_is_unproven_not_passed(workspace, target_dir):
-    _history(workspace, [_record("init widget", stamp="20260101.090000.000Z")])
+def test_a_built_and_scored_target_passes_without_an_acceptance_board(workspace, target_dir):
+    """The verdict is the lifecycle the Target recorded, not the presence of one artifact."""
+    _built(workspace)
     result = collect_run("widget", workspace, target_dir)
-    assert result["status"] == "unproven"
+    assert result["status"] == "passed"
     assert result["acceptance"]["recorded"] is False
+
+
+def test_an_unscored_run_is_incomplete_rather_than_failed(workspace, target_dir):
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("analyze widget", stamp="20260101.091000.000Z"),
+        ],
+    )
+    result = collect_run("widget", workspace, target_dir)
+    assert result["status"] == "incomplete"
+    assert [step["label"] for step in result["workflow"]] == ["INITIALIZED", "ANALYZED"]
+
+
+def test_a_failed_command_fails_the_state_it_was_establishing(workspace, target_dir):
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("build widget", stamp="20260101.091000.000Z", return_code=1),
+            _record("score build widget", stamp="20260101.092000.000Z"),
+        ],
+    )
+    result = collect_run("widget", workspace, target_dir)
+    assert result["status"] == "failed"
+    built = next(step for step in result["workflow"] if step["label"] == "BUILT")
+    assert built["passed"] is False
+    assert built["detail"] == "exited 1"
+
+
+def test_the_recorded_status_file_outranks_the_exit_code(workspace, target_dir):
+    """A build can exit 0 with stalled blocks; the command that knew that recorded it."""
+    from drydock.project_status import record_status
+
+    _built(workspace)
+    record_status(target_dir, "BUILT", passed=False, detail="2 block(s) stalled")
+    result = collect_run("widget", workspace, target_dir)
+    assert result["status"] == "failed"
+    built = next(step for step in result["workflow"] if step["label"] == "BUILT")
+    assert built["detail"] == "2 block(s) stalled"
+
+
+def test_a_reattempted_state_reports_how_many_attempts_it_took(workspace, target_dir):
+    from drydock.project_status import record_status
+
+    _built(workspace)
+    record_status(target_dir, "BUILT", passed=False, detail="1 step(s) failed")
+    record_status(target_dir, "BUILT", passed=True)
+    result = collect_run("widget", workspace, target_dir)
+    built = next(step for step in result["workflow"] if step["label"] == "BUILT")
+    assert built["passed"] is True
+    assert built["attempts"] == 2
 
 
 # ── publishing ───────────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture
-def published(workspace: Path, target_dir: Path) -> Path:
+def build_dir(workspace: Path) -> Path:
+    return workspace.parent / "build" / "widget"
+
+
+@pytest.fixture
+def published(workspace: Path, target_dir: Path, build_dir: Path) -> Path:
     """A published receipt for a Target with one command, evidence, and delivered code."""
     (workspace / "logs" / "20260101.090000.000Z_widget_build_codex.log").write_text("built\n")
     (workspace / "logs" / "20260101.090000.000Z_widget_build_codex.prompt.md").write_text("# ask\n")
@@ -343,6 +428,9 @@ def published(workspace: Path, target_dir: Path) -> Path:
         encoding="utf-8",
     )
     (target_dir / "MANIFEST.md").write_text("# Manifest\n", encoding="utf-8")
+    (target_dir / "blueprint" / "sources").mkdir(parents=True)
+    (target_dir / "blueprint" / "FEATURE-Widget.md").write_text("# Widget\n", encoding="utf-8")
+    (target_dir / "blueprint" / "sources" / "spec.md").write_text("# Imported\n", encoding="utf-8")
     _soundings(target_dir, [VERIFIED_PASS])
     _history(
         workspace,
@@ -351,21 +439,24 @@ def published(workspace: Path, target_dir: Path) -> Path:
                 "build widget",
                 stamp="20260101.090000.000Z",
                 transcript="logs/20260101.090000.000Z_widget_build_codex.log",
-            )
+            ),
+            _record("score build widget", stamp="20260101.091000.000Z"),
         ],
     )
-    build_dir = workspace.parent / "build" / "widget"
     (build_dir / "src").mkdir(parents=True)
     (build_dir / "src" / "app.py").write_text("print('hi')\n", encoding="utf-8")
     (build_dir / "src" / "__pycache__").mkdir()
     (build_dir / "src" / "__pycache__" / "app.pyc").write_bytes(b"\x00")
+    (build_dir / ".git").mkdir()
+    (build_dir / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
     return write_report("widget", workspace, target_dir, build_dir)
 
 
-def test_write_report_publishes_the_receipt_inside_the_build_tree(published, workspace):
+def test_write_report_publishes_the_receipt_in_the_target_workspace(published, target_dir):
+    """The receipt describes the delivery; it is not part of it, and never lands in the build."""
     assert published.name == "index.html"
-    assert published.parent.name == REPORT_DIRNAME
-    assert published.parent.parent.name == "widget"
+    assert published.parent == target_dir / REPORT_DIRNAME
+    assert not (published.parent.parent / "build").exists()
 
 
 def test_write_report_carries_the_evidence_the_page_links(published):
@@ -380,39 +471,79 @@ def test_write_report_carries_the_evidence_the_page_links(published):
     assert (root / "workspace" / "SOUNDINGS.md").is_file()
 
 
-def test_the_command_row_links_the_llm_log_beside_its_transcript(published):
-    """Token accounting no longer prints to stdout, so the receipt links where it does live."""
-    html = published.read_text(encoding="utf-8")
-    row = html[html.index("<th>When</th>") : html.index("</table>", html.index("<th>When</th>"))]
-    assert "<th>llm</th>" in row
-    assert "20260101.090000.000Z_widget_build_codex.llm.log" in row
+def test_write_report_carries_the_delivered_code_it_documents(published):
+    """The receipt sits outside the build tree, so the delivered code travels with it."""
+    assert (published.parent / "delivered" / "src" / "app.py").is_file()
 
 
-def test_a_command_that_called_no_model_shows_a_dash_for_its_llm_log(
-    workspace, target_dir, tmp_path
-):
+def test_the_receipt_does_not_carry_a_copy_of_itself(published):
+    assert not (published.parent / "workspace" / REPORT_DIRNAME).exists()
+
+
+def test_the_command_row_names_the_model_instead_of_linking_its_log(published):
+    """A transcript and an error belong beside a command; a log file index does not."""
+    page = published.read_text(encoding="utf-8")
+    row = page[page.index("<th>#</th>") : page.index("</table>", page.index("<th>#</th>"))]
+    assert "<th>llm</th>" not in row
+    assert "codex/m" in row
+    assert "transcript" in row
+
+
+def test_a_command_that_called_no_model_names_none(workspace, target_dir, build_dir):
     _soundings(target_dir, [VERIFIED_PASS])
     _history(workspace, [_record("init widget", stamp="20260101.090000.000Z")])
-    build_dir = tmp_path / "build" / "widget"
     build_dir.mkdir(parents=True)
     index = write_report("widget", workspace, target_dir, build_dir)
-    html = index.read_text(encoding="utf-8")
-    row = html[html.index("<th>When</th>") : html.index("</table>", html.index("<th>When</th>"))]
+    page = index.read_text(encoding="utf-8")
+    row = page[page.index("<th>#</th>") : page.index("</table>", page.index("<th>#</th>"))]
     assert ".llm.log" not in row
+    assert "codex/" not in row
 
 
-def test_write_report_writes_no_checksum_file(published):
-    """Digests exist to let a third party verify a published kit; a build receipt is not that."""
-    assert not (published.parent / "SHA256SUMS").exists()
-    assert not (published.parent / ".gitignore").exists()
+def test_a_rerun_command_is_kept_and_labelled(workspace, target_dir, build_dir):
+    """A command that failed and was run again shows both attempts, each with its own result."""
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record("build widget", stamp="20260101.091000.000Z", return_code=1),
+            _record("build widget", stamp="20260101.092000.000Z"),
+            _record("score build widget", stamp="20260101.093000.000Z"),
+        ],
+    )
+    build_dir.mkdir(parents=True)
+    page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+    assert "rerun 1 of 2" in page
+    assert "rerun 2 of 2" in page
+    assert "FAIL 1" in page
+
+
+def test_write_report_seals_the_published_receipt(published):
+    """The receipt is a published artifact in its own right, so it is hashed like a UAT kit."""
+    sums = published.parent / "SHA256SUMS"
+    assert sums.is_file()
+    lines = sums.read_text(encoding="utf-8").splitlines()
+    assert any(line.endswith("delivered/src/app.py") for line in lines)
+    assert not any("index.html" in line for line in lines)
+    for line in lines:
+        digest, _, relative = line.partition("  ")
+        assert (published.parent / relative).is_file()
+        assert len(digest) == 64
+
+
+def test_the_receipt_hashes_nothing_from_a_dot_directory(published):
+    """A repository's own bookkeeping is not build evidence and bloats the seal."""
+    sums = (published.parent / "SHA256SUMS").read_text(encoding="utf-8")
+    assert ".git/" not in sums
+    assert ".git" not in published.read_text(encoding="utf-8")
 
 
 def test_the_page_links_nothing_it_did_not_carry(published):
-    html = published.read_text(encoding="utf-8")
+    page = published.read_text(encoding="utf-8")
     root = published.parent
     hrefs = {
         href
-        for href in re.findall(r'href="([^"]+)"', html)
+        for href in re.findall(r'href="([^"]+)"', page)
         if not href.startswith(("http", "#", "data:"))
     }
     assert hrefs
@@ -420,44 +551,69 @@ def test_the_page_links_nothing_it_did_not_carry(published):
 
 
 def test_the_page_links_the_llm_activity_log(published):
-    html = published.read_text(encoding="utf-8")
-    assert "20260101.090000.000Z_widget_build_codex.llm.log.html" in html
-    assert ">llm</a>" in html
+    page = published.read_text(encoding="utf-8")
+    assert "20260101.090000.000Z_widget_build_codex.llm.log.html" in page
+    assert ">llm</a>" in page
 
 
 def test_the_page_states_no_absolute_path_from_the_generating_machine(published, workspace):
-    html = published.read_text(encoding="utf-8")
+    page = published.read_text(encoding="utf-8")
     record = (published.parent / "logs" / "llm.jsonl").read_text(encoding="utf-8")
-    assert str(workspace) not in html
+    assert str(workspace) not in page
     assert str(workspace) not in record
 
 
 def test_the_page_stamps_the_product_verdict_and_names_the_delivered_code(published):
-    html = published.read_text(encoding="utf-8")
-    assert "Build Receipt" in html
-    assert "WIDGET: PASSED".title() in html or "widget: PASSED" in html
-    assert "Accepted" in html
-    assert "app.py" in html
+    page = published.read_text(encoding="utf-8")
+    assert "Build Receipt" in page
+    assert "widget: PASSED" in page
+    assert "Accepted" in page
+    assert "app.py" in page
+
+
+def test_the_page_ladders_the_states_the_target_recorded(published):
+    page = published.read_text(encoding="utf-8")
+    assert "Workflow" in page
+    assert "SCORE BUILD" in page
+    assert "FINALIZED" in page
+    assert "INITIALIZED" not in page  # never attempted in this run
+
+
+def test_an_unfinished_run_is_stamped_in_progress_not_rejected(workspace, target_dir, build_dir):
+    _history(workspace, [_record("analyze widget", stamp="20260101.090000.000Z")])
+    build_dir.mkdir(parents=True)
+    page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+    assert "widget: INCOMPLETE" in page
+    assert "In progress" in page
+    assert 'class="stamp warn"' in page
+
+
+def test_the_page_carries_two_tiers_of_tabs_that_do_not_collide(published):
+    """Each strip switches its own panels, so the outer row cannot blank an inner one."""
+    page = published.read_text(encoding="utf-8")
+    assert 'data-tabgroup="receipt"' in page
+    assert 'data-tabgroup="build"' in page
+    for label in ("OVERVIEW", "BUILD", "PLAN", "OUTPUT", "INPUT"):
+        assert f">{label}</button>" in page
 
 
 def test_publishing_prunes_regenerable_caches_from_the_copy(published):
     assert not list(published.parent.rglob("__pycache__"))
 
 
-def test_republishing_replaces_the_previous_receipt(published, workspace, target_dir):
+def test_republishing_replaces_the_previous_receipt(published, workspace, target_dir, build_dir):
     stale = published.parent / "logs" / "stale.log"
     stale.write_text("left over\n", encoding="utf-8")
-    again = write_report("widget", workspace, target_dir, published.parent.parent)
+    again = write_report("widget", workspace, target_dir, build_dir)
     assert again == published
     assert not stale.exists()
 
 
 def test_the_receipt_names_every_claim_the_record_does_not_settle(published):
-    html = published.read_text(encoding="utf-8")
-    assert "Acceptance criteria verified" in html
-    assert "Build blocks verified" in html
-    assert "Release score passed" in html
-    assert "UNPROVEN" in html  # no release score was recorded for this run
+    page = published.read_text(encoding="utf-8")
+    assert "Acceptance criteria verified" in page
+    assert "Build blocks verified" in page
+    assert "Release score passed" in page
 
 
 def test_the_written_record_round_trips(published):
@@ -467,17 +623,7 @@ def test_the_written_record_round_trips(published):
     assert result["usage"]["calls"] == 1
 
 
-def test_the_delivered_tree_excludes_the_report_that_sits_inside_it(published):
-    """The receipt lives in the build tree it inventories and must not list itself as code."""
-    html = published.read_text(encoding="utf-8")
-    result = json.loads((published.parent / "result.json").read_text(encoding="utf-8"))
-    assert f"{REPORT_DIRNAME}/logs" not in html
-    assert "app.py" in html
-    assert result["target"] == "widget"
-
-
-def test_the_delivered_tree_omits_caches_without_deleting_them(published):
+def test_the_delivered_tree_omits_caches_without_deleting_them(published, build_dir):
     """A report has no business removing files from the operator's build directory."""
-    build_dir = published.parent.parent
     assert (build_dir / "src" / "__pycache__" / "app.pyc").is_file()
     assert "__pycache__" not in published.read_text(encoding="utf-8")

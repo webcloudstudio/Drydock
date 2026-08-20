@@ -32,7 +32,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from drydock.report_render import (
-    PRUNED_DIRECTORIES,
     ArtifactGroup,
     Check,
     FileRecord,
@@ -41,9 +40,11 @@ from drydock.report_render import (
     _command_by_suffix,
     _command_text,
     _exit_state,
+    _hash_file,
+    _iter_files,
     _letterhead,
     _llm_calls,
-    _llm_log_cell,
+    _local_time,
     _make_portable,
     _meta,
     _page,
@@ -57,8 +58,8 @@ from drydock.report_render import (
     _tree,
     _verdict,
     _viewers,
+    _write_sums,
     _write_viewers,
-    inventory_panels,
     local_run_window,
     prune_generated,
     recorded_status_headline,
@@ -67,8 +68,11 @@ from drydock.report_render import (
 
 __all__ = ["REPORT_DIRNAME", "collect_run", "write_report"]
 
-#: The report is published inside the build tree, beside the application it documents.
-REPORT_DIRNAME = "drydock"
+#: The receipt is published in the Target's own workspace, not inside the delivered
+#: application: the document describes the delivery, it is not part of it. Everything it
+#: shows — including the delivered code — is copied in, so the directory is a frozen,
+#: self-contained snapshot of the build at the moment the receipt was written.
+REPORT_DIRNAME = "drydock_receipt"
 
 _INDEX_NAME = "index.html"
 _RECORD_NAME = "result.json"
@@ -93,9 +97,9 @@ _INVENTORY_TABS = {
     "Workspace": ("workspace", "Workspace"),
 }
 
-#: Delivered-code paths are addressed from the report directory, which sits one level inside
-#: the build tree they describe.
-_DELIVERED_PREFIX = ".."
+#: The delivered application is copied under the receipt, so its paths are addressed from
+#: the report directory like every other tree the document carries.
+_DELIVERED_PREFIX = "delivered"
 
 
 class ReportError(Exception):
@@ -382,6 +386,125 @@ def _command_llm_logs(
     return tuple(tuple(paths) for paths in logs)
 
 
+#: The lifecycle state each recorded command establishes. ``drydock plan`` names two states,
+#: separated by its sub-verb; ``drydock score`` names one per sub-verb.
+_VERB_LABELS = {
+    "init": "INITIALIZED",
+    "import": "IMPORTED",
+    "analyze": "ANALYZED",
+    "plan": "PLAN CREATED",
+    "build": "BUILT",
+}
+_SCORE_LABELS = {
+    "ac": "LLM ACCEPTANCE CHECKS OK",
+    "build": "SCORE BUILD",
+    "release": "SCORE RELEASE",
+    "report": "FINALIZED",
+}
+
+
+def _ladder_label(argv: Sequence[object]) -> str:
+    """The workflow state a recorded command establishes, or ``""`` if it establishes none."""
+    tokens = [str(part) for part in argv][1:]  # drop the "drydock" shim
+    if not tokens:
+        return ""
+    verb = tokens[0]
+    if verb == "plan":
+        return "PLAN REPAIRED" if "repair" in tokens[1:] else "PLAN CREATED"
+    if verb == "score":
+        # A bare `drydock score <Target>` is the acceptance score, as `_score_exit_codes` reads it.
+        sub = next((token for token in tokens[1:] if token in _SCORE_VERBS), "ac")
+        return _SCORE_LABELS.get(sub, "")
+    return _VERB_LABELS.get(verb, "")
+
+
+def _workflow(
+    target_dir: Path, commands: Sequence[Mapping[str, object]]
+) -> list[dict[str, object]]:
+    """The workflow ladder for this run: one row per state the Target actually attempted.
+
+    Two sources, in increasing authority. Every recorded command names the state it
+    establishes, which gives a ladder for Targets built before Drydock persisted one.
+    ``PROJECT_STATUS.md`` then overrides what it holds, because a command that recorded its
+    own outcome knows more than its exit code does — a build that exits 0 with stalled blocks
+    is not BUILT.
+
+    A state never attempted is absent. It is never rendered as a failure or as a claim.
+    """
+    from drydock.project_status import LABEL_LADDER, latest_per_label, read_status
+
+    steps: dict[str, dict[str, object]] = {}
+    for command in commands:
+        label = _ladder_label(command.get("argv") or [])
+        if not label:
+            continue
+        code = command.get("returncode")
+        text = _command_text(command.get("argv") or [])
+        steps[label] = {
+            "label": label,
+            "passed": code == 0,
+            "at": _iso(str(command.get("stamp") or "")),
+            "detail": "" if code == 0 else f"exited {code}",
+            "command": text,
+            "attempts": int(steps.get(label, {}).get("attempts", 0)) + 1,
+        }
+
+    entries = read_status(target_dir)
+    attempts: dict[str, int] = {}
+    for entry in entries:
+        attempts[entry.label] = attempts.get(entry.label, 0) + 1
+    for label, entry in latest_per_label(entries).items():
+        steps[label] = {
+            "label": label,
+            "passed": entry.passed,
+            "at": entry.at,
+            "detail": entry.detail,
+            "command": entry.command,
+            "attempts": attempts.get(label, 1),
+        }
+
+    # BUILDING is the marker `drydock build` writes on entry. Once the build reported an
+    # outcome it says nothing the BUILT row does not, so it is shown only while it stands alone.
+    if "BUILT" in steps:
+        steps.pop("BUILDING", None)
+
+    return [steps[label] for label in LABEL_LADDER if label in steps]
+
+
+def _workflow_state(workflow: Sequence[Mapping[str, object]]) -> str:
+    """Grade the ladder: ``fail`` on any failed state, ``pass`` once finalized, else ``warn``."""
+    if any(not step.get("passed") for step in workflow):
+        return "fail"
+    if any(step.get("label") == "FINALIZED" for step in workflow):
+        return "pass"
+    return "warn"
+
+
+def _finalize(workflow: list[dict[str, object]], target: str) -> list[dict[str, object]]:
+    """Add the FINALIZED row this receipt is itself earning, when the run has earned it.
+
+    Publishing the receipt is the finalizing act, so the document cannot wait for a state it
+    is in the middle of establishing. It is only claimed for a run that failed nothing and
+    was scored: a receipt published over an unscored build reports an unfinished project,
+    which is what the amber stamp is for.
+    """
+    if any(not step.get("passed") for step in workflow):
+        return workflow
+    scored = any(step.get("label") == "SCORE BUILD" for step in workflow)
+    if not scored:
+        return workflow
+    workflow = [step for step in workflow if step.get("label") != "FINALIZED"]
+    workflow.append({
+        "label": "FINALIZED",
+        "passed": True,
+        "at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.") + "000Z",
+        "detail": "receipt published",
+        "command": f"drydock score report {target}",
+        "attempts": 1,
+    })
+    return workflow
+
+
 def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
     """Assemble the Target's latest run as the record a receipt renders.
 
@@ -439,15 +562,18 @@ def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
     acceptance = _acceptance(target_dir)
     build = _build_facts(target, target_dir, logs_dir / _RECORDS_NAME)
 
-    # A run passes when the product met its acceptance criteria. UNVERIFIED criteria are named
-    # but do not fail the run: not every story carries an executable proof, which is the same
-    # rule `drydock score ac` applies to its own exit code.
-    if not acceptance["recorded"]:
-        status = "unproven"
-    elif acceptance["failed"]:
-        status = "failed"
-    else:
-        status = "passed"
+    # The verdict is the lifecycle the Target recorded, not an inference from one artifact.
+    # An acceptance failure is a failed state on the ladder like any other, so it lands in the
+    # same place; a board that was never recorded withholds nothing, because the states that
+    # did run still say exactly how far the project got.
+    workflow = _workflow(target_dir, commands)
+    if acceptance["failed"]:
+        for step in workflow:
+            if step["label"] == "LLM ACCEPTANCE CHECKS OK":
+                step["passed"] = False
+                step["detail"] = f"{len(acceptance['failures'])} criteria failed"
+    workflow = _finalize(workflow, target)
+    status = {"pass": "passed", "fail": "failed", "warn": "incomplete"}[_workflow_state(workflow)]
 
     from drydock import __version__
 
@@ -455,6 +581,7 @@ def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
         "target": target,
         "run_id": start_key,
         "status": status,
+        "workflow": workflow,
         "commands": commands,
         "score_exit_codes": _score_exit_codes(commands),
         "acceptance": dict(acceptance),
@@ -575,44 +702,17 @@ def _verb_of(command: Mapping[str, object]) -> str:
 # ── publishing ───────────────────────────────────────────────────────────────────────
 
 
-def _inventory(
-    root: Path, base: Path, prefix: str = "", skip: Path | None = None
-) -> tuple[FileRecord, ...]:
-    """Inventory a tree by path and byte count.
-
-    No digests: this report is written into the operator's own build tree and read from there.
-    A checksum file exists to let a third party verify a published kit independently, which is
-    not what this document is for.
-
-    Interpreter and tooling caches are omitted rather than deleted. Copied trees have theirs
-    pruned, but the delivered application is inventoried where it lives, and a report has no
-    business removing files from the operator's build.
-    """
-    if not root.is_dir():
-        return ()
-    skipped = skip.resolve() if skip is not None else None
-    records = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.is_symlink():
-            continue
-        relative_parts = path.relative_to(root).parts
-        if any(part in PRUNED_DIRECTORIES for part in relative_parts[:-1]):
-            continue
-        if skipped is not None and skipped in (parent.resolve() for parent in path.parents):
-            continue
-        relative = path.relative_to(base).as_posix()
-        try:
-            size = path.stat().st_size
-        except OSError:
-            continue
-        records.append(FileRecord(f"{prefix}{relative}" if prefix else relative, size, ""))
-    return tuple(records)
-
-
-def _copy_tree(source: Path, destination: Path) -> None:
+def _copy_tree(source: Path, destination: Path, *, skip: Path | None = None) -> None:
     if not source.is_dir():
         return
-    shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=False)
+    ignore = None
+    if skip is not None:
+        skipped = skip.resolve()
+
+        def ignore(directory: str, names: list[str]) -> set[str]:
+            return {name for name in names if (Path(directory) / name).resolve() == skipped}
+
+    shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=False, ignore=ignore)
     prune_generated(destination)
 
 
@@ -636,12 +736,20 @@ def _write_journal_slice(source: Path, destination: Path, keep) -> None:
 
 
 def _publish(
-    target: str, workspace: Path, target_dir: Path, report_root: Path, result: Mapping[str, object]
+    target: str,
+    workspace: Path,
+    target_dir: Path,
+    build_dir: Path,
+    report_root: Path,
+    result: Mapping[str, object],
 ) -> None:
     """Copy every artifact the receipt links into the report directory.
 
-    Everything: transcripts, assembled prompts, provider output, and the Target's own workspace.
-    A receipt that links a file it did not carry is a claim its reader cannot check.
+    Everything: transcripts, assembled prompts, provider output, the Target's own workspace,
+    and the delivered application itself. A receipt that links a file it did not carry is a
+    claim its reader cannot check, and the receipt now lives outside the build tree, so the
+    delivered code has to travel with it. What the document shows is the build as it stood
+    when the receipt was written, frozen; the operator's build directory is never modified.
     """
     if report_root.exists():
         shutil.rmtree(report_root)
@@ -671,7 +779,10 @@ def _publish(
         ),
     )
 
-    _copy_tree(target_dir, report_root / _WORKSPACE_DIR)
+    # The receipt's own previous edition lives inside the Target, so it is never copied into
+    # the workspace tree: a receipt does not carry a copy of itself.
+    _copy_tree(target_dir, report_root / _WORKSPACE_DIR, skip=report_root)
+    _copy_tree(build_dir, report_root / _DELIVERED_PREFIX)
 
     record_path = report_root / _RECORD_NAME
     record_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -681,42 +792,40 @@ def _publish(
         _make_portable(path, workspace)
 
 
-def _report_groups(report_root: Path, build_dir: Path, target: str) -> tuple[ArtifactGroup, ...]:
-    """The three trees a receipt shows, plus its own machine-readable record."""
+def _report_groups(report_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
+    """The three trees a receipt shows, plus its own machine-readable record.
+
+    Every file is hashed. The receipt is a published artifact in its own directory now, so it
+    is sealed the way a UAT kit is: a reader who was handed the directory can verify it.
+    """
     groups = [
         ArtifactGroup(
             "Delivered code",
             f"Application drydock build produced for {target}, as the build left it.",
-            # The report lives inside the tree it is inventorying, so it is skipped here: a
-            # receipt that lists its own evidence as delivered code describes the wrong thing.
-            _inventory(build_dir, build_dir, f"{_DELIVERED_PREFIX}/", skip=report_root),
+            tuple(_iter_files(report_root / _DELIVERED_PREFIX, report_root, hidden=False)),
         ),
         ArtifactGroup(
             "Evidence",
             "Command transcripts, assembled prompts, model output, provider transcripts, and "
             "the command and execution journals for this run.",
-            _inventory(report_root / _LOGS_DIR, report_root),
+            tuple(_iter_files(report_root / _LOGS_DIR, report_root, hidden=False)),
         ),
         ArtifactGroup(
             "Workspace",
             "The Target Drydock drove: Blueprint, Manifest, acceptance board, and evidence.",
-            _inventory(report_root / _WORKSPACE_DIR, report_root),
+            tuple(_iter_files(report_root / _WORKSPACE_DIR, report_root, hidden=False)),
         ),
         ArtifactGroup(
             "Run record",
             "Machine-readable outcome for this run.",
             tuple(
-                FileRecord(path.name, path.stat().st_size, "")
+                _hash_file(path, report_root)
                 for path in sorted(report_root.glob("*"))
                 if path.is_file() and path.name == _RECORD_NAME
             ),
         ),
     ]
     return tuple(group for group in groups if group.files)
-
-
-def _delivered_files(groups: Sequence[ArtifactGroup]) -> tuple[FileRecord, ...]:
-    return next((group.files for group in groups if group.name == "Delivered code"), ())
 
 
 def _run_facts(result: Mapping[str, object], delivered: str) -> list[tuple[str, str]]:
@@ -737,14 +846,13 @@ def _run_facts(result: Mapping[str, object], delivered: str) -> list[tuple[str, 
         if acceptance.get("recorded")
         else "no board recorded"
     )
+    # Ran, Provider, and Model are omitted: the ladder below carries a local timestamp per
+    # state, and the letterhead already states the provider and model this run used.
     return [
         ("Verdict", html.escape(str(result.get("status") or "").upper())),
         ("Target", f"<code>{html.escape(str(result.get('target') or ''))}</code>"),
         ("Run", f"<code>{html.escape(str(result.get('run_id') or ''))}</code>"),
-        ("Ran", html.escape(local_run_window(environment))),
         ("Drydock", recorded("drydock_version")),
-        ("Provider", recorded("provider")),
-        ("Model", recorded("model")),
         ("Commands", html.escape(str(len(result.get("commands") or ())))),
         ("Elapsed", f"{int(result.get('elapsed_ms') or 0) / 1000:.1f}s"),
         ("LLM calls", html.escape(str(usage.get("calls", "not recorded")))),
@@ -755,54 +863,194 @@ def _run_facts(result: Mapping[str, object], delivered: str) -> list[tuple[str, 
     ]
 
 
-def _detail_line(result: Mapping[str, object], checks: Sequence[Check]) -> str:
-    """State what the verdict rests on, and never let it imply a claim nothing settled."""
+def _detail_line(result: Mapping[str, object]) -> str:
+    """State how far the recorded lifecycle got, and stop there."""
+    workflow = [step for step in result.get("workflow") or () if isinstance(step, dict)]
+    target = html.escape(str(result.get("target") or ""))
+    if not workflow:
+        return (
+            f"{target} has recorded no lifecycle state. The commands below are everything "
+            "this receipt can show."
+        )
+    failed = [step for step in workflow if not step.get("passed")]
+    reached = str(workflow[-1].get("label") or "")
+    if failed:
+        names = ", ".join(html.escape(str(step.get("label"))) for step in failed)
+        return f"{target} reached {html.escape(reached)}; {names} failed."
+    if reached == "FINALIZED":
+        return f"{target} reached FINALIZED; every recorded state passed."
+    return (
+        f"{target} reached {html.escape(reached)}; every recorded state passed, but the "
+        "project is not finished."
+    )
+
+
+def _ladder_table(workflow: Sequence[Mapping[str, object]]) -> str:
+    """Render the workflow ladder: one row per state the Target attempted, in order."""
+    rows = []
+    for step in workflow:
+        attempts = int(step.get("attempts") or 1)
+        detail = str(step.get("detail") or "")
+        if attempts > 1:
+            detail = f"{detail}; " if detail else ""
+            detail += f"attempt {attempts} of {attempts}"
+        state = "pass" if step.get("passed") else "fail"
+        label = "PASS" if step.get("passed") else "FAIL"
+        rows.append([
+            _cell(str(step.get("label") or "")),
+            f'<td><span class="tag {state}">{label}</span></td>',
+            _cell(_local_time(step.get("at")) or "unrecorded", css="nowrap"),
+            f"<td><code>{html.escape(str(step.get('command') or ''))}</code></td>",
+            _cell(detail, css="detail"),
+        ])
+    return (
+        "<h2>Workflow</h2>"
+        '<p class="note">Every lifecycle state this Target recorded, in order. A state that '
+        "was never attempted is not listed.</p>"
+        + _table(("State", "Result", "When", "Command", "Detail"), rows)
+    )
+
+
+def _command_calls(
+    commands: Sequence[Mapping[str, object]], calls: Sequence[Mapping[str, object]]
+) -> tuple[tuple[Mapping[str, object], ...], ...]:
+    """Attach each recorded model call to the command that made it.
+
+    Drydock runs one command at a time, so a call belongs to the last command that started at
+    or before it. A call that predates every command — a record carried over from an earlier
+    window — is attached to nothing rather than to the wrong row.
+    """
+    starts = [str(command.get("stamp") or "") for command in commands]
+    owned: list[list[Mapping[str, object]]] = [[] for _ in commands]
+    for call in calls:
+        stamp = str(call.get("execution_id") or "").split("-")[0]
+        owner = max(
+            (index for index, start in enumerate(starts) if start and start <= stamp),
+            default=None,
+        )
+        if owner is not None:
+            owned[owner].append(call)
+    return tuple(tuple(group) for group in owned)
+
+
+def _command_models(groups: Sequence[Sequence[Mapping[str, object]]]) -> tuple[str, ...]:
+    """The models each command drove, named once even when it called one of them repeatedly."""
+    names = []
+    for group in groups:
+        seen = dict.fromkeys(
+            f"{call.get('provider') or ''}/{call.get('model') or ''}".strip("/")
+            for call in group
+            if call.get("provider") or call.get("model")
+        )
+        names.append(", ".join(seen))
+    return tuple(names)
+
+
+def _rerun_notes(commands: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
+    """Label each command that was run more than once with which attempt it is.
+
+    A command Drydock ran, failed, and ran again is two rows, both kept. The final row carries
+    its own result — green when the rerun fixed it — and the note says which attempt it was, so
+    a reader is never left thinking a failure was hidden or that a pass was the first try.
+    """
+    keys = [_command_text(command.get("argv") or []) for command in commands]
+    totals: dict[str, int] = {}
+    for key in keys:
+        totals[key] = totals.get(key, 0) + 1
+    seen: dict[str, int] = {}
+    notes = []
+    for key in keys:
+        seen[key] = seen.get(key, 0) + 1
+        notes.append(f"rerun {seen[key]} of {totals[key]}" if totals[key] > 1 else "")
+    return tuple(notes)
+
+
+_PLAN_DOCUMENTS = (
+    "METADATA.md",
+    "ANALYSIS.md",
+    "MANIFEST.md",
+    "BUILD_COMPASS.md",
+    "COMPASS.md",
+    "TECHNOLOGY_STACK.md",
+    "SEA_TRIALS.md",
+    _SOUNDINGS_NAME,
+    "SCORECARD.md",
+    "PROJECT_STATUS.md",
+)
+
+
+def _plan_panel(
+    report_root: Path, files: Sequence[FileRecord], result: Mapping[str, object]
+) -> str:
+    """The bookkeeping the plan was driven from, as this run left it."""
+    sizes = {record.path: record.bytes for record in files}
+    rows = []
+    for name in _PLAN_DOCUMENTS:
+        relative = f"{_WORKSPACE_DIR}/{name}"
+        if relative not in sizes:
+            continue
+        rows.append([
+            f"<td><code>{html.escape(name)}</code></td>",
+            _cell(f"{sizes[relative]:,}", css="num"),
+            _stream_link(report_root, relative, "open"),
+        ])
+    build = result.get("build") if isinstance(result.get("build"), dict) else {}
     acceptance = result.get("acceptance") if isinstance(result.get("acceptance"), dict) else {}
-    status = str(result.get("status") or "")
-    if status == "passed":
-        detail = (
-            f"All {acceptance.get('total', 0)} recorded acceptance criteria passed. "
-            "Each command below links to its own captured output."
-        )
-    elif status == "failed":
-        failures = ", ".join(str(item) for item in acceptance.get("failures") or ())
-        detail = f"Acceptance criteria failed: <code>{html.escape(failures)}</code>."
-    else:
-        detail = (
-            "No acceptance board is recorded for this Target, so nothing here establishes that "
-            "the product meets its criteria. Run <code>drydock score ac</code> and report again."
-        )
-    unproven = [check for check in checks if check.state != "pass"]
-    if unproven and status == "passed":
-        names = ", ".join(check.name.lower() for check in unproven)
-        detail += (
-            f" {len(unproven)} receipt "
-            f"{'claim is' if len(unproven) == 1 else 'claims are'} not proven ({names}); "
-            "see the receipt below."
-        )
-    return detail
+    summary = _meta([
+        ("Blocks", html.escape(f"{build.get('blocks', 0)} recorded")),
+        ("Unverified blocks", html.escape(str(len(build.get("failed") or ())))),
+        ("Repaired blocks", html.escape(str(len(build.get("repaired") or ())))),
+        ("Criteria", html.escape(str(acceptance.get("total", 0)))),
+        ("Criteria passed", html.escape(str(acceptance.get("passed", 0)))),
+        ("Criteria failed", html.escape(str(acceptance.get("failed", 0)))),
+    ])
+    return (
+        "<h2>Plan of record</h2>"
+        '<p class="note">The Manifest, Compass, acceptance board, and scorecard as this run '
+        "left them, copied into this receipt.</p>"
+        + summary
+        + _table(("Document", "Bytes", ""), rows)
+    )
+
+
+def _under(files: Sequence[FileRecord], prefix: str) -> tuple[FileRecord, ...]:
+    return tuple(record for record in files if record.path.startswith(prefix))
+
+
+def _files_of(groups: Sequence[ArtifactGroup], name: str) -> tuple[FileRecord, ...]:
+    return next((group.files for group in groups if group.name == name), ())
 
 
 def _render(
     report_root: Path, result: Mapping[str, object], groups: Sequence[ArtifactGroup]
 ) -> str:
-    """Render the receipt an operator opens from the build directory."""
+    """Render the receipt an operator opens from the Target's workspace."""
     target = str(result.get("target") or report_root.name)
-    status = str(result.get("status") or "")
-    passed = status == "passed"
+    workflow = [step for step in result.get("workflow") or () if isinstance(step, dict)]
+    state = _workflow_state(workflow)
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
     checks = _receipt_checks(report_root, result)
 
     calls = _llm_calls(report_root / _LOGS_DIR / _RECORDS_NAME, report_root)
-    command_logs = _command_llm_logs(commands, calls)
+    owned = _command_calls(commands, calls)
+    models = _command_models(owned)
+    notes = _rerun_notes(commands)
 
     command_rows: list[list[str]] = []
-    for index, (command, logs) in enumerate(zip(commands, command_logs, strict=True), start=1):
+    for index, command in enumerate(commands):
         stdout = str(command.get("stdout_path") or "")
+        model = models[index]
+        note = notes[index]
+        text = html.escape(_command_text(command.get("argv") or []))
+        annotation = f' <span class="tag raw">{html.escape(model)}</span>' if model else ""
+        rerun = f' <span class="tag">{html.escape(note)}</span>' if note else ""
         command_rows.append([
-            _cell(index, css="num"),
-            _cell(command.get("time") or "", css="nowrap"),
-            f"<td><code>{html.escape(_command_text(command.get('argv') or []))}</code></td>",
+            _cell(index + 1, css="num"),
+            _cell(
+                _local_time(_iso(str(command.get("stamp") or ""))) or command.get("time") or "",
+                css="nowrap",
+            ),
+            f"<td><code>{text}</code>{annotation}{rerun}</td>",
             _status_cell(
                 command.get("returncode"),
                 command.get("argv") or [],
@@ -810,9 +1058,13 @@ def _render(
             ),
             _cell(f"{int(command.get('elapsed_ms') or 0) / 1000:.1f}s", css="num"),
             _stream_link(report_root, stdout, "transcript"),
-            _llm_log_cell(report_root, logs),
         ])
-    commands_table = _table(("#", "When", "Command", "Result", "Elapsed", "", "llm"), command_rows)
+    commands_table = (
+        "<h2>Commands</h2>"
+        '<p class="note">Every command Drydock ran for this Target in this run, in order, with '
+        "the model it drove and its captured transcript.</p>"
+        + _table(("#", "When", "Command", "Result", "Elapsed", "Transcript"), command_rows)
+    )
 
     failed = [
         command
@@ -840,6 +1092,7 @@ def _render(
             _cell(call["command"]),
             _cell(f"{call['provider']}/{call['model']}"),
             _status_cell(call["returncode"]),
+            _cell(_local_time(_iso(str(call["execution_id"]).split("-")[0])), css="nowrap"),
             _cell(f"{int(call['elapsed_ms'] or 0) / 1000:.1f}s", css="num"),
             _cell(f"{int(call['cached_input_tokens']):,}", css="num"),
             _cell(
@@ -857,16 +1110,26 @@ def _render(
         ]
         for call in calls
     ]
+    usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
     llm_panel = (
         "".join([
             "<h2>LLM executions</h2>",
             '<p class="note">One row per model invocation, with the exact prompt sent, the '
             "output returned, and the raw provider transcript.</p>",
+            _meta([
+                ("Calls", html.escape(str(usage.get("calls", 0)))),
+                ("Usage", html.escape(_tokens(dict(usage)))),
+                (
+                    "Model time",
+                    f"{int(usage.get('llm_elapsed_ms') or 0) / 1000:.1f}s",
+                ),
+            ]),
             _table(
                 (
                     "Command",
                     "Model",
                     "Result",
+                    "When",
                     "Elapsed",
                     "Cached",
                     "Uncached",
@@ -894,20 +1157,46 @@ def _render(
         if score_rows
         else ""
     )
+    scores_panel = scores_block + _render_receipt(report_root, checks)
 
-    delivered = _delivered_files(groups)
+    delivered = _files_of(groups, "Delivered code")
     delivered_tree = (
         "<h2>Delivered code</h2>"
         f'<p class="note">The application this receipt documents, {len(delivered)} files, '
-        f"{sum(record.bytes for record in delivered):,} bytes. It sits one level above this "
-        "report, in the build directory the receipt was written into.</p>"
-        + _tree(delivered, _DELIVERED_PREFIX, f"{target}/")
+        f"{sum(record.bytes for record in delivered):,} bytes, copied into this receipt as the "
+        "build left it.</p>" + _tree(delivered, _DELIVERED_PREFIX, f"{target}/")
         if delivered
         else ""
     )
-    inventory = [
-        panel for panel in inventory_panels(groups, "", _INVENTORY_TABS) if panel[0] != "delivered"
-    ]
+
+    workspace_files = _files_of(groups, "Workspace")
+    blueprint = _under(workspace_files, f"{_WORKSPACE_DIR}/blueprint/")
+    input_tree = (
+        "<h2>Blueprint</h2>"
+        f'<p class="note">The specification Drydock built from, including the user sources '
+        f"imported under <code>sources/</code>. {len(blueprint)} files, "
+        f"{sum(record.bytes for record in blueprint):,} bytes.</p>"
+        + _tree(blueprint, f"{_WORKSPACE_DIR}/blueprint", "blueprint/")
+        if blueprint
+        else ""
+    )
+    evidence_files = _files_of(groups, "Evidence")
+    evidence_tree = (
+        "<h2>Evidence</h2>"
+        f'<p class="note">Transcripts, prompts, model output, and the journals for this run. '
+        f"{len(evidence_files)} files, {sum(record.bytes for record in evidence_files):,} "
+        "bytes.</p>" + _tree(evidence_files, _LOGS_DIR, f"{_LOGS_DIR}/")
+        if evidence_files
+        else ""
+    )
+    workspace_tree = (
+        "<h2>Workspace</h2>"
+        f'<p class="note">The Target Drydock drove. {len(workspace_files)} files, '
+        f"{sum(record.bytes for record in workspace_files):,} bytes.</p>"
+        + _tree(workspace_files, _WORKSPACE_DIR, f"{_WORKSPACE_DIR}/")
+        if workspace_files
+        else ""
+    )
 
     environment = result.get("environment") if isinstance(result.get("environment"), dict) else {}
     docline = " · ".join(
@@ -918,8 +1207,38 @@ def _render(
             f"{environment.get('provider') or ''}/{environment.get('model') or ''}"
             if environment.get("provider") or environment.get("model")
             else "",
+            local_run_window(environment),
         )
         if part
+    )
+    marks = {"pass": "Accepted", "fail": "Not accepted", "warn": "In progress"}
+    status = str(result.get("status") or "")
+    overview = "\n".join([
+        _verdict(
+            state == "pass",
+            f"{target}: {status.upper()}",
+            _detail_line(result),
+        ),
+        _ladder_table(workflow),
+        _meta(_run_facts(result, f"{_DELIVERED_PREFIX}/")),
+        run_notes(),
+    ])
+    build_panel = _tabs(
+        [
+            ("steps", "Commands", commands_table),
+            ("error", "Error", excerpt),
+            ("llm", "LLM", llm_panel),
+            ("scores", "Scores", scores_panel),
+            ("evidence", "Evidence", evidence_tree),
+        ],
+        group="build",
+    )
+    plan_panel = _tabs(
+        [
+            ("plan-docs", "Documents", _plan_panel(report_root, workspace_files, result)),
+            ("plan-workspace", "Workspace", workspace_tree),
+        ],
+        group="plan",
     )
     return _page(
         f"Drydock build receipt — {target}",
@@ -928,46 +1247,41 @@ def _render(
                 "Build Receipt",
                 target,
                 docline,
-                passed,
-                "Accepted" if passed else "Not accepted",
+                state,
+                marks[state],
                 "Drydock",
             ),
-            _verdict(passed, f"{target}: {status.upper()}", _detail_line(result, checks)),
-            _render_receipt(report_root, checks),
-            _meta(_run_facts(result, f"{_DELIVERED_PREFIX}/")),
-            run_notes(),
-            "<h2>Run detail</h2>",
-            '<p class="note">Everything below is the underlying record: the commands Drydock '
-            "executed for this Target, the model calls they made, and every file the run "
-            "wrote.</p>",
-            _tabs([
-                ("steps", "Commands", commands_table + scores_block),
-                ("error", "Error", excerpt),
-                ("llm", "LLM", llm_panel),
-                ("delivered", "Code", delivered_tree),
-                *inventory,
-            ]),
+            _tabs(
+                [
+                    ("overview", "OVERVIEW", overview),
+                    ("build", "BUILD", build_panel),
+                    ("plan", "PLAN", plan_panel),
+                    ("output", "OUTPUT", delivered_tree),
+                    ("input", "INPUT", input_tree),
+                ],
+                group="receipt",
+            ),
             "<footer>Generated by <code>drydock score report</code> from the command and "
-            "execution journals this Target recorded. Byte counts are computed from the files "
-            f"in this directory at generation time. Record: {_anchor(_RECORD_NAME)}</footer>",
+            "execution journals this Target recorded. Every file listed is carried in this "
+            "directory and hashed in "
+            f"{_anchor('SHA256SUMS')}. Record: {_anchor(_RECORD_NAME)}</footer>",
         ]),
     )
 
 
 def write_report(target: str, workspace: Path, target_dir: Path, build_dir: Path) -> Path:
-    """Publish the Target's latest run as a receipt under ``<build_dir>/drydock/``.
+    """Publish the Target's latest run as a receipt under ``<Target>/drydock_receipt/``.
 
     Returns the written ``index.html``. Raises :class:`ReportError` when the Target has
     recorded nothing to report.
     """
     result = collect_run(target, workspace, target_dir)
-    report_root = build_dir / REPORT_DIRNAME
-    _publish(target, workspace, target_dir, report_root, result)
-    groups = _report_groups(report_root, build_dir, target)
+    report_root = target_dir / REPORT_DIRNAME
+    _publish(target, workspace, target_dir, build_dir, report_root, result)
+    groups = _report_groups(report_root, target)
 
-    # Viewers are written before the receipt so every link it emits can point at one, and only
-    # for artifacts this directory carries: the delivered code is addressed through the build
-    # tree it already lives in and is linked raw.
+    # Viewers are written before the receipt so every link it emits can point at one. The
+    # delivered application is linked raw: it is source code, read in the reader's own tools.
     published = [
         record.path
         for group in groups
@@ -978,4 +1292,7 @@ def write_report(target: str, workspace: Path, target_dir: Path, build_dir: Path
     index = report_root / _INDEX_NAME
     with _viewers(viewers):
         index.write_text(_render(report_root, result, groups), encoding="utf-8")
+    # Sealed last, once every file the inventory names is final. index.html is excluded by
+    # `_iter_files`, so the page can be regenerated without invalidating the seal.
+    _write_sums(report_root, groups)
     return index
