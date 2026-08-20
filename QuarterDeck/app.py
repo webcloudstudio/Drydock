@@ -1804,7 +1804,7 @@ def render_compass(item: dict[str, Any]) -> str:
             return "questions"
         if block_id in buildable:
             return "ready"
-        if state in ("closed/verified", "implemented"):
+        if state in ("closed/verified", "closed/implemented"):
             return "built"
         return "blocked"
 
@@ -1823,7 +1823,9 @@ def render_compass(item: dict[str, Any]) -> str:
         return [
             by_id[dep]
             for dep in block.depends
-            if dep in by_id and dep not in internal and by_id[dep].state != "closed/verified"
+            if dep in by_id
+            and dep not in internal
+            and by_id[dep].state not in ("closed/verified", "closed/implemented")
         ]
 
     def step_controls(step, group_step_count: int) -> str:
