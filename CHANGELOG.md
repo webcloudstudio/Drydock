@@ -8,6 +8,38 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-08-20: `drydock score report` stamps the lifecycle a Target recorded rather than the
+  presence of one artifact. A finished project whose acceptance board was never written was
+  stamped `UNPROVEN` — jq, with every Manifest story `closed/implemented` and 537 of 537
+  conformance cases passing, read as not accepted. The receipt now leads with a workflow
+  ladder: one row per lifecycle state actually attempted (`INITIALIZED`, `IMPORTED`,
+  `ANALYZED`, `PLAN CREATED`, `PLAN REPAIRED`, `BUILDING`, `BUILT`,
+  `LLM ACCEPTANCE CHECKS OK`, `SCORE BUILD`, `SCORE RELEASE`, `FINALIZED`), each with its
+  result, the command that established it, and a local timestamp. A state never attempted is
+  absent — it is no longer rendered as a failed claim. The stamp is red when any state's last
+  attempt failed, amber `IN PROGRESS` when everything recorded passed but the project has not
+  been built, scored, and published, and green `Accepted` only then. A usage error or deferred
+  command (exit 2) establishes no state and is kept off the ladder entirely.
+
+  Every lifecycle command now records its own outcome in `PROJECT_STATUS.md` in the Target
+  directory, append-only, so reattempts stay visible and a command that knows more than its
+  exit code — a build that exits 0 with stalled blocks — says so. Recording is a pure side
+  effect: it never alters a command's exit code. Targets built before the file existed still
+  get a ladder, derived from the command journal.
+
+  The receipt itself moves out of the delivered application to
+  `targets/<Target>/drydock_receipt/`, since it documents the delivery rather than forming
+  part of it, and carries a frozen copy of the delivered code so the directory stays
+  self-contained. It is sealed with `SHA256SUMS` like a UAT kit, and dot directories — `.git`
+  above all — are no longer inventoried or hashed. Navigation is two tiers,
+  `OVERVIEW | BUILD | PLAN | OUTPUT | INPUT` over per-panel strips, each strip scoped to its
+  own tab group so sibling strips no longer blank one another. The commands table drops the
+  model-log column, names the model each command drove, labels a rerun with which attempt it
+  was while keeping the earlier attempts and their results, and states every time in the
+  reader's local zone.
+
 ### Added
 
 - 2026-08-18: The acceptance harness reports how much of a suite passed, so the build's repair
