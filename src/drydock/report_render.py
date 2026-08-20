@@ -415,6 +415,31 @@ footer { margin-top: 2.5rem; padding-top: .75rem; border-top: 3px double var(--h
 .doc .scroll { margin-bottom: .9rem; }
 .doc del { color: var(--muted); }
 
+/* ── QuarterDeck boards ─────────────────────────────────────── */
+/* The Chair's own renderers emit these class names. They are reproduced here in the
+   receipt's palette so a Manifest or scorecard reads the same on paper as on the Chair. */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .5rem; margin: 0 0 1.25rem; }
+.stat { display: block; border: 1px solid var(--rule); background: var(--tint); padding: .55rem .8rem; color: inherit; text-decoration: none; }
+.stat-value { font-size: 1.45rem; font-weight: 700; line-height: 1; }
+.stat-label { color: var(--muted); font-size: .68rem; letter-spacing: .1em; margin-top: .35rem; text-transform: uppercase; }
+.story-list { display: grid; gap: .15rem; margin: 0 0 1.25rem; }
+.story-feature { color: var(--muted); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; margin: 1rem 0 .2rem; border-bottom: 1px solid var(--rule); padding-bottom: .15rem; }
+.story-list > .story-feature:first-child { margin-top: 0; }
+.story-row { display: flex; align-items: baseline; gap: .6rem; font-size: .84rem; }
+.story-name { flex: 1; overflow-wrap: anywhere; }
+.badge { font-size: .68rem; font-weight: 700; letter-spacing: .08em; padding: 0 .4rem; text-transform: uppercase; white-space: nowrap; border: 1px solid currentColor; }
+.badge-pending { color: var(--muted); }
+.badge-review { color: var(--warn); }
+.badge-verified { color: var(--pass); }
+.badge-failed { color: var(--fail); }
+.question-status { font-size: .86rem; margin: 0 0 .9rem; font-weight: 700; }
+.empty { color: var(--muted); font-style: italic; font-size: .84rem; }
+.story-breakdown { border: 1px solid var(--rule); padding: .5rem .8rem; margin: 0 0 1.25rem; font-size: .82rem; }
+.story-breakdown-label { color: var(--muted); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: .3rem; }
+.story-breakdown-row { display: flex; gap: .6rem; }
+.story-breakdown-name { flex: 1; }
+.story-breakdown-count { font-weight: 700; }
+
 @media print {
   body { padding: 0; }
   nav.tabs { display: none; }

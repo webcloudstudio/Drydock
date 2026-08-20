@@ -1015,6 +1015,30 @@ class TestScorecardHtml:
         assert "✗ BREACHED" in html
         assert "st-privacy" in html
 
+    def test_reads_the_release_scorecard_the_score_command_writes_today(self, tmp_path):
+        """Five columns, a ``Verdict:`` field, and ``MET`` — the columns are found by name.
+
+        Pinned to fixed indices the board rendered empty for every finalized Target.
+        """
+        (tmp_path / "SCORECARD.md").write_text(
+            "# Release Scorecard: Demo\n\n"
+            "- Verdict: PASSED\n"
+            "- Code identity: -\n\n"
+            "## Project acceptance\n\n"
+            "| ID | Type | Criterion | Verdict | Observed |\n"
+            "|---|---|---|---|---|\n"
+            "| st-001 | technical | The harness exits zero. | MET | returned 0 |\n"
+            "| st-002 | technical | The harness is quiet. | NOT MET | returned 1 |\n",
+            encoding="utf-8",
+        )
+
+        html = _scorecard_html(tmp_path)
+
+        assert "PASSED" in html
+        assert "st-001 — The harness exits zero." in html
+        assert "✓ MET" in html
+        assert "✗ NOT MET" in html
+
     def test_empty_when_absent(self, tmp_path):
         assert _scorecard_html(tmp_path) == ""
 

@@ -442,7 +442,7 @@ class TestHelpAndVersion:
 
         assert rc == 0
         assert "Target: Demo" in out
-        assert "Not yet run: drydock score spec" in out
+        assert "Not yet run: drydock score ac" in out
 
     def test_score_with_a_bare_target_is_not_journaled(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))

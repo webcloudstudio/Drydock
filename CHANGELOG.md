@@ -25,6 +25,20 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-20: The `drydock score report` receipt renders the plan of record instead of indexing
+  it. The `PLAN` tab was a table of file names, byte counts, and `open` links to generated viewer
+  pages; it is now one tab per artifact — `Manifest`, `Scorecard`, `Analysis`, `Metadata`,
+  `Compass`, `Build Compass`, `Stack`, `Sea Trials`, `Soundings` — each showing the artifact
+  itself, with the hashed `Workspace` inventory kept as the last tab. The Manifest and Scorecard
+  are drawn by the QuarterDeck's own renderers, so a receipt shows the same block board and
+  verdict board the Commander's Chair does, in the receipt's typography; the remaining documents
+  are rendered Markdown. A tab appears only when the Target wrote that artifact.
+- 2026-08-20: The receipt now carries the Target's `blueprint/`, including imported `sources/`.
+  Every Manifest block names the specification it implements and the sources it was given as
+  context, and a receipt that shows the plan without carrying what the plan cites makes a claim
+  its reader cannot check. Build caches (`__pycache__`, `node_modules`, `.venv`) are excluded
+  from every copied subtree, as dot entries already were. The delivered application is still
+  named rather than copied.
 - 2026-08-20: A Target repository checkpoint now recovers from a stale Git lock instead of
   failing permanently. When a git invocation against `targets/<Target>` reports `Unable to
   create '<path>.lock': File exists`, Drydock deletes that lock, prints `Target - cleared stale
@@ -136,6 +150,20 @@ command surface and Typed Specification contract are unstable and may change bet
   model-log column, names the model each command drove, labels a rerun with which attempt it
   was while keeping the earlier attempts and their results, and states every time in the
   reader's local zone.
+
+### Fixed
+
+- 2026-08-20: The QuarterDeck's scorecard board reads the acceptance table `drydock score` writes
+  today. It located the criterion and verdict columns by position and required six of them, so
+  the current five-column `ID | Type | Criterion | Verdict | Observed` table rendered nothing:
+  every finalized Target showed an empty verdict board on the Commander's Chair. The columns are
+  now found by header name, the gate line falls back from `Completion gate:` to `Verdict:`, and
+  `MET` and `PASSED` are recognized as holding alongside `PASS` and `HELD`.
+- 2026-08-20: The QuarterDeck's story board no longer reports a completed plan as pending. The
+  state-to-badge table had no entry for `closed/implemented` — a block that built and closed with
+  no governed acceptance command covering it — so every such block fell through to a `pending`
+  badge captioned with its own raw state name. `closed/implemented` now reads `built`, and
+  `blocked/questions` reads `blocked`.
 
 ### Added
 

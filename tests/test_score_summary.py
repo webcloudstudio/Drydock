@@ -226,7 +226,8 @@ class TestRender:
         page = "\n".join(render_summary(summarize_scores("T", tmp_path, target_dir)))
 
         assert "Target: T" in page
-        assert "SCORE BUILD (pass)" in page
+        assert "State:  SCORE BUILD" in page
+        assert "PASS · " in page
         for verb in ("spec", "ac", "build", "release", "report"):
             assert f"\n{verb}" in page
 
@@ -236,5 +237,28 @@ class TestRender:
 
         page = "\n".join(render_summary(summarize_scores("T", tmp_path, target_dir)))
 
-        assert "Not yet run: drydock score spec" in page
+        assert "Not yet run: drydock score ac" in page
         assert "drydock score build" not in page
+
+    def test_the_optional_spec_score_is_not_reported_as_missing(self, tmp_path):
+        target_dir = _target(tmp_path)
+        _journal(
+            tmp_path,
+            *(
+                ("20260820.100000.000Z", ["score", verb, "T"], 0)
+                for verb in ("ac", "build", "release", "report")
+            ),
+        )
+
+        page = "\n".join(render_summary(summarize_scores("T", tmp_path, target_dir)))
+
+        assert "Not yet run" not in page
+
+    def test_finalized_is_reported_as_project_complete(self, tmp_path):
+        target_dir = _target(tmp_path)
+        record_status(target_dir, "FINALIZED", passed=True)
+
+        page = "\n".join(render_summary(summarize_scores("T", tmp_path, target_dir)))
+
+        assert "State:  PROJECT COMPLETE" in page
+        assert "FINALIZED" not in page

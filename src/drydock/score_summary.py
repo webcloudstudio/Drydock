@@ -36,6 +36,13 @@ _VERB_STATE = {
     "report": "FINALIZED",
 }
 
+#: State labels an operator cannot read at face value, and the plain words this command shows
+#: instead. Display only: the recorded label in ``PROJECT_STATUS.jsonl`` is unchanged.
+_STATE_DISPLAY = {"FINALIZED": "PROJECT COMPLETE"}
+
+#: Scores an operator is not obliged to run, so their absence is not a missing step to report.
+_OPTIONAL_VERBS = ("spec",)
+
 #: The artifact each score writes, relative to the Target directory. ``score build`` is a
 #: console report over evidence already on disk and writes nothing of its own.
 _VERB_OUTPUT = {
@@ -243,9 +250,8 @@ def render_summary(summary: ScoreSummary) -> list[str]:
     lines = [f"Target: {summary.target}"]
     if summary.state:
         attempts = f" · attempt {summary.state_attempts}" if summary.state_attempts > 1 else ""
-        lines.append(
-            f"State:  {summary.state} ({summary.state_result}) · {summary.state_at}{attempts}"
-        )
+        lines.append(f"State:  {_STATE_DISPLAY.get(summary.state, summary.state)}")
+        lines.append(f"{'':<8}{summary.state_result.upper()} · {summary.state_at}{attempts}")
     else:
         lines.append("State:  none recorded")
     lines.append("")
@@ -259,7 +265,11 @@ def render_summary(summary: ScoreSummary) -> list[str]:
         if detail:
             lines.append(f"{'':<46}{detail}")
     lines.append("")
-    missing = [run.verb for run in summary.runs if run.result == "not run"]
+    missing = [
+        run.verb
+        for run in summary.runs
+        if run.result == "not run" and run.verb not in _OPTIONAL_VERBS
+    ]
     if missing:
         lines.append("Not yet run: " + ", ".join(f"drydock score {verb}" for verb in missing))
     return lines

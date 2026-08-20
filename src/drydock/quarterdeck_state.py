@@ -43,9 +43,15 @@ _STORY_ROW_RE = re.compile(r"^\|\s*([A-Z][A-Z0-9-]+)\s*\|", re.MULTILINE)
 # Badge CSS classes for story states (used in plan/build phases)
 # ---------------------------------------------------------------------------
 
+#: Every block state the Manifest vocabulary defines. A state missing from this table falls
+#: through to a pending badge carrying its own raw name, which is how a fully built plan came
+#: to read as 35 pending blocks: ``closed/implemented`` — a block that built and closed without
+#: a governed acceptance command to verify it — had no entry.
 _STATE_BADGE: dict[str, tuple[str, str]] = {
     "pending": ("badge-pending", "pending"),
+    "blocked/questions": ("badge-pending", "blocked"),
     "implemented": ("badge-review", "review"),
+    "closed/implemented": ("badge-review", "built"),
     "closed/verified": ("badge-verified", "done"),
     "closed/failed": ("badge-failed", "failed"),
 }
@@ -437,6 +443,26 @@ def _scorecard_field(text: str, label: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+#: Verdict tokens that mean the criterion holds. ``MET`` is what ``score.py`` writes today
+#: (:data:`drydock.gate_policy.MET`); the rest are the vocabularies earlier scorecards used.
+_SCORECARD_HELD = frozenset({"MET", "PASS", "PASSED", "HELD"})
+
+
+def _scorecard_columns(cells: list[str]) -> tuple[int, int] | None:
+    """Locate the criterion and verdict columns in a header row, or ``None``.
+
+    The columns are found by name, never by position. The acceptance table has been written
+    with two different column sets — the current ``ID | Type | Criterion | Verdict | Observed``
+    and an earlier six-column form — and a renderer pinned to fixed indices silently produced
+    an empty board the moment the writer changed.
+    """
+    labels = [cell.strip().lower() for cell in cells]
+    if not labels or labels[0] != "id" or "verdict" not in labels:
+        return None
+    criterion = labels.index("criterion") if "criterion" in labels else 1
+    return criterion, labels.index("verdict")
+
+
 def _scorecard_acceptance_rows(text: str) -> list[tuple[str, str, str]]:
     """Return (criterion_id, criterion, verdict) rows from the Project acceptance table."""
     section = text.split("## Project acceptance", 1)
@@ -446,15 +472,20 @@ def _scorecard_acceptance_rows(text: str) -> list[tuple[str, str, str]]:
     next_section = re.search(r"^##\s+", body, re.MULTILINE)
     if next_section:
         body = body[: next_section.start()]
+    columns: tuple[int, int] | None = None
     rows: list[tuple[str, str, str]] = []
     for line in body.splitlines():
         stripped = line.strip()
         if not stripped.startswith("|") or set(stripped.replace("|", "").strip()) <= {"-"}:
             continue
         cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        if len(cells) < 6 or cells[0].lower() == "id":
+        if columns is None:
+            columns = _scorecard_columns(cells)
             continue
-        rows.append((cells[0], cells[2], cells[4]))
+        criterion, verdict = columns
+        if max(criterion, verdict) >= len(cells):
+            continue
+        rows.append((cells[0], cells[criterion], cells[verdict]))
     return rows
 
 
@@ -465,14 +496,14 @@ def _scorecard_html(target_dir: Path) -> str:
         return ""
     text = path.read_text(encoding="utf-8")
     parts: list[str] = []
-    gate = _scorecard_field(text, "Completion gate")
+    gate = _scorecard_field(text, "Completion gate") or _scorecard_field(text, "Verdict")
     if gate:
         parts.append(f'<div class="question-status">{escape(gate)}</div>')
     rows = _scorecard_acceptance_rows(text)
     if rows:
         parts.append('<div class="story-list">')
         for criterion_id, criterion, verdict in rows:
-            held = verdict.upper() in {"PASS", "HELD"}
+            held = verdict.upper() in _SCORECARD_HELD
             css = "badge-verified" if held else "badge-failed"
             glyph = "✓" if held else "✗"
             name = f"{criterion_id} — {criterion}" if criterion else criterion_id

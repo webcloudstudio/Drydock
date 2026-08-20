@@ -500,9 +500,11 @@ def test_write_report_does_not_carry_the_delivered_code(published):
     assert not (published.parent / "delivered").exists()
 
 
-def test_write_report_does_not_carry_the_blueprint(published):
-    """The Blueprint is a versioned input, and importing sources makes it the largest tree."""
-    assert not (published.parent / "workspace" / "blueprint").exists()
+def test_write_report_carries_the_blueprint_the_manifest_cites(published):
+    """Every block names the specification it implements; a receipt carries what it cites."""
+    root = published.parent / "workspace" / "blueprint"
+    assert (root / "FEATURE-Widget.md").is_file()
+    assert (root / "sources" / "spec.md").is_file()
 
 
 def test_write_report_carries_the_quarterdeck_and_the_build_evidence(published):
@@ -531,6 +533,114 @@ def test_write_report_copies_no_dot_directory_from_the_target(published):
 
 def test_the_receipt_does_not_carry_a_copy_of_itself(published):
     assert not (published.parent / "workspace" / REPORT_DIRNAME).exists()
+
+
+# ── the plan tab ─────────────────────────────────────────────────────────────────────
+
+_RECEIPT_PLAN = """# MANIFEST: Widget
+state: approved
+
+## feature 1: Core
+id: core
+
+## story 2: Foundation
+id: foundation
+parent: core
+state: closed/verified
+
+## story 3: Service
+id: service
+parent: core
+state: closed/failed
+
+## story 4: Reports
+id: reports
+parent: core
+state: closed/implemented
+"""
+
+_RECEIPT_SCORECARD = """# Release Scorecard: Widget
+
+- Verdict: PASSED
+- Code identity: -
+
+## Project acceptance
+
+| ID | Type | Criterion | Verdict | Observed |
+|---|---|---|---|---|
+| AC-1 | technical | Widget answers | MET | pytest returned 0 |
+| AC-2 | technical | Widget retries | NOT MET | pytest returned 1 |
+
+## Failures
+
+AC-2: Widget retries
+"""
+
+
+@pytest.fixture
+def planned(workspace: Path, target_dir: Path, build_dir: Path) -> str:
+    """A published receipt whose Target carries a real Manifest, scorecard, and Compass."""
+    (target_dir / "MANIFEST.md").write_text(_RECEIPT_PLAN, encoding="utf-8")
+    (target_dir / "SCORECARD.md").write_text(_RECEIPT_SCORECARD, encoding="utf-8")
+    (target_dir / "COMPASS.md").write_text("# Compass\n\nHold the **line**.\n", encoding="utf-8")
+    _soundings(target_dir, [VERIFIED_PASS])
+    _history(workspace, [_record("init widget", stamp="20260101.090000.000Z")])
+    build_dir.mkdir(parents=True)
+    return write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+
+
+def _panel(page: str, slug: str) -> str:
+    start = page.index(f'id="panel-{slug}"')
+    return page[start : page.index("</section>", start)]
+
+
+def test_the_manifest_is_rendered_as_a_board_not_listed_as_a_file(planned):
+    """The Manifest is the one plan document nobody reads as text; the Chair's board is why."""
+    panel = _panel(planned, "plan-manifest")
+    assert '<div class="story-feature">Core</div>' in panel
+    assert '<span class="story-name">Foundation</span>' in panel
+    assert '<span class="badge badge-verified">done</span>' in panel
+    assert '<span class="badge badge-failed">failed</span>' in panel
+    assert '<div class="stat-label">Blocks</div>' in panel
+
+
+def test_a_block_that_closed_without_verification_reads_as_built_not_pending(planned):
+    """``closed/implemented`` had no badge, so a fully built plan read as all-pending."""
+    panel = _panel(planned, "plan-manifest")
+    assert '<span class="badge badge-review">built</span>' in panel
+    assert "closed/implemented" not in panel
+
+
+def test_the_manifest_card_row_counts_blocks_rather_than_a_verified_percentage(planned):
+    """A Target verified by criteria, not block states, would otherwise head its plan at 0%."""
+    panel = _panel(planned, "plan-manifest")
+    assert '<div class="stat-value">3</div><div class="stat-label">Blocks</div>' in panel
+    assert '<div class="stat-value">1</div><div class="stat-label">Built</div>' in panel
+    assert "%</div>" not in panel
+
+
+def test_the_scorecard_is_rendered_as_a_verdict_board(planned):
+    """The board reads the table ``score.py`` writes today, columns found by name."""
+    panel = _panel(planned, "plan-scorecard")
+    assert '<div class="question-status">PASSED</div>' in panel
+    assert "AC-1 — Widget answers" in panel
+    assert '<span class="badge badge-verified">✓ MET</span>' in panel
+    assert '<span class="badge badge-failed">✗ NOT MET</span>' in panel
+
+
+def test_a_markdown_plan_document_gets_its_own_rendered_tab(planned):
+    panel = _panel(planned, "plan-compass")
+    assert "<strong>line</strong>" in panel
+    assert 'class="doc"' in panel
+
+
+def test_a_plan_document_the_target_never_wrote_gets_no_tab(planned):
+    assert 'id="panel-plan-build-compass"' not in planned
+
+
+def test_the_plan_tab_still_offers_the_hashed_workspace_inventory(planned):
+    """Every carried file stays reachable and checkable, rendered tabs or not."""
+    assert 'id="panel-plan-workspace"' in planned
 
 
 def test_the_command_row_names_the_model_instead_of_linking_its_log(published):

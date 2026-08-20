@@ -31,6 +31,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from drydock.markdown_render import render_markdown
 from drydock.report_render import (
     ArtifactGroup,
     Check,
@@ -71,8 +72,8 @@ __all__ = ["REPORT_DIRNAME", "collect_run", "write_report"]
 #: The receipt is published in the Target's own workspace, not inside the delivered
 #: application: the document describes the delivery, it is not part of it. It is a web page
 #: an operator hosts and keeps in version control, so it carries the account of the run and
-#: nothing that is already stored elsewhere: not the delivered code, not the Blueprint, and
-#: not the machine-to-machine streams a person cannot read.
+#: what that account cites — not the delivered code, and not the machine-to-machine streams a
+#: person cannot read.
 REPORT_DIRNAME = "drydock_receipt"
 
 _INDEX_NAME = "index.html"
@@ -101,9 +102,16 @@ _RUN_START_VERB = "init"
 _LOG_SUFFIXES = (".log", ".output.txt")
 
 #: The Target subtrees the receipt carries. Top-level artifacts — Manifest, Metadata, board,
-#: status — come with them. The Blueprint does not: it is a versioned input held elsewhere,
-#: and it is large.
-_WORKSPACE_SUBDIRS = ("evidence", "QuarterDeck")
+#: status — come with them.
+#:
+#: The Blueprint is among them. Every Manifest block names the specification it implements and
+#: the sources it was given context from; a receipt that shows the plan without carrying what
+#: the plan cites is a document whose central claim cannot be checked. The Blueprint is a
+#: versioned input, but in a receipt it is evidence, so it travels with the run it governed.
+_WORKSPACE_SUBDIRS = ("blueprint", "evidence", "QuarterDeck")
+
+#: Never copied into a receipt: caches a reader cannot use and a seal should not cover.
+_SKIP_NAMES = frozenset({"__pycache__", "node_modules", ".venv"})
 
 
 #: A claim the run never settled is reported as not run, never as a verdict over the product:
@@ -677,9 +685,10 @@ def _verb_of(command: Mapping[str, object]) -> str:
 
 def _ignore_hidden(directory: str, names: list[str]) -> set[str]:
     """Never copy a dot entry. ``.git`` above all: the receipt excludes hidden files from its
-    inventory, so a copied one is unhashed, unlisted weight a reader is never shown."""
+    inventory, so a copied one is unhashed, unlisted weight a reader is never shown. Build
+    caches go the same way, for the same reason."""
     del directory
-    return {name for name in names if name.startswith(".")}
+    return {name for name in names if name.startswith(".") or name in _SKIP_NAMES}
 
 
 def _copy_tree(source: Path, destination: Path) -> None:
@@ -690,12 +699,11 @@ def _copy_tree(source: Path, destination: Path) -> None:
 
 
 def _copy_workspace(target_dir: Path, destination: Path) -> None:
-    """Copy the Target's own account of itself: its top-level artifacts and the two subtrees
-    the receipt reports over.
+    """Copy the Target's own account of itself: its top-level artifacts and the subtrees the
+    receipt reports over — its Blueprint, its evidence, and its QuarterDeck.
 
-    Everything else the Target holds is either an input under version control of its own — the
-    Blueprint and the sources imported beneath it — or the receipt's own previous edition. A
-    receipt does not carry a copy of itself, and it does not republish its inputs.
+    The only thing deliberately left behind is the receipt's own previous edition. A receipt
+    does not carry a copy of itself.
     """
     if not target_dir.is_dir():
         return
@@ -962,54 +970,162 @@ def _rerun_notes(commands: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
     return tuple(notes)
 
 
+#: One tab per plan document, in reading order: ``(slug, label, filename, note)``.
+#:
+#: These are rendered in the page, not listed as links. A table of file names with byte counts
+#: is an index to documents nobody opens; the documents themselves are what the reader came
+#: for. Everything the Target holds that is not listed here stays reachable through the
+#: Workspace tree, which is the complete, hashed inventory.
 _PLAN_DOCUMENTS = (
-    "METADATA.md",
-    "ANALYSIS.md",
-    "MANIFEST.md",
-    "BUILD_COMPASS.md",
-    "COMPASS.md",
-    "TECHNOLOGY_STACK.md",
-    "SEA_TRIALS.md",
-    _SOUNDINGS_NAME,
-    "SCORECARD.md",
-    "PROJECT_STATUS.md",
-    "PROJECT_STATUS.jsonl",
-    "QuarterDeck/commanders_chair.html",
+    (
+        "analysis",
+        "Analysis",
+        "ANALYSIS.md",
+        "What the analysis pass read the Blueprint to ask for.",
+    ),
+    ("metadata", "Metadata", "METADATA.md", "The Target's identity and lifecycle state."),
+    ("compass", "Compass", "COMPASS.md", "The standing guidance every block was built under."),
+    (
+        "build-compass",
+        "Build Compass",
+        "BUILD_COMPASS.md",
+        "Build-time guidance layered over the Compass.",
+    ),
+    ("stack", "Stack", "TECHNOLOGY_STACK.md", "The technology the plan committed to."),
+    ("sea-trials", "Sea Trials", "SEA_TRIALS.md", "The trials declared for this Target."),
+    ("soundings", "Soundings", _SOUNDINGS_NAME, "What the run measured about itself."),
 )
 
 
-def _plan_panel(
-    report_root: Path, files: Sequence[FileRecord], result: Mapping[str, object]
-) -> str:
-    """The bookkeeping the plan was driven from, as this run left it."""
-    sizes = {record.path: record.bytes for record in files}
-    rows = []
-    for name in _PLAN_DOCUMENTS:
-        relative = f"{_WORKSPACE_DIR}/{name}"
-        if relative not in sizes:
-            continue
-        rows.append([
-            f"<td><code>{html.escape(name)}</code></td>",
-            _cell(f"{sizes[relative]:,}", css="num"),
-            _stream_link(report_root, relative, "open"),
+def _workspace_text(report_root: Path, name: str) -> str | None:
+    """Read a carried workspace document, or ``None`` when it is absent or empty."""
+    path = report_root / _WORKSPACE_DIR / name
+    try:
+        if not path.is_file() or path.stat().st_size == 0:
+            return None
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _document_head(name: str, note: str) -> str:
+    """The heading every rendered document panel opens with, citing the carried file."""
+    relative = f"{_WORKSPACE_DIR}/{name}"
+    return f'<h2>{html.escape(name)}</h2><p class="note">{note} Source: {_anchor(relative)}.</p>'
+
+
+def _document_panel(report_root: Path, name: str, note: str, lead: str = "") -> str:
+    """Render one carried Markdown artifact into the receipt's own typography."""
+    text = _workspace_text(report_root, name)
+    if text is None:
+        return ""
+    return (
+        _document_head(name, note)
+        + lead
+        + f'<article class="doc">{render_markdown(text)}</article>'
+    )
+
+
+def _manifest_panel(report_root: Path, result: Mapping[str, object]) -> str:
+    """Render the Manifest as the Chair renders it: stat cards over a story board.
+
+    The Manifest is the one plan document nobody reads as text — it is tens of thousands of
+    bytes of block front matter. What a reader wants from it is the shape of the plan and the
+    state each block reached, which is exactly what the QuarterDeck renderers produce, so
+    those renderers are called here rather than reimplemented.
+    """
+    path = report_root / _WORKSPACE_DIR / "MANIFEST.md"
+    if not path.is_file():
+        return ""
+    from drydock.build_plan import parse_build_plan
+    from drydock.build_status import build_status
+    from drydock.quarterdeck_state import _build_story_list, _manifest_story_list, _stat_cards
+
+    try:
+        plan = parse_build_plan(path)
+    except Exception:  # noqa: BLE001 — a receipt reports; it never fails over a document
+        return ""
+    try:
+        status = build_status(plan)
+        # Deliberately not the Chair's "% complete", which is the verified fraction. A Target
+        # whose blocks close as ``closed/implemented`` — built, with no governed acceptance
+        # command covering them — verifies through its criteria, not its block states, so a
+        # finalized receipt would head its plan with 0%. The criteria are on the Scorecard tab;
+        # this row counts blocks, and says which kind of closure each of them reached.
+        cards = _stat_cards([
+            (None, str(status.steps_total), "Blocks"),
+            (None, str(status.steps_verified), "Verified"),
+            (None, str(status.steps_built + status.steps_implemented), "Built"),
+            (None, str(status.steps_failed), "Failed"),
         ])
+        board = _build_story_list(status)
+    except Exception:  # noqa: BLE001 — an unbuilt plan still has a shape worth showing
+        stories = [block for block in plan.blocks if block.block_type in ("story", "spike")]
+        cards = _stat_cards([
+            (None, str(len(stories)), "Stories"),
+            (None, str(plan.state).capitalize(), "Plan state"),
+        ])
+        board = _manifest_story_list(plan)
+
     build = result.get("build") if isinstance(result.get("build"), dict) else {}
-    acceptance = result.get("acceptance") if isinstance(result.get("acceptance"), dict) else {}
     summary = _meta([
         ("Blocks", html.escape(f"{build.get('blocks', 0)} recorded")),
         ("Unverified blocks", html.escape(str(len(build.get("failed") or ())))),
         ("Repaired blocks", html.escape(str(len(build.get("repaired") or ())))),
+    ])
+    return (
+        _document_head(
+            "MANIFEST.md",
+            "Every block the plan carries, grouped by feature, with the state this run left it in.",
+        )
+        + f'<div class="stats">{cards}</div>'
+        + summary
+        + board
+    )
+
+
+def _scorecard_panel(report_root: Path, result: Mapping[str, object]) -> str:
+    """Render SCORECARD.md as the Chair's verdict board."""
+    from drydock.quarterdeck_state import _scorecard_html
+
+    board = _scorecard_html(report_root / _WORKSPACE_DIR)
+    if not board:
+        return ""
+    acceptance = result.get("acceptance") if isinstance(result.get("acceptance"), dict) else {}
+    summary = _meta([
         ("Criteria", html.escape(str(acceptance.get("total", 0)))),
         ("Criteria passed", html.escape(str(acceptance.get("passed", 0)))),
         ("Criteria failed", html.escape(str(acceptance.get("failed", 0)))),
     ])
     return (
-        "<h2>Plan of record</h2>"
-        '<p class="note">The Manifest, Compass, acceptance board, and scorecard as this run '
-        "left them, copied into this receipt.</p>"
+        _document_head(
+            "SCORECARD.md",
+            "The completion gate and every project acceptance criterion, as this run last "
+            "scored them.",
+        )
         + summary
-        + _table(("Document", "Bytes", ""), rows)
+        + board
     )
+
+
+def _analysis_lead(report_root: Path) -> str:
+    """The Chair's story-shape breakdown, shown above the analysis text."""
+    from drydock.quarterdeck_state import _render_story_breakdown_html
+
+    text = _workspace_text(report_root, "ANALYSIS.md")
+    return _render_story_breakdown_html(text) if text else ""
+
+
+def _plan_panels(report_root: Path, result: Mapping[str, object]) -> list[tuple[str, str, str]]:
+    """One panel per plan artifact, each rendered rather than linked."""
+    panels = [
+        ("plan-manifest", "Manifest", _manifest_panel(report_root, result)),
+        ("plan-scorecard", "Scorecard", _scorecard_panel(report_root, result)),
+    ]
+    for slug, label, name, note in _PLAN_DOCUMENTS:
+        lead = _analysis_lead(report_root) if name == "ANALYSIS.md" else ""
+        panels.append((f"plan-{slug}", label, _document_panel(report_root, name, note, lead)))
+    return panels
 
 
 def _files_of(groups: Sequence[ArtifactGroup], name: str) -> tuple[FileRecord, ...]:
@@ -1209,10 +1325,7 @@ def _render(
         group="build",
     )
     plan_panel = _tabs(
-        [
-            ("plan-docs", "Documents", _plan_panel(report_root, workspace_files, result)),
-            ("plan-workspace", "Workspace", workspace_tree),
-        ],
+        [*_plan_panels(report_root, result), ("plan-workspace", "Workspace", workspace_tree)],
         group="plan",
     )
     return _page(
