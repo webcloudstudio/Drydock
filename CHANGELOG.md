@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-20: `METADATA.md` is now the sole Target identity record. QuarterDeck persists
+  `discovery-identity.json` answers for `display_name` and `short_description` to
+  `METADATA.md`, then reloads the questionnaire from those persisted values; Analyze likewise
+  refreshes an existing identity questionnaire from metadata. Identity questionnaires are no
+  longer copied into `DECISIONS.json` or injected as planning decisions. Every Drydock or
+  QuarterDeck metadata mutation uses one atomic replacement, increments `version` once per
+  effective write, and records an ISO-8601 UTC `updated` timestamp.
 - 2026-08-20: Workflow state is a state machine in `PROJECT_STATUS.jsonl`, replacing the
   append-only `PROJECT_STATUS.md` journal. A Target now holds one row per workflow state it
   currently stands in, in ladder order, followed by one summary row naming the state the

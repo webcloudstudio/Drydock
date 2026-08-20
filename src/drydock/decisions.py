@@ -256,6 +256,8 @@ def questionnaire_decisions(target_dir: Path) -> tuple[Decision, ...]:
     existing = {item.id: item for item in load_decisions(path)}
     questionnaire_dir = target_dir / "QuarterDeck" / "questionnaires"
     for questionnaire in sorted(questionnaire_dir.glob("discovery-*.json")):
+        if questionnaire.name == "discovery-identity.json":
+            continue  # Identity is persisted exclusively in METADATA.md.
         try:
             payload = json.loads(questionnaire.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError):

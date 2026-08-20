@@ -1212,6 +1212,18 @@ def analyze(
     for name, data in discoveries.items():
         discovery_path = questionnaires_dir / name
         if discovery_path.exists():
+            if name == "discovery-identity.json":
+                existing = _normalize_discovery(
+                    name, json.loads(discovery_path.read_text(encoding="utf-8"))
+                )
+                metadata = parse_metadata(target_dir / METADATA_NAME)
+                for question in existing["questions"]:
+                    question_id = str(question.get("id", ""))
+                    if question_id in {"display_name", "short_description"}:
+                        question["answer"] = metadata.get(question_id, "")
+                discovery_path.write_text(
+                    json.dumps(existing, indent=2) + "\n", encoding="utf-8", newline="\n"
+                )
             continue  # never overwrite an existing questionnaire; answers must not be destroyed
         data = _normalize_discovery(name, data)
         discovery_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")

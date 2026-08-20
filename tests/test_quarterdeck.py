@@ -2302,6 +2302,44 @@ def test_answering_an_approved_questionnaire_does_not_reopen_it(tmp_path, monkey
     assert updated["additional_notes"] == "context"
 
 
+def test_identity_questionnaire_updates_and_reads_metadata(tmp_path, monkeypatch):
+    from drydock.metadata import parse_metadata, render_metadata
+
+    quarterdeck = _load_quarterdeck()
+    questionnaire_dir = tmp_path / "QuarterDeck" / "questionnaires"
+    questionnaire_dir.mkdir(parents=True)
+    (tmp_path / "METADATA.md").write_text(render_metadata("Demo", version="0.10"), encoding="utf-8")
+    path = questionnaire_dir / "discovery-identity.json"
+    path.write_text(
+        json.dumps({
+            "id": "discovery-identity",
+            "questions": [
+                {"id": "display_name", "answer": ""},
+                {"id": "short_description", "answer": ""},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "_find_q_path_by_id", lambda _id: path)
+    monkeypatch.setattr(quarterdeck, "_current_base_dir", lambda: tmp_path / "QuarterDeck")
+
+    quarterdeck._writeback_questionnaire(
+        "questionnaire.discovery-identity",
+        "answered",
+        {"display_name": "Demo Application", "short_description": "A demo application."},
+    )
+
+    metadata = parse_metadata(tmp_path / "METADATA.md")
+    questionnaire = json.loads(path.read_text(encoding="utf-8"))
+    assert metadata["display_name"] == "Demo Application"
+    assert metadata["short_description"] == "A demo application."
+    assert metadata["version"] == "0.11"
+    assert [item["answer"] for item in questionnaire["questions"]] == [
+        "Demo Application",
+        "A demo application.",
+    ]
+
+
 def test_approve_rejects_an_item_that_is_not_approvable(tmp_path, monkeypatch):
     import pytest
 

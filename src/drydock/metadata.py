@@ -20,11 +20,15 @@ Optional user-managed fields:
 
 from __future__ import annotations
 
+import os
 import re
-from datetime import date
+import tempfile
+from collections.abc import Mapping
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 METADATA_NAME = "METADATA.md"
+IDENTITY_FIELDS = frozenset({"display_name", "short_description"})
 
 BUILD_STATE_LADDER: tuple[str, ...] = ("init", "analyzed", "planned", "building", "built")
 
@@ -79,6 +83,7 @@ def render_metadata(
         f"short_description: {sd}\n"
         f"stack: {stack}\n"
         f"version: {version}\n"
+        "updated: \n"
         "build_state: \n"
         "build_sub_state: \n"
         "last_analyzed: \n"
@@ -96,29 +101,69 @@ def render_metadata(
 # ---------------------------------------------------------------------------
 
 
-def set_field(path: Path, key: str, value: str, *, overwrite: bool = False) -> bool:
-    """Write ``key: value`` into a METADATA.md file.
+def _atomic_write(path: Path, text: str) -> None:
+    """Replace *path* atomically with UTF-8 metadata text."""
+    fd, temp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
 
-    With ``overwrite=False`` (default), skips when the field already has a
-    non-empty value — preserving user edits.  With ``overwrite=True``, always
-    replaces.  Returns True if written, False if skipped or file absent.
+
+def _replace_field(text: str, key: str, value: str) -> str:
+    pattern = re.compile(rf"^{re.escape(key)}:[ \t]*(.*)$", re.MULTILINE)
+    if pattern.search(text):
+        return pattern.sub(f"{key}: {value}", text)
+    if re.search(r"^## ", text, re.MULTILINE):
+        return re.sub(r"^(## )", rf"{key}: {value}\n\n\1", text, count=1, flags=re.MULTILINE)
+    return text.rstrip("\n") + f"\n{key}: {value}\n"
+
+
+def _next_version(current: str) -> str:
+    try:
+        value = round(float(current) + 0.01, 2) if current else 0.01
+    except ValueError:
+        value = 0.01
+    return f"{value:.2f}"
+
+
+def set_fields(path: Path, values: Mapping[str, str], *, overwrite: bool = False) -> bool:
+    """Atomically persist changed metadata fields and stamp its revision.
+
+    One effective change increments ``version`` and sets ``updated`` once, regardless of the
+    number of fields written.  This is the mutation boundary used by Drydock and QuarterDeck.
     """
     if not path.exists():
         return False
     text = path.read_text(encoding="utf-8")
-    pattern = re.compile(rf"^{re.escape(key)}:[ \t]*(.*)$", re.MULTILINE)
-    m = pattern.search(text)
-    if m:
-        current = m.group(1).strip()
+    fields = parse_metadata(path)
+    changed = False
+    for key, value in values.items():
+        current = fields.get(key, "").strip()
+        if current == value:
+            continue
         if current and not overwrite:
-            return False
-        text = pattern.sub(f"{key}: {value}", text)
-    elif re.search(r"^## ", text, re.MULTILINE):
-        text = re.sub(r"^(## )", rf"{key}: {value}\n\n\1", text, count=1, flags=re.MULTILINE)
-    else:
-        text = text.rstrip("\n") + f"\n{key}: {value}\n"
-    path.write_text(text, encoding="utf-8", newline="\n")
+            continue
+        text = _replace_field(text, key, value)
+        fields[key] = value
+        changed = True
+    if not changed:
+        return False
+    text = _replace_field(text, "version", _next_version(fields.get("version", "")))
+    text = _replace_field(text, "updated", datetime.now(UTC).isoformat(timespec="seconds"))
+    _atomic_write(path, text)
     return True
+
+
+def set_field(path: Path, key: str, value: str, *, overwrite: bool = False) -> bool:
+    """Write one field through :func:`set_fields`."""
+    return set_fields(path, {key: value}, overwrite=overwrite)
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +199,10 @@ def set_build_state(target_dir: Path, state: str) -> bool:
         text = re.sub(
             r"^drydock_build_state:.*$", f"build_state: {state}", text, flags=re.MULTILINE
         )
-        path.write_text(text, encoding="utf-8", newline="\n")
+        fields = parse_metadata(path)
+        text = _replace_field(text, "version", _next_version(fields.get("version", "")))
+        text = _replace_field(text, "updated", datetime.now(UTC).isoformat(timespec="seconds"))
+        _atomic_write(path, text)
         return True
     set_field(path, "build_state", state, overwrite=True)
     return True
@@ -195,13 +243,10 @@ def increment_version(target_dir: Path) -> str:
     if not path.exists():
         return "0.01"
     fields = parse_metadata(path)
-    current = fields.get("version", "").strip()
-    try:
-        new_val = round(float(current) + 0.01, 2) if current else 0.01
-    except ValueError:
-        new_val = 0.01
-    new_version = f"{new_val:.2f}"
-    set_field(path, "version", new_version, overwrite=True)
+    new_version = _next_version(fields.get("version", ""))
+    text = _replace_field(path.read_text(encoding="utf-8"), "version", new_version)
+    text = _replace_field(text, "updated", datetime.now(UTC).isoformat(timespec="seconds"))
+    _atomic_write(path, text)
     return new_version
 
 

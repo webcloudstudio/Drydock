@@ -17,6 +17,7 @@ from drydock.metadata import (
     render_metadata,
     set_build_state,
     set_field,
+    set_fields,
     set_sub_state,
     stamp_last,
 )
@@ -237,6 +238,24 @@ def test_set_field_overwrite_replaces_value(tmp_path):
     written = set_field(path, "stack", "Python", overwrite=True)
     assert written is True
     assert "stack: Python" in path.read_text(encoding="utf-8")
+
+
+def test_set_fields_stamps_one_revision_for_a_batch(tmp_path):
+    path = tmp_path / METADATA_NAME
+    path.write_text(render_metadata("T", version="0.10"), encoding="utf-8")
+
+    written = set_fields(
+        path,
+        {"display_name": "Target T", "short_description": "A target."},
+        overwrite=True,
+    )
+
+    fields = parse_metadata(path)
+    assert written is True
+    assert fields["display_name"] == "Target T"
+    assert fields["short_description"] == "A target."
+    assert fields["version"] == "0.11"
+    assert fields["updated"]
 
 
 def test_set_field_inserts_before_section_header(tmp_path):

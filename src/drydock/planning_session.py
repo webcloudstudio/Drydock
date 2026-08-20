@@ -1679,7 +1679,11 @@ def _assemble_prompt_assembly(
         )
 
     def questionnaire_parts() -> list:
-        answered = [(p, _answered_discovery(p)) for p in _collect_discoveries(target_dir)]
+        answered = [
+            (p, _answered_discovery(p))
+            for p in _collect_discoveries(target_dir)
+            if p.name != "discovery-identity.json"
+        ]
         answered = [(p, data) for p, data in answered if data is not None]
         if not answered:
             return []

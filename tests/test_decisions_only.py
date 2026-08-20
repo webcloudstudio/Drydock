@@ -5,7 +5,26 @@ from drydock.decisions import Decision, load_decisions, questionnaire_decisions,
 from drydock.question_gates import synchronize_manifest_question_gates
 
 
-def test_questionnaire_answer_is_promoted_to_decisions_json(tmp_path):
+def test_non_identity_questionnaire_answer_is_promoted_to_decisions_json(tmp_path):
+    target = tmp_path / "Demo"
+    questionnaire = target / "QuarterDeck" / "questionnaires"
+    questionnaire.mkdir(parents=True)
+    (questionnaire / "discovery-stack.json").write_text(
+        json.dumps({
+            "questions": [{"id": "stack", "label": "Stack", "prompt": "?", "answer": "Python"}]
+        }),
+        encoding="utf-8",
+    )
+
+    decisions = questionnaire_decisions(target)
+
+    assert decisions[0].origin == "analyze-questionnaire"
+    assert decisions[0].answer == "Python"
+    assert (target / "DECISIONS.json").is_file()
+    assert not (target / "QuarterDeck" / "planning-feedback.json").exists()
+
+
+def test_identity_questionnaire_is_not_promoted_to_decisions_json(tmp_path):
     target = tmp_path / "Demo"
     questionnaire = target / "QuarterDeck" / "questionnaires"
     questionnaire.mkdir(parents=True)
@@ -16,12 +35,8 @@ def test_questionnaire_answer_is_promoted_to_decisions_json(tmp_path):
         encoding="utf-8",
     )
 
-    decisions = questionnaire_decisions(target)
-
-    assert decisions[0].origin == "analyze-questionnaire"
-    assert decisions[0].answer == "Demo"
-    assert (target / "DECISIONS.json").is_file()
-    assert not (target / "QuarterDeck" / "planning-feedback.json").exists()
+    assert questionnaire_decisions(target) == ()
+    assert not (target / "DECISIONS.json").exists()
 
 
 def test_unavailable_acceptance_tooling_creates_blocking_decision(tmp_path):

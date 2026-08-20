@@ -3097,10 +3097,26 @@ def _writeback_questionnaire_locked(key: str, state: str, payload: dict[str, Any
         data["resolution"] = payload["resolution"]
     if "__additional_notes" in payload:
         data["additional_notes"] = payload["__additional_notes"]
+    identity_answers: dict[str, str] = {}
     for question in data.get("questions", []):
         if question["id"] in payload:
             ans = payload[question["id"]]
             question["answer"] = ", ".join(ans) if isinstance(ans, list) else ans
+            if q_id == "discovery-identity" and question["id"] in {
+                "display_name",
+                "short_description",
+            }:
+                identity_answers[question["id"]] = str(question["answer"]).strip()
+    if q_id == "discovery-identity":
+        from drydock.metadata import parse_metadata, set_fields
+
+        metadata_path = _current_base_dir().parent / "METADATA.md"
+        set_fields(metadata_path, identity_answers, overwrite=True)
+        metadata = parse_metadata(metadata_path)
+        for question in data.get("questions", []):
+            question_id = question.get("id")
+            if question_id in {"display_name", "short_description"}:
+                question["answer"] = metadata.get(question_id, "")
     if state in ("answered", "open"):
         questions = data.get("questions", [])
         all_answered = bool(questions) and all(str(q.get("answer", "")).strip() for q in questions)
