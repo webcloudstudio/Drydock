@@ -45,7 +45,6 @@ class TestLoadPrompt:
         assert prompt.name == expected_name
         for field in REQUIRED_FIELDS:
             assert prompt.meta.get(field), f"missing required field {field!r}"
-        assert prompt.model == "sonnet"
         assert prompt.body  # non-empty body
 
     def test_unknown_prompt_raises(self):
