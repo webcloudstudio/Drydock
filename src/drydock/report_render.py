@@ -1059,7 +1059,12 @@ def run_notes() -> str:
     )
 
 
-def _render_receipt(base: Path, checks: Sequence[Check], prefix: str = "") -> str:
+def _render_receipt(
+    base: Path,
+    checks: Sequence[Check],
+    prefix: str = "",
+    tags: Mapping[str, str] | None = None,
+) -> str:
     """Render the receipt table: one row per claim, its verdict, and the artifact proving it.
 
     The claims themselves are the caller's: what a UAT run must prove about the harness is not
@@ -1069,7 +1074,7 @@ def _render_receipt(base: Path, checks: Sequence[Check], prefix: str = "") -> st
     rows = [
         [
             _cell(check.name),
-            f'<td><span class="tag {check.state}">{_CHECK_TAGS[check.state]}</span></td>',
+            f'<td><span class="tag {check.state}">{(tags or _CHECK_TAGS)[check.state]}</span></td>',
             _cell(check.detail, css="detail"),
             f"<td>{_evidence_link(base, check.evidence, prefix) or '—'}</td>",
         ]

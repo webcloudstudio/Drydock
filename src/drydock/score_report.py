@@ -102,6 +102,11 @@ _INVENTORY_TABS = {
 _DELIVERED_PREFIX = "delivered"
 
 
+#: A claim the run never settled is reported as not run, never as a verdict over the product:
+#: nothing was measured, so there is nothing to be unproven about.
+_RECEIPT_TAGS = {"pass": "PASS", "fail": "FAIL", "unknown": "NOT RUN"}
+
+
 class ReportError(Exception):
     """The Target has recorded nothing this command could report."""
 
@@ -1171,7 +1176,7 @@ def _render(
         if score_rows
         else ""
     )
-    scores_panel = scores_block + _render_receipt(report_root, checks)
+    scores_panel = scores_block + _render_receipt(report_root, checks, tags=_RECEIPT_TAGS)
 
     delivered = _files_of(groups, "Delivered code")
     delivered_tree = (
