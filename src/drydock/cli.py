@@ -1073,13 +1073,43 @@ def _parse_plan_args(args: argparse.Namespace) -> tuple[str, str]:
 
 
 def cmd_plan_verify(target: str) -> int:
-    """Report every acceptance criterion that cannot run. Read-only; exit status is the verdict."""
+    """Report every acceptance criterion that cannot run. Read-only; exit status is the verdict.
+
+    Verification claims no rung of its own — passing means only that the plan already standing
+    is sound, which is not a new fact about the project. Failing is: the plan cannot be built
+    against, so the rung that authored it is condemned where it stands. It voids nothing,
+    having authored nothing; what it changes is which rung the workflow is blocked on.
+    """
     from drydock.config import require_target_dir
     from drydock.plan_verify import render, verify
 
-    result = verify(target, require_target_dir(target))
+    target_dir = require_target_dir(target)
+    result = verify(target, target_dir)
     print(render(result))
+    if not result.ok:
+        _fail_standing_plan(target, target_dir, result)
     return result.exit_code()
+
+
+def _fail_standing_plan(target: str, target_dir: Path, result) -> None:
+    """Condemn the plan rung the Target holds, without claiming or voiding anything."""
+    from drydock.project_status import latest_per_label, read_status, record_status
+
+    standing = latest_per_label(read_status(target_dir))
+    # A repaired plan is the one on disk; fall back to the created one, and record nothing at
+    # all when neither rung stands — there is no plan for this verdict to be about.
+    label = next((name for name in ("PLAN REPAIRED", "PLAN CREATED") if name in standing), "")
+    if not label:
+        return
+    count = len(result.defects)
+    record_status(
+        target_dir,
+        label,
+        passed=False,
+        detail=f"{count} criteri{'on' if count == 1 else 'a'} cannot run",
+        command=f"drydock plan verify {target}",
+        voids=False,
+    )
 
 
 def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:

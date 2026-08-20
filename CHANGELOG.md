@@ -41,6 +41,13 @@ command surface and Typed Specification contract are unstable and may change bet
   either: a verification that fails on rerun invalidates itself alone, and the states above it
   keep whatever standing they had. `drydock refit` voids every state above `PLAN REPAIRED` when
   it conforms a ticket or resets a drifted Blueprint, which it previously did not record at all.
+- 2026-08-20: `drydock plan verify` now records a workflow state when it fails, and still records
+  nothing when it passes. A clean verify says only that the plan already standing is sound, which
+  is not a new fact about the project; a failed one is, so it fails the plan rung the Target holds
+  — `PLAN REPAIRED` when the plan was repaired, otherwise `PLAN CREATED` — with the defect count
+  as the detail. It voids nothing, having authored nothing. Previously a repair that exited 0 and
+  still left criteria unrunnable left `PLAN CREATED` or `PLAN REPAIRED` standing as passed, so the
+  state machine reported a sound plan an operator's workflow had already aborted on.
 - 2026-08-20: States are no longer mutually exclusive, so the `PROJECT_STATUS.jsonl` summary row,
   `drydock score`, the `drydock score report` receipt, and the Commander's Chair lifecycle strip
   now name the *standing* state: the lowest failed rung when one exists, otherwise the furthest

@@ -31,7 +31,9 @@ export OPTS="--llm-provider claude --model haiku"
 #   11  FINALIZED                  drydock score report
 #
 # `drydock refit` voids everything above PLAN REPAIRED and claims no state of its own.
-# `drydock status` and `drydock plan verify` record nothing; they only report.
+# `drydock plan verify` claims no state either: clean records nothing, failing fails the plan
+# rung that stands (5 if repaired, else 4) and voids nothing, having authored nothing.
+# `drydock status` only reports.
 # Read the ladder at any time with:  drydock score $PROJECT
 
 cd $DRYDOCK_WORKSPACE
@@ -64,13 +66,14 @@ drydock status $PROJECT
 read
 drydock plan $PROJECT --override $OPTS
 # project status = PLAN CREATED, OK
-# `plan verify` records no state; it only reports whether the criteria can run.
+# `plan verify` claims no state of its own. Passing records nothing; failing fails the plan
+# rung that stands — PLAN REPAIRED if the plan was repaired, otherwise PLAN CREATED.
 if ! drydock plan verify $PROJECT; then
+  # project status = PLAN CREATED, ERROR  detail: "N criteria cannot run"
   drydock plan repair $PROJECT $OPTS
-  # project status = PLAN REPAIRED, OK  (repair that exits nonzero records it as ERROR)
+  # project status = PLAN REPAIRED, OK  (a repair that exits nonzero records it as ERROR)
   if ! drydock plan verify $PROJECT; then
-    # project status = PLAN REPAIRED, OK — the machine still holds the repair as passed.
-    # A repair that succeeded and left the criteria unrunnable is not a recorded state.
+    # project status = PLAN REPAIRED, ERROR  detail: "N criteria cannot run"
     echo "criteria still cannot run — aborting"
     exit 1
   fi

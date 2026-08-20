@@ -186,3 +186,76 @@ def test_a_clean_rendering_does_not_offer_repair(tmp_path):
     text = render(verify("Demo", _target(tmp_path, FEATURE_Ok=_RUNNABLE)))
 
     assert "plan repair" not in text
+
+
+class TestVerifyRecordsOnlyFailure:
+    """``plan verify`` claims no rung; a failure condemns the rung that authored the plan."""
+
+    def _verify(self, monkeypatch, target_dir):
+        from drydock import cli
+
+        monkeypatch.setattr("drydock.config.require_target_dir", lambda _t: target_dir)
+        return cli.cmd_plan_verify("Demo")
+
+    def test_a_clean_verify_records_nothing(self, tmp_path, monkeypatch, capsys):
+        from drydock.project_status import read_status, record_status
+
+        target_dir = _target(tmp_path, FEATURE_Ok=_RUNNABLE)
+        record_status(target_dir, "PLAN CREATED", passed=True)
+
+        assert self._verify(monkeypatch, target_dir) == 0
+        capsys.readouterr()
+
+        entry = read_status(target_dir)[-1]
+        assert entry.passed is True
+        assert entry.command == ""  # untouched: verify wrote no record over it
+
+    def test_a_failed_verify_fails_the_plan_rung_without_voiding(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from drydock.project_status import (
+            current_state,
+            latest_per_label,
+            read_status,
+            record_status,
+        )
+
+        target_dir = _target(tmp_path, FEATURE_Broken=_MISSING_IMPORT)
+        for label in ("PLAN CREATED", "BUILT", "FINALIZED"):
+            record_status(target_dir, label, passed=True)
+
+        assert self._verify(monkeypatch, target_dir) == 1
+        capsys.readouterr()
+
+        standing = latest_per_label(read_status(target_dir))
+        assert standing["PLAN CREATED"].passed is False
+        assert standing["PLAN CREATED"].detail == "1 criterion cannot run"
+        assert standing["PLAN CREATED"].command == "drydock plan verify Demo"
+        # It authored nothing, so it voids nothing — but it is now the blocking rung.
+        assert set(standing) == {"PLAN CREATED", "BUILT", "FINALIZED"}
+        assert current_state(target_dir).label == "PLAN CREATED"
+
+    def test_a_repaired_plan_is_the_rung_condemned(self, tmp_path, monkeypatch, capsys):
+        from drydock.project_status import latest_per_label, read_status, record_status
+
+        target_dir = _target(tmp_path, FEATURE_Broken=_MISSING_IMPORT)
+        record_status(target_dir, "PLAN CREATED", passed=True)
+        record_status(target_dir, "PLAN REPAIRED", passed=True)
+
+        assert self._verify(monkeypatch, target_dir) == 1
+        capsys.readouterr()
+
+        standing = latest_per_label(read_status(target_dir))
+        assert standing["PLAN CREATED"].passed is True
+        assert standing["PLAN REPAIRED"].passed is False
+
+    def test_no_plan_rung_means_no_record(self, tmp_path, monkeypatch, capsys):
+        from drydock.project_status import read_status, record_status
+
+        target_dir = _target(tmp_path, FEATURE_Broken=_MISSING_IMPORT)
+        record_status(target_dir, "INITIALIZED", passed=True)
+
+        assert self._verify(monkeypatch, target_dir) == 1
+        capsys.readouterr()
+
+        assert [e.label for e in read_status(target_dir)] == ["INITIALIZED"]

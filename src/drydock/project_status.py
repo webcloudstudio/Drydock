@@ -73,7 +73,13 @@ class StatusEntry:
 
 
 def record_status(
-    target_dir: Path, label: str, *, passed: bool, detail: str = "", command: str = ""
+    target_dir: Path,
+    label: str,
+    *,
+    passed: bool,
+    detail: str = "",
+    command: str = "",
+    voids: bool | None = None,
 ) -> None:
     """Record an attempt at *label*, voiding states above it only if *label* is mutating.
 
@@ -97,13 +103,17 @@ def record_status(
         passed: whether the attempt succeeded
         detail: if passed=False, error message (collapsed to one line); if passed=True, empty
         command: the drydock command string (e.g. "drydock build jq")
+        voids: override the label's default. Voiding follows from what the *command* did, and
+            the label is only a good proxy for that; a read-only check that condemns a rung it
+            did not author passes ``voids=False``. See :func:`cmd_plan_verify`.
     """
     if label not in _LADDER_INDEX or not target_dir.is_dir():
         return
 
     rank = _LADDER_INDEX[label]
     standing = read_status(target_dir)
-    voids = label in MUTATING_LABELS
+    if voids is None:
+        voids = label in MUTATING_LABELS
     kept = [
         entry
         for entry in standing
