@@ -1,10 +1,14 @@
-"""Unit tests for workflow-state persistence in PROJECT_STATUS.md."""
+"""Unit tests for the PROJECT_STATUS.jsonl workflow state machine."""
 
 from __future__ import annotations
+
+import json
 
 from drydock.errors import UsageError
 from drydock.project_status import (
     LABEL_LADDER,
+    STATUS_FILENAME,
+    current_state,
     latest_per_label,
     read_status,
     record_failure,
@@ -12,27 +16,56 @@ from drydock.project_status import (
 )
 
 
+def _rows(target_dir):
+    text = (target_dir / STATUS_FILENAME).read_text(encoding="utf-8")
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
 class TestRecordStatus:
-    def test_appends_one_record_per_call(self, tmp_path):
+    def test_records_one_row_per_state_in_ladder_order(self, tmp_path):
+        record_status(tmp_path, "ANALYZED", passed=True, command="drydock analyze T")
         record_status(tmp_path, "INITIALIZED", passed=True, command="drydock init T")
         record_status(tmp_path, "ANALYZED", passed=True, command="drydock analyze T")
 
         entries = read_status(tmp_path)
 
         assert [e.label for e in entries] == ["INITIALIZED", "ANALYZED"]
-        assert all(e.passed for e in entries)
         assert entries[1].command == "drydock analyze T"
 
-    def test_preserves_earlier_attempts_at_the_same_label(self, tmp_path):
+    def test_re_recording_a_state_replaces_it_rather_than_appending(self, tmp_path):
         record_status(tmp_path, "BUILT", passed=False, detail="3 step(s) failed")
         record_status(tmp_path, "BUILT", passed=True)
 
-        entries = read_status(tmp_path)
+        (entry,) = read_status(tmp_path)
 
-        assert len(entries) == 2
-        assert entries[0].passed is False
-        assert entries[0].detail == "3 step(s) failed"
-        assert entries[1].passed is True
+        assert entry.passed is True
+        assert entry.detail == ""
+        assert entry.attempts == 2
+
+    def test_recording_a_state_voids_every_state_below_it(self, tmp_path):
+        for label in ("INITIALIZED", "BUILT", "SCORE BUILD", "FINALIZED"):
+            record_status(tmp_path, label, passed=True)
+
+        record_status(tmp_path, "BUILT", passed=True)
+
+        assert [e.label for e in read_status(tmp_path)] == ["INITIALIZED", "BUILT"]
+
+    def test_a_failed_attempt_also_voids_downstream_states(self, tmp_path):
+        record_status(tmp_path, "BUILT", passed=True)
+        record_status(tmp_path, "FINALIZED", passed=True)
+
+        record_status(tmp_path, "BUILT", passed=False, detail="boom")
+
+        assert [e.label for e in read_status(tmp_path)] == ["BUILT"]
+        assert current_state(tmp_path).passed is False
+
+    def test_voiding_resets_the_attempt_count(self, tmp_path):
+        record_status(tmp_path, "SCORE BUILD", passed=True)
+        record_status(tmp_path, "SCORE BUILD", passed=True)
+        record_status(tmp_path, "BUILT", passed=True)
+        record_status(tmp_path, "SCORE BUILD", passed=True)
+
+        assert latest_per_label(read_status(tmp_path))["SCORE BUILD"].attempts == 1
 
     def test_records_an_iso_utc_instant(self, tmp_path):
         record_status(tmp_path, "INITIALIZED", passed=True)
@@ -49,6 +82,12 @@ class TestRecordStatus:
 
         assert entry.detail == "line one line two line three"
 
+    def test_labels_outside_the_ladder_are_not_recorded(self, tmp_path):
+        record_status(tmp_path, "MADE UP", passed=True)
+
+        assert read_status(tmp_path) == ()
+        assert not (tmp_path / STATUS_FILENAME).exists()
+
     def test_missing_target_directory_is_not_recorded(self, tmp_path):
         missing = tmp_path / "never-initialized"
 
@@ -57,29 +96,63 @@ class TestRecordStatus:
         assert not missing.exists()
         assert read_status(missing) == ()
 
+    def test_supersedes_the_legacy_markdown_journal(self, tmp_path):
+        legacy = tmp_path / "PROJECT_STATUS.md"
+        legacy.write_text("## FINALIZED\nresult: pass\n", encoding="utf-8")
+
+        record_status(tmp_path, "INITIALIZED", passed=True)
+
+        assert not legacy.exists()
+        assert [e.label for e in read_status(tmp_path)] == ["INITIALIZED"]
+
+
+class TestFileFormat:
+    def test_last_row_names_the_state_the_project_is_in(self, tmp_path):
+        record_status(tmp_path, "INITIALIZED", passed=True)
+        record_status(tmp_path, "BUILT", passed=False, detail="boom")
+
+        rows = _rows(tmp_path)
+
+        assert [row.get("label") for row in rows[:-1]] == ["INITIALIZED", "BUILT"]
+        assert rows[-1] == {
+            "state": "BUILT",
+            "result": "fail",
+            "at": rows[-2]["at"],
+            "attempts": 1,
+        }
+
+    def test_one_json_object_per_line(self, tmp_path):
+        record_status(tmp_path, "BUILT", passed=False, detail="a\nb")
+
+        for row in _rows(tmp_path):
+            assert isinstance(row, dict)
+
+
+class TestCurrentState:
+    def test_highest_state_on_the_ladder_is_the_project_state(self, tmp_path):
+        record_status(tmp_path, "INITIALIZED", passed=True)
+        record_status(tmp_path, "BUILT", passed=True)
+
+        assert current_state(tmp_path).label == "BUILT"
+
+    def test_no_recorded_state_is_none(self, tmp_path):
+        assert current_state(tmp_path) is None
+
 
 class TestReadStatus:
     def test_absent_file_reads_as_empty(self, tmp_path):
         assert read_status(tmp_path) == ()
 
     def test_empty_file_reads_as_empty(self, tmp_path):
-        (tmp_path / "PROJECT_STATUS.md").write_text("\n\n", encoding="utf-8")
+        (tmp_path / STATUS_FILENAME).write_text("\n\n", encoding="utf-8")
 
         assert read_status(tmp_path) == ()
 
-    def test_record_without_result_is_treated_as_a_failed_attempt(self, tmp_path):
-        (tmp_path / "PROJECT_STATUS.md").write_text(
-            "## BUILDING\nat: 2026-08-20T00:00:00.000+00:00\n", encoding="utf-8"
-        )
-
-        (entry,) = read_status(tmp_path)
-
-        assert entry.label == "BUILDING"
-        assert entry.passed is False
-
-    def test_unknown_lines_are_ignored(self, tmp_path):
-        (tmp_path / "PROJECT_STATUS.md").write_text(
-            "# PROJECT STATUS\n\n## ANALYZED\nresult: pass\nnoise: ignored\n",
+    def test_corrupt_and_unknown_rows_are_skipped(self, tmp_path):
+        (tmp_path / STATUS_FILENAME).write_text(
+            "not json\n"
+            '{"label": "MADE UP", "result": "pass"}\n'
+            '{"label": "ANALYZED", "result": "pass", "at": "x"}\n',
             encoding="utf-8",
         )
 
@@ -88,19 +161,24 @@ class TestReadStatus:
         assert entry.label == "ANALYZED"
         assert entry.passed is True
 
+    def test_row_without_result_is_treated_as_a_failed_attempt(self, tmp_path):
+        (tmp_path / STATUS_FILENAME).write_text('{"label": "BUILDING"}\n', encoding="utf-8")
+
+        (entry,) = read_status(tmp_path)
+
+        assert entry.label == "BUILDING"
+        assert entry.passed is False
+
 
 class TestLatestPerLabel:
-    def test_returns_last_attempt_per_label_in_ladder_order(self, tmp_path):
+    def test_indexes_states_in_ladder_order(self, tmp_path):
         record_status(tmp_path, "SCORE BUILD", passed=True)
-        record_status(tmp_path, "BUILT", passed=False, detail="first try")
-        record_status(tmp_path, "BUILT", passed=True)
         record_status(tmp_path, "INITIALIZED", passed=True)
+        record_status(tmp_path, "BUILT", passed=True)
 
         latest = latest_per_label(read_status(tmp_path))
 
-        assert list(latest) == ["INITIALIZED", "BUILT", "SCORE BUILD"]
-        assert latest["BUILT"].passed is True
-        assert latest["BUILT"].detail == ""
+        assert list(latest) == ["INITIALIZED", "BUILT"]
 
     def test_unattempted_labels_are_absent(self, tmp_path):
         record_status(tmp_path, "INITIALIZED", passed=True)
@@ -109,12 +187,6 @@ class TestLatestPerLabel:
 
         assert set(latest) == {"INITIALIZED"}
         assert set(LABEL_LADDER) - set(latest)
-
-    def test_labels_outside_the_ladder_are_not_rendered(self, tmp_path):
-        record_status(tmp_path, "MADE UP", passed=True)
-
-        assert read_status(tmp_path)[0].label == "MADE UP"
-        assert latest_per_label(read_status(tmp_path)) == {}
 
 
 class TestRecordFailure:
@@ -126,7 +198,9 @@ class TestRecordFailure:
         assert entry.passed is False
         assert entry.detail == "disk gone"
 
-    def test_usage_error_is_not_an_attempt(self, tmp_path):
+    def test_usage_error_is_not_an_attempt_and_voids_nothing(self, tmp_path):
+        record_status(tmp_path, "FINALIZED", passed=True)
+
         record_failure(tmp_path, "IMPORTED", UsageError("import requires <Source>"))
 
-        assert read_status(tmp_path) == ()
+        assert [e.label for e in read_status(tmp_path)] == ["FINALIZED"]

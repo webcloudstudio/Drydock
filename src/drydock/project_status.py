@@ -1,21 +1,29 @@
-"""Project workflow-state persistence: PROJECT_STATUS.md append-only ladder.
+"""Project workflow state: the PROJECT_STATUS.jsonl state machine.
 
-Each lifecycle command (init, analyze, plan, build, score ac/build/release, score report)
-records its outcome in PROJECT_STATUS.md at the target directory. The file is append-only;
-multiple attempts at the same state are preserved in full for audit, and the ladder
-renders the *last* attempt per label. A state with a recorded attempt but no successful
-completion carries a failure badge and optional detail; a state not yet attempted is
-simply absent from the ladder.
+A Target is in exactly one state. ``PROJECT_STATUS.jsonl`` holds one row per workflow state
+the Target currently stands in, in ladder order, followed by one summary row naming the
+state the project is in. It is a snapshot, not a journal: recording a state rewrites the
+file, and there is no attempt history to reduce.
+
+The ladder is linear, so the transition rule is linear too. Recording any state voids every
+state below it: starting a build un-finalizes the project, re-running acceptance voids the
+scores built on it, and re-importing voids everything downstream of the import. A voided
+state is removed outright — absent means "not established", which is the same thing it
+means for a state never attempted.
+
+The summary row is derived, never authoritative. It is rewritten from the state rows on
+every record so an external reader can ``tail -1`` the file for the answer.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-#: Workflow-state labels, in the order they appear in the ladder.
-#: Not all are required; only attempted states are shown.
+#: Workflow states, in ladder order. Position is the transition rule: recording a state
+#: voids every state after it. A state not listed here is not part of the machine.
 LABEL_LADDER = (
     "INITIALIZED",
     "IMPORTED",
@@ -30,82 +38,70 @@ LABEL_LADDER = (
     "FINALIZED",
 )
 
-_STATUS_FILENAME = "PROJECT_STATUS.md"
+_LADDER_INDEX = {label: index for index, label in enumerate(LABEL_LADDER)}
+
+STATUS_FILENAME = "PROJECT_STATUS.jsonl"
+
+#: The append-only markdown journal this file replaces. Removed on first write so a Target
+#: never carries two status files, one of which nothing reads.
+_LEGACY_FILENAME = "PROJECT_STATUS.md"
 
 
 @dataclass(frozen=True)
 class StatusEntry:
-    """One recorded lifecycle state attempt."""
+    """One workflow state the Target currently stands in."""
 
     label: str
     passed: bool
-    at: str  # ISO 8601 UTC instant (e.g. "2026-08-20T02:47:31.123Z")
-    detail: str  # empty string if passed; error message if failed
-    command: str  # the drydock command that recorded this (e.g. "drydock build jq")
+    at: str  # ISO 8601 UTC instant (e.g. "2026-08-20T14:38:51.886+00:00")
+    detail: str  # empty string if passed; one-line error message if failed
+    command: str  # the drydock command that established this (e.g. "drydock build jq")
+    attempts: int = 1  # consecutive attempts at this state since it was last voided
 
 
 def record_status(
     target_dir: Path, label: str, *, passed: bool, detail: str = "", command: str = ""
 ) -> None:
-    """Append one state-attempt record to PROJECT_STATUS.md.
+    """Move the Target to *label*, voiding every state below it on the ladder.
 
     Recording is an observability side effect, never a failure mode: it is skipped when the
     Target directory does not exist (nothing was attempted against a Target that is not
-    there) and filesystem errors are swallowed, so the calling command's own exit-code
-    contract is never altered by this write.
+    there), when *label* is not a ladder state, and filesystem errors are swallowed. The
+    calling command's own exit-code contract is never altered by this write.
 
     Args:
         target_dir: the Target's directory ($DRYDOCK_WORKSPACE/targets/<Target>)
-        label: one of LABEL_LADDER
-        passed: whether the attempt succeeded
-        detail: if passed=False, error message (one line); if passed=True, empty
+        label: one of LABEL_LADDER; anything else is ignored
+        passed: whether the attempt succeeded. A failed attempt still voids downstream
+            states — a build that failed invalidates the scores that ran before it.
+        detail: if passed=False, error message (collapsed to one line); if passed=True, empty
         command: the drydock command string (e.g. "drydock build jq")
     """
-    if not target_dir.is_dir():
+    if label not in _LADDER_INDEX or not target_dir.is_dir():
         return
 
-    status_file = target_dir / _STATUS_FILENAME
-
-    # Generate ISO 8601 UTC timestamp
-    now = datetime.now(UTC)
-    timestamp = now.isoformat(timespec="milliseconds")
-
-    # Format the entry. The record is line-oriented, so detail is collapsed to one line.
-    result = "pass" if passed else "fail"
-    lines = [
-        f"## {label}",
-        f"result: {result}",
-        f"at: {timestamp}",
-        f"detail: {_one_line(detail)}",
-        f"command: {_one_line(command)}",
-        "",  # blank line between entries
-    ]
-
-    try:
-        # Append to file (create if missing)
-        if status_file.exists():
-            content = status_file.read_text(encoding="utf-8")
-            if not content.endswith("\n"):
-                content += "\n"
-            content += "\n".join(lines)
-        else:
-            content = "\n".join(lines)
-
-        status_file.write_text(content, encoding="utf-8")
-    except OSError:
-        return
-
-
-def _one_line(text: str) -> str:
-    """Collapse whitespace so one record field never spans lines."""
-    return " ".join(text.split())
+    rank = _LADDER_INDEX[label]
+    standing = read_status(target_dir)
+    kept = [entry for entry in standing if _LADDER_INDEX[entry.label] < rank]
+    previous = next((entry for entry in standing if entry.label == label), None)
+    kept.append(
+        StatusEntry(
+            label=label,
+            passed=passed,
+            at=datetime.now(UTC).isoformat(timespec="milliseconds"),
+            detail="" if passed else _one_line(detail),
+            command=_one_line(command),
+            attempts=(previous.attempts + 1) if previous is not None else 1,
+        )
+    )
+    _write(target_dir, kept)
 
 
 def record_failure(target_dir: Path, label: str, exc: BaseException, *, command: str = "") -> None:
-    """Record a failed attempt at `label`, unless the cause was a usage error.
+    """Record a failed attempt at *label*, unless the cause was a usage error.
 
-    A malformed invocation never reached the state it names, so it is not an attempt and
-    must not appear on the ladder.
+    A malformed invocation never reached the state it names, so it is not an attempt: it
+    must neither claim the state nor void the states below it.
     """
     from drydock.errors import UsageError
 
@@ -115,85 +111,91 @@ def record_failure(target_dir: Path, label: str, exc: BaseException, *, command:
 
 
 def read_status(target_dir: Path) -> tuple[StatusEntry, ...]:
-    """Parse PROJECT_STATUS.md and return all recorded attempts in file order.
+    """Return the states the Target currently stands in, in ladder order.
 
-    Args:
-        target_dir: the Target's directory
-
-    Returns:
-        Tuple of StatusEntry records, in the order they appear in the file.
-        Empty tuple if the file doesn't exist or is empty.
+    Unparsable rows, unknown labels, and the derived summary row are skipped: the file is a
+    snapshot the tool rewrites, so a corrupt row is dropped rather than failing a command
+    whose real work already succeeded.
     """
-    status_file = target_dir / _STATUS_FILENAME
-
-    if not status_file.exists():
+    path = target_dir / STATUS_FILENAME
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
         return ()
 
-    content = status_file.read_text(encoding="utf-8")
-    if not content.strip():
-        return ()
-
-    entries = []
-    current_entry: dict[str, str] = {}
-
+    found: dict[str, StatusEntry] = {}
     for line in content.splitlines():
-        line = line.rstrip()
-
-        if line.startswith("## "):
-            # Start of a new entry; save the previous one if complete
-            if current_entry and "label" in current_entry:
-                entries.append(
-                    StatusEntry(
-                        label=current_entry["label"],
-                        passed=current_entry.get("result", "fail") == "pass",
-                        at=current_entry.get("at", ""),
-                        detail=current_entry.get("detail", ""),
-                        command=current_entry.get("command", ""),
-                    )
-                )
-            current_entry = {"label": line[3:].strip()}
-
-        elif line.startswith("result: "):
-            current_entry["result"] = line[8:].strip()
-
-        elif line.startswith("at: "):
-            current_entry["at"] = line[4:].strip()
-
-        elif line.startswith("detail: "):
-            current_entry["detail"] = line[8:].strip()
-
-        elif line.startswith("command: "):
-            current_entry["command"] = line[9:].strip()
-
-    # Don't forget the last entry
-    if current_entry and "label" in current_entry:
-        entries.append(
-            StatusEntry(
-                label=current_entry["label"],
-                passed=current_entry.get("result", "fail") == "pass",
-                at=current_entry.get("at", ""),
-                detail=current_entry.get("detail", ""),
-                command=current_entry.get("command", ""),
-            )
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        label = row.get("label") if isinstance(row, dict) else None
+        if not isinstance(label, str) or label not in _LADDER_INDEX:
+            continue  # the summary row carries "state", not "label"
+        found[label] = StatusEntry(
+            label=label,
+            passed=row.get("result") == "pass",
+            at=str(row.get("at") or ""),
+            detail=str(row.get("detail") or ""),
+            command=str(row.get("command") or ""),
+            attempts=row.get("attempts") if isinstance(row.get("attempts"), int) else 1,
         )
+    return tuple(found[label] for label in LABEL_LADDER if label in found)
 
-    return tuple(entries)
+
+def current_state(target_dir: Path) -> StatusEntry | None:
+    """The one state the project is in, or None when it has established none.
+
+    The highest ladder state present. Because every write voids what is below it, that is
+    also always the most recently recorded state.
+    """
+    entries = read_status(target_dir)
+    return entries[-1] if entries else None
 
 
 def latest_per_label(entries: tuple[StatusEntry, ...]) -> dict[str, StatusEntry]:
-    """Return the last recorded attempt per label, in fixed label order.
+    """Index states by label, in ladder order.
 
-    Args:
-        entries: all recorded attempts (from read_status)
-
-    Returns:
-        Dictionary mapping label -> StatusEntry (the last occurrence of each label),
-        ordered by LABEL_LADDER so the ladder renders consistently.
+    Retained for callers that render the ladder. With one row per state this is a
+    re-indexing, not a reduction.
     """
-    # Build a dict of label -> last entry
-    latest_map: dict[str, StatusEntry] = {}
-    for entry in entries:
-        latest_map[entry.label] = entry
+    found = {entry.label: entry for entry in entries if entry.label in _LADDER_INDEX}
+    return {label: found[label] for label in LABEL_LADDER if label in found}
 
-    # Return entries in LABEL_LADDER order, filtering to only labels that have been attempted
-    return {label: latest_map[label] for label in LABEL_LADDER if label in latest_map}
+
+def _write(target_dir: Path, entries: list[StatusEntry]) -> None:
+    """Rewrite the snapshot: the state rows, then the derived summary row."""
+    lines = [
+        json.dumps({
+            "label": entry.label,
+            "result": "pass" if entry.passed else "fail",
+            "at": entry.at,
+            "detail": entry.detail,
+            "command": entry.command,
+            "attempts": entry.attempts,
+        })
+        for entry in entries
+    ]
+    if entries:
+        state = entries[-1]
+        lines.append(
+            json.dumps({
+                "state": state.label,
+                "result": "pass" if state.passed else "fail",
+                "at": state.at,
+                "attempts": state.attempts,
+            })
+        )
+    try:
+        (target_dir / STATUS_FILENAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        (target_dir / _LEGACY_FILENAME).unlink(missing_ok=True)
+    except OSError:
+        return
+
+
+def _one_line(text: str) -> str:
+    """Collapse whitespace so one record field never spans lines."""
+    return " ".join(text.split())

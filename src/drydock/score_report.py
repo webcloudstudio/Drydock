@@ -439,9 +439,10 @@ def _workflow(
 
     Two sources, in increasing authority. Every recorded command names the state it
     establishes, which gives a ladder for Targets built before Drydock persisted one.
-    ``PROJECT_STATUS.md`` then overrides what it holds, because a command that recorded its
-    own outcome knows more than its exit code does — a build that exits 0 with stalled blocks
-    is not BUILT.
+    ``PROJECT_STATUS.jsonl`` then overrides what it holds, because a command that recorded
+    its own outcome knows more than its exit code does — a build that exits 0 with stalled
+    blocks is not BUILT. That file is a state machine, not a journal: it already voids every
+    state below the one last recorded, so it needs no reduction here.
 
     A state never attempted is absent. It is never rendered as a failure or as a claim.
     """
@@ -463,18 +464,24 @@ def _workflow(
             "attempts": int(steps.get(label, {}).get("attempts", 0)) + 1,
         }
 
-    entries = read_status(target_dir)
-    attempts: dict[str, int] = {}
-    for entry in entries:
-        attempts[entry.label] = attempts.get(entry.label, 0) + 1
-    for label, entry in latest_per_label(entries).items():
+    recorded = latest_per_label(read_status(target_dir))
+    # The state machine is authoritative and complete: a state it does not hold was voided by
+    # a later one, so the history-derived rung below it must not survive as a stale claim.
+    if recorded:
+        floor = max(LABEL_LADDER.index(label) for label in recorded)
+        steps = {
+            label: step
+            for label, step in steps.items()
+            if label in recorded or LABEL_LADDER.index(label) < floor
+        }
+    for label, entry in recorded.items():
         steps[label] = {
             "label": label,
             "passed": entry.passed,
             "at": entry.at,
             "detail": entry.detail,
             "command": entry.command,
-            "attempts": attempts.get(label, 1),
+            "attempts": entry.attempts,
         }
 
     # BUILDING is the marker `drydock build` writes on entry. Once the build reported an
@@ -994,7 +1001,7 @@ _PLAN_DOCUMENTS = (
     "SEA_TRIALS.md",
     _SOUNDINGS_NAME,
     "SCORECARD.md",
-    "PROJECT_STATUS.md",
+    "PROJECT_STATUS.jsonl",
 )
 
 

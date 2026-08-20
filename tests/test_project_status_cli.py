@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from drydock.project_status import latest_per_label, read_status
+from drydock.project_status import STATUS_FILENAME, latest_per_label, read_status
 from tests.test_cli import run_cli
 
 
@@ -30,7 +30,7 @@ class TestInitRecordsStatus:
     def test_status_file_lives_beside_metadata(self, workspace):
         run_cli("init", "Tgt")
 
-        assert (workspace / "Tgt" / "PROJECT_STATUS.md").is_file()
+        assert (workspace / "Tgt" / STATUS_FILENAME).is_file()
 
 
 class TestImportRecordsStatus:

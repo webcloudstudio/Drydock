@@ -10,6 +10,23 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-20: Workflow state is a state machine in `PROJECT_STATUS.jsonl`, replacing the
+  append-only `PROJECT_STATUS.md` journal. A Target now holds one row per workflow state it
+  currently stands in, in ladder order, followed by one summary row naming the state the
+  project is in — readable with `tail -1`. Recording any state voids every state below it on
+  the ladder, whether the attempt passed or failed: starting a build un-finalizes the project,
+  re-running `drydock score ac` voids `SCORE BUILD`, `SCORE RELEASE`, and `FINALIZED`, and a
+  failed `drydock build` voids the scores that ran before it. Previously every attempt was
+  appended forever and the state was re-derived by ranking labels by ladder position, so a
+  Target accumulated hundreds of records, re-running a mid-ladder command left stale downstream
+  states standing, and a project whose newest evidence was a rescore still reported
+  `FINALIZED`. `project_status.current_state` is the single reducer; `drydock score report`
+  reads it instead of re-deriving the ladder, and no longer lets a command-history rung survive
+  below a state the machine voided. The hand-rolled markdown parser is gone, taking with it the
+  single-line escaping constraint on `detail`. Each row carries an `attempts` count so the
+  receipt still reports repeated attempts without retaining a journal; the count resets when
+  the state is voided. The legacy `PROJECT_STATUS.md` is removed on first write, and its
+  contents are not migrated — existing Targets rebuild their ladder as commands re-record.
 - 2026-08-20: The repair ladder in `drydock score build` reports what each pass settled instead
   of whether it closed its block. Every pass that did not close was labelled `failed`, so a
   block that verified on repair 5 printed five failures above one success, and a pass overturned
