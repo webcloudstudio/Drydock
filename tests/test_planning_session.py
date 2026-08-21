@@ -3704,6 +3704,72 @@ def test_an_unknown_topology_edge_is_repaired_without_regenerating_specs(tmp_pat
     assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
 
 
+def test_a_topology_fix_survives_a_later_unrelated_repair(tmp_path):
+    """Regression: a corrected declaration must not be discarded when the same candidate
+
+    still fails a second, unrelated defect. Previously the topology fix was applied only to a
+    local ``candidate_blocks`` and never copied back to ``blocks`` unless validation fully
+    passed on that pass; a later, non-topology defect (here a staged-asset environment defect)
+    caused the artifact-repair fallback to start over from the original, still phase-inverted
+    declaration, which then re-reported the same phase-inversion forever.
+    """
+    target_dir = _make_target(tmp_path)
+    sources = target_dir / "blueprint" / "sources"
+    (sources / "run_suite.py").write_text(
+        '"""Runner.\n\nEnvironment:\n'
+        "    RUNNER     command that runs the candidate. Required -- no default.\n"
+        '"""\n',
+        encoding="utf-8",
+    )
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    broken_spec = (
+        "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
+        "=== AC status-suite ===\nIntent: The suite passes.\n\n"
+        "import subprocess\n"
+        'result = subprocess.run(["python3", "sources/run_suite.py"], capture_output=True)\n'
+        "assert result.returncode == 0\n"
+        "=== END AC status-suite ===\n\n"
+        "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n"
+    )
+    fixed_spec = broken_spec.replace(
+        'result = subprocess.run(["python3", "sources/run_suite.py"], capture_output=True)',
+        'result = subprocess.run(["python3", "sources/run_suite.py"], capture_output=True, '
+        'env={**__import__("os").environ, "RUNNER": "./status"})',
+    )
+    inverted = _TOPOLOGY_DECLARATION.replace("phase:        1", "phase:        3")
+    first = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{broken_spec}\n=== END FEATURE-Status.md ===\n"
+        f"=== TOPOLOGY.md ===\n{inverted}\n=== END TOPOLOGY.md ===\n"
+    )
+    runner = _sequence_runner(
+        first,
+        _declaration_block(_TOPOLOGY_DECLARATION),
+        f"=== FEATURE-Status.md ===\n{fixed_spec}\n=== END FEATURE-Status.md ===\n",
+    )
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        allow_diagnostic_recovery=True,
+    )
+
+    assert len(runner.calls) == 3
+    assert "Plan Topology Repair" in runner.calls[1]
+    assert "Plan Artifact Repair" in runner.calls[2]
+    # The artifact-repair pass targets the real, still-open defect — not a re-report of the
+    # already-fixed phase-inversion, which proves the corrected declaration was carried forward.
+    assert "without RUNNER" in runner.calls[2]
+    assert (
+        "phase"
+        not in runner.calls[2].split("Deterministic validation defect:")[1].split("\n\n")[0].lower()
+    )
+    ordered = [block.block_id for block in result.plan.blocks]
+    assert ordered == ["story-foundation", "story-status"]
+
+
 def test_a_cited_blueprint_validation_defect_repairs_only_that_artifact(tmp_path):
     _make_target(tmp_path)
     invalid = _screen_output(

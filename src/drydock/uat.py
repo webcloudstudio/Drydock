@@ -35,6 +35,7 @@ from drydock.uat_console import StepSink
 from drydock.uat_report import build_case_kit, local_run_window, write_kit_index
 
 DEFAULT_MAX_BUILD_PASSES = 25
+LATEST_RUN_FILENAME = "LATEST_RUN"
 #: Read size for the child output pump. Small enough that a chunk reaches the console promptly.
 _STREAM_CHUNK_BYTES = 4096
 
@@ -1090,13 +1091,19 @@ def run_sort_key(run_id: str) -> str:
 
 
 def resolve_run_dir(fixture: UATFixture, run: str | None = None) -> Path:
-    """Return the run directory a resume re-enters: ``run`` when named, else the newest."""
+    """Return the recorded run selected explicitly or by the kit's current-run pointer."""
     runs = fixture.root / "runs"
     if run:
         candidate = runs / run
-        if not candidate.is_dir():
+        if not (candidate / "result.json").is_file():
             raise SpecificationError(f"No such run for kit {fixture.name}: {candidate}")
         return candidate
+    pointer = fixture.root / LATEST_RUN_FILENAME
+    if pointer.is_file():
+        run_id = pointer.read_text(encoding="utf-8").strip()
+        candidate = runs / run_id
+        if run_id and (candidate / "result.json").is_file():
+            return candidate
     existing = (
         sorted(
             (path for path in runs.iterdir() if (path / "result.json").is_file()),
@@ -1108,6 +1115,19 @@ def resolve_run_dir(fixture: UATFixture, run: str | None = None) -> Path:
     if not existing:
         raise SpecificationError(f"No completed run to resume for kit {fixture.name}: {runs}")
     return existing[-1]
+
+
+def record_latest_run(fixture: UATFixture, run_id: str) -> None:
+    """Persist the kit's current run after its result record exists.
+
+    A UAT run identifier is the operator-facing selection, not an inference from directory
+    timestamps.  A stale pointer caused by manual removal is deliberately ignored by
+    :func:`resolve_run_dir`, which falls back to the latest complete run still on disk.
+    """
+    destination = fixture.root / LATEST_RUN_FILENAME
+    temporary = destination.with_suffix(".tmp")
+    temporary.write_text(f"{run_id}\n", encoding="utf-8")
+    temporary.replace(destination)
 
 
 #: The lifecycle stage that owns each recorded step label. An operator reads the step table of a
@@ -1713,6 +1733,7 @@ def run_fixture(
     (case_root / "result.json").write_text(
         json.dumps(result.to_dict(case_root), indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    record_latest_run(fixture, case_root.name)
     # build_case_kit writes README.md and index.html from result.json, so `drydock uat --report`
     # reproduces byte-identical reports for a run it did not execute.
     build_case_kit(case_root)
@@ -1720,6 +1741,51 @@ def run_fixture(
     # requiring a separate `drydock uat --report`.
     write_kit_index(case_root.parent.parent)
     return result
+
+
+def render_status(fixture: UATFixture, run: str | None = None) -> str:
+    """Render the concise UAT recovery state for one recorded run."""
+    case_root = resolve_run_dir(fixture, run)
+    payload = json.loads((case_root / "result.json").read_text(encoding="utf-8"))
+    commands, _ = _prior_run(case_root)
+    status = str(payload.get("status") or "unknown").upper()
+    lines = [f"UAT: {fixture.name}", f"Run: {case_root.name}  {status}"]
+    if commands:
+        last = commands[-1]
+        stage = stage_for_label(last.label, default="unknown")
+        outcome = "completed" if last.returncode == 0 else "stopped"
+        lines.append(f"{outcome.title()}: {last.label}  exit {last.returncode}")
+        if last.returncode != 0 and stage != "init":
+            lines.append(f"Resume: drydock uat resume {fixture.name} --run {case_root.name}")
+        elif last.returncode == 0:
+            lines.append("Resume: not required")
+    else:
+        lines.append("Recorded commands: none")
+    error = str(payload.get("error") or "").strip()
+    if error:
+        lines.append(f"Reason: {error}")
+    return "\n".join(lines)
+
+
+def default_resume_stage(fixture: UATFixture, run: str | None = None) -> tuple[str, str]:
+    """Select the failed stage of a recorded run for ordinary ``uat resume``."""
+    case_root = resolve_run_dir(fixture, run)
+    commands, _ = _prior_run(case_root)
+    if not commands:
+        raise SpecificationError(f"Cannot resume {fixture.name}: {case_root.name} has no commands.")
+    last = commands[-1]
+    if last.returncode == 0:
+        raise SpecificationError(
+            f"Cannot infer a resume point for {fixture.name}: {case_root.name} ended successfully. "
+            "Use --from <stage> to rerun a lifecycle stage intentionally."
+        )
+    stage = stage_for_label(last.label)
+    if stage == "init":
+        raise SpecificationError(
+            f"Cannot resume {fixture.name}: {case_root.name} failed during init. "
+            f"Start a new run with: drydock uat {fixture.name}"
+        )
+    return case_root.name, stage
 
 
 def render_summary(results: Sequence[UATResult], base: Path | None = None) -> str:

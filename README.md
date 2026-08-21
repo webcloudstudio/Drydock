@@ -140,6 +140,9 @@ ai  drydock refit             MyApp            # Diff -> ticket -> dependency gr
     drydock build status      MyApp            # Show build state
 ai  drydock build score       MyApp            # Generate SCORECARD.md
 ai  drydock uat               [Project]        # Scored UAT testing
+    drydock uat status        <Project>        # Current run, failure, and recovery command
+ai  drydock uat resume        <Project>        # Resume the current failed run
+ai  drydock uat resume        <Project> --from <stage> # Re-enter a named lifecycle stage
     drydock uat --report      [run]            # Rebuild a run's HTML proof kit
     drydock uat <Project> --steps              # List a run's numbered steps and their stages
 ai  drydock uat <Project> --from-step <n>      # Resume at the stage that owns recorded step <n>

@@ -434,6 +434,14 @@ def _uat_steps(uat_root: Path, selected: str | None, run: str | None) -> int:
     return 0
 
 
+def _uat_status(uat_root: Path, selected: str | None, run: str | None) -> int:
+    """Print the current recorded state and ordinary recovery command for one kit."""
+    from drydock.uat import render_status
+
+    print(render_status(_uat_one_fixture(uat_root, selected, "uat status"), run))
+    return 0
+
+
 def _uat_stage_for_step(uat_root: Path, selected: str | None, run: str | None, step: int) -> str:
     """Translate ``--from-step <n>`` into the stage a resume re-enters, stating the translation."""
     from drydock.uat import resolve_step_stage
@@ -534,13 +542,23 @@ def cmd_uat(args: argparse.Namespace) -> int:
     workspace = get_workspace().resolve()
     uat_root = args.uat_root.resolve() if args.uat_root is not None else workspace / "uat"
     report = args.report is not None
-    # Step numbers belong to one kit's recorded run, so the selection is settled before any kit
-    # is touched: a sweep has no step 16 to resolve.
+    verb = getattr(args, "uat_verb", None)
+    # Step numbers and lifecycle recovery belong to one kit's recorded run, so selection is
+    # settled before any kit is touched: a sweep has no unambiguous recovery point.
     if not report and not args.Project:
-        for flag, given in (("--from-step", args.from_step is not None), ("--steps", args.steps)):
+        for flag, given in (
+            ("--from-step", args.from_step is not None),
+            ("--steps", args.steps),
+            ("uat status", verb == "status"),
+            ("uat resume", verb == "resume"),
+        ):
             if given:
                 raise UsageError(f"{flag} requires <Project>: step numbers belong to one kit's run")
     kits = _uat_kit_roots(uat_root, args.report if report else args.Project, report=report)
+    if verb == "status":
+        if report:
+            raise UsageError("uat status cannot be combined with --report")
+        return _uat_status(uat_root, args.Project, args.run)
     from drydock.uat_git import checkpoint_kit_repositories, ensure_kit_repositories
 
     ensure_kit_repositories(kits)
@@ -553,7 +571,13 @@ def cmd_uat(args: argparse.Namespace) -> int:
             raise UsageError("--repair-attempts must be zero or greater")
         if args.steps:
             return _uat_steps(uat_root, args.Project, args.run)
-        if args.run is not None and args.stage is None and args.from_step is None:
+        if verb == "resume" and args.stage is None and args.from_step is None:
+            from drydock.uat import default_resume_stage
+
+            fixture = _uat_one_fixture(uat_root, args.Project, "uat resume")
+            selected_run, start_stage = default_resume_stage(fixture, args.run)
+            args.run = selected_run
+        elif args.run is not None and args.stage is None and args.from_step is None:
             raise UsageError("--run requires --stage or --from-step")
         start_stage = args.stage or "init"
         if args.from_step is not None:
@@ -3250,8 +3274,10 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock uat                    — run every kit under uat/\n"
             "drydock uat <Project>          — run one kit\n"
+            "drydock uat status <Project>   — show the current recorded run and recovery command\n"
+            "drydock uat resume <Project>   — resume the current recorded run at its failed stage\n"
             "drydock uat --report [<kit>]   — rebuild proof kits from completed runs\n"
-            "drydock uat <Project> --stage <stage>\n"
+            "drydock uat resume <Project> --from <stage>\n"
             "                               — resume the newest run at <stage>\n"
             "\n"
             "A kit is uat/<Project>/: uat.json, its sources/ bundle, and its own runs/ history.\n"
@@ -3311,6 +3337,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_resume = p_uat.add_mutually_exclusive_group()
     p_resume.add_argument(
         "--stage",
+        "--from",
         default=None,
         choices=("import", "analyze", "plan", "build", "refit", "test", "score"),
         metavar="<stage>",
@@ -3340,6 +3367,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="<run-id>",
         help="Run directory to resume (default: the newest). Requires --stage or --from-step.",
+    )
+    p_uat.add_argument(
+        "--uat-verb",
+        dest="uat_verb",
+        choices=("status", "resume"),
+        default=None,
+        help=argparse.SUPPRESS,
     )
 
     # ── status ────────────────────────────────────────────────────────────────
@@ -4956,6 +4990,18 @@ def _commit_target_repository(args: argparse.Namespace) -> None:
     commit_target(target_dir, f"Complete drydock {command}")
 
 
+def _normalize_uat_verbs(argv: list[str]) -> list[str]:
+    """Lower first-class UAT verbs into the established parser shape.
+
+    ``uat`` deliberately retains its compact ``drydock uat <Project>`` invocation.  The verbs
+    therefore normalize before argparse: ``uat status jq`` becomes ``uat jq --uat-verb status``.
+    This preserves all existing flags, including their accepted placement after the project.
+    """
+    if len(argv) < 3 or argv[0] != "uat" or argv[1] not in {"status", "resume"}:
+        return argv
+    return ["uat", argv[2], "--uat-verb", argv[1], *argv[3:]]
+
+
 def main(argv: list[str] | None = None) -> None:
     from drydock.console import configure_stdio
 
@@ -4971,6 +5017,7 @@ def main(argv: list[str] | None = None) -> None:
         # their rejections need the same clean usage report the parsed commands get.
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(2)
+    normalized_argv = _normalize_uat_verbs(normalized_argv)
     args = parser.parse_args(normalized_argv)
     for key, value in global_overrides.items():
         if key == "debug":

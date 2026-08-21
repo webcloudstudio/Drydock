@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -1807,6 +1808,66 @@ def test_a_step_number_resolves_to_the_stage_that_owns_it(tmp_path: Path) -> Non
     # The stage replays from its first step, which the operator is told about by number.
     assert entry.stage == "score"
     assert entry.number == next(item.number for item in steps if item.stage == "score")
+
+
+def test_current_run_pointer_selects_the_last_recorded_run_and_recovers_from_removal(
+    tmp_path: Path,
+) -> None:
+    from drydock.uat import LATEST_RUN_FILENAME, resolve_run_dir
+
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    first, _ = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([]),
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+    second, _ = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([]),
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+    fixture = discover_fixtures(fixtures_root, "ReadingList")[0]
+
+    assert (fixture.root / LATEST_RUN_FILENAME).read_text(encoding="utf-8").strip() == second
+    assert resolve_run_dir(fixture).name == second
+
+    shutil.rmtree(fixture.root / "runs" / second)
+
+    assert resolve_run_dir(fixture).name == first
+
+
+def test_uat_status_and_default_resume_identify_the_failed_stage(tmp_path: Path) -> None:
+    from drydock.uat import default_resume_stage, render_status
+
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    run_id, _ = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([], fail=("plan", "ReadingList")),
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+    fixture = discover_fixtures(fixtures_root, "ReadingList")[0]
+
+    status = render_status(fixture)
+    resolved_run, stage = default_resume_stage(fixture)
+
+    assert f"Run: {run_id}  FAILED" in status
+    assert "Stopped:" in status
+    assert f"drydock uat resume ReadingList --run {run_id}" in status
+    assert (resolved_run, stage) == (run_id, "plan")
 
 
 def test_a_step_outside_the_recorded_run_is_rejected(tmp_path: Path) -> None:

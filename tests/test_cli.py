@@ -91,6 +91,27 @@ def run_cli(*args: str) -> tuple[int, str, str]:
     return rc, out.getvalue(), err.getvalue()
 
 
+def test_uat_status_and_resume_verbs_normalize_to_the_existing_uat_parser_contract():
+    from drydock.cli import _normalize_uat_verbs
+
+    assert _normalize_uat_verbs(["uat", "status", "jq", "--run", "run-1"]) == [
+        "uat",
+        "jq",
+        "--uat-verb",
+        "status",
+        "--run",
+        "run-1",
+    ]
+    assert _normalize_uat_verbs(["uat", "resume", "jq", "--from", "plan"]) == [
+        "uat",
+        "jq",
+        "--uat-verb",
+        "resume",
+        "--from",
+        "plan",
+    ]
+
+
 def test_failure_renderer_shows_agent_summary_story_acceptance_and_progress():
     baseline = AcceptanceObservation(
         check_id="inline-suite",

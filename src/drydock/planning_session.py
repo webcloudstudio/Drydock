@@ -4957,6 +4957,14 @@ def create_plan(
                             )
                         except Exception as next_exc:
                             repair_exc = next_exc
+                            # The topology fix itself is real even though a later, unrelated
+                            # defect still blocks validation — carry it forward so the
+                            # artifact-repair fallback below starts from the corrected
+                            # declaration instead of silently reverting to the broken one.
+                            blocks = candidate_blocks
+                            result = repair_result
+                            exec_id = getattr(repair_result, "execution_id", None)
+                            blocks_text = None
                             if not _is_repairable_topology_defect(next_exc):
                                 break
                             continue
