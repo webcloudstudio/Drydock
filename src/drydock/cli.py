@@ -2494,7 +2494,11 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
     )
 
     target_dir = require_target_dir(target)
-    report = verify_acs(target, target_dir, step_id=step)
+
+    def progress(check, index: int, total: int) -> None:
+        print(f"Running AC {index}/{total}: {check.check_id}", flush=True)
+
+    report = verify_acs(target, target_dir, step_id=step, on_item=progress)
     passed = sum(1 for v in report.verdicts if v.status == "PASS")
     failed = sum(1 for v in report.verdicts if v.status == "FAIL")
     unverified = sum(1 for v in report.verdicts if v.status == UNVERIFIED)

@@ -26,6 +26,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-21: `drydock score ac <Target>` now prints `Running AC <n>/<total>: <id>` before each
+  Programmatic Acceptance criterion begins. Long deterministic corpus slices therefore show
+  bounded live progress while preserving the existing consolidated verdict report and
+  `SOUNDINGS.md` output.
+
 - 2026-08-21: `drydock status <Target> --check` now reports every executable Manifest block by
   its current state (`21 closed/implemented`, `2 pending`) instead of a `verified/total` fraction.
   The completion exit contract is unchanged: only `closed/verified` work yields `COMPLETE`.

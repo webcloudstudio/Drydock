@@ -14,7 +14,7 @@ import subprocess
 import symtable
 import tempfile
 import warnings
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -1540,6 +1540,7 @@ def run_programmatic_acceptance(
     target_dir: Path,
     blueprint_dir: Path,
     strict_target: bool = False,
+    on_item: Callable[[ProgrammaticAcceptance, int, int], None] | None = None,
 ) -> tuple[AcceptanceRunResult, ...]:
     """Execute Python acceptance snippets from the build directory."""
     results: list[AcceptanceRunResult] = []
@@ -1583,7 +1584,9 @@ def run_programmatic_acceptance(
     }
     limit_mb = get_sandbox_mem_limit_mb()
     preexec = child_limits(limit_mb)
-    for check in checks:
+    for index, check in enumerate(checks, start=1):
+        if on_item is not None:
+            on_item(check, index, len(checks))
         # Run from a real file, never ``python -c``: a ``-c`` traceback reports
         # ``File "<string>", line N`` with no source text, so a failing assertion names
         # neither the assertion nor the expectation it asserted. Written to a file, the
@@ -1676,6 +1679,7 @@ def observe_programmatic_acceptance(
     target_dir: Path,
     blueprint_dir: Path,
     strict_target: bool = False,
+    on_item: Callable[[ProgrammaticAcceptance, int, int], None] | None = None,
 ) -> tuple[AcceptanceObservation, ...]:
     """Execute checks and annotate whether a passing proof is integrity-valid or vacuous."""
     if not checks:
@@ -1686,6 +1690,7 @@ def observe_programmatic_acceptance(
         target_dir=target_dir,
         blueprint_dir=blueprint_dir,
         strict_target=strict_target,
+        on_item=on_item,
     )
     observations: list[AcceptanceObservation] = []
     for check, result in zip(checks, runtime, strict=True):

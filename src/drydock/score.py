@@ -21,7 +21,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -339,7 +339,13 @@ def _provision_authorized_environment(
         provision_uv_environment(build_dir)
 
 
-def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> AcReport:
+def verify_acs(
+    target: str,
+    target_dir: Path,
+    *,
+    step_id: str | None = None,
+    on_item: Callable[[ProgrammaticAcceptance, int, int], None] | None = None,
+) -> AcReport:
     """Verify Blueprint acceptance assertions deterministically.
 
     One verdict per Blueprint Programmatic Acceptance assertion. A whole-target run (``step_id``
@@ -372,6 +378,7 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
         target_dir=target_dir,
         blueprint_dir=blueprint_dir,
         strict_target=True,
+        on_item=on_item,
     )
 
     owners = _blueprint_owners(plan)

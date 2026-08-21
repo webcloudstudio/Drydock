@@ -237,6 +237,8 @@ def test_score_ac_lists_every_verdict_with_owner(tmp_path, capsys, monkeypatch):
 
     out = capsys.readouterr().out
     assert exit_code == 1
+    assert "Running AC 1/2: alpha-proof" in out
+    assert "Running AC 2/2: beta-proof" in out
     # Every AC is listed, passing ones as a single line with no detail.
     assert "✓ PASS" in out and "alpha-proof" in out and "feat-alpha/alpha" in out
     assert "✗ FAIL" in out and "beta-proof" in out and "feat-beta/beta" in out
