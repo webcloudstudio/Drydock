@@ -419,6 +419,7 @@ class TestCompletionCheck:
         assert check.complete is True
         assert check.exit_code() == 0
         assert (check.total, check.verified, check.remaining) == (2, 2, 0)
+        assert check.state_summary == "2 closed/verified"
 
     def test_pending_work_is_incomplete(self, tmp_target_root):
         tgt = self._target(tmp_target_root, APPROVED_PLAN)
@@ -426,6 +427,7 @@ class TestCompletionCheck:
         assert check.complete is False
         assert check.exit_code() == 1
         assert (check.total, check.verified, check.remaining) == (2, 0, 2)
+        assert check.state_summary == "1 implemented, 1 pending"
 
     def test_failed_blocks_are_retryable(self, tmp_target_root):
         tgt = self._target(

@@ -1,8 +1,11 @@
-# jq.sh — the `drydock uat jq` command sequence, by hand.  ENTER runs the next step.
+#
+# jq.sh
+#
 set -ux
-export PROJECT=jq
+export PROJECT=jq_2
 export PROJECT_DIR=/mnt/c/Users/barlo/projects
 export KIT=$PROJECT_DIR/drydock/uat/$PROJECT
+export KIT=$PROJECT_DIR/drydock/uat/jq
 export DRYDOCK_WORKSPACE=$PROJECT_DIR/drydock
 export DRYDOCK_BUILD_DIRECTORY=$PROJECT_DIR
 export TARGET=$DRYDOCK_WORKSPACE/targets/$PROJECT
@@ -14,9 +17,7 @@ export OPTS="--llm-provider codex --model gpt-5.6-luna"
 export OPTS="--llm-provider claude --model haiku"
 
 # The eleven workflow states, in ladder order, and what records each. A `*` marks a mutating
-# state: reaching it voids every state above it, because it re-authors what they were verified
-# against. The rest void nothing — re-running a verification, or failing one, leaves every
-# other state exactly as it stood.
+# state: reaching it voids every state above it
 #
 #    1  INITIALIZED                drydock init
 #    2  IMPORTED                   drydock import
@@ -30,11 +31,6 @@ export OPTS="--llm-provider claude --model haiku"
 #   10  SCORE RELEASE              drydock score release
 #   11  FINALIZED                  drydock score report
 #
-# `drydock refit` voids everything above PLAN REPAIRED and claims no state of its own.
-# `drydock plan verify` claims no state either: clean records nothing, failing fails the plan
-# rung that stands (5 if repaired, else 4) and voids nothing, having authored nothing.
-# `drydock status` only reports.
-# Read the ladder at any time with:  drydock score $PROJECT
 
 cd $DRYDOCK_WORKSPACE
 date
@@ -63,15 +59,17 @@ drydock analyze $PROJECT $OPTS
 cp $KIT/inputs/TECHNOLOGY_STACK.md $TARGET/TECHNOLOGY_STACK.md
 cp $KIT/inputs/SEA_TRIALS.md       $TARGET/SEA_TRIALS.md
 drydock status $PROJECT
+
 read
 drydock plan $PROJECT --override $OPTS
 # project status = PLAN CREATED, OK
-# `plan verify` claims no state of its own. Passing records nothing; failing fails the plan
-# rung that stands — PLAN REPAIRED if the plan was repaired, otherwise PLAN CREATED.
+
 if ! drydock plan verify $PROJECT; then
   # project status = PLAN CREATED, ERROR  detail: "N criteria cannot run"
+
   drydock plan repair $PROJECT $OPTS
   # project status = PLAN REPAIRED, OK  (a repair that exits nonzero records it as ERROR)
+
   if ! drydock plan verify $PROJECT; then
     # project status = PLAN REPAIRED, ERROR  detail: "N criteria cannot run"
     echo "criteria still cannot run — aborting"
@@ -86,6 +84,7 @@ while drydock status $PROJECT --ready; do
   echo "************************"
   echo "* RUNNING BUILD ATTEMPT $n"
   echo "************************"
+
   # Every pass records BUILDING on entry, then BUILT on exit whatever the outcome.
   # BUILDING voids BUILT and every score above it: a new pass is new evidence.
   if ! drydock build $PROJECT --override $OPTS; then
@@ -94,6 +93,7 @@ while drydock status $PROJECT --ready; do
     echo "build failed with work left — aborting"
     exit 1
   fi
+
   # project status = BUILT, OK  (this pass finished; the loop re-enters if work remains)
   n=$((n+1))
   if [ "$n" -ge "$max" ]; then
@@ -115,7 +115,9 @@ drydock score build $PROJECT $OPTS
 drydock score release $PROJECT $OPTS
 # project status = SCORE RELEASE, OK
 
+# Create Report
 drydock score report $PROJECT $OPTS
+
 # project status = FINALIZED, OK — earned only when no rung failed and SCORE BUILD is held.
 # Publishing over an unfinished project still exits 0; the state is what says otherwise.
 # `drydock score` displays this state as PROJECT COMPLETE.

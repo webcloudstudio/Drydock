@@ -1974,7 +1974,8 @@ def cmd_status_check(target: str) -> int:
     check = _resolve_check_target(target)
     # Every outcome here — complete, incomplete, blocked — is a successful status report.
     # The exit code carries the verdict; stderr stays reserved for command failures.
-    print(f"{check.label}: {target}  {check.verified}/{check.total} verified  ({check.reason})")
+    detail = check.state_summary or check.reason
+    print(f"{check.label}: {target}  ({detail})")
     return check.exit_code()
 
 

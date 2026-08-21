@@ -487,7 +487,7 @@ _OUTCOME_LABEL = {COMPLETE: "COMPLETE", RETRYABLE: "INCOMPLETE", BLOCKED: "BLOCK
 
 @dataclass(frozen=True)
 class CompletionCheck:
-    """Deterministic machine-readable answer to "is this Target technically complete?"."""
+    """Deterministic answer to "is this Target technically complete?"."""
 
     target: str
     outcome: str  # COMPLETE | RETRYABLE | BLOCKED
@@ -495,6 +495,7 @@ class CompletionCheck:
     total: int = 0
     verified: int = 0
     remaining: int = 0
+    state_counts: tuple[tuple[str, int], ...] = ()
 
     @property
     def complete(self) -> bool:
@@ -508,6 +509,11 @@ class CompletionCheck:
     def label(self) -> str:
         return _OUTCOME_LABEL[self.outcome]
 
+    @property
+    def state_summary(self) -> str:
+        """Executable Manifest blocks tallied by their current state."""
+        return ", ".join(f"{count} {state}" for state, count in self.state_counts)
+
     def exit_code(self) -> int:
         return _OUTCOME_EXIT[self.outcome]
 
@@ -515,7 +521,7 @@ class CompletionCheck:
 def completion_check(target: str, target_dir: Path) -> CompletionCheck:
     """Return the completion gate for *target* from MANIFEST.md alone.
 
-    Three outcomes report verification completeness:
+    Three outcomes report completion:
 
     * ``COMPLETE`` (exit 0) — every executable block (story or spike) is ``closed/verified``.
     * ``RETRYABLE`` (exit 1) — the Manifest is approved and executable work remains pending,
@@ -539,6 +545,7 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
 
     executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
     total = len(executable)
+    state_counts = tuple(sorted(Counter(block.state for block in executable).items()))
     # Only a governed verdict counts as verified here. This is the human-facing "is it done"
     # gate, and a block that finished with nothing able to judge it is exactly what an operator
     # needs to see. Dependency scheduling uses FINISHED_STATES so such a block does not stall
@@ -554,6 +561,7 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
             total,
             verified,
             len(remaining),
+            state_counts,
         )
     if total == 0:
         return CompletionCheck(target, BLOCKED, "Manifest has no executable work")
@@ -565,8 +573,12 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
         failures = [block.block_id for block in remaining if block.state.endswith("/failed")]
         if failures:
             detail += f"; failed: {', '.join(failures)}"
-        return CompletionCheck(target, RETRYABLE, detail, total, verified, len(remaining))
-    return CompletionCheck(target, COMPLETE, "all blocks closed/verified", total, verified, 0)
+        return CompletionCheck(
+            target, RETRYABLE, detail, total, verified, len(remaining), state_counts
+        )
+    return CompletionCheck(
+        target, COMPLETE, "all blocks closed/verified", total, verified, 0, state_counts
+    )
 
 
 def target_status(target_dir: Path) -> TargetInfo:

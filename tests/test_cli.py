@@ -3111,7 +3111,7 @@ class TestStatus:
         self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "TestTarget", "--check")
         assert rc == 1, err
-        assert out.startswith("INCOMPLETE: TestTarget")
+        assert out == "INCOMPLETE: TestTarget  (1 closed/verified, 1 pending)\n"
 
     def test_status_check_exits_0_when_all_blocks_verified(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -3126,7 +3126,7 @@ class TestStatus:
         )
         rc, out, err = run_cli("status", "TestTarget", "--check")
         assert rc == 0, err
-        assert out.startswith("COMPLETE: TestTarget")
+        assert out == "COMPLETE: TestTarget  (2 closed/verified)\n"
 
     def test_status_check_flag_before_target(self, tmp_target_root, isolated_config, monkeypatch):
         self._setup(tmp_target_root, monkeypatch)

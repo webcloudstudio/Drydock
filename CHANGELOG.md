@@ -26,6 +26,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-21: `drydock status <Target> --check` now reports every executable Manifest block by
+  its current state (`21 closed/implemented`, `2 pending`) instead of a `verified/total` fraction.
+  The completion exit contract is unchanged: only `closed/verified` work yields `COMPLETE`.
 - 2026-08-20: The `drydock score report` receipt Overview now renders the same score summary as
   `drydock score <Target>`: every score command's last run, result, and output artifact. Receipt
   assembly now resolves a command's Target from its operands rather than the legacy journal

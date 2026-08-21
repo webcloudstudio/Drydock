@@ -496,7 +496,7 @@ def test_case_kit_reports_a_status_state_instead_of_grading_it(tmp_path: Path) -
         "03-complete",
         ["/opt/venv/bin/python", "-m", "drydock", "status", "commonmark", "--check"],
         1,
-        stdout="INCOMPLETE: commonmark  0/9 verified  (9 closed/implemented)\n",
+        stdout="INCOMPLETE: commonmark  (9 closed/implemented)\n",
     )
     _stage(
         case,
