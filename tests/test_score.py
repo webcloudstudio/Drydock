@@ -719,6 +719,37 @@ def test_the_stderr_failure_block_carries_the_criterion_code_and_the_whole_detai
     assert "Traceback (most recent call last):" in block
 
 
+def test_ac_failure_summary_lines_is_one_line_per_failure_for_stderr():
+    """stderr gets a compact line per failure, not the full block already on stdout."""
+    from drydock.score import FAIL, PASS, AcReport, AcVerdict, ac_failure_summary_lines
+
+    report = AcReport(
+        target="toml",
+        verdicts=(
+            AcVerdict("decoder-valid", "", PASS, ""),
+            AcVerdict(
+                "decoder-no-arguments",
+                "the decoder rejects an empty argument list",
+                FAIL,
+                "",
+                "FEATURE-Decoder-Contract.md",
+                "decoder-contract",
+                "",
+                ("assertion: assert result.returncode != 0 → AssertionError", "raised at: x.py:4"),
+            ),
+        ),
+        soundings_path=Path("SOUNDINGS.md"),
+        verified_at="",
+    )
+    lines = ac_failure_summary_lines(report)
+    assert len(lines) == 1
+    assert "decoder-no-arguments" in lines[0]
+    assert "decoder-contract" in lines[0]
+    assert "FEATURE-Decoder-Contract.md" in lines[0]
+    assert "assert result.returncode != 0" in lines[0]
+    assert "raised at" not in lines[0]
+
+
 def test_a_malformed_criterion_is_unverified_and_does_not_fail_scoring():
     from drydock.acceptance import MALFORMED_FAILURE_PREFIX, AcceptanceObservation
     from drydock.score import UNVERIFIED, AcReport, AcVerdict, _observation_verdict

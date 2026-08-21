@@ -1371,6 +1371,18 @@ def test_the_failure_detail_bounds_the_stderr_it_quotes():
     assert quoted[-1].strip() == "frame 199"
 
 
+def test_the_failure_detail_full_flag_quotes_every_stderr_line():
+    lines = acceptance.failure_detail(
+        stderr="\n".join(f"frame {index}" for index in range(200)),
+        stdout="",
+        return_code=1,
+        full=True,
+    )
+    quoted = [line for line in lines if line.strip().startswith("frame ")]
+    assert len(quoted) == 200
+    assert not any("omitted" in line for line in lines)
+
+
 def test_the_assertion_location_is_the_deepest_traceback_frame():
     stderr = (
         "Traceback (most recent call last):\n"
@@ -1423,6 +1435,7 @@ def test_the_failure_detail_bounds_the_output_it_quotes():
     quoted = [line for line in lines if line.strip().startswith("line ")]
     assert len(quoted) == acceptance.OBSERVED_OUTPUT_LINES
     assert quoted[-1].strip() == "line 199"
+    assert any("omitted" in line and "--full" in line for line in lines)
 
 
 _UNREADABLE_SPEC = (

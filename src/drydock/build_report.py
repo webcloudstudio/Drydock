@@ -19,6 +19,7 @@ from pathlib import Path
 from drydock.llm_usage import normalize_tokens, read_records
 
 __all__ = [
+    "AcceptanceTally",
     "AttemptScore",
     "BlockScore",
     "BuildScoreReport",
@@ -159,6 +160,21 @@ class BlockScore:
 
 
 @dataclass(frozen=True)
+class AcceptanceTally:
+    """The last whole-target acceptance board, independent of block evidence."""
+
+    total: int = 0
+    passed: int = 0
+    failed: int = 0
+    unverified: int = 0
+    prepassed: int = 0
+
+    @property
+    def recorded(self) -> bool:
+        return self.total > 0
+
+
+@dataclass(frozen=True)
 class BuildScoreReport:
     """Every block the current evidence describes, newest build state as recorded."""
 
@@ -167,6 +183,9 @@ class BuildScoreReport:
     records_path: Path
     blocks: tuple[BlockScore, ...] = field(default_factory=tuple)
     missing_usage: tuple[str, ...] = ()
+    #: The current target-wide board.  Block evidence is an historical, partial subset and must
+    #: never be presented as the Blueprint AC inventory.
+    acceptance: AcceptanceTally = field(default_factory=AcceptanceTally)
 
     @property
     def calls(self) -> int:
@@ -374,6 +393,35 @@ def _usage_index(records_path: Path) -> dict[str, tuple[int, int, int, int, str,
     return index
 
 
+def _acceptance_tally(target_dir: Path) -> AcceptanceTally:
+    """Read the last whole-target board without rerunning acceptance."""
+    from drydock.standard_artifacts import (
+        VERIFIED_FAIL,
+        VERIFIED_PASS,
+        VERIFIED_PREPASSED,
+        VERIFIED_UNVERIFIED,
+        load_soundings,
+    )
+
+    rows = load_soundings(target_dir / "SOUNDINGS.md")
+    counts = {
+        VERIFIED_PASS: 0,
+        VERIFIED_FAIL: 0,
+        VERIFIED_UNVERIFIED: 0,
+        VERIFIED_PREPASSED: 0,
+    }
+    for row in rows.values():
+        if row.verified in counts:
+            counts[row.verified] += 1
+    return AcceptanceTally(
+        total=len(rows),
+        passed=counts[VERIFIED_PASS],
+        failed=counts[VERIFIED_FAIL],
+        unverified=counts[VERIFIED_UNVERIFIED],
+        prepassed=counts[VERIFIED_PREPASSED],
+    )
+
+
 def build_score_report(target: str, target_dir: Path, *, records_path: Path) -> BuildScoreReport:
     """Join recorded build evidence with recorded LLM usage. Reads only; writes nothing."""
     evidence_dir = target_dir / "evidence"
@@ -419,4 +467,5 @@ def build_score_report(target: str, target_dir: Path, *, records_path: Path) -> 
         records_path=records_path,
         blocks=tuple(blocks),
         missing_usage=tuple(dict.fromkeys(missing)),
+        acceptance=_acceptance_tally(target_dir),
     )

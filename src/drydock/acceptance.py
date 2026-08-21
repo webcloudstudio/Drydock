@@ -283,13 +283,14 @@ def failure_detail(
     override: str | None = None,
     code: str = "",
     indent: str = "",
+    full: bool = False,
 ) -> list[str]:
     """Render one failed check as a readable block: the assertion, the exit, what it observed.
 
     This is the whole diagnostic an operator needs at the point of failure. It is deliberately
     bounded: the summary line, where the assertion lives, the exit code, the exception, the tail
     of the check's own reported output, and the tail of its stderr. The full streams stay in the
-    evidence file for the reader who wants them.
+    evidence file for the reader who wants them, or are shown here in full when ``full`` is set.
 
     The stderr tail is not redundant with the summary. A check that prints nothing before it
     asserts — the common shape for a boundary check — leaves ``observed output`` empty, and
@@ -329,12 +330,22 @@ def failure_detail(
         lines.extend(excerpt)
     observed = [line.rstrip() for line in (stdout or "").splitlines() if line.strip()]
     if observed:
+        shown = observed if full else observed[-OBSERVED_OUTPUT_LINES:]
         lines.append(f"{indent}observed output:")
-        lines.extend(f"{indent}  {line}" for line in observed[-OBSERVED_OUTPUT_LINES:])
+        lines.extend(f"{indent}  {line}" for line in shown)
+        if not full and len(observed) > len(shown):
+            lines.append(
+                f"{indent}  … {len(observed) - len(shown)} earlier line(s) omitted, --full for all"
+            )
     diagnostic = [line.rstrip() for line in (stderr or "").splitlines() if line.strip()]
     if diagnostic:
+        shown = diagnostic if full else diagnostic[-DIAGNOSTIC_OUTPUT_LINES:]
         lines.append(f"{indent}check stderr:")
-        lines.extend(f"{indent}  {line}" for line in diagnostic[-DIAGNOSTIC_OUTPUT_LINES:])
+        lines.extend(f"{indent}  {line}" for line in shown)
+        if not full and len(diagnostic) > len(shown):
+            lines.append(
+                f"{indent}  … {len(diagnostic) - len(shown)} earlier line(s) omitted, --full for all"
+            )
     return lines
 
 

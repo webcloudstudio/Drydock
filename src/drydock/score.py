@@ -213,12 +213,30 @@ def ac_failure_lines(report: AcReport) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def ac_failure_summary_lines(report: AcReport) -> tuple[str, ...]:
+    """One line per failed criterion: id, owner, and the assertion that failed.
+
+    For stderr, which a caller that discards stdout still receives. The full per-failure detail
+    block is already on stdout (or in ``--full`` form); repeating it on stderr only doubles the
+    output the reader has to scroll past to find out what broke.
+    """
+    lines: list[str] = []
+    for verdict in report.verdicts:
+        if verdict.status != FAIL:
+            continue
+        owner = "/".join(part for part in (verdict.feature, verdict.story) if part)
+        location = "  ".join(part for part in (owner, verdict.source) if part)
+        reason = (verdict.detail[0] if verdict.detail else "") or (verdict.evidence or "").strip()
+        lines.append(f"{verdict.criterion_id}  {location}  — {reason}".rstrip())
+    return tuple(lines)
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _observation_verdict(
-    obs: AcceptanceObservation, code: str = ""
+    obs: AcceptanceObservation, code: str = "", *, full: bool = False
 ) -> tuple[str, str, tuple[str, ...]]:
     """Map a per-assertion observation to a board ``(status, evidence, detail)`` triple.
 
@@ -239,6 +257,7 @@ def _observation_verdict(
             error=obs.error,
             override=obs.error,
             code=code,
+            full=full,
         )
         return UNVERIFIED, summary, tuple(detail)
     if not obs.passed:
@@ -250,6 +269,7 @@ def _observation_verdict(
             error=obs.error,
             override=obs.error,
             code=code,
+            full=full,
         )
         return FAIL, summary, tuple(detail)
     if not obs.integrity_ok:
@@ -345,6 +365,7 @@ def verify_acs(
     *,
     step_id: str | None = None,
     on_item: Callable[[ProgrammaticAcceptance, int, int], None] | None = None,
+    full: bool = False,
 ) -> AcReport:
     """Verify Blueprint acceptance assertions deterministically.
 
@@ -392,7 +413,9 @@ def verify_acs(
     verdicts: list[AcVerdict] = []
     rows: list[Sounding] = []
     for obs in observations:
-        status, evidence, detail = _observation_verdict(obs, code_by_id.get(obs.check_id, ""))
+        status, evidence, detail = _observation_verdict(
+            obs, code_by_id.get(obs.check_id, ""), full=full
+        )
         if status == PASS and obs.check_id in prepassed:
             status = PREPASSED
             detail = ()

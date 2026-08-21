@@ -126,6 +126,38 @@ def test_single_pass_block_reports_its_acceptance_and_usage(tmp_path):
     assert block.output == 50
     assert block.cache_hit_rate == 0.9
     assert report.missing_usage == ()
+    assert report.acceptance.total == 0
+
+
+def test_report_reads_the_target_wide_acceptance_tally_from_soundings(tmp_path):
+    target_dir, records = _setup(
+        tmp_path,
+        {"feature-block-parsing.md": _SINGLE_PASS},
+        [_record("exec-single", input_tokens=1000, cached=900, output=50, elapsed=60000)],
+    )
+    (target_dir / "SOUNDINGS.md").write_text(
+        """# Soundings
+
+| Status | Blueprint | AC Id | Text | Evidence | Verified At |
+|---|---|---|---|---|---|
+| ✓ PASS | FEATURE-Parser.md | parser | Parser works |  | 2026-08-01T00:00:00+00:00 |
+| ✗ FAIL | FEATURE-Parser.md | errors | Errors work |  | 2026-08-01T00:00:00+00:00 |
+| — UNVERIFIED | FEATURE-Parser.md | fixture | Fixture works |  | |
+| ~ PREPASSED | FEATURE-Parser.md | baseline | Baseline works |  | 2026-08-01T00:00:00+00:00 |
+""",
+        encoding="utf-8",
+    )
+
+    report = build_score_report("commonmark", target_dir, records_path=records)
+
+    assert report.acceptance.recorded
+    assert (
+        report.acceptance.passed,
+        report.acceptance.failed,
+        report.acceptance.unverified,
+        report.acceptance.prepassed,
+        report.acceptance.total,
+    ) == (1, 1, 1, 1, 4)
 
 
 def test_repaired_block_reports_every_pass_with_its_own_score(tmp_path):

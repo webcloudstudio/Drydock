@@ -538,19 +538,23 @@ class TestHelpAndVersion:
     def test_parse_score_ac_args_accepts_step_flag(self):
         from drydock.cli import _parse_score_ac_args
 
-        assert _parse_score_ac_args(["Demo"]) == ("Demo", None)
+        assert _parse_score_ac_args(["Demo"]) == ("Demo", None, False)
         assert _parse_score_ac_args(["Demo", "--step", "block-parsing"]) == (
             "Demo",
             "block-parsing",
+            False,
         )
         assert _parse_score_ac_args(["--step", "block-parsing", "Demo"]) == (
             "Demo",
             "block-parsing",
+            False,
         )
         assert _parse_score_ac_args(["Demo", "--step=block-parsing"]) == (
             "Demo",
             "block-parsing",
+            False,
         )
+        assert _parse_score_ac_args(["Demo", "--full"]) == ("Demo", None, True)
 
     def test_parse_score_ac_args_requires_one_target(self):
         from drydock.cli import UsageError, _parse_score_ac_args
@@ -3728,6 +3732,8 @@ class TestBuildScoreRendering:
 
     class _Report:
         def __init__(self, blocks, missing=()):
+            from types import SimpleNamespace
+
             self.target = "commonmark"
             self.evidence_dir = "/t/evidence"
             self.records_path = "/t/logs/llm.jsonl"
@@ -3737,6 +3743,9 @@ class TestBuildScoreRendering:
             self.output, self.elapsed_ms = 50, 61000
             self.passed_checks, self.total_checks = 3, 3
             self.models = ("gpt-5.6-luna",)
+            self.acceptance = SimpleNamespace(
+                recorded=True, passed=3, failed=0, unverified=0, prepassed=0, total=3
+            )
 
         @property
         def calls(self):
@@ -3772,6 +3781,9 @@ class TestBuildScoreRendering:
         out = "\n".join(_render_build_score(self._Report([block])))
 
         assert "Build report: commonmark" in out
+        assert "Blueprint acceptance (last `score ac`): PASS 3  FAIL 0" in out
+        assert "(3 AC)" in out
+        assert "Build AC" in out
         assert "✓ Block Parsing" in out
         assert "96.7%" not in out and "90.0%" in out
         assert "1 on first call" in out

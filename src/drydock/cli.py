@@ -2481,13 +2481,13 @@ def _ac_mark(status: str) -> str:
     return f"{glyph} {status:<10}"
 
 
-def cmd_score_ac(target: str, step: str | None = None) -> int:
+def cmd_score_ac(target: str, step: str | None = None, full: bool = False) -> int:
     from drydock.config import require_target_dir
     from drydock.project_status import record_status
     from drydock.score import (
         PREPASSED,
         UNVERIFIED,
-        ac_failure_lines,
+        ac_failure_summary_lines,
         emit_failure,
         proof_coverage_lines,
         verify_acs,
@@ -2498,7 +2498,7 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
     def progress(check, index: int, total: int) -> None:
         print(f"Running AC {index}/{total}: {check.check_id}", flush=True)
 
-    report = verify_acs(target, target_dir, step_id=step, on_item=progress)
+    report = verify_acs(target, target_dir, step_id=step, on_item=progress, full=full)
     passed = sum(1 for v in report.verdicts if v.status == "PASS")
     failed = sum(1 for v in report.verdicts if v.status == "FAIL")
     unverified = sum(1 for v in report.verdicts if v.status == UNVERIFIED)
@@ -2521,9 +2521,9 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
         print("  No programmatic acceptance assertions in scope.")
     else:
         print()
-    # One line per AC that ran, with its owning feature/story and Blueprint file. A pass is the
-    # line alone; a non-pass adds its intent and failing detail so it is legible without opening
-    # the evidence.
+    # The board first: one line per AC that ran, mark and owner, nothing else. A reader scanning
+    # for the shape of the run — how many, which ones — should not have to scroll past a detail
+    # block per failure to see the next line of the board.
     owners = {
         v.criterion_id: "/".join(part for part in (v.feature, v.story) if part)
         for v in report.verdicts
@@ -2536,8 +2536,13 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
         print(
             f"  {mark}  {verdict.criterion_id.ljust(id_width)}  {owner}  {verdict.source}".rstrip()
         )
-        if verdict.status == "PASS":
-            continue
+    # Then the detail: intent and failing detail for every non-pass, so the board above stays
+    # scannable and the diagnosis for each failure still follows it in full.
+    non_pass = [v for v in report.verdicts if v.status != "PASS"]
+    if non_pass:
+        print()
+    for verdict in non_pass:
+        print(f"  {_ac_mark(verdict.status)}  {verdict.criterion_id}")
         if verdict.summary.strip():
             print(f"        intent: {verdict.summary.strip()}")
         # The detail block states the assertion, the exit, and what the check itself reported.
@@ -2549,6 +2554,9 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
         else:
             for line in (verdict.evidence or "").strip().splitlines() or ["(no detail captured)"]:
                 print(f"        {line}")
+        print()
+    if non_pass and not full:
+        print(f"  Run `drydock score ac {target} --full` for untruncated output per failure.")
         print()
     # The board says which criteria are green. This says which of them are evidence.
     coverage = proof_coverage_lines(report)
@@ -2564,7 +2572,7 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
         emit_failure(
             f"acceptance verification failed for {target}: {failed} of "
             f"{len(report.verdicts)} criteria",
-            ac_failure_lines(report),
+            ac_failure_summary_lines(report),
         )
         record_status(
             target_dir,
@@ -2608,12 +2616,27 @@ def _render_build_score(report) -> list[str]:
         f"  usage:    {report.records_path}",
         "",
     ]
+    acceptance = report.acceptance
+    if acceptance.recorded:
+        lines.extend([
+            "  Blueprint acceptance (last `score ac`): "
+            f"PASS {acceptance.passed}  FAIL {acceptance.failed}  "
+            f"UNVERIFIED {acceptance.unverified}  PREPASSED {acceptance.prepassed}  "
+            f"({acceptance.total} AC)",
+            "",
+        ])
+    else:
+        lines.extend([
+            "  Blueprint acceptance: no recorded AC board; run "
+            f"`drydock score ac {report.target}`.",
+            "",
+        ])
     if not report.blocks:
         lines.append("  No build evidence found. Run: drydock build " + report.target)
         return lines
 
     # Cached and uncached rather than total input: that is how the providers bill it.
-    headers = ("Block", "AC", "Calls", "Cached", "Uncached", "Hit", "Output", "Time")
+    headers = ("Block", "Build AC", "Calls", "Cached", "Uncached", "Hit", "Output", "Time")
     rows: list[tuple[str, ...]] = []
     for block in report.blocks:
         mark = "✓" if block.verified else "✗"
@@ -3629,8 +3652,10 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock score spec <Target>             — audit imported raw specifications; writes\n"
             "                                            SPECIFICATION_SCORECARD.md\n"
-            "drydock score ac <Target> [--step <id>]  — verify acceptance criteria (whole target,\n"
-            "                                            or scoped to one feature/story), update Soundings\n"
+            "drydock score ac <Target> [--step <id>] [--full]\n"
+            "                                          — verify acceptance criteria (whole target,\n"
+            "                                            or scoped to one feature/story), update Soundings.\n"
+            "                                            --full shows untruncated output per failure.\n"
             "drydock score build <Target>             — post-build report: acceptance, repairs, tokens,\n"
             "                                            cache hit rate (deterministic; reads logs only)\n"
             "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n"
@@ -3936,16 +3961,17 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         return rc
 
 
-def _parse_score_ac_args(rest: list[str]) -> tuple[str, str | None]:
-    """Parse ``<Target> [--step <id>]`` for ``drydock score ac``."""
+def _parse_score_ac_args(rest: list[str]) -> tuple[str, str | None, bool]:
+    """Parse ``<Target> [--step <id>] [--full]`` for ``drydock score ac``."""
     step: str | None = None
+    full = False
     positional: list[str] = []
     index = 0
     while index < len(rest):
         token = rest[index]
         if token == "--step":
             if index + 1 >= len(rest):
-                raise UsageError("Usage: drydock score ac <Target> [--step <id>]")
+                raise UsageError("Usage: drydock score ac <Target> [--step <id>] [--full]")
             step = rest[index + 1]
             index += 2
             continue
@@ -3953,11 +3979,15 @@ def _parse_score_ac_args(rest: list[str]) -> tuple[str, str | None]:
             step = token.split("=", 1)[1]
             index += 1
             continue
+        if token == "--full":
+            full = True
+            index += 1
+            continue
         positional.append(token)
         index += 1
     if len(positional) != 1:
-        raise UsageError("Usage: drydock score ac <Target> [--step <id>]")
-    return positional[0], step
+        raise UsageError("Usage: drydock score ac <Target> [--step <id>] [--full]")
+    return positional[0], step, full
 
 
 def _reject_score_drydock_operands(rest: list[str]) -> None:
@@ -4006,8 +4036,8 @@ def _dispatch_score(args: argparse.Namespace) -> int:
         record_activity("score spec", target, target)
         return rc
     if first == "ac":
-        target, step = _parse_score_ac_args(tokens[1:])
-        rc = cmd_score_ac(target, step=step)
+        target, step, full = _parse_score_ac_args(tokens[1:])
+        rc = cmd_score_ac(target, step=step, full=full)
         from drydock.config import record_activity
 
         record_activity("score ac", target, target)
