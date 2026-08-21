@@ -1042,6 +1042,43 @@ def test_escape_defects_are_silent_about_code_that_does_not_compile():
     assert acceptance.escape_defects('sample = """') == ()
 
 
+def test_regex_defects_catches_an_uncompilable_pattern_bound_to_a_name():
+    """The real case: a raw string escapes the backslash, not the bracket after it."""
+    code = "import re\nSELECT = r'^(\\\\.|\\\\[|\\\\{|def)'\nre.compile(SELECT)\n"
+
+    defects = acceptance.regex_defects(code)
+
+    assert len(defects) == 1
+    assert "does not compile" in defects[0]
+    assert defects[0].startswith("line 3:")
+
+
+def test_regex_defects_catches_a_pattern_literal_passed_directly():
+    code = "import re\nre.match('[unterminated', 'x')\n"
+
+    defects = acceptance.regex_defects(code)
+
+    assert len(defects) == 1
+    assert "line 2:" in defects[0]
+
+
+def test_regex_defects_is_silent_about_a_valid_pattern():
+    code = "import re\nSELECT = r'^(\\.|\\[|\\{|def)'\nre.compile(SELECT)\n"
+
+    assert acceptance.regex_defects(code) == ()
+
+
+def test_regex_defects_ignores_a_pattern_it_cannot_resolve_statically():
+    """A runtime-assembled pattern is left to fail at build time, on its own evidence."""
+    code = "import re\ndef f(p):\n    return re.compile(p)\n"
+
+    assert acceptance.regex_defects(code) == ()
+
+
+def test_regex_defects_is_silent_about_code_that_does_not_compile():
+    assert acceptance.regex_defects("sample = (") == ()
+
+
 # --- Prepassed criteria: recorded for reporting, never gated ----------------------------
 
 

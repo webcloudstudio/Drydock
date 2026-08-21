@@ -1255,6 +1255,86 @@ def syntax_defect(code: str) -> str | None:
     return None
 
 
+#: ``re.<attr>(pattern, ...)`` forms whose first argument is a pattern, not already-compiled.
+_REGEX_PATTERN_CALLS = frozenset({
+    "compile",
+    "match",
+    "fullmatch",
+    "search",
+    "split",
+    "sub",
+    "subn",
+    "findall",
+    "finditer",
+})
+
+
+def regex_defects(code: str) -> tuple[str, ...]:
+    """Return why each statically-known ``re`` pattern literal in ``code`` fails to compile.
+
+    A pattern built entirely from literals is a fact about the file, exactly like
+    :func:`syntax_defect`: ``re.compile`` either accepts it or it does not, independent of what
+    the code under test does. Left undetected it is worse than a normal failure — the criterion
+    raises ``re.error`` before any assertion runs, so it fails identically on every build attempt
+    and the repair loop spends its whole budget rediscovering a fault no code change can fix. The
+    real case this exists for: ``r'^(\\\\.|\\\\[|\\\\{...)'`` — the raw string escapes the
+    backslash, not the bracket it precedes, so the pattern opens a character class it never
+    closes.
+
+    Only patterns Drydock can resolve without executing the criterion are checked: a string
+    literal passed directly to ``re.compile``/``re.match``/etc., or a plain module-level
+    assignment (``NAME = "pattern"``) later passed by name. A pattern assembled at runtime —
+    formatting, concatenation with a non-literal, a value passed into a function — is out of
+    reach for static analysis and is left on the same footing as any other correctness fault,
+    to fail at build time on its own evidence.
+    """
+    try:
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        # Not parseable is a separate, already-reported fact.
+        return ()
+
+    literals: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            literals[node.targets[0].id] = node.value.value
+
+    defects: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (
+            isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "re"
+            and func.attr in _REGEX_PATTERN_CALLS
+        ):
+            continue
+        if not node.args:
+            continue
+        arg = node.args[0]
+        pattern: str | None = None
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            pattern = arg.value
+        elif isinstance(arg, ast.Name) and arg.id in literals:
+            pattern = literals[arg.id]
+        if pattern is None:
+            continue
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            defects.append(f"line {node.lineno}: pattern {pattern!r} does not compile: {exc}")
+    return tuple(defects)
+
+
 def escape_defects(code: str) -> tuple[str, ...]:
     """Return the compiler's escape-sequence advisories for one criterion.
 

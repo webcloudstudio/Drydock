@@ -32,7 +32,12 @@ from datetime import date
 from pathlib import Path
 from typing import Protocol
 
-from drydock.acceptance import parse_programmatic_acceptance, syntax_defect, unresolved_globals
+from drydock.acceptance import (
+    parse_programmatic_acceptance,
+    regex_defects,
+    syntax_defect,
+    unresolved_globals,
+)
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.plan_verify import Defect, verify
@@ -119,6 +124,8 @@ def _still_broken(code: str) -> str | None:
     """Return why a criterion still cannot run, or ``None``. The same test verification uses."""
     if (reason := syntax_defect(code)) is not None:
         return reason
+    if reasons := regex_defects(code):
+        return "; ".join(reasons)
     if names := unresolved_globals(code):
         return "reads undefined global name(s): " + ", ".join(f"`{n}`" for n in sorted(names))
     return None

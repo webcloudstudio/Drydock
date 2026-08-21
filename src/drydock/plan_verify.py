@@ -30,6 +30,7 @@ from pathlib import Path
 from drydock.acceptance import (
     captures_without_reporting,
     parse_programmatic_acceptance,
+    regex_defects,
     syntax_defect,
     unresolved_globals,
 )
@@ -141,6 +142,16 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
             # reporting both would name the same fault twice and give repair two things to fix.
             if (reason := syntax_defect(check.code)) is not None:
                 defects.append(Defect(path.name, check.check_id, "syntax", reason))
+                continue
+            if reasons := regex_defects(check.code):
+                defects.append(
+                    Defect(
+                        path.name,
+                        check.check_id,
+                        "invalid-regex",
+                        "; ".join(reasons),
+                    )
+                )
                 continue
             if names := unresolved_globals(check.code):
                 rendered = ", ".join(f"`{name}`" for name in sorted(names))

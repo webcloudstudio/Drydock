@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, and make each criterion executable without changing what it asserts.
-version: 20260817 V1
+version: 20260821 V2
 intent: Act as the Planning Crew repairing one Blueprint specification's Programmatic Acceptance criteria so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: SPEC_FILE, DEFECTS
@@ -12,8 +12,9 @@ output: One delimited AC block per repaired criterion
 
 You are given one typed Blueprint specification and a list of its acceptance criteria that
 **cannot execute as written**. Each named criterion raises before it tests anything: a missing
-import, an undefined name, a syntax error. A criterion in this state is not a failing test. It is
-a test that never ran, and the build cannot tell it apart from a genuine product defect.
+import, an undefined name, a syntax error, a regex pattern that does not compile. A criterion in
+this state is not a failing test. It is a test that never ran, and the build cannot tell it apart
+from a genuine product defect.
 
 Your job is to make each named criterion run. Nothing else.
 
@@ -30,6 +31,11 @@ Permitted:
 - add an `import` for a name the criterion reads but never binds;
 - bind a name the criterion clearly intends to use, in the obvious way;
 - correct a syntax error, preserving the evident meaning of the line;
+- correct a regex pattern passed to `re.compile` or another `re.*` call that fails to compile,
+  preserving the evident set of forms it is meant to select — the usual cause is a raw string
+  that escapes the backslash instead of the metacharacter (`r'\\['` matches one literal
+  backslash then opens an unterminated class; `r'\['` matches a literal `[`, which is normally
+  the intended fix);
 - reorder imports to the top of the criterion;
 - add a `print(...)` of a suite's pass/fail counts immediately before the assertion that reads
   them, when the criterion drives a suite and prints no tally. Print only counts the criterion

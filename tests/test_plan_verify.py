@@ -46,6 +46,21 @@ def (:
 === END AC bad-syntax ===
 """
 
+_BROKEN_REGEX = """# FEATURE: Malformed Pattern
+
+## Programmatic Acceptance
+
+=== AC lexer-conformance-slice ===
+Intent: Selects a conformance slice by pattern.
+
+import re
+
+SELECT = r'^(\\\\.|\\\\[|\\\\{|def)'
+selector = re.compile(SELECT)
+assert selector
+=== END AC lexer-conformance-slice ===
+"""
+
 _RETYPED = """# FEATURE: Advisory
 
 ## Programmatic Acceptance
@@ -105,6 +120,19 @@ def test_a_syntax_error_is_a_defect(tmp_path):
 
     assert not result.ok
     assert result.defects[0].kind == "syntax"
+
+
+def test_an_uncompilable_regex_pattern_is_a_defect(tmp_path):
+    """The exact fault that stalled the jq run: an escaped backslash opens an unterminated
+    class, so every build call crashes identically on the same criterion."""
+    result = verify("Demo", _target(tmp_path, FEATURE_Bad=_BROKEN_REGEX))
+
+    assert not result.ok
+    assert result.exit_code() == 1
+    (defect,) = result.defects
+    assert defect.check_id == "lexer-conformance-slice"
+    assert defect.kind == "invalid-regex"
+    assert "does not compile" in defect.detail
 
 
 def test_one_criterion_yields_one_defect(tmp_path):

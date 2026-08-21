@@ -46,6 +46,33 @@ assert result.returncode == 0
 """
 
 
+_BROKEN_REGEX = """# FEATURE: Malformed Pattern
+
+## Programmatic Acceptance
+
+=== AC lexer-conformance-slice ===
+Intent: Selects a conformance slice by pattern.
+
+import re
+
+SELECT = r'^(\\\\.|\\\\[|\\\\{|def)'
+selector = re.compile(SELECT)
+assert selector
+=== END AC lexer-conformance-slice ===
+"""
+
+_FIXED_REGEX_BLOCK = """=== AC lexer-conformance-slice ===
+Intent: Selects a conformance slice by pattern.
+
+import re
+
+SELECT = r'^(\\.|\\[|\\{|def)'
+selector = re.compile(SELECT)
+assert selector
+=== END AC lexer-conformance-slice ===
+"""
+
+
 @dataclass
 class _Run:
     text: str
@@ -98,6 +125,17 @@ def test_a_repaired_criterion_is_spliced_in_and_verifies(tmp_path):
     # The untouched criterion is preserved byte for byte.
     assert "=== AC paths-recursive ===" in text
     assert 'assert json.loads("[1]") == [1]' in text
+
+
+def test_an_uncompilable_regex_pattern_is_repaired_and_verifies(tmp_path):
+    """The jq-run defect: a raw string escapes the backslash, not the bracket after it."""
+    target = _target(tmp_path, FEATURE_Bad=_BROKEN_REGEX)
+
+    result = repair("Demo", target, runner=_runner(_FIXED_REGEX_BLOCK))
+
+    assert result.ok
+    assert result.files_changed == ("FEATURE_Bad.md",)
+    assert verify("Demo", target).ok
 
 
 def test_a_block_emitted_without_a_trailing_newline_still_splices(tmp_path):
