@@ -158,6 +158,26 @@ def test_a_blank_line_between_declarations_does_not_end_the_metadata_run():
     assert acceptance.unresolved_globals(check.code) == ()
 
 
+def test_gate_declaration_is_metadata_not_executable_python():
+    """A planned AC gate labels its owner; it does not run as an annotation expression."""
+    text = (
+        "=== AC module-grammar ===\n"
+        "Intent: The module grammar works.\n"
+        "Suite: scoped\n"
+        "Gate: modules\n"
+        "\n"
+        "assert True\n"
+        "=== END AC module-grammar ===\n"
+    )
+
+    check = acceptance.parse_programmatic_acceptance_text(text, source="FEATURE-Modules.md")[0]
+
+    assert check.gate == "modules"
+    assert check.code == "assert True"
+    assert "Gate:" not in check.code
+    assert acceptance.unresolved_globals(check.code) == ()
+
+
 def test_a_blank_line_before_the_first_statement_stays_in_the_proof_body():
     """The run ends at the first non-declaration line, and the code begins exactly there.
 

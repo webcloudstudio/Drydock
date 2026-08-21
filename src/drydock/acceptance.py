@@ -601,6 +601,9 @@ class ProgrammaticAcceptance:
     sea_trials: tuple[str, ...] = ()
     full_suite: bool = False
     requirements: tuple[AcceptanceRequirement, ...] = ()
+    #: The story gate this criterion belongs to, from its ``Gate:`` declaration.  It is
+    #: planning metadata, not Python source; execution is determined by the criterion body.
+    gate: str = ""
     #: The character encoding this criterion deliberately exercises, from its ``Encoding:``
     #: declaration. Empty is the norm and means the criterion is ASCII, which is what the
     #: authoring gate enforces. A target whose specification genuinely states an encoding
@@ -864,7 +867,7 @@ def _requirements_from_values(
 #: Metadata keys recognized inside an AC block. The set is closed on purpose: an unrecognized
 #: ``Key: value`` line ends the metadata run and begins the code, so an annotated assignment such
 #: as ``result: int = 5`` on the first code line cannot be mistaken for a declaration.
-_AC_META_KEYS = frozenset({"intent", "suite", "requires", "sea trials", "encoding"})
+_AC_META_KEYS = frozenset({"intent", "suite", "requires", "sea trials", "gate", "encoding"})
 
 
 def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcceptance:
@@ -875,8 +878,8 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
     line used to terminate the run, so an author who spaced ``Intent:`` away from ``Suite:`` and
     ``Requires:`` lost both declarations into the proof body: the criterion then reported a
     ``full`` suite as a story-scoped check, declared none of its tooling, and — because
-    ``Suite: full`` is itself valid Python — was reported as a snippet reading undefined globals
-    named after its own directives.
+    ``Suite: full`` and ``Gate: story-id`` are themselves valid Python annotations — and were
+    reported as snippets reading undefined globals named after their own directives.
     """
     lines = body.splitlines()
     # The slice begins at the end of the opening marker's text, so the first element is that
@@ -919,6 +922,7 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
         requirements=_requirements_from_values(
             meta.get("requires", ()), source=source, check_id=check_id
         ),
+        gate=" ".join(meta.get("gate", ())).strip(),
         encoding=" ".join(meta.get("encoding", ())).strip().lower(),
     )
 

@@ -191,6 +191,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-21: Programmatic Acceptance now recognizes `Gate:` as criterion metadata alongside
+  `Intent:`, `Suite:`, and `Requires:`. Planned criteria therefore execute their Python proof
+  body without evaluating a `Gate: story-id` declaration as a Python annotation. Previously
+  every gated criterion raised `NameError` before reaching the Target, was recorded
+  `UNVERIFIED`, and could leave a build appearing complete without having exercised its declared
+  acceptance checks.
+
 - 2026-08-20: The `drydock score report` receipt no longer reports a failure a later rerun
   cleared. The `Error` tab quoted the last nonzero exit in the journal regardless of what
   followed it, so a `drydock score release` that failed and was rerun clean minutes later still
