@@ -143,7 +143,7 @@ ai  drydock uat               [Project]        # Scored UAT testing
     drydock uat status        <Project>        # Current run, failure, and recovery command
 ai  drydock uat resume        <Project>        # Resume the current failed run
 ai  drydock uat resume        <Project> --from <stage> # Re-enter a named lifecycle stage
-    drydock uat --report      [run]            # Rebuild a run's HTML proof kit
+    drydock uat report        [Project]        # Rebuild UAT HTML proof kits
     drydock uat <Project> --steps              # List a run's numbered steps and their stages
 ai  drydock uat <Project> --from-step <n>      # Resume at the stage that owns recorded step <n>
 ai  drydock document          MyApp            # Project documentation automation
@@ -161,7 +161,7 @@ ai  drydock score drydock                      # Adversarial self-assessment
 ```
 
 Each selected `uat/<Project>/` directory is an independent Git repository. `drydock uat`, resume
-stages, and `drydock uat --report` initialize it when absent and commit all kit changes before exit.
+stages, and `drydock uat report` initialize it when absent and commit all kit changes before exit.
 
 ## The QuarterDeck Web Server
 

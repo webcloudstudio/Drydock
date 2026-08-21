@@ -110,6 +110,13 @@ def test_uat_status_and_resume_verbs_normalize_to_the_existing_uat_parser_contra
         "--from",
         "plan",
     ]
+    assert _normalize_uat_verbs(["uat", "report", "--uat-root", "fixtures"]) == [
+        "uat",
+        "--uat-verb",
+        "report",
+        "--uat-root",
+        "fixtures",
+    ]
 
 
 def test_failure_renderer_shows_agent_summary_story_acceptance_and_progress():
@@ -311,7 +318,7 @@ class TestHelpAndVersion:
         assert "test_command" in out
         assert "isolated" in out
         assert "--max-build-passes" in out
-        assert "--report" in out
+        assert "uat report" in out
         assert "--quiet" in out
         assert "streams to the console" in out
         assert "--stage" in out
@@ -350,7 +357,7 @@ class TestHelpAndVersion:
         assert "--stage" in err
 
     def test_uat_report_without_any_kit_is_a_usage_error(self):
-        rc, _, err = run_cli("uat", "--report", "--uat-root", "/nonexistent/uat")
+        rc, _, err = run_cli("uat", "report", "--uat-root", "/nonexistent/uat")
         assert rc == 2
         assert "No UAT kits found" in err
 
@@ -371,7 +378,7 @@ class TestHelpAndVersion:
 
         monkeypatch.setattr(cli_module, "_uat_report", fake_report)
 
-        rc, _, err = run_cli("uat", "--report", "ReadingList", "--uat-root", str(tmp_path / "uat"))
+        rc, _, err = run_cli("uat", "report", "ReadingList", "--uat-root", str(tmp_path / "uat"))
 
         assert rc == 0, err
         assert (kit / ".git").is_dir()

@@ -541,8 +541,8 @@ def cmd_uat(args: argparse.Namespace) -> int:
 
     workspace = get_workspace().resolve()
     uat_root = args.uat_root.resolve() if args.uat_root is not None else workspace / "uat"
-    report = args.report is not None
     verb = getattr(args, "uat_verb", None)
+    report = verb == "report"
     # Step numbers and lifecycle recovery belong to one kit's recorded run, so selection is
     # settled before any kit is touched: a sweep has no unambiguous recovery point.
     if not report and not args.Project:
@@ -554,10 +554,8 @@ def cmd_uat(args: argparse.Namespace) -> int:
         ):
             if given:
                 raise UsageError(f"{flag} requires <Project>: step numbers belong to one kit's run")
-    kits = _uat_kit_roots(uat_root, args.report if report else args.Project, report=report)
+    kits = _uat_kit_roots(uat_root, args.Project, report=report)
     if verb == "status":
-        if report:
-            raise UsageError("uat status cannot be combined with --report")
         return _uat_status(uat_root, args.Project, args.run)
     from drydock.uat_git import checkpoint_kit_repositories, ensure_kit_repositories
 
@@ -3276,7 +3274,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock uat <Project>          — run one kit\n"
             "drydock uat status <Project>   — show the current recorded run and recovery command\n"
             "drydock uat resume <Project>   — resume the current recorded run at its failed stage\n"
-            "drydock uat --report [<kit>]   — rebuild proof kits from completed runs\n"
+            "drydock uat report [<Project>] — rebuild proof kits from completed runs\n"
             "drydock uat resume <Project> --from <stage>\n"
             "                               — resume the newest run at <stage>\n"
             "\n"
@@ -3300,14 +3298,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="<path>",
         help="Directory holding the kits (default: <workspace>/uat).",
-    )
-    p_uat.add_argument(
-        "--report",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="<kit>",
-        help="Rebuild index.html and SHA256SUMS from completed runs (default: every kit).",
     )
     p_uat.add_argument(
         "--max-build-passes",
@@ -3371,7 +3361,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_uat.add_argument(
         "--uat-verb",
         dest="uat_verb",
-        choices=("status", "resume"),
+        choices=("status", "resume", "report"),
         default=None,
         help=argparse.SUPPRESS,
     )
@@ -4997,8 +4987,10 @@ def _normalize_uat_verbs(argv: list[str]) -> list[str]:
     therefore normalize before argparse: ``uat status jq`` becomes ``uat jq --uat-verb status``.
     This preserves all existing flags, including their accepted placement after the project.
     """
-    if len(argv) < 3 or argv[0] != "uat" or argv[1] not in {"status", "resume"}:
+    if len(argv) < 2 or argv[0] != "uat" or argv[1] not in {"status", "resume", "report"}:
         return argv
+    if len(argv) == 2 or argv[2].startswith("-"):
+        return ["uat", "--uat-verb", argv[1], *argv[2:]]
     return ["uat", argv[2], "--uat-verb", argv[1], *argv[3:]]
 
 

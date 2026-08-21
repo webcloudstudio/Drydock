@@ -81,14 +81,14 @@ generated viewer under `view/`, which carries the report's own styling: Markdown
 anything else is shown as source. Each viewer links the raw file, and `SHA256SUMS` covers the raw
 files, never the viewers. `view/` and `assets/` are generated output, rewritten on every rebuild.
 
-## 4. Rebuilding reports — `--report`
+## 4. Rebuilding reports — `report`
 
 ```bash
-drydock uat --report             # rebuild proof kits from every completed run
-drydock uat --report Toml        # rebuild one kit's proof kits
+drydock uat report               # rebuild proof kits from every completed run
+drydock uat report Toml          # rebuild one kit's proof kits
 ```
 
-`--report` regenerates `index.html`, `view/`, and `assets/` in full from the runs already recorded
+`report` regenerates `index.html`, `view/`, and `assets/` in full from the runs already recorded
 under `runs/`. It executes no build and makes no LLM call. Use it after changing report styling or
 layout, or to restore a report from runs that are still on disk.
 

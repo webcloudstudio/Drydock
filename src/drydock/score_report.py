@@ -1,6 +1,6 @@
 """``drydock score report`` — the build receipt for a real Target.
 
-``drydock uat --report`` publishes a self-contained page proving what a UAT run did. A real
+``drydock uat report`` publishes a self-contained page proving what a UAT run did. A real
 Target deserves the same document, and needs no new bookkeeping to get one: Drydock already
 journals every command it runs and every model call those commands make.
 

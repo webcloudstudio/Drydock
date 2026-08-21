@@ -646,7 +646,7 @@ def test_run_uat_carries_unproven_guardrails_into_the_run_record(tmp_path: Path)
     """A passing run still reports the prohibitions a human must settle by hand.
 
     The list is harvested from the Target's own score evidence rather than the console, so
-    `--report` reproduces it for a run it did not execute.
+    `report` reproduces it for a run it did not execute.
     """
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
@@ -1813,7 +1813,7 @@ def test_a_step_number_resolves_to_the_stage_that_owns_it(tmp_path: Path) -> Non
 def test_current_run_pointer_selects_the_last_recorded_run_and_recovers_from_removal(
     tmp_path: Path,
 ) -> None:
-    from drydock.uat import LATEST_RUN_FILENAME, resolve_run_dir
+    from drydock.uat import LATEST_RUN_FILENAME, render_status, resolve_run_dir
 
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
@@ -1839,6 +1839,10 @@ def test_current_run_pointer_selects_the_last_recorded_run_and_recovers_from_rem
 
     assert (fixture.root / LATEST_RUN_FILENAME).read_text(encoding="utf-8").strip() == second
     assert resolve_run_dir(fixture).name == second
+    status = render_status(fixture)
+    assert "Completed runs:" in status
+    assert first in status
+    assert second in status
 
     shutil.rmtree(fixture.root / "runs" / second)
 

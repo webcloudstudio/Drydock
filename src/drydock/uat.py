@@ -1734,11 +1734,11 @@ def run_fixture(
         json.dumps(result.to_dict(case_root), indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     record_latest_run(fixture, case_root.name)
-    # build_case_kit writes README.md and index.html from result.json, so `drydock uat --report`
+    # build_case_kit writes README.md and index.html from result.json, so `drydock uat report`
     # reproduces byte-identical reports for a run it did not execute.
     build_case_kit(case_root)
     # The kit landing page indexes the runs, so a completed run must appear on it without
-    # requiring a separate `drydock uat --report`.
+    # requiring a separate `drydock uat report`.
     write_kit_index(case_root.parent.parent)
     return result
 
@@ -1761,10 +1761,60 @@ def render_status(fixture: UATFixture, run: str | None = None) -> str:
             lines.append("Resume: not required")
     else:
         lines.append("Recorded commands: none")
-    error = str(payload.get("error") or "").strip()
-    if error:
-        lines.append(f"Reason: {error}")
+    detail = _command_failure_detail(commands[-1]) if commands and commands[-1].returncode else ""
+    if detail:
+        lines.extend(["Error:", *(f"  {line}" for line in detail.splitlines())])
+    elif error := str(payload.get("error") or "").strip():
+        lines.append(f"Error: {error}")
+    completed = _successful_run_times(fixture)
+    if completed:
+        lines.extend(["", "Completed runs:", *completed])
     return "\n".join(lines)
+
+
+def _command_failure_detail(command: CommandResult) -> str:
+    """Read the decisive stderr record for an unsuccessful lifecycle command."""
+    if not command.stderr_path:
+        return ""
+    try:
+        text = Path(command.stderr_path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if not text:
+        return ""
+    lines = [line.strip() for line in text.splitlines()]
+    # Command stderr often starts with a decorative failure banner. Keep the diagnostic body and
+    # omit its separators so status is an operator summary rather than a duplicated transcript.
+    useful = [line for line in lines if line and not set(line) == {"="}]
+    if useful and useful[0].startswith("POST-LLM FAILURE"):
+        useful = useful[1:]
+    if "Recovery" in useful:
+        useful = useful[: useful.index("Recovery")]
+    return "\n".join(useful)
+
+
+def _successful_run_times(fixture: UATFixture) -> list[str]:
+    """Return the recorded start and finish times of successful runs, oldest first."""
+    runs = fixture.root / "runs"
+    if not runs.is_dir():
+        return []
+    lines: list[str] = []
+    for case_root in sorted(runs.iterdir(), key=lambda path: run_sort_key(path.name)):
+        result_path = case_root / "result.json"
+        if not result_path.is_file():
+            continue
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if str(payload.get("status") or "").lower() != "passed":
+            continue
+        environment = payload.get("environment")
+        details = environment if isinstance(environment, dict) else {}
+        started = str(details.get("started_at") or "unknown")
+        finished = str(details.get("finished_at") or "unknown")
+        lines.append(f"  {case_root.name}  {started} — {finished}")
+    return lines
 
 
 def default_resume_stage(fixture: UATFixture, run: str | None = None) -> tuple[str, str]:

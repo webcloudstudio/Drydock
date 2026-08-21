@@ -750,7 +750,7 @@ def test_write_kit_index_refreshes_the_landing_page_without_rebuilding_runs(
     page = write_kit_index(kit).read_text(encoding="utf-8")
 
     assert "runs/20260104T000000.000000Z/index.html" in page
-    # The run receipt is left exactly as found; only `--report` rebuilds it.
+    # The run receipt is left exactly as found; only `report` rebuilds it.
     assert (case / "index.html").read_text(encoding="utf-8") == "stale receipt\n"
 
 

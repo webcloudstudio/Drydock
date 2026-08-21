@@ -1,6 +1,6 @@
 """Shared HTML report rendering for Drydock receipts.
 
-Both ``drydock uat --report`` and ``drydock score report`` publish the same kind of document:
+Both ``drydock uat report`` and ``drydock score report`` publish the same kind of document:
 a self-contained page that inventories a directory of evidence, links every artifact through a
 styled viewer, and stamps a verdict the recorded exit codes support. This module owns everything
 those two reports have in common — page chrome, inventory trees, artifact viewers, receipt
