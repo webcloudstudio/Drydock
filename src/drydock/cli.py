@@ -2482,12 +2482,14 @@ def _ac_mark(status: str) -> str:
 
 
 def cmd_score_ac(target: str, step: str | None = None, full: bool = False) -> int:
+    from drydock.build_plan import parse_build_plan
     from drydock.config import require_target_dir
     from drydock.project_status import record_status
     from drydock.score import (
         PREPASSED,
         UNVERIFIED,
         ac_failure_summary_lines,
+        blueprint_owners,
         emit_failure,
         proof_coverage_lines,
         verify_acs,
@@ -2495,8 +2497,18 @@ def cmd_score_ac(target: str, step: str | None = None, full: bool = False) -> in
 
     target_dir = require_target_dir(target)
 
+    # Best-effort: the progress line is cosmetic, so a plan that fails to parse here still lets
+    # verify_acs raise its own error with its own message, rather than this shadowing it.
+    try:
+        owners = blueprint_owners(parse_build_plan(target_dir / "MANIFEST.md"))
+    except Exception:
+        owners = {}
+
     def progress(check, index: int, total: int) -> None:
-        print(f"Running AC {index}/{total}: {check.check_id}", flush=True)
+        story, feature = owners.get(check.source, ("", ""))
+        owner = "/".join(part for part in (feature, story) if part)
+        location = "  ".join(part for part in (owner, check.source) if part)
+        print(f"Running AC {index}/{total}: {check.check_id}  {location}".rstrip(), flush=True)
 
     report = verify_acs(target, target_dir, step_id=step, on_item=progress, full=full)
     passed = sum(1 for v in report.verdicts if v.status == "PASS")

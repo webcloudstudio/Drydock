@@ -317,7 +317,7 @@ def _scoped_checks(plan: BuildPlan, blueprint_dir: Path, block, *, defects: list
     return tuple(checks)
 
 
-def _blueprint_owners(plan: BuildPlan) -> dict[str, tuple[str, str]]:
+def blueprint_owners(plan: BuildPlan) -> dict[str, tuple[str, str]]:
     """Map each implemented Blueprint file name to its ``(story_id, feature_id)`` owner.
 
     First claimant wins, matching the dedupe order of ``all_programmatic_acceptance``, so a file
@@ -402,7 +402,7 @@ def verify_acs(
         on_item=on_item,
     )
 
-    owners = _blueprint_owners(plan)
+    owners = blueprint_owners(plan)
     # Grading runs against a built tree, where a criterion satisfied by the product and one
     # satisfied by its absence look identical. Only the build's baseline separates them, so this
     # reports what the build recorded instead of re-deriving it from output.
