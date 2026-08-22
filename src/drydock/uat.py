@@ -1229,16 +1229,20 @@ def resolve_step_stage(
     return case_root.name, resolved, entry
 
 
+def _step_table_lines(steps: Sequence[RunStep]) -> list[str]:
+    """Render one step per line, in the exact form both ``--steps`` and ``status`` print it."""
+    width = max(len(step.label) for step in steps)
+    return [
+        f"  {step.number:>3}  {step.label:<{width}}  {step.stage:<8}  exit {step.returncode}"
+        for step in steps
+    ]
+
+
 def render_steps(fixture: UATFixture, run: str | None) -> str:
     """Render the recorded step table an operator reads before choosing ``--from-step``."""
     case_root = resolve_run_dir(fixture, run)
     steps = run_steps(case_root)
-    width = max(len(step.label) for step in steps)
-    lines = [f"{fixture.name} run {case_root.name}", ""]
-    lines.extend(
-        f"  {step.number:>3}  {step.label:<{width}}  {step.stage:<8}  exit {step.returncode}"
-        for step in steps
-    )
+    lines = [f"{fixture.name} run {case_root.name}", "", *_step_table_lines(steps)]
     lines.extend([
         "",
         f"Resume with: drydock uat {fixture.name} --from-step <n> [--run {case_root.name}]",
@@ -1771,6 +1775,10 @@ def render_status(fixture: UATFixture, run: str | None = None) -> str:
         lines.extend(["Error:", *(f"  {line}" for line in detail.splitlines())])
     elif error := str(payload.get("error") or "").strip():
         lines.append(f"Error: {error}")
+    if commands:
+        steps = run_steps(case_root)
+        lines.extend(["", "Steps:", *_step_table_lines(steps)])
+        lines.append(f"Resume from a step with: drydock uat {fixture.name} --from-step <n>")
     completed = _successful_run_times(fixture)
     if completed:
         lines.extend(["", "Completed runs:", *completed])

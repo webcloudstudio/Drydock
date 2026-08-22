@@ -10,6 +10,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-22: `drydock uat status <Project>` now lists every recorded step of the run, in the
+  same numbered form `drydock uat <Project> --steps` prints, so the operator can read the exact
+  `--from-step <n>` argument off the status output without a separate command.
 - 2026-08-22: `drydock uat <Project> --stage verify [--run <run-id>]` resumes an existing UAT
   workspace at the Plan Verify → Repair → Verify gate. It reuses the existing Blueprint and
   Manifest, skips Plan generation, and enters Build only after the gate passes.

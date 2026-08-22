@@ -1906,6 +1906,9 @@ def test_uat_status_and_default_resume_identify_the_failed_stage(tmp_path: Path)
     assert "Stopped:" in status
     assert f"drydock uat resume ReadingList --run {run_id}" in status
     assert (resolved_run, stage) == (run_id, "plan")
+    assert "Steps:" in status
+    assert "  1  01-init" in status
+    assert "drydock uat ReadingList --from-step <n>" in status
 
 
 def test_a_step_outside_the_recorded_run_is_rejected(tmp_path: Path) -> None:
