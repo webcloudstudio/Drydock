@@ -1355,21 +1355,26 @@ def _render(
     )
 
     failed = _outstanding_failures(commands)
-    excerpt = ""
-    if failed:
-        last = failed[-1]
-        relative = str(last.get("stdout_path") or "")
+    failure_panels = []
+    for index, failure in enumerate(failed):
+        relative = str(failure.get("stdout_path") or "")
         text = _tail(report_root / relative) if relative else ""
-        if text:
-            excerpt = (
-                "<h2>Recorded failure output</h2>"
-                f'<p class="note">Command <code>'
-                f"{html.escape(_command_text(last.get('argv') or []))}</code> exited "
-                f"{html.escape(str(last.get('returncode')))}. The text below is quoted verbatim "
-                "from its captured transcript.</p>"
-                f'<p class="note">Tail of <code>{html.escape(relative)}</code>.</p>'
-                f"<pre>{html.escape(text[-4000:])}</pre>"
-            )
+        if not text:
+            continue
+        body = "".join([
+            f'<p class="note">Command <code>'
+            f"{html.escape(_command_text(failure.get('argv') or []))}</code> exited "
+            f"{html.escape(str(failure.get('returncode')))}. The text below is quoted verbatim "
+            "from its captured transcript.</p>",
+            f'<p class="note">Tail of {_anchor(relative, relative)}.</p>',
+            f"<pre>{html.escape(text[-4000:])}</pre>",
+        ])
+        failure_panels.append((f"error{index}", f"{index + 1}. {_command_key(failure)}", body))
+    excerpt = (
+        f"<h2>Recorded failure output</h2>{_tabs(failure_panels, group='error')}"
+        if failure_panels
+        else ""
+    )
 
     call_rows = [
         [

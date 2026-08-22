@@ -839,6 +839,39 @@ def test_a_failure_no_later_run_cleared_is_still_reported_as_an_error(
     assert "with no later clean rerun" in page
 
 
+def test_two_uncleared_failures_each_get_their_own_error_sub_tab(workspace, target_dir, build_dir):
+    """Multiple distinct commands can each fail with no later clean rerun; each keeps its own
+    excerpt and transcript link rather than only the last one being shown."""
+    build_log = workspace / "logs" / "20260101.091000.000Z_widget_build.log"
+    score_log = workspace / "logs" / "20260101.093000.000Z_widget_score.log"
+    build_log.write_text("the build step refused\n", encoding="utf-8")
+    score_log.write_text("the release score refused\n", encoding="utf-8")
+    _history(
+        workspace,
+        [
+            _record("init widget", stamp="20260101.090000.000Z"),
+            _record(
+                "build widget",
+                stamp="20260101.091000.000Z",
+                return_code=1,
+                transcript=f"logs/{build_log.name}",
+            ),
+            _record(
+                "score release widget",
+                stamp="20260101.093000.000Z",
+                return_code=1,
+                transcript=f"logs/{score_log.name}",
+            ),
+        ],
+    )
+    build_dir.mkdir(parents=True)
+    page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+    assert 'data-panel="error0"' in page
+    assert 'data-panel="error1"' in page
+    assert "the build step refused" in page
+    assert "the release score refused" in page
+
+
 def test_a_status_query_that_reports_unfinished_work_is_not_an_error(
     workspace, target_dir, build_dir
 ):
