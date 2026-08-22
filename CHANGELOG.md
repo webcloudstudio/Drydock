@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-22: `BLUEPRINTS_CONTRACT.md`'s oracle rule now covers reconstructed non-string
+  expectations (paths, URLs, timestamps), not only re-typed string literals. Planning previously
+  authored `run_conformance.CORPUS == sources / "jq.test"` against a harness whose `CORPUS` is an
+  absolute, resolved path — a criterion no implementation could satisfy — and neither `plan
+  verify`'s mechanical check nor its advisory warning caught it, since both are scoped to string
+  constants.
 - 2026-08-22: A fused acceptance boundary — two criteria emitted under one `=== AC <id> ===`
   opener, closed with the *second* criterion's id and never given its own opener — is now
   repaired deterministically at plan-generation time and, for a Blueprint already on disk, by

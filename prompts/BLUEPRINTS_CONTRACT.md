@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260816 V15
+version: 20260822 V16
 ---
 
 ## Overview
@@ -238,6 +238,42 @@ source = f"raw = '{raw}'\n"
 result = subprocess.run(["./toml-decoder"], input=source, capture_output=True, text=True)
 decoded = json.loads(result.stdout)
 assert decoded["raw"]["value"] == raw                    # one spelling, cannot disagree
+```
+
+The same rule applies when the re-typed value is not a string literal but an independently
+reconstructed expression — a rebuilt path, URL, or timestamp compared against one the code under
+test computes itself. Two spellings of "the same" value can disagree exactly where a normalization
+step is involved (`.resolve()` against a relative join, a trailing slash, case folding), and the
+criterion has no way to know which spelling the implementation is entitled to produce. Read the
+value back from what the code exposes; do not reconstruct a second copy to compare it to.
+
+Wrong:
+
+```
+from pathlib import Path
+
+sources = Path("sources")
+import run_conformance
+assert run_conformance.CORPUS == sources / "jq.test"     # rebuilt, and not the same path shape
+```
+
+`run_conformance.CORPUS` is `Path(__file__).resolve().parent / "jq.test"` — absolute, because the
+module resolves its own location. `sources / "jq.test"` is relative. Nothing the implementation
+does can make these equal; the criterion is unsatisfiable regardless of correctness. Right:
+
+```
+from pathlib import Path
+
+sources = Path("sources")
+import run_conformance
+assert run_conformance.CORPUS == (sources / "jq.test").resolve()
+```
+
+or, when the criterion only needs to know the module points at the right file, assert what it
+actually claims rather than reconstructing a value to compare:
+
+```
+assert run_conformance.CORPUS.samefile(sources / "jq.test")
 ```
 
 When a transform's output genuinely cannot be derived from its input — a renderer turning `# h`
