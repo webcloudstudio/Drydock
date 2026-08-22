@@ -558,6 +558,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
     if not report and not args.Project:
         for flag, given in (
             ("--from-step", args.from_step is not None),
+            ("--to-step", args.to_step is not None),
             ("--steps", args.steps),
             ("uat status", verb == "status"),
             ("uat resume", verb == "resume"),
@@ -577,6 +578,11 @@ def cmd_uat(args: argparse.Namespace) -> int:
             raise UsageError("--max-build-passes must be at least 1")
         if args.repair_attempts is not None and args.repair_attempts < 0:
             raise UsageError("--repair-attempts must be zero or greater")
+        if args.to_step is not None:
+            if args.to_step < 1:
+                raise UsageError("--to-step must be at least 1")
+            if args.from_step is not None and args.to_step < args.from_step:
+                raise UsageError("--to-step must be >= --from-step")
         if args.steps:
             return _uat_steps(uat_root, args.Project, args.run)
         if verb == "resume" and args.stage is None and args.from_step is None:
@@ -606,6 +612,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
             on_event=step_console.event,
             start_stage=start_stage,
             run=args.run,
+            to_step=args.to_step,
         )
         if not args.quiet:
             print()
@@ -3308,6 +3315,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "                               — resume the newest run at <stage>\n"
             "drydock uat <Project> --from-step <n>\n"
             "                               — resume at the stage that owns step <n> (see --steps)\n"
+            "drydock uat <Project> --from-step <n> --to-step <n>\n"
+            "                               — resume at step <n> and stop after it runs\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -3372,6 +3381,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--steps",
         action="store_true",
         help="List the recorded steps of a run with the stage each resumes into, then exit.",
+    )
+    p_uat.add_argument(
+        "--to-step",
+        dest="to_step",
+        type=int,
+        default=None,
+        metavar="<n>",
+        help=(
+            "Stop after recorded step <n> executes (inclusive). Combine with --from-step <n> "
+            "to run exactly that one step."
+        ),
     )
     p_uat.add_argument(
         "--run",

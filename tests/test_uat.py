@@ -15,10 +15,12 @@ from drydock.errors import SpecificationError
 from drydock.metadata import render_metadata
 from drydock.uat import (
     CommandResult,
+    RunStep,
     discover_fixtures,
     make_streaming_runner,
     render_summary,
     run_sort_key,
+    run_steps,
     run_uat,
     subprocess_runner,
 )
@@ -550,6 +552,44 @@ def test_run_uat_builds_initial_and_updated_sources_and_gates_on_the_release_ver
     assert (case_root / "result.json").is_file()
     assert "ReadingList: FAILED" in (case_root / "README.md").read_text(encoding="utf-8")
     assert (case_root / "index.html").is_file()
+
+
+def test_to_step_stops_the_run_immediately_after_that_step_executes(tmp_path: Path) -> None:
+    """``to_step`` truncates like a normal run that just ended there — no separate status path."""
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    calls: list[tuple[str, ...]] = []
+
+    def fake_runner(argv, cwd, env, output_dir, label):
+        del env
+        calls.append(tuple(argv[3:]))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), 0, 10, str(stdout), str(stderr), label, str(cwd))
+
+    run_id, results = run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=fake_runner,
+        now=datetime(2026, 8, 7, tzinfo=UTC),
+        to_step=1,
+    )
+
+    result = results[0]
+    assert calls == [("init", "ReadingList")]
+    assert [command.label for command in result.commands] == ["01-init"]
+    case_root = fixtures_root / "ReadingList" / "runs" / run_id
+    assert run_steps(case_root) == (RunStep(1, "01-init", "init", 0),)
+    # Nothing scored or acceptance-tested: the run stopped at the operator's request, not on a
+    # product or infrastructure fault, so it must not read as "failed".
+    assert result.execution_status == "PASS"
+    assert result.acceptance_status == "NOT_RUN"
 
 
 def _plan_gate_runner(calls: list, *, verify_codes: dict[int, int]):

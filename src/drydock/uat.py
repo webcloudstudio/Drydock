@@ -1280,6 +1280,10 @@ def verify_resume_prerequisite(fixture: UATFixture, case_root: Path, start_stage
     )
 
 
+class _StepBoundReached(Exception):
+    """Internal signal that ``to_step`` was reached; not a failure, never escapes this module."""
+
+
 def run_fixture(
     fixture: UATFixture,
     case_root: Path,
@@ -1293,6 +1297,7 @@ def run_fixture(
     repair_attempts: int = DEFAULT_REPAIR_ATTEMPTS,
     runner: Runner = subprocess_runner,
     on_event: Callable[[str], None] | None = None,
+    to_step: int | None = None,
 ) -> UATResult:
     """Execute one initial build and each subsequent specification refit in isolation.
 
@@ -1301,6 +1306,11 @@ def run_fixture(
 
     ``start_stage`` re-enters an existing run directory at a named stage, reusing the workspace,
     Blueprint, and build tree the earlier attempt produced.
+
+    ``to_step`` stops the run immediately after that recorded step number executes (inclusive),
+    mid-stage if necessary. Every step up to and including it runs exactly as an unbounded run
+    would; the ones after it simply never execute, so the result is graded the same way any run
+    that stopped there would be — no separate status or verdict path.
     """
     started = time.monotonic()
     started_at = datetime.now(UTC)
@@ -1382,6 +1392,8 @@ def run_fixture(
         commands.append(result)
         if required and result.returncode != 0:
             raise DrydockError(f"{fixture.name}: {label} exited {result.returncode}")
+        if to_step is not None and sequence >= to_step:
+            raise _StepBoundReached()
         return result
 
     def repair_unrunnable_acceptance() -> None:
@@ -1647,6 +1659,11 @@ def run_fixture(
         ):
             result = execute(parts, f"score-{name}", required=False)
             scores[name] = result.returncode
+    except _StepBoundReached:
+        # ``to_step`` truncated the run where asked. Fall through to the same post-processing
+        # every run gets: whatever scores and verdicts didn't get a chance to run read out as
+        # they normally would (NOT_RUN, missing, etc.) rather than a manufactured status.
+        pass
     except DrydockError as exc:
         status = "failed"
         error = str(exc)
@@ -1922,6 +1939,7 @@ def run_uat(
     now: datetime | None = None,
     start_stage: str = "init",
     run: str | None = None,
+    to_step: int | None = None,
 ) -> tuple[str, tuple[UATResult, ...]]:
     """Run the selected kits, each into its own ``<kit>/runs/<run-id>/`` directory.
 
@@ -1931,6 +1949,9 @@ def run_uat(
 
     ``start_stage`` (with optional ``run``) resumes an existing run directory instead of
     creating one, re-entering the lifecycle at that stage.
+
+    ``to_step`` stops each kit's run right after that recorded step number executes; paired with
+    ``start_stage``/``run`` derived from ``--from-step``, this runs exactly one recorded step.
     """
     del workspace  # retained in the contract to make caller path ownership explicit
     resuming = stage_index(start_stage) > 0
@@ -1962,6 +1983,7 @@ def run_uat(
                 repair_attempts=repair_attempts,
                 runner=runner,
                 on_event=on_event,
+                to_step=to_step,
             )
         )
     return run_id, tuple(results)
