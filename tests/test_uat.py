@@ -883,9 +883,9 @@ def test_run_uat_flattens_sources_and_tests_completed_build(tmp_path: Path) -> N
     ) in calls
 
 
-def test_run_uat_does_not_inject_a_retry_mode(tmp_path: Path) -> None:
-    # UAT and interactive builds share one repair policy, so no mode marker crosses the process
-    # boundary.
+def test_run_uat_marks_children_as_unattended(tmp_path: Path) -> None:
+    # UAT has no Commander at the keyboard, so child commands must select a governed default
+    # instead of producing a question for an absent operator.
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
     seen: list[str | None] = []
@@ -911,7 +911,7 @@ def test_run_uat_does_not_inject_a_retry_mode(tmp_path: Path) -> None:
         now=datetime(2026, 8, 9, tzinfo=UTC),
     )
 
-    assert seen and set(seen) == {None}
+    assert seen and set(seen) == {"1"}
 
 
 class _RecordingSink:

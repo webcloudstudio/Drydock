@@ -489,6 +489,15 @@ class TestAssemblePrompt:
         assert "DATE: 2026-06-14" in result
         assert "COMPASS_EXISTS: false" in result
 
+    def test_unattended_prompt_forbids_questions(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt(
+            "PROMPT BODY", bp, "2026-06-14", compass_exists=False, unattended=True
+        )
+        assert "## Unattended UAT policy" in result
+        assert "no questionnaire, open question, or blocker may be emitted" in result
+
     def test_compass_exists_flag_true(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
@@ -1567,6 +1576,22 @@ Which representative workload defines the measurement?
         analysis = result.analysis_path.read_text(encoding="utf-8")
         assert "Quality: Questions" in analysis
         assert "  questions: 3" in analysis
+
+    def test_unattended_uat_discards_model_questions(self, tmp_path, monkeypatch):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        monkeypatch.setenv("DRYDOCK_UAT", "1")
+
+        result = analyze(
+            "MyTarget",
+            target_dir,
+            runner=lambda *a, **k: FakeRun(
+                text=_make_llm_output(include_spikes=True, quality="Ready")
+            ),
+        )
+
+        assert result.quality == "Ready"
+        assert result.question_count == 0
+        assert not list((target_dir / "QuarterDeck" / "questionnaires").glob("discovery-*.json"))
 
     def test_compass_written_when_absent(self, tmp_path):
         target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})

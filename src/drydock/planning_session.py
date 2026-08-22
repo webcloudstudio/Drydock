@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import io
 import json
+import os
 import re
 import tokenize
 from collections import Counter
@@ -1530,6 +1531,7 @@ def _assemble_prompt_assembly(
     typed_spec_paths: list[Path] | None = None,
     source_evidence: list[SourceMaterialFile] | None = None,
     built_ledger: tuple[str, ...] = (),
+    unattended: bool = False,
 ) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
@@ -1553,6 +1555,21 @@ def _assemble_prompt_assembly(
             kind="job",
         ),
     ]
+    if unattended:
+        prompt_parts.append(
+            lines_part(
+                "Unattended UAT policy",
+                [
+                    "## Unattended UAT policy",
+                    "",
+                    "- No Commander is available. Do not emit a question, questionnaire, blocker, or an undecided DECISIONS.json record.",
+                    "- Resolve every ambiguity from the imported sources, Compass, fixture inputs, and precedence; choose the narrowest behavior consistent with them.",
+                    "- Record a material DECISIONS.json disclosure only after selecting its system_choice; continue with that choice.",
+                    "",
+                ],
+                kind="unattended-policy",
+            )
+        )
     if built_ledger:
         prompt_parts.append(
             lines_part(
@@ -2263,6 +2280,8 @@ def _parse_plan_text(text: str) -> BuildPlan:
 
 def malformed_acceptance_decisions(
     defects: tuple[MalformedAcceptance, ...],
+    *,
+    unattended: bool = False,
 ) -> tuple[Decision, ...]:
     """Ask the Commander what to do about each acceptance criterion that cannot execute.
 
@@ -2280,11 +2299,11 @@ def malformed_acceptance_decisions(
         Decision(
             id=f"acceptance-{defect.source}-{defect.check_id or 'container'}-malformed",
             type="text",
-            severity="blocking",
+            severity="material" if unattended else "blocking",
             origin="plan",
             blueprint=defect.source,
             story=None,
-            status="open",
+            status="recommended" if unattended else "open",
             archived=False,
             title=f"Acceptance criterion {defect.check_id or 'container'} cannot execute",
             description=(
@@ -2292,9 +2311,13 @@ def malformed_acceptance_decisions(
                 "This criterion raises in its own frame before reaching the code under test, so "
                 "it reports UNVERIFIED and gates nothing. Repair it in the Blueprint "
                 "specification, or answer that the story is acceptable without it."
+                if not unattended
+                else "specification automatically before build."
             ),
             options=(),
-            system_choice="not answered",
+            system_choice=(
+                "Repair the criterion automatically before build." if unattended else "not answered"
+            ),
         )
         for defect in defects
     )
@@ -2302,6 +2325,8 @@ def malformed_acceptance_decisions(
 
 def staged_asset_env_decisions(
     defects: tuple[MalformedAcceptance, ...],
+    *,
+    unattended: bool = False,
 ) -> tuple[Decision, ...]:
     """Ask the Commander about each criterion that calls a staged asset the wrong way.
 
@@ -2313,11 +2338,11 @@ def staged_asset_env_decisions(
         Decision(
             id=f"acceptance-{defect.source}-{defect.check_id or 'container'}-staged-env",
             type="text",
-            severity="blocking",
+            severity="material" if unattended else "blocking",
             origin="plan",
             blueprint=defect.source,
             story=None,
-            status="open",
+            status="recommended" if unattended else "open",
             archived=False,
             title=f"Acceptance criterion {defect.check_id or 'container'} cannot pass",
             description=(
@@ -2329,7 +2354,11 @@ def staged_asset_env_decisions(
                 "grading and the edit is reported as tampering."
             ),
             options=(),
-            system_choice="not answered",
+            system_choice=(
+                "Repair the criterion specification without editing the staged asset."
+                if unattended
+                else "not answered"
+            ),
         )
         for defect in defects
     )
@@ -4346,6 +4375,7 @@ def create_plan(
     # Every planning attempt starts a new current-error lifecycle, including attempts that fail
     # preflight before reaching an LLM call.
     clear_error_record(target_dir)
+    unattended = os.environ.get("DRYDOCK_UAT") == "1"
 
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
@@ -4562,6 +4592,7 @@ def create_plan(
             blueprint_dir, analysis_text, excluded_filenames=excluded_filenames
         ),
         built_ledger=built_ledger,
+        unattended=unattended,
     )
 
     try:
@@ -5166,8 +5197,12 @@ def create_plan(
     fresh_decisions = (
         *parse_plan_decisions(blocks.get(DECISIONS_BLOCK, "[]")),
         *requirement_decisions,
-        *malformed_acceptance_decisions(_malformed_acceptance_defects(blocks)),
-        *staged_asset_env_decisions(_staged_asset_env_defects(blocks, blueprint_dir)),
+        *malformed_acceptance_decisions(
+            _malformed_acceptance_defects(blocks), unattended=unattended
+        ),
+        *staged_asset_env_decisions(
+            _staged_asset_env_defects(blocks, blueprint_dir), unattended=unattended
+        ),
     )
     story_for_spec = {
         str(name): block.block_id

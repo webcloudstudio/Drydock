@@ -4544,6 +4544,22 @@ def test_a_malformed_criterion_becomes_a_blocking_decision():
     assert "not valid Python" in decision.description
 
 
+def test_unattended_malformed_criterion_becomes_a_recommended_system_decision():
+    from drydock.planning_session import (
+        _malformed_acceptance_defects,
+        malformed_acceptance_decisions,
+    )
+
+    defects = _malformed_acceptance_defects({
+        "FEATURE-Example.md": _spec_with_criterion("assert 1=2")
+    })
+    decision = malformed_acceptance_decisions(defects, unattended=True)[0]
+
+    assert decision.severity == "material"
+    assert decision.status == "recommended"
+    assert decision.system_choice == "Repair the criterion automatically before build."
+
+
 # ── Invariant boundary form, end to end through the plan checks ──────────────────
 #
 # Toml run 20260813.231738 died `KeyError: 'TOPOLOGY.md'` in the continuation loop. The prompts

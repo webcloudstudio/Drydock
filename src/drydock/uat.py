@@ -1339,6 +1339,9 @@ def run_fixture(
     env["DRYDOCK_BUILD_DIRECTORY"] = str(build_root)
     env["DRYDOCK_MODEL"] = model
     env["LLM_PROVIDER"] = provider
+    # UAT has no Commander at the keyboard.  Child commands use this explicit execution mode to
+    # decide within the fixture's governed inputs rather than emitting review questions.
+    env["DRYDOCK_UAT"] = "1"
     # Child output is teed to the console as it arrives. Block buffering into a pipe would
     # withhold it until the step exits, which is exactly what the streaming runner prevents.
     env["PYTHONUNBUFFERED"] = "1"

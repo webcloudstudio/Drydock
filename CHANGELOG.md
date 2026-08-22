@@ -35,6 +35,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-22: `drydock uat <Project>` now marks every child command as unattended. Analyze and
+  Plan receive an explicit policy to resolve ambiguity from governed fixture inputs, persist the
+  selected system choice, and emit no Commander questions, questionnaires, blockers, or open
+  decision records. Model-emitted Analyze questions and blockers are discarded defensively; a
+  malformed acceptance criterion becomes a material recommended repair decision instead of an
+  open blocking question.
 - 2026-08-21: `SCORE RELEASE` is now the terminal `PROJECT_STATUS.jsonl` state and the sole
   passing release condition. `drydock score report` no longer records the synthetic
   `FINALIZED` state. A passing release score supersedes earlier recoverable failures in the

@@ -11,6 +11,7 @@ commanders_chair.html (when lifecycle state advances to analyzed).
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -331,6 +332,7 @@ def _assemble_prompt(
     blockers_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
     identity: dict[str, str] | None = None,
+    unattended: bool = False,
 ) -> str:
     return _assemble_prompt_assembly(
         body,
@@ -345,6 +347,7 @@ def _assemble_prompt(
         input_tokens=input_tokens,
         excluded_filenames=load_excluded_filenames(blueprint_dir.parent),
         identity=identity,
+        unattended=unattended,
     ).rendered_text
 
 
@@ -362,6 +365,7 @@ def _assemble_prompt_assembly(
     input_tokens: tuple[str, ...] | None = None,
     excluded_filenames: frozenset[str] = frozenset(),
     identity: dict[str, str] | None = None,
+    unattended: bool = False,
 ) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
@@ -387,6 +391,21 @@ def _assemble_prompt_assembly(
             kind="job",
         ),
     ]
+    if unattended:
+        prompt_parts.append(
+            lines_part(
+                "Unattended UAT policy",
+                [
+                    "## Unattended UAT policy",
+                    "",
+                    "- No Commander is available and no questionnaire, open question, or blocker may be emitted.",
+                    "- Resolve ambiguity from the imported sources, Compass, fixture inputs, and stated precedence; choose the narrowest behavior consistent with them.",
+                    "- Persist the selected behavior in the authored analysis and specifications; do not ask for confirmation or offer alternatives.",
+                    "",
+                ],
+                kind="unattended-policy",
+            )
+        )
 
     def feedback_parts() -> list:
         if not (feedback_text and feedback_text.strip()):
@@ -1000,6 +1019,7 @@ def analyze(
     # Starting an earlier lifecycle step retires any current failure from a later one. If this
     # run produces a new recoverable failure, that command owns writing its replacement record.
     clear_error_record(target_dir)
+    unattended = os.environ.get("DRYDOCK_UAT") == "1"
 
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
@@ -1069,6 +1089,7 @@ def analyze(
         input_tokens=prompt.input_tokens,
         excluded_filenames=excluded_filenames,
         identity=identity,
+        unattended=unattended,
     )
 
     result = run(
@@ -1124,6 +1145,12 @@ def analyze(
         ) = _parse_output(result.text, on_defect=_report_artifact_defect(on_text))
     except (DrydockError, ValueError) as exc:
         return _fail(str(exc))
+
+    if unattended:
+        # The prompt is instructed not to emit these, but the persisted contract enforces the
+        # UAT invariant even when a provider ignores that instruction.
+        discoveries = {}
+        blockers_text_out = None
 
     # Sea Trials admission is structural only. A contract that cannot be parsed into machine-usable
     # criteria is a genuine Commander blocker. How a criterion is worded is not admission: EARS and
