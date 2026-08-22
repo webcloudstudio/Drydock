@@ -190,6 +190,19 @@ def _print_findings(result, verbose: bool) -> None:
         print("✓ PASS")
 
 
+_RESUME_STAGES = ("import", "analyze", "plan", "verify", "build", "refit", "test", "score")
+
+
+def _resume_stage_name(value: str) -> str:
+    """Validate a ``--stage``/``--from`` argument, redirecting a step number to ``--from-step``."""
+    if value in _RESUME_STAGES:
+        return value
+    if value.isdigit():
+        raise argparse.ArgumentTypeError(f"'{value}' is a step number; use --from-step {value}")
+    choices = ", ".join(_RESUME_STAGES)
+    raise argparse.ArgumentTypeError(f"invalid choice: '{value}' (choose from {choices})")
+
+
 def _add_llm_override_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--model",
@@ -3293,16 +3306,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock uat report [<Project>] — rebuild proof kits from completed runs\n"
             "drydock uat resume <Project> --from <stage>\n"
             "                               — resume the newest run at <stage>\n"
-            "\n"
-            "A kit is uat/<Project>/: uat.json, its sources/ bundle, and its own runs/ history.\n"
-            "Each kit runs in an isolated workspace from the explicit source bundle in uat.json.\n"
-            "Ordered updates refresh that bundle, run refit --sources, and rebuild.\n"
-            "Each child command's output streams to the console as it runs; --quiet reports\n"
-            "only stage names. Complete output is preserved as evidence either way.\n"
-            "The required test_command runs from the completed application directory.\n"
-            "Acceptance and release scores are advisory and are recorded with token and time data.\n"
-            "Each selected uat/<Project> repository is initialized when absent and committed "
-            "before exit."
+            "drydock uat <Project> --from-step <n>\n"
+            "                               — resume at the stage that owns step <n> (see --steps)\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -3345,7 +3350,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--stage",
         "--from",
         default=None,
-        choices=("import", "analyze", "plan", "build", "refit", "test", "score"),
+        type=_resume_stage_name,
         metavar="<stage>",
         help=(
             "Resume an existing run at this stage, reusing everything the earlier attempt "

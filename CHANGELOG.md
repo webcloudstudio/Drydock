@@ -8,6 +8,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Fixed
+
+- 2026-08-22: `drydock uat resume <Project> --stage verify` (and `--from verify`) is accepted; the
+  argument's choice list had omitted the `verify` stage. Passing a step number to `--stage`/`--from`
+  now names `--from-step <n>` instead of a bare "invalid choice" error.
+
+### Changed
+
+- 2026-08-22: `drydock uat --help` drops its long-form mechanism prose (kit layout, workspace
+  isolation, streaming, scoring); it keeps only the command-form usage lines and per-flag help.
+
 ### Added
 
 - 2026-08-22: `drydock uat status <Project>` now lists every recorded step of the run, in the

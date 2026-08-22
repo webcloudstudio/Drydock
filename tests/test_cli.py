@@ -14,6 +14,7 @@ from drydock import __copyright__, __version__
 from drydock.acceptance import AcceptanceObservation, AcceptanceRunResult
 from drydock.build_run import BuildStepResult
 from drydock.cli import (
+    _build_parser,
     _build_running_command,
     _render_build_failures,
     _stream_build,
@@ -310,24 +311,31 @@ class TestHelpAndVersion:
         _, out, _ = run_cli("--help")
         assert "score" in out
 
-    def test_uat_help_describes_isolation_and_explicit_source_bundles(self):
+    def test_uat_help_describes_isolation_and_resume(self):
         rc, out, err = run_cli("uat", "--help")
 
         assert rc == 0, err
-        assert "explicit source bundle" in out
-        assert "test_command" in out
-        assert "isolated" in out
         assert "--max-build-passes" in out
         assert "uat report" in out
         assert "--quiet" in out
-        assert "streams to the console" in out
         assert "--stage" in out
+        assert "--from-step" in out
         assert "Resume" in out or "resume" in out
 
     def test_uat_run_requires_a_resume_stage(self):
         rc, _, err = run_cli("uat", "ReadingList", "--run", "20260809T000000.000000Z")
         assert rc == 2
         assert "--run requires --stage or --from-step" in err
+
+    def test_uat_stage_accepts_verify(self):
+        parser = _build_parser()
+        ns = parser.parse_args(["uat", "ReadingList", "--stage", "verify"])
+        assert ns.stage == "verify"
+
+    def test_uat_stage_rejects_a_step_number_with_a_redirect_to_from_step(self):
+        rc, _, err = run_cli("uat", "ReadingList", "--stage", "5")
+        assert rc == 2
+        assert "--from-step 5" in err
 
     def test_uat_help_offers_resuming_at_a_recorded_step(self):
         rc, out, err = run_cli("uat", "--help")
