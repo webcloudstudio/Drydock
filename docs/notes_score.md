@@ -6,7 +6,7 @@
 | Route | score |
 | Status | Working notes — not canonical specification |
 | Description | Closing out `build_score` and reshaping `drydock score`'s five commands into a stamped, self-approving final gate persisted on `SCORECARD.md`. |
-| Pending spec | 5 approved items (none yet reconciled into Drydock_Specification.md) |
+| Pending spec | 0 (state ladder dropped as na; the other four are applied or na) |
 | Pending impl | 0 unimplemented sections (state ladder dropped, superseded by per-command stamps) |
 
 ## Goal
@@ -18,7 +18,9 @@ a single shared `SCORECARD.md` that becomes the project's retrospective and fina
 ## Decisions
 
 ### Remove `build_score` entirely
-`2026-08-21` · `spec:approved` · `impl:implemented`
+`2026-08-21` · `spec:na` · `impl:implemented`
+
+Spec never mentioned `build score` — no edit needed.
 
 Implemented with a twist on the original plan: rather than keeping `build_score.py` as a module of
 surviving primitives, Ed asked that they move into `score.py` (their only remaining caller) and
@@ -49,7 +51,11 @@ Keep: `build_score.py`'s deterministic primitives (`CriterionResult`, `Measureme
 removed LLM path.
 
 ### Score command roles (help text)
-`2026-08-21` · `spec:approved` · `impl:implemented`
+`2026-08-21` · `spec:applied` · `impl:implemented`
+
+Applied to `docs/Drydock_Specification.md`'s `### drydock score` entry: rewrote the `ac`/`release`/
+`build` behavior lines, added `score report` (was undocumented) and the bare `score <Target>`
+summary form, and fixed the `release` grammar error ("is an LLM pass to evaluates").
 
 Rewrote `drydock score --help` for `spec`, `ac`, `build`, `release`, `report`. Note: `score build`
 still exits 1 on missing evidence or unverified blocks — Ed confirmed leaving that as-is rather
@@ -80,7 +86,7 @@ replaces/augments the target's `State:` line that `drydock score <target>`'s das
 today. Not resolved this session — see Open Questions.
 
 ### Every score command issues a stamped approval
-`2026-08-21` · `spec:approved` · `impl:implemented`
+`2026-08-21` · `spec:applied` · `impl:implemented`
 
 Each of `spec`, `ac`, `build`, `release` now calls `drydock.scorecard.write_scorecard` after it
 records its `PROJECT_STATUS.jsonl` state (`ac`/`build` only regenerate on a whole-target run, not
@@ -105,7 +111,7 @@ Ordering: `SCORECARD.md` need not exist for the build to proceed, but it must be
 approval.
 
 ### `SCORECARD.md` becomes a fully-regenerated render
-`2026-08-21` · `spec:approved` · `impl:implemented`
+`2026-08-21` · `spec:applied` · `impl:implemented`
 
 New module `src/drydock/scorecard.py`: `render_scorecard`/`write_scorecard` always rebuild the
 whole file from `PROJECT_STATUS.jsonl` (which stamps ran, when, pass/fail) plus each command's own

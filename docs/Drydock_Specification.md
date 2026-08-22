@@ -665,10 +665,12 @@ drydock build status <Target>   # print per-block state and current runnable fro
 
 ```text
 drydock score spec <Target>
-drydock score ac <Target> [--step <id>]
+drydock score ac <Target> [--step <id>] [--full]
 drydock score build <Target>
 drydock score release <Target>
+drydock score report <Target>
 drydock score drydock
+drydock score <Target>
 ```
 
 It writes `SPECIFICATION_SCORECARD.md` atomically and prints identical content to the terminal.
@@ -677,19 +679,34 @@ questions, gate Analyze, or evaluate files outside `blueprint/sources/`.
 
 The Commander scans checkmarks in the QuarterDeck instead of granting approvals.
 
-`drydock score ac` verifies acceptance deterministically, with no LLM call by running the acceptance criterion. It writes the 
-blueprint acceptance criteria to SOUNDINGS.md with a status of `✓ PASS`, `✗ FAIL`, or `— UNVERIFIED` and a timestamp.
+`drydock score ac` sums story-level acceptance: it verifies every Programmatic Acceptance assertion
+in the project deterministically, with no LLM call, and writes SOUNDINGS.md with a status of
+`✓ PASS`, `✗ FAIL`, `~ PREPASSED`, or `— UNVERIFIED` and a timestamp.
 Criteria with vacuous proof — an empty body, a constant assertion, or a self-comparison — is demoted to `UNVERIFIED` rather than trusted.
 `drydock score ac` is deterministic.
 
-`--step <id>` scopes verification to a single feature or story, resolved by id or display name. A scoped run verifies only that block's acceptance criteria, prints each result with its Blueprint source and failing detail, and leaves `SOUNDINGS.md` unchanged.
+`--step <id>` scopes verification to a single feature or story, resolved by id or display name. A scoped run verifies only that block's acceptance criteria, prints each result with its Blueprint source and failing detail, and leaves `SOUNDINGS.md` and `SCORECARD.md` unchanged. `--full` prints untruncated output per failure.
 
-`drydock score release` is an LLM pass to evaluates the project-level criteria in `SEA_TRIALS.md`. 
-`SEA_TRIALS.md` contains criteria are expressed in EARS notation. The LLM  judges the project and reports the release verdict. 
+`drydock score release` also runs the project's governed acceptance gate, then judges the
+project-level criteria in `SEA_TRIALS.md` — expressed in EARS notation — with an LLM pass, and
+reports the release verdict.
 
 `drydock score build` reads build evidence and LLM usage logs and prints a deterministic post-build report.
+It is informational: it reports repairs, tokens, and cache hit rate, and exits nonzero when there is
+no build evidence or a block is unverified.
+
+`drydock score report` publishes the build evidence to `drydock_receipt/index.html`. It reads the
+Target and its journals and runs nothing; it is deterministic.
 
 `drydock score drydock` performs an advisory assessment of Drydock and writes ranked feature files to `docs/drydock_planning/`.
+
+Every `score spec`, `score ac` (whole-target run), `score build`, and `score release` run
+regenerates `SCORECARD.md` in full, from `PROJECT_STATUS.jsonl` and each command's own evidence,
+and stamps its own section with the command, its verdict, and a timestamp. No command appends to
+`SCORECARD.md`; a rebuild that finds no evidence for a command reports it as not yet run.
+
+`drydock score <Target>` summarizes what the scores above last reported: when each ran, whether it
+passed, and where its output is. It reads only.
 
 A `measurement` criterion carries `Command:`, a literal argv run from the build directory, and is
 compared against `Target:` using `Operator:`. `Extract:` supplies a regular expression whose first
@@ -710,6 +727,9 @@ is rejected.
 | `SEA_TRIALS.md` | Target root | Project criteria, measurement contracts, and guardrails |
 | `blueprint/*.md` | Target Blueprint | Programmatic Acceptance proofs |
 | Built application | Configured build directory | Git identity and executable proof subject |
+| `PROJECT_STATUS.jsonl` | Target root | Which score commands ran, when, pass/fail (`SCORECARD.md` regeneration) |
+| `DECISIONS.json` | Target root | Material and blocking decisions surfaced in the release retrospective |
+| `SCORECARD.md` | Target root | Embedded evidence for the published receipt (`score report`) |
 
 **Output files**
 
@@ -719,7 +739,8 @@ is rejected.
 | Terminal report | Terminal | Deterministic post-build evidence and usage report (`score build`) |
 | `docs/drydock_planning/` | Drydock repository | Ranked methodology feature files (`score drydock`) |
 | `SOUNDINGS.md` | Target root | Per-criterion verified status, evidence, and timestamp (whole-target `score ac`; a `--step` run leaves it unchanged) |
-| `SCORECARD.md` | Target root | Release scoring results, verdicts, and blockers (`score release`) |
+| `SCORECARD.md` | Target root | Full-rebuild retrospective, stamped per command (`score spec`, whole-target `score ac`, `score build`, `score release`) |
+| `drydock_receipt/` | Target root | Published build receipt, embedding `SCORECARD.md` (`score report`) |
 
 **Exit codes**
 
