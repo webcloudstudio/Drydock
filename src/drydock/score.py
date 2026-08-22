@@ -11,11 +11,12 @@
   recorded during the build is evidence. The verdict is ``PASSED``, ``FAILED``, or ``ERROR``, and
   it writes ``SCORECARD.md`` and ``evidence/score-release.json``.
 
-Both reuse the build_score primitives so the deterministic verdicts agree across paths.
+Both share the same deterministic primitives so verdicts agree across paths.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -25,7 +26,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import IO
+from typing import IO, Protocol
 
 from drydock.acceptance import (
     AcceptanceObservation,
@@ -40,19 +41,6 @@ from drydock.acceptance import (
 from drydock.acceptance_contract import GateResult, load_contract, run_gate
 from drydock.acceptance_requirements import authorization_for, requirement_available
 from drydock.build_plan import BuildPlan, parse_build_plan
-from drydock.build_score import (
-    MEASUREMENT_TIMEOUT,
-    CriterionResult,
-    MeasurementResult,
-    RunnerFn,
-    TextCallback,
-    _code_identity,
-    _compare_measurement,
-    _evidence_fact,
-    _measurement_payload,
-    _parse_json,
-    _sha,
-)
 from drydock.errors import SpecificationError
 from drydock.gate_policy import (
     MANUAL,
@@ -83,6 +71,158 @@ from drydock.standard_artifacts import (
     render_soundings,
 )
 from drydock.target_environment import provision_uv_environment
+
+# A release measurement runs the full test suite, not a unit test. A 655-example CommonMark
+# conformance run against a trivial converter measures ~45s, so this leaves real headroom.
+MEASUREMENT_TIMEOUT = 900
+
+
+class CompletedRun(Protocol):
+    ok: bool
+    text: str
+    execution_id: str
+
+
+RunnerFn = Callable[..., CompletedRun]
+TextCallback = Callable[[str], None]
+
+
+@dataclass(frozen=True)
+class MeasurementResult:
+    criterion_id: str
+    status: str
+    value: float | None = None
+    unit: str = ""
+    source: str = ""
+    return_code: int | None = None
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class CriterionResult:
+    criterion_id: str
+    verdict: str
+    rationale: str
+    evidence: tuple[str, ...]
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _git(path: Path, *args: str) -> tuple[int, str]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return 1, str(exc)
+    return result.returncode, (result.stdout or result.stderr).strip()
+
+
+def _code_identity(build_dir: Path) -> tuple[str, bool]:
+    rc, head = _git(build_dir, "rev-parse", "HEAD")
+    if rc != 0:
+        return "", True
+    status_rc, status = _git(build_dir, "status", "--porcelain")
+    return head, status_rc != 0 or bool(status)
+
+
+def _compare(value: float, operator: str, target: float) -> bool:
+    return {
+        "<": value < target,
+        "<=": value <= target,
+        "==": value == target,
+        ">=": value >= target,
+        ">": value > target,
+    }.get(operator, False)
+
+
+def _measurement_payload(text: str) -> tuple[float, str]:
+    payload = json.loads(text)
+    if not isinstance(payload, dict) or not isinstance(payload.get("value"), (int, float)):
+        raise ValueError("measurement JSON must contain numeric value")
+    return float(payload["value"]), str(payload.get("unit", ""))
+
+
+def _compare_measurement(
+    trial: SeaTrial,
+    value: float,
+    unit: str,
+    source: str,
+    return_code: int | None,
+) -> MeasurementResult:
+    """Compare a measured value against the trial's declared threshold."""
+    if trial.unit and unit and trial.unit != unit:
+        return MeasurementResult(
+            trial.criterion_id,
+            "INCONCLUSIVE",
+            value=value,
+            unit=unit,
+            source=source,
+            return_code=return_code,
+            detail=f"unit mismatch: expected {trial.unit}, got {unit}",
+        )
+    if trial.target is None or trial.operator not in {"<", "<=", "==", ">=", ">"}:
+        return MeasurementResult(
+            trial.criterion_id,
+            "INCONCLUSIVE",
+            value=value,
+            unit=unit,
+            source=source,
+            return_code=return_code,
+            detail="target or comparison operator missing",
+        )
+    return MeasurementResult(
+        trial.criterion_id,
+        "PASS" if _compare(value, trial.operator, trial.target) else "FAIL",
+        value=value,
+        unit=unit or trial.unit,
+        source=source,
+        return_code=return_code,
+    )
+
+
+def _evidence_fact(trial: SeaTrial, target_dir: Path) -> dict[str, object] | None:
+    if trial.verification != "evidence" or not trial.evidence:
+        return None
+    candidate = (target_dir / trial.evidence).resolve()
+    root = target_dir.resolve()
+    if candidate != root and root not in candidate.parents:
+        return {"criterion_id": trial.criterion_id, "error": "evidence path escapes target"}
+    if not candidate.is_file():
+        return {"criterion_id": trial.criterion_id, "error": "evidence file missing"}
+    content = candidate.read_text(encoding="utf-8", errors="replace")
+    return {
+        "criterion_id": trial.criterion_id,
+        "path": trial.evidence,
+        "sha256": _sha(candidate),
+        "content": content[:20000],
+        "truncated": len(content) > 20000,
+    }
+
+
+def _parse_json(text: str) -> dict:
+    body = text.strip()
+    fence = re.search(r"```(?:json)?\s*\n(.*?)\n```", body, re.DOTALL)
+    if fence:
+        body = fence.group(1).strip()
+    start, end = body.find("{"), body.rfind("}")
+    if start < 0 or end < start:
+        raise SpecificationError("score model output contained no JSON object")
+    try:
+        payload = json.loads(body[start : end + 1])
+    except json.JSONDecodeError as exc:
+        raise SpecificationError(f"score model output is invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise SpecificationError("score model output must be a JSON object")
+    return payload
+
 
 PASS = "PASS"
 FAIL = "FAIL"

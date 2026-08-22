@@ -138,7 +138,6 @@ ai  drydock refit             MyApp            # Diff -> ticket -> dependency gr
 
 ```text
     drydock build status      MyApp            # Show build state
-ai  drydock build score       MyApp            # Generate SCORECARD.md
 ai  drydock uat               [Project]        # Scored UAT testing
     drydock uat status        <Project>        # Current run, failure, and recovery command
 ai  drydock uat resume        <Project>        # Resume the current failed run

@@ -2429,35 +2429,6 @@ def _build_running_command(args: argparse.Namespace) -> str:
     return " ".join(command)
 
 
-def cmd_build_score(args: argparse.Namespace) -> int:
-    from drydock.build_score import gate_label, score_target
-    from drydock.config import (
-        get_llm_provider,
-        get_model,
-        get_workspace,
-        require_target_dir,
-    )
-
-    target_dir = require_target_dir(args.Target)
-    result = score_target(
-        args.Target,
-        target_dir,
-        model=get_model(getattr(args, "model", None)),
-        llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
-        log_dir=get_workspace() / "logs",
-        on_text=_stream_status_only,
-    )
-    print()
-    print(f"Completion gate: {gate_label(result.complete, result.attestations)}")
-    print(f"Scorecard: {result.scorecard_path}")
-    print(f"Evidence: {result.evidence_path}")
-    for blocker in result.blockers:
-        print(f"  BLOCKER: {blocker}")
-    for attestation in result.attestations:
-        print(f"  ATTESTATION REQUIRED: {attestation}")
-    return result.exit_code()
-
-
 _AC_GLYPH = {
     "PASS": ("✓", "32"),
     "FAIL": ("✗", "31"),
@@ -2996,7 +2967,6 @@ _BUILD_STATE_MARK = {
 
 def cmd_build_status(blueprint: str, target: str) -> int:
     from drydock.build_plan import load_target_plan
-    from drydock.build_score import score_evidence_state
     from drydock.build_status import build_status
     from drydock.config import get_target_directory, require_target_dir
     from drydock.question_gates import synchronize_manifest_question_gates
@@ -3068,9 +3038,6 @@ def cmd_build_status(blueprint: str, target: str) -> int:
             "Failed (resume with drydock build, or --step <id>; --reset discards work instead): "
             + ", ".join(report.failed_ids)
         )
-    score_state = score_evidence_state(target, target_path)
-    detail = f" ({'; '.join(score_state.reasons)})" if score_state.reasons else ""
-    print(f"Build score evidence: {score_state.state}{detail}")
     return 0
 
 
@@ -3628,7 +3595,6 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── build ─────────────────────────────────────────────────────────────────
     # Handles: build <Target>
     #          build status <Target>
-    #          build score <Target>
     p_build = sub.add_parser(
         "build",
         help="Build or inspect build state.",
@@ -3639,7 +3605,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # lets argparse consume a flag before the Target (``build --ungate Marina``); flags after the
     # Target remain in ``args`` and are parsed by ``_parse_build_args``.
     _add_build_options(p_build)
-    p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Target>")
+    p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status] <Target>")
 
     # ── score ─────────────────────────────────────────────────────────────────
     # Handles: score spec <Target> (advisory), score ac <Target> (deterministic),
@@ -3652,16 +3618,21 @@ def _build_parser() -> argparse.ArgumentParser:
             "With a bare <Target>, summarize what those scores last reported."
         ),
         description=(
-            "drydock score spec <Target>             — audit imported raw specifications; writes\n"
-            "                                            SPECIFICATION_SCORECARD.md\n"
+            "drydock score spec <Target>             — find flaws in the imported specification and\n"
+            "                                            ask questions; writes SPECIFICATION_SCORECARD.md\n"
             "drydock score ac <Target> [--step <id>] [--full]\n"
-            "                                          — verify acceptance criteria (whole target,\n"
-            "                                            or scoped to one feature/story), update Soundings.\n"
+            "                                          — sum of story-level acceptance criteria: verifies\n"
+            "                                            each Programmatic Acceptance assertion (whole\n"
+            "                                            target is every criterion in the project; --step\n"
+            "                                            narrows to one feature/story), updates Soundings.\n"
             "                                            --full shows untruncated output per failure.\n"
-            "drydock score build <Target>             — post-build report: acceptance, repairs, tokens,\n"
-            "                                            cache hit rate (deterministic; reads logs only)\n"
-            "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n"
-            "drydock score report <Target>            — publish the build receipt to\n"
+            "drydock score build <Target>             — informational post-build report: acceptance,\n"
+            "                                            repairs, tokens, cache hit rate. Deterministic;\n"
+            "                                            reads logs only.\n"
+            "drydock score release <Target>           — LLM release gate over Sea Trials; also runs the\n"
+            "                                            project's governed acceptance gate. Writes\n"
+            "                                            SCORECARD.md\n"
+            "drydock score report <Target>            — publish the build evidence to\n"
             "                                            targets/<Target>/drydock_receipt/index.html, sealed\n"
             "drydock score drydock                    — adversarial self-assessment of Drydock; writes\n"
             "                                            ranked feature files to docs/drydock_planning/\n"
@@ -3909,19 +3880,6 @@ def _dispatch_build(args: argparse.Namespace) -> int:
             from drydock.config import record_activity
 
             record_activity("build status", tokens[1], tokens[1])
-        return rc
-    elif first == "score":
-        if len(tokens) != 2:
-            raise UsageError("Usage: drydock build score <Target>")
-        score_args = argparse.Namespace(
-            Target=tokens[1],
-            model=getattr(args, "model", None),
-            llm_provider=getattr(args, "llm_provider", None),
-        )
-        rc = cmd_build_score(score_args)
-        from drydock.config import record_activity
-
-        record_activity("build score", tokens[1], tokens[1])
         return rc
     else:
         build_args = _parse_build_args(tokens)
@@ -4896,9 +4854,9 @@ def _log_target(args: argparse.Namespace) -> str:
 # Commands that always reach a model.
 _LLM_COMMANDS = frozenset({"analyze", "plan", "refit", "survey", "import", "uat"})
 
-# Commands whose sub-verb decides. ``build status`` reports state, ``build`` and ``build score``
-# call a model; ``score ac`` verifies acceptance deterministically, ``score release`` judges with
-# a model; ``document assemble`` renders what is already written, ``document generate`` writes it.
+# Commands whose sub-verb decides. ``build status`` reports state, ``build`` calls a model;
+# ``score ac`` verifies acceptance deterministically, ``score release`` judges with a model;
+# ``document assemble`` renders what is already written, ``document generate`` writes it.
 _LLM_SUB_COMMANDS = {"rigging": "compact", "prompt": "review", "run": "quarterdeck"}
 _DETERMINISTIC_OPERANDS = {"build": {"status"}, "document": {"assemble"}}
 _LLM_OPERANDS = {"score": {"release", "drydock"}}

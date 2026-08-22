@@ -2456,33 +2456,6 @@ class TestImport:
         assert "<Source>" in combined
 
 
-class TestBuildScore:
-    def test_reports_aggregate_gate(self, tmp_target_root, isolated_config, monkeypatch):
-        from types import SimpleNamespace
-
-        target = tmp_target_root / "ExampleTarget"
-        target.mkdir()
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
-        monkeypatch.setattr(
-            "drydock.build_score.score_target",
-            lambda *args, **kwargs: SimpleNamespace(
-                complete=False,
-                scorecard_path=target / "SCORECARD.md",
-                evidence_path=target / "evidence" / "build-score.json",
-                blockers=("Required Sea Trial st-one is FAIL",),
-                attestations=(),
-                exit_code=lambda: 1,
-            ),
-        )
-
-        rc, out, err = run_cli("build", "score", "ExampleTarget")
-
-        assert rc == 1, err
-        assert "Completion gate: INCOMPLETE" in out
-        assert "Required Sea Trial st-one is FAIL" in out
-        assert "ATTESTATION REQUIRED" not in out
-
-
 class TestRefit:
     """drydock refit CLI contract."""
 

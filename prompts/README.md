@@ -57,5 +57,5 @@ Rules:
 - **Computed job metadata** (date, target, blueprint path, system shape, analysis quality) is not a
   file and is not represented in `inputs:`.
 
-`build`, `build score`, and `refit` receive their `inputs:` rows when their prompts are authored;
+`build` and `refit` receive their `inputs:` rows when their prompts are authored;
 their matrix-derived rows are recorded in `notes/notes_quarterdeck.md` (§ Config Driven Agents).
