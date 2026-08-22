@@ -10,6 +10,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-22: `drydock uat <Project> --stage verify [--run <run-id>]` resumes an existing UAT
+  workspace at the Plan Verify → Repair → Verify gate. It reuses the existing Blueprint and
+  Manifest, skips Plan generation, and enters Build only after the gate passes.
 - 2026-08-22: `drydock plan verify` now reads the executable contract of a staged Python
   acceptance runner when a literal `subprocess` command invokes it. An option whose parsed value
   is proven to reach `re.compile` rejects an invalid literal pattern before build; `drydock plan

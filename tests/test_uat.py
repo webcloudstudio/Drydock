@@ -1104,6 +1104,39 @@ def test_resume_reenters_the_newest_run_at_the_named_stage(tmp_path: Path) -> No
     assert not [parts for parts in resumed_calls if parts[:1] == ("import",)]
 
 
+def test_resume_at_verify_reuses_the_plan_without_regenerating_it(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    run_id, _ = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([]),
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+    _seed_target_artifact(fixtures_root, run_id, "MANIFEST.md")
+
+    resumed_calls: list[tuple[str, ...]] = []
+    resumed_id, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner(resumed_calls),
+        start_stage="verify",
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert resumed_id == run_id
+    assert results[0].resumed_from == "verify"
+    assert ("plan", "verify", "ReadingList") in resumed_calls
+    assert ("plan", "ReadingList", "--override") not in resumed_calls
+    assert not [parts for parts in resumed_calls if parts[:1] in {("init",), ("analyze",)}]
+
+
 def test_resume_supersedes_the_replayed_steps_and_keeps_their_numbers(tmp_path: Path) -> None:
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
@@ -1758,7 +1791,8 @@ def test_every_recorded_label_maps_to_the_stage_that_produced_it() -> None:
     assert stage_for_label("02-import-sources") == "import"
     assert stage_for_label("03-analyze") == "analyze"
     assert stage_for_label("04-plan") == "plan"
-    assert stage_for_label("05-after-plan-build-status") == "plan"
+    assert stage_for_label("05-plan-verify") == "verify"
+    assert stage_for_label("06-after-plan-build-status") == "verify"
     # ``init`` is a prefix of ``initial-``; the build stage must win.
     assert stage_for_label("10-initial-ready") == "build"
     assert stage_for_label("12-after-initial-build-target-status") == "build"

@@ -43,7 +43,7 @@ _STREAM_CHUNK_BYTES = 4096
 #: tree, so a lifecycle that failed late can be re-entered at a named stage instead of paying
 #: for every earlier LLM pass again. This is a development affordance: a resumed run reuses
 #: whatever the prior attempt left on disk and is therefore not a clean-room measurement.
-STAGES = ("init", "import", "analyze", "plan", "build", "refit", "test", "score")
+STAGES = ("init", "import", "analyze", "plan", "verify", "build", "refit", "test", "score")
 
 
 def stage_index(name: str) -> int:
@@ -1143,11 +1143,11 @@ _EXACT_LABEL_STAGES: dict[str, str] = {
 }
 
 _PREFIX_LABEL_STAGES: tuple[tuple[str, str], ...] = (
-    ("after-plan-", "plan"),
-    # Verification and its repair belong to the plan they judge, so resuming at ``plan`` re-runs
-    # them with the plan rather than stranding a Target on an unrepaired Blueprint.
-    ("plan-verify", "plan"),
-    ("plan-repair", "plan"),
+    # Verification and its repair are independently resumable. They consume the generated
+    # Blueprint and must complete before Build can resume.
+    ("after-plan-", "verify"),
+    ("plan-verify", "verify"),
+    ("plan-repair", "verify"),
     ("initial-", "build"),
     ("after-initial-", "build"),
     ("import-update-", "refit"),
@@ -1253,6 +1253,7 @@ _STAGE_PREREQUISITES: dict[str, tuple[str, str]] = {
     "import": ("METADATA.md", "init"),
     "analyze": ("METADATA.md", "init"),
     "plan": ("ANALYSIS.md", "analyze"),
+    "verify": ("MANIFEST.md", "plan"),
     "build": ("MANIFEST.md", "plan"),
     "refit": ("MANIFEST.md", "plan"),
     "test": ("MANIFEST.md", "plan"),
@@ -1591,6 +1592,7 @@ def run_fixture(
             execute(("analyze", fixture.target), "analyze")
         if start <= stage_index("plan"):
             execute(("plan", fixture.target, "--override"), "plan")
+        if start <= stage_index("verify"):
             repair_unrunnable_acceptance()
             capture_status("after-plan")
             # Checked here rather than at the shared halt below: a build over criteria that
