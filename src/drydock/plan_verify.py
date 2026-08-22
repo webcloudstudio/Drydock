@@ -31,6 +31,7 @@ from drydock.acceptance import (
     captures_without_reporting,
     parse_programmatic_acceptance,
     regex_defects,
+    staged_regex_defects,
     syntax_defect,
     unresolved_globals,
 )
@@ -149,6 +150,16 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                         path.name,
                         check.check_id,
                         "invalid-regex",
+                        "; ".join(reasons),
+                    )
+                )
+                continue
+            if reasons := staged_regex_defects(check.code, blueprint_dir):
+                defects.append(
+                    Defect(
+                        path.name,
+                        check.check_id,
+                        "invalid-staged-regex",
                         "; ".join(reasons),
                     )
                 )

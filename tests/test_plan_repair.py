@@ -72,6 +72,43 @@ assert selector
 === END AC lexer-conformance-slice ===
 """
 
+_BROKEN_STAGED_REGEX = """# FEATURE: Staged Runner Pattern
+
+## Programmatic Acceptance
+
+=== AC lexer-conformance ===
+Intent: Selects lexical conformance cases through the staged runner.
+
+import subprocess
+import sys
+
+selector = r"\\\\(|@format"
+result = subprocess.run([sys.executable, "sources/run_conformance.py", "--select", selector])
+assert result.returncode == 0
+=== END AC lexer-conformance ===
+"""
+
+_FIXED_STAGED_REGEX_BLOCK = """=== AC lexer-conformance ===
+Intent: Selects lexical conformance cases through the staged runner.
+
+import subprocess
+import sys
+
+selector = r"\\(|@format"
+result = subprocess.run([sys.executable, "sources/run_conformance.py", "--select", selector])
+assert result.returncode == 0
+=== END AC lexer-conformance ===
+"""
+
+_STAGED_REGEX_RUNNER = """import argparse
+import re
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--select")
+args = parser.parse_args()
+selector = re.compile(args.select) if args.select else None
+"""
+
 
 _WARNING_ONLY = """# FEATURE: Diagnostics
 
@@ -178,6 +215,19 @@ def test_an_uncompilable_regex_pattern_is_repaired_and_verifies(tmp_path):
     target = _target(tmp_path, FEATURE_Bad=_BROKEN_REGEX)
 
     result = repair("Demo", target, runner=_runner(_FIXED_REGEX_BLOCK))
+
+    assert result.ok
+    assert result.files_changed == ("FEATURE_Bad.md",)
+    assert verify("Demo", target).ok
+
+
+def test_a_staged_runner_regex_is_repaired_and_reverified(tmp_path):
+    target = _target(tmp_path, FEATURE_Bad=_BROKEN_STAGED_REGEX)
+    sources = target / "blueprint" / "sources"
+    sources.mkdir()
+    (sources / "run_conformance.py").write_text(_STAGED_REGEX_RUNNER, encoding="utf-8")
+
+    result = repair("Demo", target, runner=_runner(_FIXED_STAGED_REGEX_BLOCK))
 
     assert result.ok
     assert result.files_changed == ("FEATURE_Bad.md",)

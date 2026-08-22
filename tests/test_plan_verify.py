@@ -61,6 +61,35 @@ assert selector
 === END AC lexer-conformance-slice ===
 """
 
+_BROKEN_STAGED_REGEX = """# FEATURE: Staged Runner Pattern
+
+## Programmatic Acceptance
+
+=== AC lexer-conformance ===
+Intent: Selects lexical conformance cases through the staged runner.
+
+import subprocess
+import sys
+
+selector = r"\\\\(|@format"
+result = subprocess.run(
+    [sys.executable, "sources/run_conformance.py", "--select", selector],
+    capture_output=True,
+    text=True,
+)
+assert result.returncode == 0
+=== END AC lexer-conformance ===
+"""
+
+_STAGED_REGEX_RUNNER = """import argparse
+import re
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--select")
+args = parser.parse_args()
+selector = re.compile(args.select) if args.select else None
+"""
+
 _RETYPED = """# FEATURE: Advisory
 
 ## Programmatic Acceptance
@@ -132,6 +161,23 @@ def test_an_uncompilable_regex_pattern_is_a_defect(tmp_path):
     (defect,) = result.defects
     assert defect.check_id == "lexer-conformance-slice"
     assert defect.kind == "invalid-regex"
+    assert "does not compile" in defect.detail
+
+
+def test_an_uncompilable_regex_passed_to_a_staged_runner_is_a_defect(tmp_path):
+    """A runner contract proves this value fails before it can test the product."""
+    target = _target(tmp_path, FEATURE_Bad=_BROKEN_STAGED_REGEX)
+    sources = target / "blueprint" / "sources"
+    sources.mkdir()
+    (sources / "run_conformance.py").write_text(_STAGED_REGEX_RUNNER, encoding="utf-8")
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.check_id == "lexer-conformance"
+    assert defect.kind == "invalid-staged-regex"
+    assert "sources/run_conformance.py --select" in defect.detail
     assert "does not compile" in defect.detail
 
 

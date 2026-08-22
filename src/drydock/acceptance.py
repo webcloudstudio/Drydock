@@ -1350,6 +1350,187 @@ def regex_defects(code: str) -> tuple[str, ...]:
     return tuple(defects)
 
 
+def staged_regex_defects(code: str, source_root: Path) -> tuple[str, ...]:
+    """Return invalid regex arguments passed to a statically-known staged Python runner.
+
+    A staged runner option is checked only when that runner's AST proves the option reaches
+    ``re.compile``. Literal command vectors are facts; dynamic commands remain runtime evidence.
+    """
+    try:
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return ()
+
+    strings = _module_string_literals(tree)
+    vectors = _module_string_vectors(tree, strings)
+    defects: list[str] = []
+    for node in ast.walk(tree):
+        if not _is_subprocess_call(node):
+            continue
+        command = _call_command_vector(node, strings, vectors)
+        if command is None:
+            continue
+        source = _staged_python_argument(command, source_root)
+        if source is None:
+            continue
+        regex_options = _runner_regex_options(source)
+        for option, pattern in _option_values(command).items():
+            if option not in regex_options:
+                continue
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                defects.append(
+                    f"line {node.lineno}: {source.relative_to(source_root.resolve()).as_posix()} "
+                    f"{option} pattern {pattern!r} does not compile: {exc}"
+                )
+    return tuple(defects)
+
+
+def _module_string_literals(tree: ast.Module) -> dict[str, str]:
+    return {
+        node.targets[0].id: node.value.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    }
+
+
+def _literal_string(value: ast.expr, strings: dict[str, str]) -> str | None:
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return value.value
+    if isinstance(value, ast.Name):
+        return strings.get(value.id)
+    return None
+
+
+def _string_vector(value: ast.expr, strings: dict[str, str]) -> tuple[str | None, ...] | None:
+    if not isinstance(value, (ast.List, ast.Tuple)):
+        return None
+    return tuple(_literal_string(item, strings) for item in value.elts)
+
+
+def _module_string_vectors(
+    tree: ast.Module, strings: dict[str, str]
+) -> dict[str, tuple[str | None, ...]]:
+    vectors: dict[str, tuple[str | None, ...]] = {}
+    for node in tree.body:
+        if not (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ):
+            continue
+        if (vector := _string_vector(node.value, strings)) is not None:
+            vectors[node.targets[0].id] = vector
+    return vectors
+
+
+def _is_subprocess_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "subprocess"
+        and node.func.attr in {"run", "call", "check_call", "check_output", "Popen"}
+    )
+
+
+def _call_command_vector(
+    node: ast.Call,
+    strings: dict[str, str],
+    vectors: dict[str, tuple[str | None, ...]],
+) -> tuple[str | None, ...] | None:
+    value = (
+        node.args[0]
+        if node.args
+        else next((keyword.value for keyword in node.keywords if keyword.arg == "args"), None)
+    )
+    if isinstance(value, ast.Name):
+        return vectors.get(value.id)
+    return _string_vector(value, strings) if value is not None else None
+
+
+def _staged_python_argument(command: tuple[str | None, ...], source_root: Path) -> Path | None:
+    root = source_root.resolve()
+    for value in command:
+        if value is None or not value.endswith(".py"):
+            continue
+        candidate = (root / value).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _option_values(command: tuple[str | None, ...]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for index, value in enumerate(command):
+        if value is None or not value.startswith("-"):
+            continue
+        if "=" in value:
+            option, pattern = value.split("=", 1)
+            values[option] = pattern
+        elif index + 1 < len(command) and (pattern := command[index + 1]) is not None:
+            values[value] = pattern
+    return values
+
+
+def _runner_regex_options(source: Path) -> frozenset[str]:
+    """Return runner options whose parsed values are proven inputs to ``re.compile``."""
+    try:
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError, ValueError):
+        return frozenset()
+    regex_destinations = {
+        node.args[0].attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "re"
+        and node.func.attr == "compile"
+        and node.args
+        and isinstance(node.args[0], ast.Attribute)
+        and isinstance(node.args[0].value, ast.Name)
+    }
+    options: set[str] = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "add_argument"
+        ):
+            continue
+        names = [
+            arg.value
+            for arg in node.args
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+        ]
+        destination = next(
+            (
+                keyword.value.value
+                for keyword in node.keywords
+                if keyword.arg == "dest"
+                and isinstance(keyword.value, ast.Constant)
+                and isinstance(keyword.value.value, str)
+            ),
+            next(
+                (name.lstrip("-").replace("-", "_") for name in names if name.startswith("--")), ""
+            ),
+        )
+        if destination in regex_destinations:
+            options.update(name for name in names if name.startswith("-"))
+    return frozenset(options)
+
+
 def escape_defects(code: str) -> tuple[str, ...]:
     """Return the compiler's escape-sequence advisories for one criterion.
 

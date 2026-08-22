@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, and make each criterion executable without changing what it asserts. Also improves criteria named under "Criteria to improve", whose defect is a measurement gap rather than a reason they cannot run.
-version: 20260821 V3
+version: 20260822 V4
 intent: Act as the Planning Crew repairing one Blueprint specification's Programmatic Acceptance criteria so each one can execute, and improving any criterion separately named under "Criteria to improve". Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: SPEC_FILE, DEFECTS, CRITERIA_TO_IMPROVE
@@ -12,8 +12,8 @@ output: One delimited AC block per criterion named under either "Criteria that c
 
 You are given one typed Blueprint specification and a list of its acceptance criteria that
 **cannot execute as written**, under the heading "Criteria that cannot run". Each one raises
-before it tests anything: a missing import, an undefined name, a syntax error, a regex pattern
-that does not compile. A criterion in this state is not a failing test. It is a test that never
+before it tests anything: a missing import, an undefined name, a syntax error, or a regex pattern
+that does not compile in the criterion or in a staged runner it invokes. A criterion in this state is not a failing test. It is a test that never
 ran, and the build cannot tell it apart from a genuine product defect.
 
 You may also be given criteria under a second heading, "Criteria to improve". These already run
@@ -44,6 +44,8 @@ Permitted:
   that escapes the backslash instead of the metacharacter (`r'\\['` matches one literal
   backslash then opens an unterminated class; `r'\['` matches a literal `[`, which is normally
   the intended fix);
+- correct a literal regex supplied to a staged runner option whose contract compiles that option
+  as a regex, preserving the intended selected forms;
 - reorder imports to the top of the criterion;
 - add a `print(...)` of a suite's pass/fail counts immediately before the assertion that reads
   them, when the criterion drives a suite and prints no tally. Print only counts the criterion

@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-22: `drydock plan verify` now reads the executable contract of a staged Python
+  acceptance runner when a literal `subprocess` command invokes it. An option whose parsed value
+  is proven to reach `re.compile` rejects an invalid literal pattern before build; `drydock plan
+  repair` receives that defect and retains a repair only after the same contract re-verifies.
+  This prevents a malformed runner selector from consuming build-repair calls or being reported
+  as a product acceptance failure.
 - 2026-08-20: The main specification and Quick Start now state the complete Target lifecycle:
   initialize, import, analyze, QuarterDeck review, plan verification and repair, iterative build,
   completion check, and scoring. Their compact Bash examples identify the review points and state

@@ -42,6 +42,7 @@ from typing import Protocol
 from drydock.acceptance import (
     parse_programmatic_acceptance,
     regex_defects,
+    staged_regex_defects,
     syntax_defect,
     unresolved_globals,
 )
@@ -131,11 +132,13 @@ class RepairResult:
         return 0 if self.ok else 1
 
 
-def _still_broken(code: str) -> str | None:
+def _still_broken(code: str, *, source_root: Path) -> str | None:
     """Return why a criterion still cannot run, or ``None``. The same test verification uses."""
     if (reason := syntax_defect(code)) is not None:
         return reason
     if reasons := regex_defects(code):
+        return "; ".join(reasons)
+    if reasons := staged_regex_defects(code, source_root):
         return "; ".join(reasons)
     if names := unresolved_globals(code):
         return "reads undefined global name(s): " + ", ".join(f"`{n}`" for n in sorted(names))
@@ -414,7 +417,7 @@ def repair(
 
         changed.append(filename)
         for check_id in applied:
-            reason = _still_broken(checks[check_id].code)
+            reason = _still_broken(checks[check_id].code, source_root=blueprint_dir)
             item = RepairItem(
                 filename,
                 check_id,
