@@ -317,6 +317,26 @@ def _scoped_checks(plan: BuildPlan, blueprint_dir: Path, block, *, defects: list
     return tuple(checks)
 
 
+def preview_checks(
+    target_dir: Path, *, step_id: str | None = None
+) -> tuple[tuple[ProgrammaticAcceptance, ...], dict[str, tuple[str, str]]]:
+    """The checks ``verify_acs`` will run, and their owners, without running any of them.
+
+    A live progress display needs the full set up front to size its columns; this is that lookup,
+    kept separate from ``verify_acs`` so a caller can render before execution starts rather than
+    only after the whole run finishes. It re-parses the plan ``verify_acs`` will parse again, so
+    a scope error surfaces from ``verify_acs`` itself rather than being shadowed here.
+    """
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    blueprint_dir = target_dir / "blueprint"
+    if step_id is None:
+        checks = all_programmatic_acceptance(plan, blueprint_dir, defects=[])
+    else:
+        block = _resolve_scope_block(plan, step_id)
+        checks = _scoped_checks(plan, blueprint_dir, block, defects=[])
+    return checks, blueprint_owners(plan)
+
+
 def blueprint_owners(plan: BuildPlan) -> dict[str, tuple[str, str]]:
     """Map each implemented Blueprint file name to its ``(story_id, feature_id)`` owner.
 
@@ -364,7 +384,7 @@ def verify_acs(
     target_dir: Path,
     *,
     step_id: str | None = None,
-    on_item: Callable[[ProgrammaticAcceptance, int, int], None] | None = None,
+    on_item: Callable[[ProgrammaticAcceptance, int, int, bool], None] | None = None,
     full: bool = False,
 ) -> AcReport:
     """Verify Blueprint acceptance assertions deterministically.

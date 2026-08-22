@@ -1551,9 +1551,14 @@ def run_programmatic_acceptance(
     target_dir: Path,
     blueprint_dir: Path,
     strict_target: bool = False,
-    on_item: Callable[[ProgrammaticAcceptance, int, int], None] | None = None,
+    on_item: Callable[[ProgrammaticAcceptance, int, int, bool], None] | None = None,
 ) -> tuple[AcceptanceRunResult, ...]:
-    """Execute Python acceptance snippets from the build directory."""
+    """Execute Python acceptance snippets from the build directory.
+
+    ``on_item`` fires once per check, after it finishes, with whether it passed — a check
+    announced before it runs cannot yet be marked, and a live progress line that cannot say
+    pass or fail is not worth the line.
+    """
     results: list[AcceptanceRunResult] = []
     environment = resolve_target_environment(build_dir)
     if environment.interpreter is None:
@@ -1596,8 +1601,6 @@ def run_programmatic_acceptance(
     limit_mb = get_sandbox_mem_limit_mb()
     preexec = child_limits(limit_mb)
     for index, check in enumerate(checks, start=1):
-        if on_item is not None:
-            on_item(check, index, len(checks))
         # Run from a real file, never ``python -c``: a ``-c`` traceback reports
         # ``File "<string>", line N`` with no source text, so a failing assertion names
         # neither the assertion nor the expectation it asserted. Written to a file, the
@@ -1645,6 +1648,8 @@ def run_programmatic_acceptance(
                         binding=check.binding,
                     )
                 )
+                if on_item is not None:
+                    on_item(check, index, len(checks), False)
                 continue
             return_code = process.returncode
             scrubbed = _scrub_script_path(stderr, script)
@@ -1680,6 +1685,8 @@ def run_programmatic_acceptance(
                 binding=check.binding,
             )
         )
+        if on_item is not None:
+            on_item(check, index, len(checks), return_code == 0)
     return tuple(results)
 
 
@@ -1690,7 +1697,7 @@ def observe_programmatic_acceptance(
     target_dir: Path,
     blueprint_dir: Path,
     strict_target: bool = False,
-    on_item: Callable[[ProgrammaticAcceptance, int, int], None] | None = None,
+    on_item: Callable[[ProgrammaticAcceptance, int, int, bool], None] | None = None,
 ) -> tuple[AcceptanceObservation, ...]:
     """Execute checks and annotate whether a passing proof is integrity-valid or vacuous."""
     if not checks:

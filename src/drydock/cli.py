@@ -2482,15 +2482,14 @@ def _ac_mark(status: str) -> str:
 
 
 def cmd_score_ac(target: str, step: str | None = None, full: bool = False) -> int:
-    from drydock.build_plan import parse_build_plan
     from drydock.config import require_target_dir
     from drydock.project_status import record_status
     from drydock.score import (
         PREPASSED,
         UNVERIFIED,
         ac_failure_summary_lines,
-        blueprint_owners,
         emit_failure,
+        preview_checks,
         proof_coverage_lines,
         verify_acs,
     )
@@ -2498,17 +2497,32 @@ def cmd_score_ac(target: str, step: str | None = None, full: bool = False) -> in
     target_dir = require_target_dir(target)
 
     # Best-effort: the progress line is cosmetic, so a plan that fails to parse here still lets
-    # verify_acs raise its own error with its own message, rather than this shadowing it.
+    # verify_acs raise its own error with its own message, rather than this shadowing it. The
+    # full check list is fetched up front only to size the columns before any of it has run.
     try:
-        owners = blueprint_owners(parse_build_plan(target_dir / "MANIFEST.md"))
+        preview, owners = preview_checks(target_dir, step_id=step)
     except Exception:
-        owners = {}
+        preview, owners = (), {}
 
-    def progress(check, index: int, total: int) -> None:
-        story, feature = owners.get(check.source, ("", ""))
-        owner = "/".join(part for part in (feature, story) if part)
-        location = "  ".join(part for part in (owner, check.source) if part)
-        print(f"Running AC {index}/{total}: {check.check_id}  {location}".rstrip(), flush=True)
+    def owner_of(source: str) -> str:
+        story, feature = owners.get(source, ("", ""))
+        return "/".join(part for part in (feature, story) if part)
+
+    id_width = max((len(check.check_id) for check in preview), default=0)
+    owner_width = max((len(owner_of(check.source)) for check in preview), default=0)
+
+    # Marked with a pass/fail glyph, not announced before it runs: a check cannot be marked
+    # until it has a verdict, and an unmarked "running" line is exactly the noise this replaced.
+    # The glyph is unicode ✓/✗ unless the console is downgraded via `--ascii`/`--glyphs ascii`,
+    # the same switch every other marked line in this command already honors.
+    def progress(check, index: int, total: int, passed: bool) -> None:
+        mark = _ac_mark("PASS" if passed else "FAIL")
+        owner = owner_of(check.source).ljust(owner_width)
+        print(
+            f"  {mark}  [{index}/{total}]  {check.check_id.ljust(id_width)}  {owner}  "
+            f"{check.source}".rstrip(),
+            flush=True,
+        )
 
     report = verify_acs(target, target_dir, step_id=step, on_item=progress, full=full)
     passed = sum(1 for v in report.verdicts if v.status == "PASS")

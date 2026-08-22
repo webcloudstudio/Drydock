@@ -237,12 +237,15 @@ def test_score_ac_lists_every_verdict_with_owner(tmp_path, capsys, monkeypatch):
 
     out = capsys.readouterr().out
     assert exit_code == 1
-    assert "Running AC 1/2: alpha-proof" in out
-    assert "Running AC 2/2: beta-proof" in out
-    # The progress line names the block and blueprint the check belongs to, not just its id, so a
-    # long run reads as which feature/story is executing rather than an opaque list of check ids.
-    assert "feat-alpha/alpha" in out.splitlines()[0]
-    assert "feat-beta/beta" in out.splitlines()[1]
+    # The live progress line is marked pass/fail as each check finishes, not announced before it
+    # runs, and names the block and blueprint the check belongs to, columnated with the id.
+    lines = out.splitlines()
+    progress_lines = [line for line in lines if "[1/2]" in line or "[2/2]" in line]
+    assert len(progress_lines) == 2
+    assert "✓ PASS" in progress_lines[0] and "alpha-proof" in progress_lines[0]
+    assert "feat-alpha/alpha" in progress_lines[0]
+    assert "✗ FAIL" in progress_lines[1] and "beta-proof" in progress_lines[1]
+    assert "feat-beta/beta" in progress_lines[1]
     # Every AC is listed, passing ones as a single line with no detail.
     assert "✓ PASS" in out and "alpha-proof" in out and "feat-alpha/alpha" in out
     assert "✗ FAIL" in out and "beta-proof" in out and "feat-beta/beta" in out
