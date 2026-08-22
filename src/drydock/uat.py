@@ -1394,7 +1394,12 @@ def run_fixture(
 
         One attempt, then the run halts. A second pass asks the same model the same question with
         the same context, and building on a Blueprint whose criteria cannot run measures nothing.
+
+        Cleared on entry, mirroring ``build_until_no_work_remains``: a resumed run re-plans and
+        re-verifies from scratch, so a stop this same stage declared on an earlier attempt must
+        not survive to halt a plan that now verifies cleanly.
         """
+        clear_stop(workspace / "targets" / fixture.target)
         verified = execute(("plan", "verify", fixture.target), "plan-verify", required=False)
         if verified.returncode == 0:
             return

@@ -1137,6 +1137,53 @@ def test_resume_at_verify_reuses_the_plan_without_regenerating_it(tmp_path: Path
     assert not [parts for parts in resumed_calls if parts[:1] in {("init",), ("analyze",)}]
 
 
+def test_resumed_plan_clears_a_stale_plan_repair_stop_when_verify_now_passes(
+    tmp_path: Path,
+) -> None:
+    """A stop declared by an earlier plan-repair attempt must not survive a resumed plan.
+
+    ``build_until_no_work_remains`` clears its own stage's stop on every entry before
+    re-declaring it if the retry also fails. ``repair_unrunnable_acceptance`` must do the same:
+    otherwise a resumed plan whose fresh verify passes cleanly still halts the run on a
+    ``STOP_NOW.md`` left behind by the attempt that made the resume necessary.
+    """
+    from drydock.stop_condition import read_stop
+
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    run_id, failed = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([], fail=("plan", "verify")),
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+    assert failed[0].status == "failed"
+    assert "stopped at plan-repair" in failed[0].error
+    target_dir = (
+        fixtures_root / "ReadingList" / "runs" / run_id / "workspace" / "targets" / "ReadingList"
+    )
+    assert read_stop(target_dir) is not None
+    _seed_target_artifact(fixtures_root, run_id, "ANALYSIS.md")
+
+    resumed_id, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([]),
+        start_stage="plan",
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert resumed_id == run_id
+    assert results[0].status == "passed"
+    assert read_stop(target_dir) is None
+
+
 def test_resume_supersedes_the_replayed_steps_and_keeps_their_numbers(tmp_path: Path) -> None:
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
