@@ -4,15 +4,15 @@ Paired with ``drydock plan verify``::
 
     drydock plan verify <Target> || drydock plan repair <Target>
 
-Verification is free, so it runs every time; repair costs a model call, so the ``||`` idiom pays
-for it only when verify's exit status says the plan is not fit to build — i.e. only when there is
-a defect. Verify's warnings (advisories) never fail its exit status by design, so they never
-trigger that idiom on their own.
+Verification is free, so it runs every time; repair costs one model call, so the ``||`` idiom
+pays for it only when verify's exit status says the plan is not fit to build — i.e. only when
+there is a defect. Verify's warnings (advisories) are never sent to repair and never trigger a
+call on their own; repairing an advisory is out of this command's scope.
 
-Called directly, ``plan repair`` also makes one call per file whose only findings are advisories —
-otherwise an advisory-only file, one that never fails ``plan verify``, could never be repaired at
-all. What stays true from the defect case: one attempt per file, surgical splice, re-verify before
-keeping the write.
+One call for the whole pass, not one call per file. Every defective criterion across every
+Blueprint file is sent in a single request, each as its own minimal fenced block — nothing else
+about its file, and nothing about any other file. What stays true: one attempt per criterion,
+surgical splice, re-verify before keeping a write.
 
 Scope. This repairs *mechanics*: a criterion that raises before it asserts anything — a missing
 import, an undefined name, a syntax error. It never touches what a criterion asserts. A criterion
@@ -24,10 +24,14 @@ One attempt. If a criterion is still broken after one call, a second call is bei
 question by the same model with the same context, and the honest answer is to stop and say which
 criteria remain unrunnable. The plan stays where it is; nothing is half-written.
 
-Writes are deterministic and surgical. The model emits whole ``=== AC id ===`` blocks; this module
-splices each one over the block it replaces, by exact delimiter match, and re-verifies the file
-before keeping it. A file that fails to re-verify is rolled back to its original bytes, so a
-repair can never leave a Blueprint worse than it found it.
+Writes are deterministic and surgical. The model emits one composite-keyed
+``=== AC <file> :: <id> === ... === END AC <file> :: <id> ===`` block per criterion in its single
+combined response; this module reassembles each into its file's own plain delimiter form and
+splices it over the block it replaces, by exact span. Each file is re-verified once after its
+full splice; a criterion still broken or missing is reverted to its own original block, leaving
+every sibling criterion that repaired correctly untouched. A file is rolled back whole only if the
+full splice leaves the file itself unparseable — that failure has no addressable per-criterion
+recovery.
 """
 
 from __future__ import annotations
@@ -52,7 +56,9 @@ from drydock.llm import run_prompt
 from drydock.plan_verify import Defect, verify
 from drydock.prompt_assembly import (
     PromptAssembly,
+    PromptPart,
     contextual_markdown_parts,
+    fenced_body,
     lines_part,
     part,
     section_heading_part,
@@ -64,7 +70,7 @@ PROMPT_NAME = "plan_repair"
 
 #: The model reports this when a criterion cannot be made runnable without changing what it
 #: asserts. Recorded as unrepaired rather than treated as a failure: it is a correct answer.
-_IMPOSSIBLE_RE = re.compile(r"^\s*REPAIR_IMPOSSIBLE:\s*(?P<id>\S+)\s*[-—:]?\s*(?P<why>.*)$", re.M)
+_IMPOSSIBLE_RE = re.compile(r"^\s*REPAIR_IMPOSSIBLE:\s*(?P<key>.+?)\s+—\s+(?P<why>.*)$", re.M)
 
 _BLOCK_RE = re.compile(
     r"^=== AC (?P<id>[^=\n]+?) ===[ \t]*$\n(?P<body>.*?)^=== END AC (?P=id) ===[ \t]*$\n?",
@@ -77,10 +83,6 @@ _REPAIRED_SPEC_RE = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 _AC_DELIMITER_RE = re.compile(r"^=== (?:END )?AC [^\n]*$")
-
-#: Pulls the criterion id back out of a ``VerifyResult.warning`` string, whose format is fixed by
-#: ``plan_verify.verify`` as ``f"{filename} [{check_id}]: {detail}"``.
-_WARNING_ID_RE = re.compile(r"^\S+ \[(?P<id>[^\]]+)\]: ")
 
 
 class CompletedRun(Protocol):
@@ -161,6 +163,39 @@ def _blocks(text: str) -> dict[str, tuple[int, int, str]]:
     }
 
 
+def _block_bodies(text: str) -> dict[str, str]:
+    """Map each criterion id in a file to its own AC-block body (``Intent:`` plus code)."""
+    return {match.group("id").strip(): match.group("body") for match in _BLOCK_RE.finditer(text)}
+
+
+def _split_composite(key: str) -> tuple[str, str]:
+    """Split a response's ``<file> :: <check_id>`` id back into its two parts."""
+    file, _, check_id = key.strip().partition(" :: ")
+    return file.strip(), check_id.strip()
+
+
+def _response_blocks(text: str) -> dict[tuple[str, str], str]:
+    """Map ``(file, check_id)`` to the repaired body from the model's one combined response.
+
+    Keyed by the composite id the model echoes back, since check_ids are only unique within a
+    file once a single response can carry blocks from many files.
+    """
+    result: dict[tuple[str, str], str] = {}
+    for match in _BLOCK_RE.finditer(text):
+        key = _split_composite(match.group("id"))
+        result[key] = match.group("body")
+    return result
+
+
+def _plain_block(check_id: str, body: str) -> str:
+    """Reassemble a response body into the on-disk file's own plain delimiter shape.
+
+    The model's response is keyed by a composite ``<file> :: <check_id>`` id; that composite form
+    must never be written to a Blueprint file.
+    """
+    return f"=== AC {check_id} ===\n{body.rstrip(chr(10))}\n=== END AC {check_id} ===\n"
+
+
 def _container_repair_text(text: str) -> str | None:
     """Return a wrapped full-spec repair, or ``None`` when the response is not that protocol."""
     match = _REPAIRED_SPEC_RE.search(text)
@@ -180,46 +215,65 @@ def _only_ac_delimiters_changed(original: str, repaired: str) -> bool:
     return non_delimiters(original) == non_delimiters(repaired)
 
 
-def _assemble(
-    body: str,
-    *,
-    rel_source: str,
-    source_text: str,
-    defects: list[Defect],
-    improve: tuple[Defect, ...] = (),
-    advisories: tuple[str, ...] = (),
-    container_defect: Defect | None = None,
+def _defect_part(defect: Defect, body: str) -> PromptPart:
+    """One minimal, self-contained block for one defective criterion.
+
+    Carries only that criterion's own AC-block body (``Intent:`` plus code) and the defect that
+    blocks it — never its file's other criteria, and never any other file's content. The code is
+    fenced, not XML-escaped: real criteria routinely contain ``<``, ``>``, ``&``, and backslashes
+    (regex literals, escaped quotes), and fencing preserves them byte for byte.
+    """
+    text = (
+        f'<pblock file="{defect.filename}" check_id="{defect.check_id}" kind="{defect.kind}">\n'
+        f"Error: {defect.detail}\n\n"
+        f"{fenced_body(body, 'python')}\n"
+        "</pblock>\n\n"
+    )
+    return part(f"{defect.filename} :: {defect.check_id}", text, kind="defect")
+
+
+def _assemble(body: str, *, jobs: list[tuple[Defect, str]]) -> PromptAssembly:
+    """Build one repair prompt for every defective criterion across every file, in one call.
+
+    Deterministic, so it is unit-testable without a process. Each job carries only its own
+    criterion's AC-block body — never the rest of its file, and never another file's content.
+    """
+    parts: list[PromptPart] = [
+        system_preamble_part(),
+        section_heading_part("# Input Context"),
+        lines_part(
+            "Repair job",
+            [
+                "## Repair job",
+                "",
+                f"- DATE: {date.today().isoformat()}",
+                f"- CRITERIA: {len(jobs)}",
+                "",
+            ],
+            kind="job",
+        ),
+    ]
+    parts.extend(_defect_part(defect, block_body) for defect, block_body in jobs)
+    parts.append(section_heading_part("# Agent Task"))
+    parts.append(part("Prompt body", body + "\n\n", kind="prompt-body"))
+    return PromptAssembly(parts=tuple(parts))
+
+
+def _assemble_container(
+    body: str, *, rel_source: str, source_text: str, container_defect: Defect
 ) -> PromptAssembly:
-    """Build the repair prompt. Deterministic, so it is unit-testable without a process."""
-    lines = ["## Criteria that cannot run", ""]
-    for defect in defects:
-        lines.append(f"- `{defect.check_id}` — {defect.detail}")
-    lines.append("")
-    if improve:
-        # These criteria already run and judge correctly — plan verify would not gate the plan
-        # over them — but this call is already paying for the file, so fix what the advisory
-        # names. Never touch anything this criterion asserts, same as a defect repair.
-        lines += [
-            "## Criteria to improve (no defect — repair the issue named, re-emit the block)",
-            "",
-        ]
-        for defect in improve:
-            lines.append(f"- `{defect.check_id}` — {defect.detail}")
-        lines.append("")
-    if advisories:
-        # Verification's non-fatal findings for this file that are riding along with a defect
-        # repair already happening on the same criterion — informational, not a separate ask.
-        lines += ["## Advisories for this file (act only while repairing it)", ""]
-        lines += [f"- {advisory}" for advisory in advisories]
-        lines.append("")
-    if container_defect is not None:
-        lines += [
-            "## Bad acceptance container",
-            "",
-            f"- {container_defect.detail}",
-            "- Repair only `=== AC ... ===` and `=== END AC ... ===` delimiter lines.",
-            "",
-        ]
+    """Build the whole-file container-repair prompt.
+
+    A malformed container has no addressable per-criterion span, so this job stays scoped to one
+    file's full source — independent of the batched, minimal-context defect-repair call above.
+    """
+    lines = [
+        "## Bad acceptance container",
+        "",
+        f"- {container_defect.detail}",
+        "- Repair only `=== AC ... ===` and `=== END AC ... ===` delimiter lines.",
+        "",
+    ]
     return PromptAssembly(
         parts=(
             system_preamble_part(),
@@ -235,7 +289,7 @@ def _assemble(
                 ],
                 kind="job",
             ),
-            lines_part("Defects", lines, kind="section"),
+            lines_part("Container defect", lines, kind="section"),
             *contextual_markdown_parts(
                 rel_source,
                 source_text,
@@ -246,6 +300,132 @@ def _assemble(
             part("Prompt body", body + "\n\n", kind="prompt-body"),
         )
     )
+
+
+def _splice_and_revert(
+    filename: str,
+    path: Path,
+    original: str,
+    defects: list[Defect],
+    emitted: dict[tuple[str, str], str],
+    impossible: dict[tuple[str, str], str],
+    *,
+    source_root: Path,
+) -> tuple[list[RepairItem], bool]:
+    """Splice every applicable criterion for one file out of the shared batch response.
+
+    Reverts per criterion, not per file: a criterion still broken or missing after re-parse is
+    reverted to its own original block; every sibling criterion that repaired correctly in the
+    same call stays spliced in. The file is rolled back whole only when the full splice leaves
+    the file itself unparseable — there is no addressable sub-file recovery from that.
+    """
+    before = _blocks(original)
+    text = original
+    applied: list[str] = []
+    items: list[RepairItem] = []
+
+    # Splice from the end so earlier spans keep their offsets.
+    for defect in sorted(
+        defects, key=lambda d: before.get(d.check_id, (0, 0, ""))[0], reverse=True
+    ):
+        span = before.get(defect.check_id)
+        if span is None:
+            items.append(
+                RepairItem(
+                    filename, defect.check_id, "unrepaired", "", "criterion not found in file"
+                )
+            )
+            continue
+        start, end, old = span
+        key = (filename, defect.check_id)
+        if key in impossible:
+            items.append(
+                RepairItem(
+                    filename,
+                    defect.check_id,
+                    "impossible",
+                    old,
+                    impossible[key] or "cannot run without changing what it asserts",
+                )
+            )
+            continue
+        body = emitted.get(key)
+        if body is None:
+            items.append(
+                RepairItem(filename, defect.check_id, "not-emitted", old, "no block returned")
+            )
+            continue
+        text = text[:start] + _plain_block(defect.check_id, body) + text[end:]
+        applied.append(defect.check_id)
+
+    if not applied:
+        return items, False
+
+    path.write_text(text, encoding="utf-8", newline="\n")
+    try:
+        checks = {check.check_id: check for check in parse_programmatic_acceptance(path)}
+    except ValueError as exc:
+        path.write_text(original, encoding="utf-8", newline="\n")
+        for check_id in applied:
+            items.append(
+                RepairItem(
+                    filename,
+                    check_id,
+                    "unrepaired",
+                    before[check_id][2],
+                    f"repair left the file unparseable and was reverted: {exc}",
+                )
+            )
+        return items, False
+
+    broken: dict[str, str] = {}
+    for check_id in applied:
+        check = checks.get(check_id)
+        if check is None:
+            broken[check_id] = "repair dropped the criterion and was reverted"
+            continue
+        if (reason := _still_broken(check.code, source_root=source_root)) is not None:
+            broken[check_id] = reason
+
+    if broken:
+        # Revert only the criteria that are still bad, locating their spans in the *post-splice*
+        # text — the successfully repaired siblings shifted the offsets recorded in ``before``.
+        current = _blocks(text)
+        for check_id in sorted(
+            broken, key=lambda cid: current.get(cid, (0, 0, ""))[0], reverse=True
+        ):
+            span = current.get(check_id)
+            if span is not None:
+                start, end, _ = span
+                text = text[:start] + before[check_id][2] + text[end:]
+        path.write_text(text, encoding="utf-8", newline="\n")
+        try:
+            parse_programmatic_acceptance(path)
+        except ValueError as exc:
+            # Reverting byte-identical original spans should always restore parseability. If it
+            # somehow doesn't, there is nothing addressable left to try.
+            path.write_text(original, encoding="utf-8", newline="\n")
+            for check_id in applied:
+                items.append(
+                    RepairItem(
+                        filename,
+                        check_id,
+                        "unrepaired",
+                        before[check_id][2],
+                        f"repair left the file unparseable after reverts and was reverted: {exc}",
+                    )
+                )
+            return items, False
+
+    changed = bool(set(applied) - set(broken))
+    for check_id in applied:
+        if check_id in broken:
+            items.append(
+                RepairItem(filename, check_id, "unrepaired", before[check_id][2], broken[check_id])
+            )
+        else:
+            items.append(RepairItem(filename, check_id, "repaired", before[check_id][2], ""))
+    return items, changed
 
 
 def repair(
@@ -259,52 +439,30 @@ def repair(
     llm_provider: str | None = None,
     log_dir: Path | None = None,
 ) -> RepairResult:
-    """Repair every criterion ``plan verify`` reports as unrunnable. One call per file."""
+    """Repair every criterion ``plan verify`` reports as unrunnable, in one call."""
     run = runner if runner is not None else run_prompt
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
 
     found = verify(target, target_dir)
-    if not found.defects and not found.warnings:
+    if not found.defects:
         return RepairResult(target=target, nothing_to_repair=True)
 
     def emit(message: str) -> None:
         if on_text is not None:
             on_text(message + "\n")
 
-    by_file: dict[str, list[Defect]] = {}
     container_by_file: dict[str, Defect] = {}
-    items: list[RepairItem] = []
+    by_file: dict[str, list[Defect]] = {}
     for defect in found.defects:
         if not defect.check_id:
             container_by_file[defect.filename] = defect
             continue
         by_file.setdefault(defect.filename, []).append(defect)
 
-    # Every warning, parsed back to the file and criterion it names. A warning whose criterion
-    # already has a defect keeps riding along with that defect's call, unchanged; a warning whose
-    # criterion has no defect becomes its own repair target, so it is never simply unreachable.
-    parsed_warnings: list[tuple[str, str, str]] = []
-    for warning in found.warnings:
-        match = _WARNING_ID_RE.match(warning)
-        if match is None:
-            continue
-        parsed_warnings.append((
-            warning[: warning.index(" [")],
-            match.group("id"),
-            warning[match.end() :],
-        ))
-
-    improve_by_file: dict[str, list[Defect]] = {}
-    for filename, check_id, detail in parsed_warnings:
-        if any(d.check_id == check_id for d in by_file.get(filename, [])):
-            continue
-        improve_by_file.setdefault(filename, []).append(
-            Defect(filename, check_id, "advisory", detail)
-        )
-
     prompt = load_prompt(PROMPT_NAME)
+    items: list[RepairItem] = []
     changed: list[str] = []
     execution_ids: list[str] = []
 
@@ -341,11 +499,10 @@ def repair(
                 continue
 
         emit(f"repair: {filename} · acceptance container · 1 of 1 attempt")
-        assembly = _assemble(
+        assembly = _assemble_container(
             prompt.body,
             rel_source=filename,
             source_text=original,
-            defects=[],
             container_defect=defect,
         )
         result = run(
@@ -391,158 +548,75 @@ def repair(
             on_item(item)
         emit(f"  ✗  {item.rendered}")
 
-    for filename in sorted(set(by_file) | set(improve_by_file)):
-        defects = by_file.get(filename, [])
-        improve = improve_by_file.get(filename, [])
-        targets = defects + improve
-        path = blueprint_dir / filename
-        original = path.read_text(encoding="utf-8")
-        before = _blocks(original)
+    if by_file:
+        originals: dict[str, str] = {}
+        jobs: list[tuple[Defect, str]] = []
+        for filename in sorted(by_file):
+            original = (blueprint_dir / filename).read_text(encoding="utf-8")
+            originals[filename] = original
+            bodies = _block_bodies(original)
+            for defect in by_file[filename]:
+                jobs.append((defect, bodies.get(defect.check_id, "")))
+
         emit(
-            f"repair: {filename} · "
-            + ", ".join(defect.check_id for defect in targets)
-            + " · 1 of 1 attempt"
+            "repair: "
+            + ", ".join(sorted(by_file))
+            + f" · {len(jobs)} {'criterion' if len(jobs) == 1 else 'criteria'} · 1 of 1 attempt"
         )
-        assembly = _assemble(
-            prompt.body,
-            rel_source=filename,
-            source_text=original,
-            defects=defects,
-            improve=tuple(improve),
-            advisories=tuple(
-                f"{wfile} [{wid}]: {detail}"
-                for wfile, wid, detail in parsed_warnings
-                if wfile == filename and any(d.check_id == wid for d in defects)
-            ),
-        )
+        assembly = _assemble(prompt.body, jobs=jobs)
         result = run(
             assembly.rendered_text,
             blueprint_dir,
             llm=llm_provider,
             model=model or prompt.model,
             command_name="plan repair",
-            parameters={"target": target, "spec": filename},
+            parameters={"target": target, "files": len(by_file), "criteria": len(jobs)},
             log_dir=log_dir,
             target=target,
             prompt_assembly=assembly,
         )
         if result.execution_id:
             execution_ids.append(result.execution_id)
+
         if not result.ok or not result.text.strip():
-            for defect in targets:
-                items.append(
-                    RepairItem(
+            detail = "LLM execution failed" if not result.ok else "empty output"
+            for filename in sorted(by_file):
+                before = _blocks(originals[filename])
+                for defect in by_file[filename]:
+                    item = RepairItem(
                         filename,
                         defect.check_id,
                         "unrepaired",
                         before.get(defect.check_id, (0, 0, ""))[2],
-                        "LLM execution failed" if not result.ok else "empty output",
+                        detail,
                     )
+                    items.append(item)
+                    if on_item is not None:
+                        on_item(item)
+                    emit(f"  ✗  {item.rendered}")
+        else:
+            emitted = _response_blocks(result.text)
+            impossible = {
+                _split_composite(match.group("key")): match.group("why").strip()
+                for match in _IMPOSSIBLE_RE.finditer(result.text)
+            }
+            for filename in sorted(by_file):
+                file_items, file_changed = _splice_and_revert(
+                    filename,
+                    blueprint_dir / filename,
+                    originals[filename],
+                    by_file[filename],
+                    emitted,
+                    impossible,
+                    source_root=blueprint_dir,
                 )
-            continue
-
-        impossible = {
-            match.group("id").strip(): match.group("why").strip()
-            for match in _IMPOSSIBLE_RE.finditer(result.text)
-        }
-        emitted = _blocks(result.text)
-
-        # Splice from the end so earlier spans keep their offsets. Only the criteria that were
-        # named — as a defect or as something to improve — are eligible: a model that returns a
-        # bonus block for an untouched criterion does not get to rewrite it.
-        text = original
-        applied: list[str] = []
-        for defect in sorted(
-            targets, key=lambda d: before.get(d.check_id, (0, 0, ""))[0], reverse=True
-        ):
-            span = before.get(defect.check_id)
-            replacement = emitted.get(defect.check_id)
-            if span is None:
-                items.append(
-                    RepairItem(
-                        filename, defect.check_id, "unrepaired", "", "criterion not found in file"
-                    )
-                )
-                continue
-            start, end, old = span
-            if defect.check_id in impossible:
-                items.append(
-                    RepairItem(
-                        filename,
-                        defect.check_id,
-                        "impossible",
-                        old,
-                        impossible[defect.check_id]
-                        or "cannot run without changing what it asserts",
-                    )
-                )
-                continue
-            if replacement is None:
-                items.append(
-                    RepairItem(filename, defect.check_id, "not-emitted", old, "no block returned")
-                )
-                continue
-            # The emitted block may arrive without its final newline; the span it replaces always
-            # ends with one. Normalise so the delimiter can never be glued to the following line.
-            text = text[:start] + replacement[2].rstrip("\n") + "\n" + text[end:]
-            applied.append(defect.check_id)
-
-        if not applied:
-            continue
-
-        path.write_text(text, encoding="utf-8", newline="\n")
-        # Re-verify from disk, through the same parser the build uses. A splice that produced a
-        # file the parser cannot read is worse than the defect it fixed, so it is reverted whole.
-        try:
-            checks = {check.check_id: check for check in parse_programmatic_acceptance(path)}
-        except ValueError as exc:
-            path.write_text(original, encoding="utf-8", newline="\n")
-            for check_id in applied:
-                items.append(
-                    RepairItem(
-                        filename,
-                        check_id,
-                        "unrepaired",
-                        before[check_id][2],
-                        f"repair left the file unparseable and was reverted: {exc}",
-                    )
-                )
-            continue
-
-        reverted = False
-        for check_id in applied:
-            check = checks.get(check_id)
-            if check is None:
-                reverted = True
-                break
-        if reverted:
-            path.write_text(original, encoding="utf-8", newline="\n")
-            for check_id in applied:
-                items.append(
-                    RepairItem(
-                        filename,
-                        check_id,
-                        "unrepaired",
-                        before[check_id][2],
-                        "repair dropped the criterion and was reverted",
-                    )
-                )
-            continue
-
-        changed.append(filename)
-        for check_id in applied:
-            reason = _still_broken(checks[check_id].code, source_root=blueprint_dir)
-            item = RepairItem(
-                filename,
-                check_id,
-                "unrepaired" if reason else "repaired",
-                before[check_id][2],
-                reason or "",
-            )
-            items.append(item)
-            if on_item is not None:
-                on_item(item)
-            emit(f"  {'✗' if reason else '✓'}  {item.rendered}")
+                items.extend(file_items)
+                if file_changed:
+                    changed.append(filename)
+                for item in file_items:
+                    if on_item is not None:
+                        on_item(item)
+                    emit(f"  {'✓' if item.status == 'repaired' else '✗'}  {item.rendered}")
 
     return RepairResult(
         target=target,

@@ -34,16 +34,42 @@ assert json.loads("[1]") == [1]
 === END AC paths-recursive ===
 """
 
-_FIXED_BLOCK = """=== AC path-filter ===
+#: Both criteria defective — for tests that need two defects sharing one file.
+_BROKEN_TWO = """# FEATURE: Path Discovery
+
+## Programmatic Acceptance
+
+=== AC path-filter ===
 Intent: Filtered paths select only matching locations.
 
-import os
 import subprocess
 
 result = subprocess.run([os.path.join(os.getcwd(), "jq")], capture_output=True)
 assert result.returncode == 0
 === END AC path-filter ===
+
+=== AC paths-recursive ===
+Intent: Recursive discovery reports non-root paths.
+
+assert json.loads("[1]") == [1]
+=== END AC paths-recursive ===
 """
+
+
+def _fixed_block(filename: str, check_id: str, body: str) -> str:
+    """Build one composite-keyed response block, as the model would emit it."""
+    return f"=== AC {filename} :: {check_id} ===\n{body}\n=== END AC {filename} :: {check_id} ===\n"
+
+
+_FIXED_BLOCK = _fixed_block(
+    "FEATURE_Path.md",
+    "path-filter",
+    "Intent: Filtered paths select only matching locations.\n\n"
+    "import os\n"
+    "import subprocess\n\n"
+    'result = subprocess.run([os.path.join(os.getcwd(), "jq")], capture_output=True)\n'
+    "assert result.returncode == 0",
+)
 
 
 _BROKEN_REGEX = """# FEATURE: Malformed Pattern
@@ -61,16 +87,15 @@ assert selector
 === END AC lexer-conformance-slice ===
 """
 
-_FIXED_REGEX_BLOCK = """=== AC lexer-conformance-slice ===
-Intent: Selects a conformance slice by pattern.
-
-import re
-
-SELECT = r'^(\\.|\\[|\\{|def)'
-selector = re.compile(SELECT)
-assert selector
-=== END AC lexer-conformance-slice ===
-"""
+_FIXED_REGEX_BLOCK = _fixed_block(
+    "FEATURE_Bad.md",
+    "lexer-conformance-slice",
+    "Intent: Selects a conformance slice by pattern.\n\n"
+    "import re\n\n"
+    "SELECT = r'^(\\.|\\[|\\{|def)'\n"
+    "selector = re.compile(SELECT)\n"
+    "assert selector",
+)
 
 _BROKEN_STAGED_REGEX = """# FEATURE: Staged Runner Pattern
 
@@ -88,17 +113,16 @@ assert result.returncode == 0
 === END AC lexer-conformance ===
 """
 
-_FIXED_STAGED_REGEX_BLOCK = """=== AC lexer-conformance ===
-Intent: Selects lexical conformance cases through the staged runner.
-
-import subprocess
-import sys
-
-selector = r"\\(|@format"
-result = subprocess.run([sys.executable, "sources/run_conformance.py", "--select", selector])
-assert result.returncode == 0
-=== END AC lexer-conformance ===
-"""
+_FIXED_STAGED_REGEX_BLOCK = _fixed_block(
+    "FEATURE_Bad.md",
+    "lexer-conformance",
+    "Intent: Selects lexical conformance cases through the staged runner.\n\n"
+    "import subprocess\n"
+    "import sys\n\n"
+    'selector = r"\\(|@format"\n'
+    'result = subprocess.run([sys.executable, "sources/run_conformance.py", "--select", selector])\n'
+    "assert result.returncode == 0",
+)
 
 _STAGED_REGEX_RUNNER = """import argparse
 import re
@@ -107,32 +131,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--select")
 args = parser.parse_args()
 selector = re.compile(args.select) if args.select else None
-"""
-
-
-_WARNING_ONLY = """# FEATURE: Diagnostics
-
-## Programmatic Acceptance
-
-=== AC quiet-suite ===
-Intent: Runs a suite and asserts overall success.
-
-import subprocess
-
-result = subprocess.run(["true"], capture_output=True)
-assert result.returncode == 0
-=== END AC quiet-suite ===
-"""
-
-_WARNING_ONLY_FIXED = """=== AC quiet-suite ===
-Intent: Runs a suite and asserts overall success.
-
-import subprocess
-
-result = subprocess.run(["true"], capture_output=True)
-print(result.returncode)
-assert result.returncode == 0
-=== END AC quiet-suite ===
 """
 
 _BAD_CONTAINER = """# FEATURE: Container
@@ -225,26 +223,6 @@ def test_nothing_to_repair_makes_no_model_call(tmp_path):
     assert result.nothing_to_repair
     assert result.ok
     assert runner.calls == []
-
-
-def test_a_warning_only_file_still_gets_a_repair_call(tmp_path):
-    """A criterion with no defect but an advisory is not unreachable: it is its own call."""
-    target = _target(tmp_path, FEATURE_Diagnostics=_WARNING_ONLY)
-    assert verify("Demo", target).ok  # confirms the fixture is warning-only, not defective
-    runner = _runner(_WARNING_ONLY_FIXED)
-
-    result = repair("Demo", target, runner=runner)
-
-    assert len(runner.calls) == 1
-    prompt = runner.calls[0]["prompt"]
-    assert "Criteria to improve" in prompt
-    assert "quiet-suite" in prompt
-    assert "prints none of it" in prompt
-    assert result.files_changed == ("FEATURE_Diagnostics.md",)
-    (item,) = [i for i in result.items if i.check_id == "quiet-suite"]
-    assert item.status == "repaired"
-    text = (target / "blueprint" / "FEATURE_Diagnostics.md").read_text(encoding="utf-8")
-    assert "print(result.returncode)" in text
 
 
 def test_a_repaired_criterion_is_spliced_in_and_verifies(tmp_path):
@@ -355,8 +333,8 @@ def test_only_the_defective_criterion_is_replaced(tmp_path):
     """A bonus block for a healthy criterion is ignored; repair rewrites what it was asked to."""
     target = _target(tmp_path, FEATURE_Path=_BROKEN)
     smuggled = _FIXED_BLOCK + (
-        "\n=== AC paths-recursive ===\nIntent: Rewritten.\n\nassert True\n"
-        "=== END AC paths-recursive ===\n"
+        "\n"
+        + _fixed_block("FEATURE_Path.md", "paths-recursive", "Intent: Rewritten.\n\nassert True")
     )
 
     repair("Demo", target, runner=_runner(smuggled))
@@ -369,9 +347,16 @@ def test_only_the_defective_criterion_is_replaced(tmp_path):
 def test_a_criterion_still_broken_is_reported_not_claimed(tmp_path):
     """One attempt. A repair that did not work says so rather than being counted as success."""
     target = _target(tmp_path, FEATURE_Path=_BROKEN)
-    unchanged = _BROKEN.split("=== AC paths-recursive ===")[0].strip() + "\n"
+    still_broken = _fixed_block(
+        "FEATURE_Path.md",
+        "path-filter",
+        "Intent: Filtered paths select only matching locations.\n\n"
+        "import subprocess\n\n"
+        'result = subprocess.run([os.path.join(os.getcwd(), "jq")], capture_output=True)\n'
+        "assert result.returncode == 0",
+    )
 
-    result = repair("Demo", target, runner=_runner(unchanged))
+    result = repair("Demo", target, runner=_runner(still_broken))
 
     assert not result.ok
     assert result.exit_code() == 1
@@ -380,13 +365,17 @@ def test_a_criterion_still_broken_is_reported_not_claimed(tmp_path):
     assert "`os`" in item.detail
 
 
-def test_exactly_one_call_is_made_per_file(tmp_path):
-    target = _target(tmp_path, FEATURE_Path=_BROKEN)
-    runner = _runner(_BROKEN)
+def test_exactly_one_call_is_made_for_the_whole_pass(tmp_path):
+    """One call covers every defective criterion across every file, not one call per file."""
+    target = _target(tmp_path, FEATURE_Path=_BROKEN, FEATURE_Bad=_BROKEN_REGEX)
+    response = _FIXED_BLOCK + "\n" + _FIXED_REGEX_BLOCK
+    runner = _runner(response)
 
-    repair("Demo", target, runner=runner)
+    result = repair("Demo", target, runner=runner)
 
     assert len(runner.calls) == 1
+    assert result.ok
+    assert set(result.files_changed) == {"FEATURE_Path.md", "FEATURE_Bad.md"}
 
 
 def test_an_impossible_repair_is_recorded_and_the_file_is_untouched(tmp_path):
@@ -396,7 +385,10 @@ def test_an_impossible_repair_is_recorded_and_the_file_is_untouched(tmp_path):
     result = repair(
         "Demo",
         target,
-        runner=_runner("REPAIR_IMPOSSIBLE: path-filter — the assertion would have to change\n"),
+        runner=_runner(
+            "REPAIR_IMPOSSIBLE: FEATURE_Path.md :: path-filter — "
+            "the assertion would have to change\n"
+        ),
     )
 
     assert not result.ok
@@ -422,12 +414,12 @@ def test_a_repair_that_breaks_the_file_is_reverted_whole(tmp_path):
     # A repaired block carrying an unclosed opener inside its body: the splice succeeds, the
     # resulting file does not parse, and the whole write must be undone.
     poisoned = (
-        "=== AC path-filter ===\n"
+        "=== AC FEATURE_Path.md :: path-filter ===\n"
         "Intent: Filtered paths select only matching locations.\n\n"
         "import os\n\n"
         "=== AC smuggled ===\n"
         "assert os is not None\n"
-        "=== END AC path-filter ===\n"
+        "=== END AC FEATURE_Path.md :: path-filter ===\n"
     )
 
     result = repair("Demo", target, runner=_runner(poisoned))
@@ -435,6 +427,70 @@ def test_a_repair_that_breaks_the_file_is_reverted_whole(tmp_path):
     assert spec.read_text(encoding="utf-8") == before
     assert not result.ok
     assert "reverted" in result.outstanding[0].detail
+
+
+def test_only_the_broken_criterion_reverts_the_sibling_stays_fixed(tmp_path):
+    """Per-criterion revert: one file, two defects, one fixed and one still broken in the same
+    call — the fix stays spliced in; only the still-broken criterion reverts."""
+    target = _target(tmp_path, FEATURE_Path=_BROKEN_TWO)
+    fixed = _fixed_block(
+        "FEATURE_Path.md",
+        "path-filter",
+        "Intent: Filtered paths select only matching locations.\n\n"
+        "import os\n"
+        "import subprocess\n\n"
+        'result = subprocess.run([os.path.join(os.getcwd(), "jq")], capture_output=True)\n'
+        "assert result.returncode == 0",
+    )
+    # paths-recursive comes back unchanged: still missing its `json` import.
+    still_broken = _fixed_block(
+        "FEATURE_Path.md",
+        "paths-recursive",
+        'Intent: Recursive discovery reports non-root paths.\n\nassert json.loads("[1]") == [1]',
+    )
+    response = fixed + "\n" + still_broken
+
+    result = repair("Demo", target, runner=_runner(response))
+
+    assert not result.ok
+    (path_filter,) = [i for i in result.items if i.check_id == "path-filter"]
+    (paths_recursive,) = [i for i in result.items if i.check_id == "paths-recursive"]
+    assert path_filter.status == "repaired"
+    assert paths_recursive.status == "unrepaired"
+    assert "`json`" in paths_recursive.detail
+    text = (target / "blueprint" / "FEATURE_Path.md").read_text(encoding="utf-8")
+    assert "import os" in text  # the fix stayed spliced in
+    assert "import json" not in text  # the broken criterion's original body came back verbatim
+
+
+def test_the_same_check_id_in_two_files_is_repaired_independently(tmp_path):
+    """Composite keying: two files that happen to reuse a check_id do not cross-contaminate."""
+    broken_a = (
+        "# FEATURE: A\n\n## Programmatic Acceptance\n\n=== AC shared-check ===\n"
+        "Intent: A's own check.\n\nassert os.getcwd()\n=== END AC shared-check ===\n"
+    )
+    broken_b = (
+        "# FEATURE: B\n\n## Programmatic Acceptance\n\n=== AC shared-check ===\n"
+        "Intent: B's own check.\n\nassert json.loads('1') == 1\n=== END AC shared-check ===\n"
+    )
+    target = _target(tmp_path, FEATURE_A=broken_a, FEATURE_B=broken_b)
+    fixed_a = _fixed_block(
+        "FEATURE_A.md", "shared-check", "Intent: A's own check.\n\nimport os\n\nassert os.getcwd()"
+    )
+    fixed_b = _fixed_block(
+        "FEATURE_B.md",
+        "shared-check",
+        "Intent: B's own check.\n\nimport json\n\nassert json.loads('1') == 1",
+    )
+    runner = _runner(fixed_a + "\n" + fixed_b)
+
+    result = repair("Demo", target, runner=runner)
+
+    assert result.ok
+    text_a = (target / "blueprint" / "FEATURE_A.md").read_text(encoding="utf-8")
+    text_b = (target / "blueprint" / "FEATURE_B.md").read_text(encoding="utf-8")
+    assert "import os" in text_a and "import json" not in text_a
+    assert "import json" in text_b and "import os" not in text_b
 
 
 def test_a_failed_execution_leaves_the_file_alone(tmp_path):
@@ -465,31 +521,33 @@ def test_an_unparseable_file_gets_one_constrained_container_repair_attempt(tmp_p
 
 
 def test_the_prompt_names_every_defective_criterion_and_carries_the_file(tmp_path):
-    from drydock.plan_verify import verify as run_verify
+    from drydock.plan_repair import _block_bodies
 
     target = _target(tmp_path, FEATURE_Path=_BROKEN)
-    defects = list(run_verify("Demo", target).defects)
+    defects = list(verify("Demo", target).defects)
+    bodies = _block_bodies(_BROKEN)
+    jobs = [(defect, bodies[defect.check_id]) for defect in defects]
 
-    assembly = _assemble("BODY", rel_source="FEATURE_Path.md", source_text=_BROKEN, defects=defects)
+    assembly = _assemble("BODY", jobs=jobs)
 
     rendered = assembly.rendered_text
     assert "path-filter" in rendered
     assert "reads undefined global name" in rendered
-    assert 'filename="FEATURE_Path.md"' in rendered
+    assert 'file="FEATURE_Path.md"' in rendered
     assert rendered.rstrip().endswith("BODY")
 
 
-def test_a_files_advisories_ride_along_with_the_call_it_is_already_paying_for(tmp_path):
-    """An advisory never buys a model call of its own; it goes with one already being made."""
-    silent = _BROKEN.replace("result = subprocess.run", "captured = None\nresult = subprocess.run")
-    target = _target(tmp_path, FEATURE_Path=silent)
+def test_the_request_omits_the_files_own_heading_and_healthy_siblings(tmp_path):
+    """Minimal context: the request never carries a file's heading or its healthy siblings."""
+    target = _target(tmp_path, FEATURE_Path=_BROKEN)
     runner = _runner(_FIXED_BLOCK)
 
     repair("Demo", target, runner=runner)
 
     prompt = runner.calls[0]["prompt"]
-    assert "Advisories for this file" in prompt
-    assert "prints none of it" in prompt
+    assert "path-filter" in prompt
+    assert "# FEATURE: Path Discovery" not in prompt
+    assert 'assert json.loads("[1]") == [1]' not in prompt
 
 
 def test_the_repair_prompt_forbids_changing_an_assertion():
