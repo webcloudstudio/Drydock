@@ -977,6 +977,8 @@ def _ladder_table(workflow: Sequence[Mapping[str, object]]) -> str:
     held = {str(step.get("label") or ""): step for step in workflow if isinstance(step, Mapping)}
     rows = []
     for lifecycle_state in LABEL_LADDER:
+        if lifecycle_state == "PLAN CREATED" and "PLAN REPAIRED" in held:
+            continue
         step = held.get(lifecycle_state)
         if step is None:
             rows.append([

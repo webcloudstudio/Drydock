@@ -921,6 +921,18 @@ def test_the_page_ladders_every_legitimate_state(published):
     assert "This lifecycle gate has not run." in page
 
 
+def test_a_repaired_plan_hides_the_plan_created_row(workspace, target_dir, build_dir):
+    """PLAN REPAIRED supersedes PLAN CREATED: the ladder shows one row, not two."""
+    from drydock.project_status import record_status
+
+    _history(workspace, [_record("init widget", stamp="20260101.090000.000Z")])
+    record_status(target_dir, "PLAN CREATED", passed=True, command="drydock plan widget")
+    record_status(target_dir, "PLAN REPAIRED", passed=True, command="drydock plan repair widget")
+    page = write_report("widget", workspace, target_dir, build_dir).read_text(encoding="utf-8")
+    assert "PLAN REPAIRED" in page
+    assert "PLAN CREATED" not in page
+
+
 def test_an_unfinished_run_is_stamped_in_progress_not_rejected(workspace, target_dir, build_dir):
     _history(workspace, [_record("analyze widget", stamp="20260101.090000.000Z")])
     build_dir.mkdir(parents=True)
