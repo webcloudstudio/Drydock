@@ -172,6 +172,22 @@ assert True
 """
 
 
+_FUSED_CONTAINER = """# FEATURE: Container
+
+## Programmatic Acceptance
+
+=== AC first ===
+Intent: First check.
+
+assert True
+=== END AC second ===
+Intent: Second check.
+
+assert True
+=== END AC second ===
+"""
+
+
 @dataclass
 class _Run:
     text: str
@@ -259,6 +275,28 @@ def test_a_bad_acceptance_container_gets_one_delimiter_only_repair_attempt(tmp_p
     (item,) = result.items
     assert item.check_id == ""
     assert item.status == "repaired"
+
+
+def test_a_fused_acceptance_boundary_is_repaired_deterministically_without_a_model_call(tmp_path):
+    """The recurring live-jq defect: one opener, a closer naming the next criterion, duplicated
+    at the real end. This is mechanically decidable, so it must not cost an LLM call — and must
+    not fail the way the LLM-based repair failed on every attempt in the real run."""
+    target = _target(tmp_path, FEATURE_Container=_FUSED_CONTAINER)
+
+    def unreachable_runner(prompt, cwd, **kwargs):
+        raise AssertionError("the deterministic fused-boundary fix must not call the runner")
+
+    result = repair("Demo", target, runner=unreachable_runner)
+
+    assert result.ok
+    assert result.files_changed == ("FEATURE_Container.md",)
+    assert verify("Demo", target).ok
+    (item,) = result.items
+    assert item.status == "repaired"
+    assert "deterministically" in item.detail
+    text = (target / "blueprint" / "FEATURE_Container.md").read_text(encoding="utf-8")
+    assert "=== END AC first ===" in text
+    assert "=== AC second ===" in text
 
 
 def test_a_bad_container_repair_cannot_change_non_delimiter_content(tmp_path):

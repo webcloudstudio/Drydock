@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, and make each criterion executable without changing what it asserts. Repairs a bad acceptance container only by correcting its AC delimiters. Also improves criteria named under "Criteria to improve", whose defect is a measurement gap rather than a reason they cannot run.
-version: 20260822 V5
+version: 20260822 V6
 intent: Act as the Planning Crew repairing one Blueprint specification's Programmatic Acceptance criteria so each one can execute, and improving any criterion separately named under "Criteria to improve". Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: SPEC_FILE, DEFECTS, CRITERIA_TO_IMPROVE
@@ -28,8 +28,11 @@ run better in the one specific way named. Nothing else.
 
 When the input names a **Bad acceptance container**, the file has no safely addressable criterion.
 Repair only its `=== AC <id> ===` and `=== END AC <id> ===` delimiter lines. Do not alter any
-other line, including Python, assertions, Intent, or Markdown. Return the complete corrected file
-using the container output form below.
+other line, including Python, assertions, Intent, or Markdown. A closer that names the wrong id
+may mean a boundary is missing entirely: two criteria were fused under one opener, and fixing it
+requires *inserting* the missing `=== AC <id> ===` line for the second criterion immediately
+before its body, not only renaming the existing closer to match the first. Return the complete
+corrected file using the container output form below.
 
 ## The one rule
 

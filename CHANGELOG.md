@@ -10,6 +10,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-22: A fused acceptance boundary — two criteria emitted under one `=== AC <id> ===`
+  opener, closed with the *second* criterion's id and never given its own opener — is now
+  repaired deterministically at plan-generation time and, for a Blueprint already on disk, by
+  `drydock plan repair`'s container path with no model call. Previously this shape reached the
+  LLM-based container repair on every attempt and failed identically every time: the model
+  reliably renamed the wrong closer but never inserted the missing opener, so no number of
+  retries fixed it.
+- 2026-08-22: Plan generation's validation-defect artifact-repair pass now groups repair calls by
+  which validator found the defect, then chunks each group at the same batch size Stage 2
+  authoring already uses (5 files), instead of citing every file a systemic defect touches in one
+  unbounded call. A single systemic mistake spanning dozens of files previously produced one
+  oversized repair prompt carrying every file's full original body; under that load the model
+  silently dropped content (`## Guardrails`, the header table) it was explicitly told to preserve.
 - 2026-08-22: `drydock uat resume <Project> --stage verify` (and `--from verify`) is accepted; the
   argument's choice list had omitted the `verify` stage. Passing a step number to `--stage`/`--from`
   now names `--from-step <n>` instead of a bare "invalid choice" error.

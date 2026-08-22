@@ -4485,6 +4485,139 @@ def test_an_ambiguous_terminator_defect_is_left_to_the_hard_error():
     assert blocks["FEATURE-Example.md"] == text
 
 
+def test_plan_splits_a_fused_acceptance_boundary_the_model_forgot_to_open():
+    """The live jq defect: one opener, a closer naming the *next* criterion, duplicated at the
+    real end. Every one of 4 malformed Blueprint files in a real run showed exactly this shape,
+    and the LLM-based ``plan repair`` container path failed to fix it on every attempt."""
+    from drydock.planning_session import _normalize_fused_acceptance_boundaries
+
+    blocks = {
+        "FEATURE-Date-and-Time.md": (
+            "# FEATURE: Date and Time\n\n## Programmatic Acceptance\n\n"
+            "=== AC date-conformance ===\nIntent: First.\n\nassert 1 == 1\n"
+            "=== END AC date-utc-and-errors ===\n"
+            "Intent: Second.\n\nassert 2 == 2\n"
+            "=== END AC date-utc-and-errors ===\n"
+        )
+    }
+
+    warnings = _normalize_fused_acceptance_boundaries(blocks)
+
+    checks = parse_programmatic_acceptance_text(
+        blocks["FEATURE-Date-and-Time.md"], source="FEATURE-Date-and-Time.md"
+    )
+    assert [check.check_id for check in checks] == ["date-conformance", "date-utc-and-errors"]
+    assert [check.code for check in checks] == ["assert 1 == 1", "assert 2 == 2"]
+    assert len(warnings) == 1
+    assert "closed the wrong criterion" in warnings[0]
+    assert warnings[0].startswith("FEATURE-Date-and-Time.md [date-conformance]")
+
+
+def test_a_fused_boundary_with_no_second_closer_is_left_to_the_hard_error():
+    """The wrong-id closer appears only once — there is no real closer waiting for a synthetic
+    opener, so the shape is not the unambiguous fused case and nothing is inserted."""
+    from drydock.planning_session import _normalize_fused_acceptance_boundaries
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\nassert 1 == 1\n=== END AC second ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_fused_acceptance_boundaries(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_a_fused_boundary_whose_id_opens_elsewhere_is_a_real_criterion_not_touched():
+    """The mismatched id already has its own real opener elsewhere — a genuine, differently
+    ordered criterion, not two fused under one opener — so nothing is inserted."""
+    from drydock.planning_session import _normalize_fused_acceptance_boundaries
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\nassert 1 == 1\n=== END AC second ===\n\n"
+        "=== AC second ===\nIntent: Second.\n\nassert 2 == 2\n=== END AC second ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_fused_acceptance_boundaries(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_grouped_artifact_repair_chunks_by_kind_at_the_batch_size():
+    """Ed's refinement: group by which bug a file has, then chunk each group at
+    ``_PLAN_BLUEPRINT_BATCH_SIZE`` — three bugs cost at most three repair calls, not one call per
+    five-file slice of an undifferentiated pile."""
+    from drydock.acceptance import MalformedAcceptance
+    from drydock.planning_session import (
+        _PLAN_BLUEPRINT_BATCH_SIZE,
+        _next_repair_chunk,
+        _repair_pass_budget,
+    )
+
+    kind_a_files = [f"FEATURE-A{i}.md" for i in range(12)]
+    kind_b_files = [f"FEATURE-B{i}.md" for i in range(3)]
+    defects = tuple(
+        ("kind-a", MalformedAcceptance(check_id="c", source=name, reason="bug a"))
+        for name in kind_a_files
+    ) + tuple(
+        ("kind-b", MalformedAcceptance(check_id="c", source=name, reason="bug b"))
+        for name in kind_b_files
+    )
+
+    class FakeCriteriaDefect(Exception):
+        def __init__(self, defects):
+            super().__init__("fake")
+            self.defects = defects
+
+    exc = FakeCriteriaDefect(defects)
+    blocks = {name: "" for name in kind_a_files + kind_b_files}
+
+    assert (
+        _repair_pass_budget(exc, _PLAN_BLUEPRINT_BATCH_SIZE, floor=3) == 4
+    )  # ceil(12/5)+ceil(3/5)
+
+    seen_chunks: list[tuple[str, tuple[str, ...]]] = []
+    remaining = dict(blocks)
+    current_exc: Exception = exc
+    for _ in range(4):
+        chunk = _next_repair_chunk(current_exc, remaining, _PLAN_BLUEPRINT_BATCH_SIZE)
+        assert chunk is not None
+        kind, names, _text = chunk
+        assert len(names) <= _PLAN_BLUEPRINT_BATCH_SIZE
+        seen_chunks.append((kind, names))
+        # Simulate this chunk being fixed: its files no longer carry that kind's defect.
+        current_exc = FakeCriteriaDefect(
+            tuple((k, d) for k, d in current_exc.defects if d.source not in names)
+        )
+
+    assert _next_repair_chunk(current_exc, remaining, _PLAN_BLUEPRINT_BATCH_SIZE) is None
+    kinds_seen = [kind for kind, _ in seen_chunks]
+    assert kinds_seen.count("kind-a") == 3
+    assert kinds_seen.count("kind-b") == 1
+    all_named = {name for _, names in seen_chunks for name in names}
+    assert all_named == set(kind_a_files) | set(kind_b_files)
+
+
+def test_a_single_kind_within_the_batch_size_makes_one_chunk():
+    """Regression: the common case (one bug, few files) still resolves in one call."""
+    from drydock.acceptance import MalformedAcceptance
+    from drydock.planning_session import _PLAN_BLUEPRINT_BATCH_SIZE, _next_repair_chunk
+
+    class FakeCriteriaDefect(Exception):
+        defects: tuple
+
+    exc = FakeCriteriaDefect()
+    exc.defects = (
+        ("kind-a", MalformedAcceptance(check_id="c", source="FEATURE-A.md", reason="bug")),
+    )
+    blocks = {"FEATURE-A.md": ""}
+
+    chunk = _next_repair_chunk(exc, blocks, _PLAN_BLUEPRINT_BATCH_SIZE)
+
+    assert chunk == ("kind-a", ("FEATURE-A.md",), chunk[2])
+
+
 def test_a_bare_backslash_escape_is_reported_against_its_criterion():
     """`'"value=\\(.)"'` is what a jq interpolation proof looks like. It runs, so it is not
     gated; it is not the escape the author wrote, so it is not silent either."""

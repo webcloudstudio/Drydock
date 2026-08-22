@@ -38,6 +38,7 @@ from drydock.acceptance import (
     acceptance_checks_from_text,
     escape_defects,
     parse_programmatic_acceptance_text,
+    split_fused_acceptance_boundary,
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
 from drydock.acceptance_env import read_staged_assets, staged_asset_env_defects
@@ -2391,7 +2392,17 @@ class CriteriaDefect(SpecificationError):
     correct planning over one bad snippet is the failure mode the repair loop exists to avoid,
     and the criterion has a second line of defence — it is recorded as a blocking decision
     against its story, which parks that story until a Commander answers.
+
+    ``defects`` carries each contributing criterion tagged with the validator that found it
+    (``kind``), so the repair loop can group repair calls by shared cause instead of dumping
+    every cited file into one oversized prompt regardless of how many distinct bugs they carry.
     """
+
+    def __init__(
+        self, message: str, defects: tuple[tuple[str, MalformedAcceptance], ...] = ()
+    ) -> None:
+        super().__init__(message)
+        self.defects = defects
 
 
 #: Runner modes that enumerate a suite without executing a case. A non-terminal story may
@@ -2402,7 +2413,7 @@ _RUNNER_LIST_MODES = ("--list", "--collect-only", "--dry-run", "--list-tests", "
 
 def _runner_invocation_defects(
     blocks: dict[str, str], plan: BuildPlan, blueprint_dir: Path
-) -> tuple[str, ...]:
+) -> tuple[MalformedAcceptance, ...]:
     """Return every non-terminal story whose acceptance runs the authoritative runner.
 
     The terminal story is the last story in the build order — the story every other story
@@ -2438,7 +2449,7 @@ def _runner_invocation_defects(
         )
         if name
     }
-    defects: list[str] = []
+    defects: list[MalformedAcceptance] = []
     for name in sorted(blocks):
         if name in _RESERVED_BLOCKS or not name.lower().endswith(".md"):
             continue
@@ -2452,10 +2463,16 @@ def _runner_invocation_defects(
                 if any(mode in check.code for mode in _RUNNER_LIST_MODES):
                     continue
                 defects.append(
-                    f"{name} [{check.check_id}]: story {owner} is not the terminal story "
-                    f"({terminal}) and its acceptance executes the authoritative runner "
-                    f"{runner}. Gate this story on its own declared behavior, or invoke the "
-                    f"runner in list mode, which enumerates the suite without running a case."
+                    MalformedAcceptance(
+                        check_id=check.check_id,
+                        source=name,
+                        reason=(
+                            f"story {owner} is not the terminal story ({terminal}) and its "
+                            f"acceptance executes the authoritative runner {runner}. Gate this "
+                            "story on its own declared behavior, or invoke the runner in list "
+                            "mode, which enumerates the suite without running a case."
+                        ),
+                    )
                 )
     return tuple(defects)
 
@@ -2564,6 +2581,30 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
         for boundary, terminator in reversed(repairs):
             text = text[:boundary] + terminator + text[boundary:]
         blocks[name] = text
+    return tuple(normalized)
+
+
+def _normalize_fused_acceptance_boundaries(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Split every fused acceptance boundary in ``blocks``. See ``split_fused_acceptance_boundary``.
+
+    The unambiguous sibling of the shape ``_normalize_unterminated_acceptance_blocks`` already
+    repairs: there the model dropped a terminator but wrote the next block's own opener; here it
+    fuses two criteria under one opener and closes the first with the *second* criterion's id,
+    never emitting that second criterion's own opener — confirmed against a live ``jq`` run where
+    every one of 4 malformed Blueprint files showed exactly this shape, and where the LLM-based
+    ``plan repair`` container path failed to fix it on every attempt (it reliably renames the
+    wrong closer but never inserts the missing opener).
+    """
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        result = split_fused_acceptance_boundary(blocks[name])
+        if result is None:
+            continue
+        text, messages = result
+        blocks[name] = text
+        normalized.extend(f"{name} {message}" for message in messages)
     return tuple(normalized)
 
 
@@ -3053,7 +3094,9 @@ def _validate_plan_output(
     # review. Either way the pipeline processes the criterion cleanly instead of stopping on it.
     # Terminators first: every pass below parses the acceptance containers, and an unclosed one
     # raises before any of them can report anything useful about the criterion it belongs to.
-    terminator_warnings = _normalize_unterminated_acceptance_blocks(blocks)
+    terminator_warnings = _normalize_unterminated_acceptance_blocks(
+        blocks
+    ) + _normalize_fused_acceptance_boundaries(blocks)
     standalone_import_warnings = _normalize_standalone_subprocess_imports(blocks)
     escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
@@ -3109,20 +3152,27 @@ def _validate_plan_output(
     # decision that ``--override`` waived on every unattended run, and the scope defect not at
     # all. Prose in the planning contract instructs the model on both, and a 370 KB prompt is
     # not a gate.
-    criteria_defects = (
-        [defect.rendered for defect in _staged_asset_env_defects(blocks, blueprint_dir)]
-        + list(_runner_invocation_defects(blocks, plan, blueprint_dir))
+    kinded_criteria_defects: tuple[tuple[str, MalformedAcceptance], ...] = (
+        tuple(
+            ("staged-asset-env", defect)
+            for defect in _staged_asset_env_defects(blocks, blueprint_dir)
+        )
+        + tuple(
+            ("runner-invocation", defect)
+            for defect in _runner_invocation_defects(blocks, plan, blueprint_dir)
+        )
         if enforce_criteria
-        else []
+        else ()
     )
-    if criteria_defects:
+    if kinded_criteria_defects:
         raise CriteriaDefect(
             _with_execution_evidence(
                 "Plan generation failed: an acceptance criterion cannot pass as written.\n  "
-                + "\n  ".join(criteria_defects)
+                + "\n  ".join(defect.rendered for _, defect in kinded_criteria_defects)
                 + "\n  No Blueprint or Manifest artifacts were written.",
                 result,
-            )
+            ),
+            defects=kinded_criteria_defects,
         )
 
     emitted_files = {name: text for name, text in blocks.items() if name not in _RESERVED_BLOCKS}
@@ -3669,6 +3719,59 @@ def _repairable_artifact_names(blocks: Mapping[str, str], defect: str) -> tuple[
             if re.search(rf"(?m)^\s*{re.escape(story.story_id)}:", defect):
                 cited.add(story.implements)
     return tuple(sorted(name for name in cited if name in blocks and name not in _RESERVED_BLOCKS))
+
+
+def _next_repair_chunk(
+    exc: Exception, blocks: Mapping[str, str], batch_size: int
+) -> tuple[str, tuple[str, ...], str] | None:
+    """Return the next ``(kind, names, defect text)`` chunk to repair from a structured defect.
+
+    Groups a :class:`CriteriaDefect`'s contributing criteria by the validator that found them
+    (its ``kind``), then returns the first kind — in first-seen order — that still has files
+    present in ``blocks``, capped at ``batch_size`` names. One call repairs one kind of bug across
+    at most ``batch_size`` files, mirroring the cap Stage 2 authoring already applies
+    (``_PLAN_BLUEPRINT_BATCH_SIZE``): a call that mixes unrelated bugs across dozens of files is
+    the load that made the model silently drop content it was told to preserve.
+
+    Called fresh each repair pass against the latest validation exception, so a kind with more
+    files than ``batch_size`` is worked off a chunk at a time across successive passes: files
+    fixed this pass stop appearing in the next validation's defects, so the next pass's chunk for
+    the same kind is the remainder. Returns ``None`` when ``exc`` carries no structured defects
+    (any exception other than :class:`CriteriaDefect`), so the caller falls back to citing every
+    ``.md`` name the message mentions.
+    """
+    defects: tuple[tuple[str, MalformedAcceptance], ...] = getattr(exc, "defects", ())
+    if not defects:
+        return None
+    by_kind: dict[str, list[MalformedAcceptance]] = {}
+    for kind, defect in defects:
+        by_kind.setdefault(kind, []).append(defect)
+    for kind, items in by_kind.items():
+        names = tuple(sorted({item.source for item in items if item.source in blocks}))[:batch_size]
+        if not names:
+            continue
+        text = "\n".join(item.rendered for item in items if item.source in names)
+        return kind, names, text
+    return None
+
+
+def _repair_pass_budget(exc: Exception, batch_size: int, floor: int) -> int:
+    """Return how many repair passes are needed to reach every chunk ``_next_repair_chunk`` yields.
+
+    A structured :class:`CriteriaDefect` may cite many more files than one pass's ``batch_size``
+    cap, split across several kinds — the pass budget has to cover every (kind, chunk) pair, not
+    just ``floor`` (the operator-configured retry count), or later chunks are silently never
+    attempted. Never returns less than ``floor``, so an unstructured exception (no ``.defects``)
+    keeps today's fixed retry budget.
+    """
+    defects: tuple[tuple[str, MalformedAcceptance], ...] = getattr(exc, "defects", ())
+    if not defects:
+        return floor
+    sources_by_kind: dict[str, set[str]] = {}
+    for kind, defect in defects:
+        sources_by_kind.setdefault(kind, set()).add(defect.source)
+    total_chunks = sum(-(-len(sources) // batch_size) for sources in sources_by_kind.values())
+    return max(floor, total_chunks)
 
 
 def _artifact_repair_assembly(
@@ -5010,19 +5113,32 @@ def create_plan(
                         break
             if allow_diagnostic_recovery and continue_attempts > 0 and not repair_succeeded:
                 repaired_blocks = dict(blocks)
-                for repair_pass in range(1, continue_attempts + 1):
-                    names = _repairable_artifact_names(repaired_blocks, str(repair_exc))
+                pass_budget = _repair_pass_budget(
+                    repair_exc, _PLAN_BLUEPRINT_BATCH_SIZE, continue_attempts
+                )
+                for repair_pass in range(1, pass_budget + 1):
+                    chunk = _next_repair_chunk(
+                        repair_exc, repaired_blocks, _PLAN_BLUEPRINT_BATCH_SIZE
+                    )
+                    if chunk is not None:
+                        kind, names, chunk_defect_text = chunk
+                    else:
+                        # No structured defect (an exception other than CriteriaDefect): fall
+                        # back to citing every '.md' name the message mentions, as before.
+                        kind = "unstructured"
+                        names = _repairable_artifact_names(repaired_blocks, str(repair_exc))
+                        chunk_defect_text = str(repair_exc)
                     if not names:
                         break
                     if on_text is not None:
                         on_text(
-                            f"[plan] artifact repair pass {repair_pass}/{continue_attempts} · "
+                            f"[plan] artifact repair pass {repair_pass}/{pass_budget} · {kind} · "
                             f"{', '.join(names)}\n"
                         )
                     repair_assembly = _artifact_repair_assembly(
                         blocks=repaired_blocks,
                         names=names,
-                        defect=str(repair_exc),
+                        defect=chunk_defect_text,
                         pass_number=repair_pass,
                         target_dir=target_dir,
                     )
@@ -5038,6 +5154,7 @@ def create_plan(
                                 parameters={
                                     "target": target,
                                     "artifact_repair_pass": repair_pass,
+                                    "artifact_repair_kind": kind,
                                     "initial_execution_id": exec_id or "",
                                     "artifacts": ",".join(names),
                                 },

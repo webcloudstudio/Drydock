@@ -42,6 +42,7 @@ from typing import Protocol
 from drydock.acceptance import (
     parse_programmatic_acceptance,
     regex_defects,
+    split_fused_acceptance_boundary,
     staged_regex_defects,
     syntax_defect,
     unresolved_globals,
@@ -310,6 +311,35 @@ def repair(
     for filename, defect in sorted(container_by_file.items()):
         path = blueprint_dir / filename
         original = path.read_text(encoding="utf-8")
+
+        # A fused acceptance boundary — two criteria under one opener, closed with the second
+        # criterion's id — is mechanically decidable, unlike a general malformed container. Fix
+        # it deterministically before spending a model call: an LLM asked to fix this shape
+        # reliably renames the wrong closer but never inserts the missing opener, so it fails on
+        # every attempt regardless of retries.
+        split = split_fused_acceptance_boundary(original)
+        if split is not None:
+            repaired_text, messages = split
+            path.write_text(repaired_text, encoding="utf-8", newline="\n")
+            try:
+                parse_programmatic_acceptance(path)
+            except ValueError:
+                path.write_text(original, encoding="utf-8", newline="\n")
+            else:
+                item = RepairItem(
+                    filename,
+                    "",
+                    "repaired",
+                    original,
+                    "acceptance container repaired deterministically: " + "; ".join(messages),
+                )
+                items.append(item)
+                changed.append(filename)
+                if on_item is not None:
+                    on_item(item)
+                emit(f"  ✓  {item.rendered}")
+                continue
+
         emit(f"repair: {filename} · acceptance container · 1 of 1 attempt")
         assembly = _assemble(
             prompt.body,

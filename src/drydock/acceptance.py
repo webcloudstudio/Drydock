@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import builtins
 import contextlib
+import io
 import json
 import os
 import re
@@ -13,7 +14,9 @@ import signal
 import subprocess
 import symtable
 import tempfile
+import tokenize
 import warnings
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cache
@@ -936,6 +939,81 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
         gate=" ".join(meta.get("gate", ())).strip(),
         encoding=" ".join(meta.get("encoding", ())).strip().lower(),
     )
+
+
+def body_is_a_complete_cut(body: str) -> bool:
+    """True when ``body`` can stand as a whole criterion, so a boundary may be inserted after it.
+
+    An ``=== AC ... ===`` line only matches at column zero, so the sole way one lands inside a
+    criterion rather than after it is inside a triple-quoted string. Tokenizing rather than
+    compiling is deliberate: ``assert 1 ==`` is bad Python that still tokenizes, which is the
+    point — the check only needs to rule out a cut landing mid-literal, not judge the Python.
+    """
+    try:
+        list(tokenize.generate_tokens(io.StringIO(body).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return False
+    return True
+
+
+def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | None:
+    """Split an ``=== AC <id> ===`` block whose closer names a different, never-opened id.
+
+    The model sometimes fuses two criteria under one opener and closes the first with the
+    *second* criterion's id, never emitting that second criterion's own opener — confirmed
+    against a live plan run where every malformed Blueprint file showed exactly this shape, and
+    where an LLM asked to repair it reliably renamed the wrong closer but never inserted the
+    missing opener, failing identically on every attempt.
+
+    Repaired only when unambiguous: the wrong id never opens anywhere in the text (so it cannot
+    be a real, differently-placed criterion), it closes a second, genuine block later in the text
+    (so a synthetic opener has a real closer waiting for it), and the body being split off passes
+    :func:`body_is_a_complete_cut`. Anything else is left to the hard error in
+    :func:`parse_delimited_acceptance`.
+
+    Returns ``(repaired_text, messages)`` when at least one boundary was inserted, else ``None``.
+    Each message names the criterion id but not the file, so a caller with the filename can
+    prefix it; one that has no file identity (a single already-loaded specification) can use a
+    message as-is.
+    """
+    markers = sorted(
+        [(match.start(), match.end(), "open", match) for match in AC_OPEN_RE.finditer(text)]
+        + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)],
+        key=lambda item: item[0],
+    )
+    if not markers:
+        return None
+    open_ids = {m.group("id").strip() for _, _, kind, m in markers if kind == "open"}
+    end_id_counts = Counter(m.group("id").strip() for _, _, kind, m in markers if kind == "end")
+    repairs: list[tuple[int, int, str]] = []
+    messages: list[str] = []
+    pending: tuple[str, int] | None = None
+    for start, end, kind, match in markers:
+        ident = match.group("id").strip()
+        if kind == "open":
+            pending = (ident, end)
+            continue
+        if pending is None or ident == pending[0]:
+            pending = None
+            continue
+        if ident in open_ids or end_id_counts[ident] < 2:
+            pending = None
+            continue
+        body = text[pending[1] : start]
+        if not body_is_a_complete_cut(body):
+            pending = None
+            continue
+        repairs.append((start, end, f"=== END AC {pending[0]} ===\n=== AC {ident} ===\n"))
+        messages.append(
+            f"[{pending[0]}]: '=== END AC {ident} ===' closed the wrong criterion; "
+            f"boundary inserted between {pending[0]} and {ident}"
+        )
+        pending = (ident, end)
+    if not repairs:
+        return None
+    for start, end, replacement in sorted(repairs, key=lambda item: item[0], reverse=True):
+        text = text[:start] + replacement + text[end:]
+    return text, tuple(messages)
 
 
 def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticAcceptance, ...]:
