@@ -342,9 +342,12 @@ def test_release_passes_and_writes_the_listing(tmp_path):
     assert result.exit_code() == 0
     assert result.criteria[0].verdict == MET
     assert result.statement.splitlines()[0] == "Demo: PASSED — 1 of 1"
-    scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
-    assert "# Release Scorecard: Demo" in scorecard
+    from drydock.scorecard import write_scorecard
+
+    scorecard = write_scorecard("Demo", target_dir).read_text(encoding="utf-8")
+    assert "# Scorecard: Demo" in scorecard
     assert "- Verdict: PASSED" in scorecard
+    assert "Demo: PASSED — 1 of 1" in scorecard
     record = json.loads(
         (target_dir / "evidence" / "score-release.json").read_text(encoding="utf-8")
     )
@@ -532,7 +535,9 @@ def test_a_guardrail_is_graded_like_any_other_criterion(tmp_path):
     assert result.verdict == PASSED
     assert result.exit_code() == 0
     assert any("st-never needs manual verification" in item for item in result.attestations)
-    scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+    from drydock.scorecard import write_scorecard
+
+    scorecard = write_scorecard("Demo", target_dir).read_text(encoding="utf-8")
     assert "| st-never | guardrail |" in scorecard
 
 

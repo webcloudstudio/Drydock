@@ -48,7 +48,6 @@ from drydock.gate_policy import (
     NOT_MET,
     PASSED,
     TRIAL_VERDICTS,
-    GateOutcome,
     RunFacts,
     TrialFacts,
     fold,
@@ -783,59 +782,6 @@ def _observe_trials(
     return tuple(observations)
 
 
-def _render_release_scorecard(
-    outcome: GateOutcome,
-    trials: dict[str, SeaTrial],
-    criteria,
-    *,
-    code_identity: str,
-    improvements: tuple[str, ...],
-) -> str:
-    """Render SCORECARD.md as the verdict listing plus its provenance."""
-    lines = [
-        f"# Release Scorecard: {outcome.target}",
-        "",
-        f"- Verdict: {outcome.verdict}",
-        f"- Code identity: {code_identity or '-'}",
-        "",
-        "## Project acceptance",
-        "",
-        "| ID | Type | Criterion | Verdict | Observed |",
-        "|---|---|---|---|---|",
-    ]
-    for item in criteria:
-        trial = trials[item.criterion_id]
-        observed = "; ".join(item.evidence) or item.rationale
-        lines.append(
-            f"| {item.criterion_id} | {trial.trial_type} | {trial.criterion.replace('|', '/')} | "
-            f"{item.verdict} | {observed.replace('|', '/')} |"
-        )
-    lines.extend(["", "## Failures", ""])
-    failures = [
-        f"{item.criterion_id}: {trials[item.criterion_id].criterion}"
-        for item in criteria
-        if item.verdict == NOT_MET
-    ]
-    failures.extend(outcome.demonstrated_failures)
-    lines.extend(f"- {item}" for item in failures or ("None.",))
-    lines.extend(["", "## Manual verification required", ""])
-    manual = [
-        f"{item.criterion_id}: {trials[item.criterion_id].criterion}"
-        for item in criteria
-        if item.verdict == MANUAL
-    ]
-    lines.extend(f"- {item}" for item in manual or ("None.",))
-    lines.extend(["", "## Could not judge", ""])
-    lines.extend(f"- {item}" for item in outcome.kit_faults or ("None.",))
-    lines.extend(["", "## Advisory warnings", ""])
-    lines.extend(f"- {item}" for item in outcome.reported or ("None.",))
-    lines.extend(["", "## Ranked improvements", ""])
-    lines.extend(f"{index}. {item}" for index, item in enumerate(improvements, 1))
-    if not improvements:
-        lines.append("None.")
-    return "\n".join(lines) + "\n"
-
-
 def _trial_verdict(raw: object, criterion_id: str) -> str:
     verdict = str(raw or "").strip().upper().replace("_", " ")
     if verdict not in TRIAL_VERDICTS:
@@ -1067,17 +1013,8 @@ def score_release(
     }
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
     evidence_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
-    scorecard_path.write_text(
-        _render_release_scorecard(
-            outcome,
-            trial_by_id,
-            criteria,
-            code_identity=code_identity,
-            improvements=improvements,
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
+    # SCORECARD.md is a full rebuild owned by drydock.scorecard, triggered by the caller once
+    # this result's PROJECT_STATUS.jsonl row is recorded — never written directly here.
     return ReleaseResult(
         target=target,
         verdict=outcome.verdict,

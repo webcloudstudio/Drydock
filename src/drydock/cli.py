@@ -2581,6 +2581,10 @@ def cmd_score_ac(target: str, step: str | None = None, full: bool = False) -> in
             passed=True,
             command=f"drydock score ac {target}",
         )
+    if report.wrote_soundings:
+        from drydock.scorecard import write_scorecard
+
+        write_scorecard(target, target_dir)
     return exit_code
 
 
@@ -2736,6 +2740,7 @@ def cmd_score_build(target: str) -> int:
     from drydock.config import get_workspace, require_target_dir
     from drydock.project_status import record_status
     from drydock.score import emit_failure
+    from drydock.scorecard import write_scorecard
 
     target_dir = require_target_dir(target)
     report = build_score_report(
@@ -2753,6 +2758,7 @@ def cmd_score_build(target: str) -> int:
             detail="no build evidence",
             command=f"drydock score build {target}",
         )
+        write_scorecard(target, target_dir)
         return 1
     if report.failed_blocks:
         emit_failure(
@@ -2774,8 +2780,10 @@ def cmd_score_build(target: str) -> int:
             detail=f"{len(report.failed_blocks)} block(s) unverified",
             command=f"drydock score build {target}",
         )
+        write_scorecard(target, target_dir)
         return 1
     record_status(target_dir, "SCORE BUILD", passed=True, command=f"drydock score build {target}")
+    write_scorecard(target, target_dir)
     return 0
 
 
@@ -2870,6 +2878,9 @@ def cmd_score_release(target: str) -> int:
         record_status(
             target_dir, "SCORE RELEASE", passed=True, command=f"drydock score release {target}"
         )
+    from drydock.scorecard import write_scorecard
+
+    write_scorecard(target, target_dir)
     return exit_code
 
 
@@ -2908,6 +2919,9 @@ def cmd_score_spec(
         sys.stdout.write(result.report)
     else:
         sys.stdout.write(render_console_report(result.inventory, result.findings))
+    from drydock.scorecard import write_scorecard
+
+    write_scorecard(target, target_dir)
     return result.exit_code()
 
 

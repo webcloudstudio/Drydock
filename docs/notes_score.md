@@ -6,8 +6,8 @@
 | Route | score |
 | Status | Working notes — not canonical specification |
 | Description | Closing out `build_score` and reshaping `drydock score`'s five commands into a stamped, self-approving final gate persisted on `SCORECARD.md`. |
-| Pending spec | 5 approved items |
-| Pending impl | 2 unimplemented sections (state ladder dropped, superseded by per-command stamps) |
+| Pending spec | 5 approved items (none yet reconciled into Drydock_Specification.md) |
+| Pending impl | 0 unimplemented sections (state ladder dropped, superseded by per-command stamps) |
 
 ## Goal
 
@@ -80,7 +80,16 @@ replaces/augments the target's `State:` line that `drydock score <target>`'s das
 today. Not resolved this session — see Open Questions.
 
 ### Every score command issues a stamped approval
-`2026-08-21` · `spec:approved` · `impl:unimplemented`
+`2026-08-21` · `spec:approved` · `impl:implemented`
+
+Each of `spec`, `ac`, `build`, `release` now calls `drydock.scorecard.write_scorecard` after it
+records its `PROJECT_STATUS.jsonl` state (`ac`/`build` only regenerate on a whole-target run, not
+`--step`). "Reuse `report_render.py`'s `.stamp`/`_letterhead` mechanics" turned out not to apply
+literally — that module renders HTML for `drydock_receipt/`, and `SCORECARD.md` is plain
+Markdown, confirmed with Ed — so each stamp is a small quoted Markdown block: verb, attribution
+(the command), and timestamp, e.g. `> **RELEASED**` / `> score release Demo · 2026-08-21T20:14:03Z`.
+`score spec` is not on `PROJECT_STATUS.jsonl`'s ladder (Ed: kept optional, not added) — its stamp
+falls back to the `SPECIFICATION_SCORECARD.md` file's mtime.
 
 Reframe `release`'s output from a single gate verdict into a **retrospective**: project type,
 scorecard notations for failed ACs and other flagged areas, material drawn from `DECISIONS.md`
@@ -96,7 +105,19 @@ Ordering: `SCORECARD.md` need not exist for the build to proceed, but it must be
 approval.
 
 ### `SCORECARD.md` becomes a fully-regenerated render
-`2026-08-21` · `spec:approved` · `impl:unimplemented`
+`2026-08-21` · `spec:approved` · `impl:implemented`
+
+New module `src/drydock/scorecard.py`: `render_scorecard`/`write_scorecard` always rebuild the
+whole file from `PROJECT_STATUS.jsonl` (which stamps ran, when, pass/fail) plus each command's own
+evidence (`SPECIFICATION_SCORECARD.md`'s mtime, `SOUNDINGS.md`, the deterministic build report,
+`evidence/score-release.json`, `DECISIONS.json` for material decisions). `score.py`'s
+`score_release` no longer writes `SCORECARD.md` itself (`_render_release_scorecard` deleted); the
+caller (`cli.py`) triggers the rebuild after recording status. `PROJECT_STATUS.jsonl` turned out to
+already be a snapshot (one row per label, latest attempt), not append-only as originally assumed
+here — still sufficient for "which stamps ran, when, pass/fail." Compatibility kept for
+`drydock.quarterdeck_state._scorecard_html` (the Chair's verdict board), which parses `- Verdict:`
+and a `## Project acceptance` table by column name — both markers are preserved verbatim in the
+Release section.
 
 Resolved fork: `SCORECARD.md` is the single persisted document (the only other candidate,
 `ACCEPTANCE.json`, was rejected — plain markdown sections, kept clean). Today only `score_release`
