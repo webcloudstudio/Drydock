@@ -70,6 +70,13 @@ _BLOCK_RE = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 
+_REPAIRED_SPEC_RE = re.compile(
+    r"^=== BEGIN REPAIRED SPECIFICATION ===[ \t]*$\n?(?P<text>.*?)"
+    r"^=== END REPAIRED SPECIFICATION ===[ \t]*$",
+    re.MULTILINE | re.DOTALL,
+)
+_AC_DELIMITER_RE = re.compile(r"^=== (?:END )?AC [^\n]*$")
+
 #: Pulls the criterion id back out of a ``VerifyResult.warning`` string, whose format is fixed by
 #: ``plan_verify.verify`` as ``f"{filename} [{check_id}]: {detail}"``.
 _WARNING_ID_RE = re.compile(r"^\S+ \[(?P<id>[^\]]+)\]: ")
@@ -153,6 +160,25 @@ def _blocks(text: str) -> dict[str, tuple[int, int, str]]:
     }
 
 
+def _container_repair_text(text: str) -> str | None:
+    """Return a wrapped full-spec repair, or ``None`` when the response is not that protocol."""
+    match = _REPAIRED_SPEC_RE.search(text)
+    return match.group("text").rstrip("\n") + "\n" if match is not None else None
+
+
+def _only_ac_delimiters_changed(original: str, repaired: str) -> bool:
+    """Require a container repair to alter only AC delimiter lines.
+
+    A malformed container has no safe criterion span.  The model therefore repairs the whole
+    file, but this deterministic guard limits the retained mutation to its delimiters.
+    """
+
+    def non_delimiters(text: str) -> list[str]:
+        return [line for line in text.splitlines() if not _AC_DELIMITER_RE.fullmatch(line)]
+
+    return non_delimiters(original) == non_delimiters(repaired)
+
+
 def _assemble(
     body: str,
     *,
@@ -161,6 +187,7 @@ def _assemble(
     defects: list[Defect],
     improve: tuple[Defect, ...] = (),
     advisories: tuple[str, ...] = (),
+    container_defect: Defect | None = None,
 ) -> PromptAssembly:
     """Build the repair prompt. Deterministic, so it is unit-testable without a process."""
     lines = ["## Criteria that cannot run", ""]
@@ -184,6 +211,14 @@ def _assemble(
         lines += ["## Advisories for this file (act only while repairing it)", ""]
         lines += [f"- {advisory}" for advisory in advisories]
         lines.append("")
+    if container_defect is not None:
+        lines += [
+            "## Bad acceptance container",
+            "",
+            f"- {container_defect.detail}",
+            "- Repair only `=== AC ... ===` and `=== END AC ... ===` delimiter lines.",
+            "",
+        ]
     return PromptAssembly(
         parts=(
             system_preamble_part(),
@@ -238,16 +273,11 @@ def repair(
             on_text(message + "\n")
 
     by_file: dict[str, list[Defect]] = {}
+    container_by_file: dict[str, Defect] = {}
     items: list[RepairItem] = []
     for defect in found.defects:
         if not defect.check_id:
-            # An unparseable file has no criterion to replace and no safe splice point. Repair
-            # declines it rather than guessing at the container's structure.
-            items.append(
-                RepairItem(
-                    defect.filename, "", "impossible", "", "file does not parse: " + defect.detail
-                )
-            )
+            container_by_file[defect.filename] = defect
             continue
         by_file.setdefault(defect.filename, []).append(defect)
 
@@ -276,6 +306,60 @@ def repair(
     prompt = load_prompt(PROMPT_NAME)
     changed: list[str] = []
     execution_ids: list[str] = []
+
+    for filename, defect in sorted(container_by_file.items()):
+        path = blueprint_dir / filename
+        original = path.read_text(encoding="utf-8")
+        emit(f"repair: {filename} · acceptance container · 1 of 1 attempt")
+        assembly = _assemble(
+            prompt.body,
+            rel_source=filename,
+            source_text=original,
+            defects=[],
+            container_defect=defect,
+        )
+        result = run(
+            assembly.rendered_text,
+            blueprint_dir,
+            llm=llm_provider,
+            model=model or prompt.model,
+            command_name="plan repair",
+            parameters={"target": target, "spec": filename, "repair": "acceptance-container"},
+            log_dir=log_dir,
+            target=target,
+            prompt_assembly=assembly,
+        )
+        if result.execution_id:
+            execution_ids.append(result.execution_id)
+        repaired = _container_repair_text(result.text) if result.ok else None
+        if repaired is None:
+            detail = (
+                "LLM execution failed" if not result.ok else "no repaired specification returned"
+            )
+        elif not _only_ac_delimiters_changed(original, repaired):
+            detail = "repair changed content other than AC delimiters and was reverted"
+        else:
+            path.write_text(repaired, encoding="utf-8", newline="\n")
+            try:
+                parse_programmatic_acceptance(path)
+            except ValueError as exc:
+                path.write_text(original, encoding="utf-8", newline="\n")
+                detail = f"repair left the acceptance container unparseable and was reverted: {exc}"
+            else:
+                item = RepairItem(
+                    filename, "", "repaired", original, "acceptance container repaired"
+                )
+                items.append(item)
+                changed.append(filename)
+                if on_item is not None:
+                    on_item(item)
+                emit(f"  ✓  {item.rendered}")
+                continue
+        item = RepairItem(filename, "", "unrepaired", original, detail)
+        items.append(item)
+        if on_item is not None:
+            on_item(item)
+        emit(f"  ✗  {item.rendered}")
 
     for filename in sorted(set(by_file) | set(improve_by_file)):
         defects = by_file.get(filename, [])

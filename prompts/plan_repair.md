@@ -1,7 +1,7 @@
 ---
 name: plan_repair
-description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, and make each criterion executable without changing what it asserts. Also improves criteria named under "Criteria to improve", whose defect is a measurement gap rather than a reason they cannot run.
-version: 20260822 V4
+description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, and make each criterion executable without changing what it asserts. Repairs a bad acceptance container only by correcting its AC delimiters. Also improves criteria named under "Criteria to improve", whose defect is a measurement gap rather than a reason they cannot run.
+version: 20260822 V5
 intent: Act as the Planning Crew repairing one Blueprint specification's Programmatic Acceptance criteria so each one can execute, and improving any criterion separately named under "Criteria to improve". Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: SPEC_FILE, DEFECTS, CRITERIA_TO_IMPROVE
@@ -25,6 +25,11 @@ nothing else in it.
 
 Your job is to make each criterion named under either heading run, or, for "Criteria to improve",
 run better in the one specific way named. Nothing else.
+
+When the input names a **Bad acceptance container**, the file has no safely addressable criterion.
+Repair only its `=== AC <id> ===` and `=== END AC <id> ===` delimiter lines. Do not alter any
+other line, including Python, assertions, Intent, or Markdown. Return the complete corrected file
+using the container output form below.
 
 ## The one rule
 
@@ -78,8 +83,18 @@ REPAIR_IMPOSSIBLE: <check-id> — <one sentence saying what the criterion would 
 
 ## Output
 
-Emit one block per criterion named under "Criteria that cannot run" or "Criteria to improve", and
-nothing else. No prose, no summary, no fenced code around the block. Use the exact delimiters,
+For a Bad acceptance container, emit exactly:
+
+```
+=== BEGIN REPAIRED SPECIFICATION ===
+<the complete original specification with only AC delimiter lines corrected>
+=== END REPAIRED SPECIFICATION ===
+```
+
+For all other jobs, emit one block per criterion named under "Criteria that cannot run" or
+"Criteria to improve", and nothing else.
+
+Use no prose, no summary, and no fenced code around a criterion block. Use the exact delimiters,
 with the criterion's own id:
 
 ```

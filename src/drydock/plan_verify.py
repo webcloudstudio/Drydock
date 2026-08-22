@@ -123,7 +123,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
         except ValueError as exc:
             # The container is malformed, so no criterion in this file is readable. Reported
             # against the file rather than a criterion, because there is no criterion to name.
-            defects.append(Defect(path.name, "", "unparseable-file", str(exc)))
+            defects.append(Defect(path.name, "", "bad-container", str(exc)))
             continue
         for check in checks:
             checked_criteria += 1

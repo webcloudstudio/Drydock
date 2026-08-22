@@ -35,6 +35,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-22: `drydock plan verify` classifies an unreadable Programmatic Acceptance section as
+  a `bad-container` defect. `drydock plan repair` makes one constrained LLM attempt to repair
+  that file's AC delimiters, retains the output only when the container parses and every
+  non-delimiter line is byte-equivalent, and otherwise restores the original file.
 - 2026-08-22: `drydock uat <Project>` now marks every child command as unattended. Analyze and
   Plan receive an explicit policy to resolve ambiguity from governed fixture inputs, persist the
   selected system choice, and emit no Commander questions, questionnaires, blockers, or open

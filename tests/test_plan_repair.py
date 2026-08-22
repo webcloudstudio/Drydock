@@ -135,6 +135,42 @@ assert result.returncode == 0
 === END AC quiet-suite ===
 """
 
+_BAD_CONTAINER = """# FEATURE: Container
+
+## Programmatic Acceptance
+
+=== AC first ===
+Intent: First check.
+
+assert True
+=== END AC second ===
+
+=== AC second ===
+Intent: Second check.
+
+assert True
+=== END AC second ===
+"""
+
+_FIXED_CONTAINER = """=== BEGIN REPAIRED SPECIFICATION ===
+# FEATURE: Container
+
+## Programmatic Acceptance
+
+=== AC first ===
+Intent: First check.
+
+assert True
+=== END AC first ===
+
+=== AC second ===
+Intent: Second check.
+
+assert True
+=== END AC second ===
+=== END REPAIRED SPECIFICATION ===
+"""
+
 
 @dataclass
 class _Run:
@@ -208,6 +244,35 @@ def test_a_repaired_criterion_is_spliced_in_and_verifies(tmp_path):
     # The untouched criterion is preserved byte for byte.
     assert "=== AC paths-recursive ===" in text
     assert 'assert json.loads("[1]") == [1]' in text
+
+
+def test_a_bad_acceptance_container_gets_one_delimiter_only_repair_attempt(tmp_path):
+    target = _target(tmp_path, FEATURE_Container=_BAD_CONTAINER)
+    runner = _runner(_FIXED_CONTAINER)
+
+    result = repair("Demo", target, runner=runner)
+
+    assert result.ok
+    assert result.files_changed == ("FEATURE_Container.md",)
+    assert verify("Demo", target).ok
+    assert "Bad acceptance container" in runner.calls[0]["prompt"]
+    (item,) = result.items
+    assert item.check_id == ""
+    assert item.status == "repaired"
+
+
+def test_a_bad_container_repair_cannot_change_non_delimiter_content(tmp_path):
+    target = _target(tmp_path, FEATURE_Container=_BAD_CONTAINER)
+    unsafe = _FIXED_CONTAINER.replace("assert True", "assert False", 1)
+
+    result = repair("Demo", target, runner=_runner(unsafe))
+
+    assert not result.ok
+    assert result.items[0].status == "unrepaired"
+    assert "other than AC delimiters" in result.items[0].detail
+    assert (target / "blueprint" / "FEATURE_Container.md").read_text(
+        encoding="utf-8"
+    ) == _BAD_CONTAINER
 
 
 def test_an_uncompilable_regex_pattern_is_repaired_and_verifies(tmp_path):
@@ -345,15 +410,17 @@ def test_a_failed_execution_leaves_the_file_alone(tmp_path):
     assert result.outstanding[0].detail == "LLM execution failed"
 
 
-def test_an_unparseable_file_is_declined_rather_than_guessed_at(tmp_path):
+def test_an_unparseable_file_gets_one_constrained_container_repair_attempt(tmp_path):
     target = _target(tmp_path, FEATURE_Broken="=== AC orphan ===\nIntent: x\n\nassert True\n")
     runner = _runner(_FIXED_BLOCK)
 
     result = repair("Demo", target, runner=runner)
 
     assert not result.ok
-    assert result.items[0].status == "impossible"
-    assert runner.calls == []
+    assert result.items[0].status == "unrepaired"
+    assert "no repaired specification returned" in result.items[0].detail
+    assert len(runner.calls) == 1
+    assert "Bad acceptance container" in runner.calls[0]["prompt"]
 
 
 # ── prompt assembly ───────────────────────────────────────────────────────────
