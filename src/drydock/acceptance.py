@@ -642,7 +642,10 @@ class ProgrammaticAcceptance:
 
     @property
     def retyped_expectations(self) -> tuple[str, ...]:
-        """Expected string literals this criterion re-typed instead of binding to its input."""
+        """Expected values this criterion re-typed instead of binding to its input.
+
+        A re-typed string literal or a reconstructed path, rendered as source text either way.
+        """
         return retyped_expectations(self.code)
 
     @property
@@ -1158,9 +1161,31 @@ def _supplied_literals(tree: ast.AST) -> frozenset[str]:
     return frozenset(supplied)
 
 
-def _comparison_expectations(tree: ast.AST) -> tuple[ast.Constant, ...]:
-    """Return the string constants asserted as expected values by an ``==`` comparison."""
-    found: list[ast.Constant] = []
+def _is_reconstructed_path(node: ast.AST) -> bool:
+    """True for ``a / b [/ c ...]`` — a path rebuilt with the pathlib join operator.
+
+    Path equality is sensitive to normalization a hand-assembled join does not control:
+    ``.resolve()`` against a relative join, a trailing slash, a symlink. Comparing one against a
+    path the code under test computed independently is the structural analogue of a re-typed
+    string literal — two spellings of "the same" value that can disagree with each other while
+    both are correct.
+    """
+    return isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)
+
+
+def _is_computed_attribute(node: ast.AST) -> bool:
+    """True for ``name.attr`` (or a chain of them) — a value read off an object, not typed here."""
+    return isinstance(node, ast.Attribute)
+
+
+def _comparison_expectations(tree: ast.AST) -> tuple[ast.expr, ...]:
+    """Return the expected-value expressions asserted by an ``==``/``!=`` comparison.
+
+    Two shapes qualify: a string constant, and a path rebuilt with ``/`` and compared against a
+    value read off another object (``module.CORPUS == sources / "jq.test"``) — the reconstruction
+    is retyped by structure rather than by bytes.
+    """
+    found: list[ast.expr] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assert):
             continue
@@ -1175,18 +1200,24 @@ def _comparison_expectations(tree: ast.AST) -> tuple[ast.Constant, ...]:
                 for side in (inner.left, comparator):
                     if isinstance(side, ast.Constant) and isinstance(side.value, str):
                         found.append(side)
+                if _is_reconstructed_path(inner.left) and _is_computed_attribute(comparator):
+                    found.append(inner.left)
+                elif _is_reconstructed_path(comparator) and _is_computed_attribute(inner.left):
+                    found.append(comparator)
     return tuple(found)
 
 
 @cache
 def retyped_expectations(code: str) -> tuple[str, ...]:
-    """Return expected string literals the criterion re-typed rather than bound to its input.
+    """Return expected values the criterion re-typed rather than bound to its input.
 
     This is the whole of the authoring rule, and it is a whitelist over a decidable property
     rather than a catalogue of observed failures. An expected value is legal when it is a status
     code, a value read back from the input the criterion supplied, or a contract token carrying
     nothing escapable. It is illegal when the author typed the expected bytes a second time,
-    because that is the one assertion that can be wrong while the product is right.
+    because that is the one assertion that can be wrong while the product is right — and illegal
+    in the same way when the author rebuilt a path expected to equal one the code under test
+    computes itself, since the two constructions are not guaranteed to normalize alike.
 
     The case this exists for, from a real run::
 
@@ -1204,11 +1235,13 @@ def retyped_expectations(code: str) -> tuple[str, ...]:
         # Not parseable is a separate, already-reported fact. Nothing to classify.
         return ()
     supplied = _supplied_literals(tree)
-    offending = [
-        node.value
-        for node in _comparison_expectations(tree)
-        if _is_escapable(node.value) and node.value not in supplied
-    ]
+    offending: list[str] = []
+    for node in _comparison_expectations(tree):
+        if isinstance(node, ast.Constant):
+            if _is_escapable(node.value) and node.value not in supplied:
+                offending.append(node.value)
+        else:
+            offending.append(ast.unparse(node))
     return tuple(dict.fromkeys(offending))
 
 

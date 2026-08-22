@@ -11,11 +11,15 @@ command surface and Typed Specification contract are unstable and may change bet
 ### Fixed
 
 - 2026-08-22: `BLUEPRINTS_CONTRACT.md`'s oracle rule now covers reconstructed non-string
-  expectations (paths, URLs, timestamps), not only re-typed string literals. Planning previously
-  authored `run_conformance.CORPUS == sources / "jq.test"` against a harness whose `CORPUS` is an
-  absolute, resolved path — a criterion no implementation could satisfy — and neither `plan
-  verify`'s mechanical check nor its advisory warning caught it, since both are scoped to string
-  constants.
+  expectations (a rebuilt path compared against one the code under test computes itself), not
+  only re-typed string literals, with a worked example. Planning previously authored
+  `run_conformance.CORPUS == sources / "jq.test"` against a harness whose `CORPUS` is an
+  absolute, resolved path — a criterion no implementation could satisfy.
+- 2026-08-22: `acceptance.retyped_expectations` (and the `plan verify` / `validate_specification`
+  warnings and build-time `binding`/`DISPUTED` classification that read it) now also flags a path
+  rebuilt with the pathlib join operator and compared for equality against an attribute read off
+  another object — the shape above. Previously only re-typed string literals were detected, so
+  this criterion settled `FAIL` and burned the block's whole repair budget instead of `DISPUTED`.
 - 2026-08-22: A fused acceptance boundary — two criteria emitted under one `=== AC <id> ===`
   opener, closed with the *second* criterion's id and never given its own opener — is now
   repaired deterministically at plan-generation time and, for a Blueprint already on disk, by

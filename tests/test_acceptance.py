@@ -1215,6 +1215,34 @@ def test_structural_claims_bind():
     assert check.binding
 
 
+def test_a_reconstructed_path_does_not_bind():
+    """The exact criterion that stalled jq run 20260822.044627's block-4 repair loop."""
+    check = _criterion(
+        "from pathlib import Path\nimport sys\n\n"
+        'sources = Path("sources")\n'
+        "sys.path.insert(0, str(sources))\n"
+        "import run_conformance\n"
+        'assert run_conformance.CORPUS == sources / "jq.test"\n'
+    )
+
+    assert check.retyped_expectations == ("sources / 'jq.test'",)
+    assert not check.binding
+
+
+def test_resolving_both_sides_before_comparing_binds():
+    """Normalizing instead of reconstructing removes the ambiguity, so the claim binds."""
+    check = _criterion(
+        "from pathlib import Path\nimport sys\n\n"
+        'sources = Path("sources")\n'
+        "sys.path.insert(0, str(sources))\n"
+        "import run_conformance\n"
+        'assert run_conformance.CORPUS == (sources / "jq.test").resolve()\n'
+    )
+
+    assert check.retyped_expectations == ()
+    assert check.binding
+
+
 def test_a_suite_bound_criterion_is_recognised():
     check = _criterion(
         "import os, subprocess\n"
