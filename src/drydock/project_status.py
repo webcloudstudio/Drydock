@@ -12,9 +12,11 @@ still stands whatever the rerun reports. A verification that fails invalidates i
 nothing else. A voided state is removed outright — absent means "not established", which is
 the same thing it means for a state never attempted.
 
-The summary row is derived, never authoritative, and names where the workflow stands: the
-lowest failed state if there is one, otherwise the last good state. That is the rung the
-workflow stopped on, so an external reader can ``tail -1`` the file for the answer.
+The summary row is derived, never authoritative, and names the lifecycle frontier. A passing
+terminal release score is authoritative evidence that earlier recoverable failures no longer
+describe the Target's current lifecycle progress. Otherwise, the first failed rung is the
+frontier; if none failed, it is the furthest passing rung. An external reader can ``tail -1``
+the file for the answer.
 """
 
 from __future__ import annotations
@@ -37,7 +39,6 @@ LABEL_LADDER = (
     "SCORE AC",
     "SCORE BUILD",
     "SCORE RELEASE",
-    "FINALIZED",
 )
 
 _LADDER_INDEX = {label: index for index, label in enumerate(LABEL_LADDER)}
@@ -210,13 +211,17 @@ def current_state(target_dir: Path) -> StatusEntry | None:
 
 
 def standing_state(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:
-    """Where the workflow stands: the rung blocking it, or the last good one.
+    """Where the workflow stands: terminal release, blocker, or furthest passing rung.
 
-    The workflow runs bottom-up and stops at its first failure, so a failed state is what an
-    operator must act on and outranks any state above it. With nothing failed, this is the
-    last good state — the furthest rung reached.
+    A passing ``SCORE RELEASE`` is the terminal pass condition, so it supersedes every earlier
+    failed rung. Without it, the first failure remains the lifecycle frontier; otherwise the
+    furthest passing rung is current. Publishing a receipt creates no additional state.
     """
-    return blocking(entries) or last_good(entries)
+    release = next(
+        (entry for entry in entries if entry.label == "SCORE RELEASE" and entry.passed),
+        None,
+    )
+    return release or blocking(entries) or last_good(entries)
 
 
 def blocking(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:
@@ -226,15 +231,13 @@ def blocking(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:
 
 
 def last_good(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:
-    """The highest passing entry ranked below the lowest failed one.
+    """The highest passing entry on the lifecycle ladder.
 
     Ranking rather than position handles the ladder's optional rungs: ``PLAN REPAIRED`` runs
     only after a failed verify and ``BUILDING`` only while work remains, so the passing states
     are not required to be contiguous.
     """
-    failed = blocking(entries)
-    ceiling = _LADDER_INDEX[failed.label] if failed is not None else len(LABEL_LADDER)
-    good = [entry for entry in entries if entry.passed and _LADDER_INDEX[entry.label] < ceiling]
+    good = [entry for entry in entries if entry.passed]
     return good[-1] if good else None
 
 

@@ -55,7 +55,6 @@ _WORKFLOW_LABELS = (
     "SCORE AC",
     "SCORE BUILD",
     "SCORE RELEASE",
-    "FINALIZED",
 )
 _WORKFLOW_INDEX = {label: index for index, label in enumerate(_WORKFLOW_LABELS)}
 _WORKFLOW_DISPLAY = {
@@ -68,7 +67,6 @@ _WORKFLOW_DISPLAY = {
     "SCORE AC": "Acceptance checks",
     "SCORE BUILD": "Build score",
     "SCORE RELEASE": "Release score",
-    "FINALIZED": "Receipt",
 }
 
 
@@ -265,8 +263,6 @@ def _workflow_label(record: dict) -> str | None:
         return "SCORE BUILD"
     if argv[:2] == ["score", "release"]:
         return "SCORE RELEASE"
-    if argv[:2] == ["score", "report"]:
-        return "FINALIZED"
     return None
 
 

@@ -45,7 +45,7 @@ class TestRecordStatus:
         assert entry.attempts == 2
 
     def test_recording_a_mutating_state_voids_every_state_above_it(self, tmp_path):
-        for label in ("INITIALIZED", "BUILT", "SCORE BUILD", "FINALIZED"):
+        for label in ("INITIALIZED", "BUILT", "SCORE BUILD", "SCORE RELEASE"):
             record_status(tmp_path, label, passed=True)
 
         record_status(tmp_path, "BUILT", passed=True)
@@ -54,7 +54,7 @@ class TestRecordStatus:
 
     def test_importing_voids_nothing(self, tmp_path):
         # Reading sources into a Target changes nothing a later state was verified against.
-        for label in ("INITIALIZED", "IMPORTED", "BUILT", "FINALIZED"):
+        for label in ("INITIALIZED", "IMPORTED", "BUILT", "SCORE RELEASE"):
             record_status(tmp_path, label, passed=True)
 
         record_status(tmp_path, "IMPORTED", passed=True)
@@ -63,11 +63,11 @@ class TestRecordStatus:
             "INITIALIZED",
             "IMPORTED",
             "BUILT",
-            "FINALIZED",
+            "SCORE RELEASE",
         ]
 
     def test_re_running_a_verification_voids_no_other_state(self, tmp_path):
-        for label in ("BUILT", "SCORE AC", "SCORE BUILD", "FINALIZED"):
+        for label in ("BUILT", "SCORE AC", "SCORE BUILD", "SCORE RELEASE"):
             record_status(tmp_path, label, passed=True)
 
         record_status(tmp_path, "SCORE AC", passed=True)
@@ -77,12 +77,12 @@ class TestRecordStatus:
             "BUILT",
             "SCORE AC",
             "SCORE BUILD",
-            "FINALIZED",
+            "SCORE RELEASE",
         ]
-        assert current_state(tmp_path).label == "FINALIZED"
+        assert current_state(tmp_path).label == "SCORE RELEASE"
 
     def test_a_failed_verification_invalidates_only_itself(self, tmp_path):
-        for label in ("BUILT", "SCORE AC", "SCORE BUILD", "FINALIZED"):
+        for label in ("BUILT", "SCORE AC", "SCORE BUILD", "SCORE RELEASE"):
             record_status(tmp_path, label, passed=True)
 
         record_status(tmp_path, "SCORE AC", passed=False, detail="2 failed")
@@ -90,10 +90,10 @@ class TestRecordStatus:
         standing = latest_per_label(read_status(tmp_path))
         assert standing["SCORE AC"].passed is False
         assert standing["SCORE BUILD"].passed is True
-        assert standing["FINALIZED"].passed is True
-        # The rows survive; acceptance is now the rung blocking the workflow.
-        assert current_state(tmp_path).label == "SCORE AC"
-        assert last_good(read_status(tmp_path)).label == "BUILT"
+        assert standing["SCORE RELEASE"].passed is True
+        # A terminal release score remains the current state despite an older failed check.
+        assert current_state(tmp_path).label == "SCORE RELEASE"
+        assert last_good(read_status(tmp_path)).label == "SCORE RELEASE"
 
     def test_last_good_skips_the_ladder_s_optional_rungs(self, tmp_path):
         # PLAN REPAIRED and BUILDING run only conditionally; their absence is not a failure.
@@ -105,7 +105,7 @@ class TestRecordStatus:
 
 class TestVoidAbove:
     def test_drops_every_state_above_the_named_one(self, tmp_path):
-        for label in ("PLAN CREATED", "PLAN REPAIRED", "BUILT", "FINALIZED"):
+        for label in ("PLAN CREATED", "PLAN REPAIRED", "BUILT", "SCORE RELEASE"):
             record_status(tmp_path, label, passed=True)
 
         void_above(tmp_path, "PLAN REPAIRED")
@@ -121,7 +121,7 @@ class TestVoidAbove:
 
     def test_a_failed_mutating_attempt_also_voids_downstream_states(self, tmp_path):
         record_status(tmp_path, "BUILT", passed=True)
-        record_status(tmp_path, "FINALIZED", passed=True)
+        record_status(tmp_path, "SCORE RELEASE", passed=True)
 
         record_status(tmp_path, "BUILT", passed=False, detail="boom")
 
@@ -184,15 +184,14 @@ class TestFileFormat:
         }
 
     def test_summary_names_the_blocking_rung_not_the_states_above_it(self, tmp_path):
-        for label in ("BUILT", "SCORE AC", "FINALIZED"):
+        for label in ("BUILT", "SCORE AC", "SCORE RELEASE"):
             record_status(tmp_path, label, passed=True)
 
         record_status(tmp_path, "SCORE AC", passed=False, detail="2 failed")
 
-        # FINALIZED is still recorded, but acceptance has to be cleared before it means
-        # anything, so that is what the summary reports.
-        assert _rows(tmp_path)[-1]["state"] == "SCORE AC"
-        assert _rows(tmp_path)[-1]["result"] == "fail"
+        # A terminal release score is the current state despite the older failed check.
+        assert _rows(tmp_path)[-1]["state"] == "SCORE RELEASE"
+        assert _rows(tmp_path)[-1]["result"] == "pass"
 
     def test_one_json_object_per_line(self, tmp_path):
         record_status(tmp_path, "BUILT", passed=False, detail="a\nb")
@@ -272,8 +271,8 @@ class TestRecordFailure:
         assert entry.detail == "disk gone"
 
     def test_usage_error_is_not_an_attempt_and_voids_nothing(self, tmp_path):
-        record_status(tmp_path, "FINALIZED", passed=True)
+        record_status(tmp_path, "SCORE RELEASE", passed=True)
 
         record_failure(tmp_path, "IMPORTED", UsageError("import requires <Source>"))
 
-        assert [e.label for e in read_status(tmp_path)] == ["FINALIZED"]
+        assert [e.label for e in read_status(tmp_path)] == ["SCORE RELEASE"]

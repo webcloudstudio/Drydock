@@ -2802,7 +2802,7 @@ def cmd_score_summary(target: str) -> int:
 def cmd_score_report(target: str) -> int:
     """Publish the Target's build receipt. Reads the journals and Target only; runs nothing."""
     from drydock.config import build_dir_for, get_workspace, require_target_dir
-    from drydock.project_status import current_state, record_status
+    from drydock.project_status import current_state
     from drydock.score_report import ReportError, write_report
 
     target_dir = require_target_dir(target)
@@ -2811,19 +2811,11 @@ def cmd_score_report(target: str) -> int:
         index = write_report(target, get_workspace(), target_dir, build_dir)
     except ReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        record_status(
-            target_dir,
-            "FINALIZED",
-            passed=False,
-            detail=str(exc)[:500],
-            command=f"drydock score report {target}",
-        )
         return 1
     print(f"Receipt: {index}")
     print(f"Open with: file://{index}")
-    # FINALIZED is recorded by `write_report`, which earns it only for a ladder that failed
-    # nothing and was scored. Publishing a receipt over an unfinished project is not an error,
-    # so the command still succeeds; the state says what the project is actually in.
+    # Publishing a receipt establishes no lifecycle state. It can report an unfinished Target,
+    # so the command still succeeds; the terminal release score says what the project is in.
     state = current_state(target_dir)
     if state is not None:
         print(f"State: {state.label} ({'pass' if state.passed else 'fail'})")

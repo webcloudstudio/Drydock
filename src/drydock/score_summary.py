@@ -27,7 +27,7 @@ SCORE_VERBS = ("spec", "ac", "build", "release", "report")
 
 #: State labels an operator cannot read at face value, and the plain words this command shows
 #: instead. Display only: the recorded label in ``PROJECT_STATUS.jsonl`` is unchanged.
-_STATE_DISPLAY = {"FINALIZED": "PROJECT COMPLETE"}
+_STATE_DISPLAY = {"SCORE RELEASE": "PROJECT COMPLETE"}
 
 #: Scores an operator is not obliged to run, so their absence is not a missing step to report.
 _OPTIONAL_VERBS = ("spec",)

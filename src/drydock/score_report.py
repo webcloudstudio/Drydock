@@ -458,17 +458,32 @@ def _row_of(entry) -> dict[str, object]:
 
 
 def _workflow_state(result: Mapping[str, object]) -> str:
-    """Grade the run from the state the machine holds: ``fail``, ``pass``, or ``warn``.
+    """Color the project by its furthest passing lifecycle state.
 
-    ``state`` is the standing state, which is the blocking rung whenever one exists, so a
-    failure anywhere on the ladder reaches this as a failure.
+    Projects before ``BUILT`` are red, built-but-unreleased projects are amber, and only a
+    passing ``SCORE RELEASE`` is green. The receipt headline is progress, not a second verdict.
     """
     state = result.get("state")
     if not isinstance(state, Mapping) or not state.get("label"):
         return "warn"
+    if state.get("label") == "SCORE RELEASE" and state.get("passed"):
+        return "pass"
+    from drydock.project_status import LABEL_LADDER
+
+    return (
+        "warn"
+        if LABEL_LADDER.index(str(state.get("label"))) >= LABEL_LADDER.index("BUILT")
+        else "fail"
+    )
+
+
+def _run_status(state: Mapping[str, object]) -> str:
+    """Return the record verdict independently of the receipt's progress color."""
+    if not state:
+        return "incomplete"
     if not state.get("passed"):
-        return "fail"
-    return "pass" if state.get("label") == "FINALIZED" else "warn"
+        return "failed"
+    return "passed" if state.get("label") == "SCORE RELEASE" else "incomplete"
 
 
 def _reconcile_acceptance(target: str, target_dir: Path, acceptance: Mapping[str, object]) -> None:
@@ -495,30 +510,6 @@ def _reconcile_acceptance(target: str, target_dir: Path, acceptance: Mapping[str
         "SCORE AC",
         passed=False,
         detail=f"{len(failures)} criteria failed",
-        command=f"drydock score report {target}",
-    )
-
-
-def _earn_finalized(target: str, target_dir: Path) -> None:
-    """Record FINALIZED when publishing this receipt is what earns it.
-
-    Publishing is the finalizing act, so the state is written before the document renders and
-    the document then reads it like any other. It is earned only by a ladder that failed
-    nothing and was scored: a receipt published over an unscored build leaves the project
-    unfinished, which is what the amber stamp reports.
-    """
-    from drydock.project_status import read_status, record_status
-
-    entries = read_status(target_dir)
-    if not entries or any(not entry.passed for entry in entries):
-        return
-    if not any(entry.label == "SCORE BUILD" for entry in entries):
-        return
-    record_status(
-        target_dir,
-        "FINALIZED",
-        passed=True,
-        detail="",
         command=f"drydock score report {target}",
     )
 
@@ -589,9 +580,7 @@ def collect_run(target: str, workspace: Path, target_dir: Path) -> dict:
     # did run still say exactly how far the project got.
     workflow = _workflow(target_dir)
     state = _standing_row(target_dir)
-    status = {"pass": "passed", "fail": "failed", "warn": "incomplete"}[
-        _workflow_state({"state": state, "workflow": workflow})
-    ]
+    status = _run_status(state)
 
     from drydock import __version__
 
@@ -914,12 +903,11 @@ def _report_groups(report_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
     return tuple(group for group in groups if group.files)
 
 
-def _run_facts(result: Mapping[str, object], delivered: str) -> list[tuple[str, str]]:
+def _run_facts(result: Mapping[str, object]) -> list[tuple[str, str]]:
     """The provenance a reader needs before reading anything else the run wrote.
 
-    ``delivered`` is the build directory the application was written to. It is named, not
-    carried: the code is under version control where it was built, and copying it into every
-    receipt is what made this document unpublishable.
+    The delivered-code directory is linked separately from these immutable facts, so the receipt
+    never claims that local directory is carried or sealed.
     """
     environment = result.get("environment") if isinstance(result.get("environment"), dict) else {}
     usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
@@ -950,21 +938,19 @@ def _run_facts(result: Mapping[str, object], delivered: str) -> list[tuple[str, 
         ("Tokens", html.escape(tokens)),
         ("Blocks", html.escape(f"{build.get('blocks', 0)} recorded")),
         ("Criteria", html.escape(criteria)),
-        ("Code", f"<code>{html.escape(delivered)}</code>" if delivered else ""),
     ]
 
 
 def _state_headline(result: Mapping[str, object]) -> str:
     """The project's state name, standing in for a pass/fail verdict word.
 
-    The overview leads with the one state the project holds, not with a completion word:
-    ``INCOMPLETE`` describes the ladder, not the state, and reads as a verdict this receipt
-    does not make.
+    The overview leads with the furthest state the Target reached, not an acceptance verdict.
     """
     target = html.escape(str(result.get("target") or ""))
     state = result.get("state")
     label = state.get("label") if isinstance(state, Mapping) else None
-    return f"{target}: {html.escape(str(label))}" if label else f"{target}: NO STATE"
+    display = "PLAN APPROVED" if label == "PLAN CREATED" and state.get("passed") else label
+    return f"{target}: {html.escape(str(display))}" if label else f"{target}: NO STATE"
 
 
 def _detail_line(result: Mapping[str, object]) -> str:
@@ -1309,11 +1295,19 @@ def _files_of(groups: Sequence[ArtifactGroup], name: str) -> tuple[FileRecord, .
     return next((group.files for group in groups if group.name == name), ())
 
 
+def _relative_href(base: Path, destination: Path) -> str:
+    """Return a browser-safe path from the receipt index to a local directory."""
+    from os.path import relpath
+
+    return Path(relpath(destination, base)).as_posix() + "/"
+
+
 def _render(
     report_root: Path,
     result: Mapping[str, object],
     groups: Sequence[ArtifactGroup],
-    delivered: str,
+    target_dir: Path,
+    build_dir: Path,
 ) -> str:
     """Render the receipt an operator opens from the Target's workspace."""
     target = str(result.get("target") or report_root.name)
@@ -1432,8 +1426,7 @@ def _render(
     )
 
     score_summary = [run for run in result.get("score_summary") or () if isinstance(run, Mapping)]
-    scores_block = _score_summary_table(score_summary)
-    scores_panel = scores_block + _render_receipt(report_root, checks, tags=_RECEIPT_TAGS)
+    verification_panel = _render_receipt(report_root, checks, tags=_RECEIPT_TAGS)
 
     workspace_files = _files_of(groups, "Workspace")
     workspace_tree = (
@@ -1458,16 +1451,22 @@ def _render(
         )
         if part
     )
-    marks = {"pass": "Accepted", "fail": "Not accepted", "warn": "In progress"}
+    marks = {"pass": "Accepted", "fail": "Progressing", "warn": "In progress"}
     overview = "\n".join([
         _verdict(
-            state == "pass",
+            state,
             _state_headline(result),
             _detail_line(result),
         ),
         _ladder_table(workflow),
         _score_summary_table(score_summary),
-        _meta(_run_facts(result, delivered)),
+        _meta(
+            _run_facts(result)
+            + [
+                ("Code", _anchor(_relative_href(report_root, build_dir), "open code")),
+                ("Workspace", _anchor(_relative_href(report_root, target_dir), "open workspace")),
+            ]
+        ),
         run_notes(),
     ])
     build_panel = _tabs(
@@ -1475,7 +1474,7 @@ def _render(
             ("steps", "Commands", commands_table),
             ("error", "Error", excerpt),
             ("llm", "LLM", llm_panel),
-            ("scores", "Scores", scores_panel),
+            ("verification", "Verification", verification_panel),
             ("output", "Output", workspace_tree),
         ],
         group="build",
@@ -1514,10 +1513,8 @@ def write_report(target: str, workspace: Path, target_dir: Path, build_dir: Path
     Returns the written ``index.html``. Raises :class:`ReportError` when the Target has
     recorded nothing to report.
     """
-    # The machine is settled before the record is collected, so the document only ever
-    # reports states the file holds — including the FINALIZED this publication earns.
+    # The receipt only reports states the machine holds. Publication does not create a state.
     _reconcile_acceptance(target, target_dir, _acceptance(target_dir))
-    _earn_finalized(target, target_dir)
 
     result = collect_run(target, workspace, target_dir)
     report_root = target_dir / REPORT_DIRNAME
@@ -1529,7 +1526,9 @@ def write_report(target: str, workspace: Path, target_dir: Path, build_dir: Path
     viewers = _write_viewers(report_root, published, "Run artifact", _INDEX_NAME)
     index = report_root / _INDEX_NAME
     with _viewers(viewers):
-        index.write_text(_render(report_root, result, groups, str(build_dir)), encoding="utf-8")
+        index.write_text(
+            _render(report_root, result, groups, target_dir, build_dir), encoding="utf-8"
+        )
     # Sealed last, once every file the inventory names is final. index.html is excluded by
     # `_iter_files`, so the page can be regenerated without invalidating the seal.
     _write_sums(report_root, groups)

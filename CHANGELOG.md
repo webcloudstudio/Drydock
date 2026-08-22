@@ -26,6 +26,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-21: `SCORE RELEASE` is now the terminal `PROJECT_STATUS.jsonl` state and the sole
+  passing release condition. `drydock score report` no longer records the synthetic
+  `FINALIZED` state. A passing release score supersedes earlier recoverable failures in the
+  Target's lifecycle frontier, so `drydock score`, the receipt, and the Commander's Chair report
+  the release rather than an obsolete `PLAN CREATED` failure. The receipt headline now states
+  lifecycle progress — red before `BUILT`, amber from `BUILT` through scoring, green only for a
+  passing release — and labels a clean `PLAN CREATED` state as `PLAN APPROVED`. Its duplicated
+  Scores tab is replaced with Verification, and the Overview provides relative links to the
+  delivered code and Target workspace.
 - 2026-08-21: `drydock build --help` now prints one concise command description and one option
   list. It omits repeated command examples and configuration-setting commands while retaining
   each build option and its default.

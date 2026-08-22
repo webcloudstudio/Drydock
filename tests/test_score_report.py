@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import html
 import json
+import os
 import re
 from pathlib import Path
 
@@ -350,16 +350,31 @@ def test_the_ladder_is_the_states_the_machine_holds(workspace, target_dir):
         "SCORE BUILD",
     ]
     assert result["state"]["label"] == "SCORE BUILD"
-    assert result["status"] == "incomplete"  # scored, but not yet published
+    assert result["status"] == "incomplete"  # scored, but not yet released
 
 
-def test_publishing_a_clean_scored_run_earns_finalized(workspace, target_dir, build_dir):
+def test_publishing_a_clean_scored_run_does_not_advance_the_lifecycle(
+    workspace, target_dir, build_dir
+):
     from drydock.project_status import current_state
 
     _built(workspace, target_dir)
     build_dir.mkdir(parents=True)
     write_report("widget", workspace, target_dir, build_dir)
-    assert current_state(target_dir).label == "FINALIZED"
+    assert current_state(target_dir).label == "SCORE BUILD"
+    assert collect_run("widget", workspace, target_dir)["status"] == "incomplete"
+
+
+def test_a_passing_release_score_is_the_terminal_project_state(workspace, target_dir, build_dir):
+    from drydock.project_status import current_state
+
+    _built(workspace, target_dir)
+    _ladder(target_dir, "SCORE RELEASE")
+    build_dir.mkdir(parents=True)
+
+    write_report("widget", workspace, target_dir, build_dir)
+
+    assert current_state(target_dir).label == "SCORE RELEASE"
     assert collect_run("widget", workspace, target_dir)["status"] == "passed"
 
 
@@ -384,7 +399,7 @@ def test_verdict_fails_on_a_failed_criterion_even_when_every_command_exited_clea
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "failed"
     assert result["acceptance"]["failures"] == ("ac-2",)
-    assert "FINALIZED" not in [step["label"] for step in result["workflow"]]
+    assert "SCORE RELEASE" not in [step["label"] for step in result["workflow"]]
 
 
 def test_an_unverified_criterion_does_not_fail_the_run(workspace, target_dir, build_dir):
@@ -393,7 +408,7 @@ def test_an_unverified_criterion_does_not_fail_the_run(workspace, target_dir, bu
     build_dir.mkdir(parents=True)
     write_report("widget", workspace, target_dir, build_dir)
     result = collect_run("widget", workspace, target_dir)
-    assert result["status"] == "passed"
+    assert result["status"] == "incomplete"
     assert result["acceptance"]["unverified"] == 1
 
 
@@ -405,7 +420,7 @@ def test_a_built_and_scored_target_passes_without_an_acceptance_board(
     build_dir.mkdir(parents=True)
     write_report("widget", workspace, target_dir, build_dir)
     result = collect_run("widget", workspace, target_dir)
-    assert result["status"] == "passed"
+    assert result["status"] == "incomplete"
     assert result["acceptance"]["recorded"] is False
 
 
@@ -505,9 +520,10 @@ def published(workspace: Path, target_dir: Path, build_dir: Path) -> Path:
                 transcript="logs/20260101.090000.000Z_widget_build_codex.log",
             ),
             _record("score build widget", stamp="20260101.091000.000Z"),
+            _record("score release widget", stamp="20260101.092000.000Z"),
         ],
     )
-    _ladder(target_dir, "BUILT", "SCORE BUILD")
+    _ladder(target_dir, "BUILT", "SCORE BUILD", "SCORE RELEASE")
     (build_dir / "src").mkdir(parents=True)
     (build_dir / "src" / "app.py").write_text("print('hi')\n", encoding="utf-8")
     (build_dir / "src" / "__pycache__").mkdir()
@@ -884,13 +900,14 @@ def test_the_page_states_no_absolute_path_from_the_generating_machine(published,
     assert str(workspace) not in record
 
 
-def test_the_page_stamps_the_product_verdict_and_names_the_delivered_code(published, build_dir):
+def test_the_page_stamps_the_terminal_state_and_links_code_and_workspace(published, build_dir):
     """The code is named so a reader can find it, and not copied so the page stays hostable."""
     page = published.read_text(encoding="utf-8")
     assert "Build Receipt" in page
-    assert "widget: FINALIZED" in page
+    assert "widget: SCORE RELEASE" in page
     assert "Accepted" in page
-    assert html.escape(str(build_dir)) in page
+    assert f'href="{Path(os.path.relpath(build_dir, published.parent)).as_posix()}/"' in page
+    assert 'href="../"' in page
 
 
 def test_the_page_ladders_every_legitimate_state(published):
@@ -978,20 +995,19 @@ def test_the_command_journal_never_puts_a_state_on_the_ladder(workspace, target_
     assert result["state"]["label"] == "INITIALIZED"
 
 
-def test_a_rebuild_voids_the_finalized_state_a_previous_publication_earned(
-    workspace, target_dir, build_dir
-):
-    """Reporting twice is not an achievement; FINALIZED cannot outlive the build under it."""
+def test_a_rebuild_voids_the_terminal_release_score(workspace, target_dir, build_dir):
+    """A rebuild invalidates the release score recorded against the previous build."""
     from drydock.project_status import current_state, record_status
 
     _built(workspace, target_dir)
     build_dir.mkdir(parents=True)
     write_report("widget", workspace, target_dir, build_dir)
-    assert current_state(target_dir).label == "FINALIZED"
+    _ladder(target_dir, "SCORE RELEASE")
+    assert current_state(target_dir).label == "SCORE RELEASE"
 
     record_status(target_dir, "BUILT", passed=True, command="drydock build widget")
 
     assert current_state(target_dir).label == "BUILT"
     result = collect_run("widget", workspace, target_dir)
     assert result["status"] == "incomplete"
-    assert "FINALIZED" not in [step["label"] for step in result["workflow"]]
+    assert "SCORE RELEASE" not in [step["label"] for step in result["workflow"]]

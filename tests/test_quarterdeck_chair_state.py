@@ -56,21 +56,21 @@ def test_the_ladder_marks_held_states_and_leaves_the_rest_pending(target_dir):
     assert '<li class="state-step state-held">INITIALIZED</li>' in page
     assert '<li class="state-step state-current state-pass">BUILT</li>' in page
     # Voided and never-attempted states are indistinguishable, and both render as pending.
-    assert '<li class="state-step">FINALIZED</li>' in page
+    assert '<li class="state-step">SCORE RELEASE</li>' in page
 
 
 def test_a_voided_state_is_no_longer_shown_as_reached(target_dir):
     record_status(target_dir, "INITIALIZED", passed=True)
     record_status(target_dir, "BUILT", passed=True)
     record_status(target_dir, "SCORE BUILD", passed=True)
-    record_status(target_dir, "FINALIZED", passed=True)
+    record_status(target_dir, "SCORE RELEASE", passed=True)
 
     record_status(target_dir, "BUILT", passed=True, command="drydock build widget")
 
     page = _chair(target_dir)
 
     assert "STATE: BUILT" in page
-    assert '<li class="state-step">FINALIZED</li>' in page
+    assert '<li class="state-step">SCORE RELEASE</li>' in page
     assert '<li class="state-step">SCORE BUILD</li>' in page
 
 

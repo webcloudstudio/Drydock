@@ -327,6 +327,7 @@ h1 { font-size: 1.32rem; font-weight: 700; letter-spacing: .04em; margin: .3rem 
 .verdict .state { font-weight: 700; letter-spacing: .08em; }
 .verdict.pass .state { color: var(--pass); }
 .verdict.fail .state { color: var(--fail); }
+.verdict.warn .state { color: var(--warn); }
 .verdict .detail { color: var(--ink); margin-top: .3rem; font-size: .86rem; }
 dl.meta {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(23rem, 1fr));
@@ -666,8 +667,8 @@ def _letterhead(
     )
 
 
-def _verdict(passed: bool, verdict: str, detail: str) -> str:
-    state = "pass" if passed else "fail"
+def _verdict(passed: bool | str, verdict: str, detail: str) -> str:
+    state = passed if isinstance(passed, str) else ("pass" if passed else "fail")
     detail_html = f'<div class="detail">{detail}</div>' if detail else ""
     return (
         f'<div class="verdict {state}"><span class="state">{html.escape(verdict)}</span>'

@@ -220,11 +220,11 @@ class TestRender:
 
         assert "Not yet run" not in page
 
-    def test_finalized_is_reported_as_project_complete(self, tmp_path):
+    def test_release_score_is_reported_as_project_complete(self, tmp_path):
         target_dir = _target(tmp_path)
-        record_status(target_dir, "FINALIZED", passed=True)
+        record_status(target_dir, "SCORE RELEASE", passed=True)
 
         page = "\n".join(render_summary(summarize_scores("T", tmp_path, target_dir)))
 
         assert "State:  PROJECT COMPLETE" in page
-        assert "FINALIZED" not in page
+        assert "SCORE RELEASE" not in page

@@ -249,7 +249,7 @@ class TestVerifyRecordsOnlyFailure:
         )
 
         target_dir = _target(tmp_path, FEATURE_Broken=_MISSING_IMPORT)
-        for label in ("PLAN CREATED", "BUILT", "FINALIZED"):
+        for label in ("PLAN CREATED", "BUILT", "SCORE RELEASE"):
             record_status(target_dir, label, passed=True)
 
         assert self._verify(monkeypatch, target_dir) == 1
@@ -259,9 +259,9 @@ class TestVerifyRecordsOnlyFailure:
         assert standing["PLAN CREATED"].passed is False
         assert standing["PLAN CREATED"].detail == "1 criterion cannot run"
         assert standing["PLAN CREATED"].command == "drydock plan verify Demo"
-        # It authored nothing, so it voids nothing — but it is now the blocking rung.
-        assert set(standing) == {"PLAN CREATED", "BUILT", "FINALIZED"}
-        assert current_state(target_dir).label == "PLAN CREATED"
+        # It authored nothing, so it voids nothing; the later release remains current.
+        assert set(standing) == {"PLAN CREATED", "BUILT", "SCORE RELEASE"}
+        assert current_state(target_dir).label == "SCORE RELEASE"
 
     def test_a_repaired_plan_is_the_rung_condemned(self, tmp_path, monkeypatch, capsys):
         from drydock.project_status import latest_per_label, read_status, record_status

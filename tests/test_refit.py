@@ -661,7 +661,7 @@ class TestRefitVoidsVerifications:
     def _ladder(self, target_dir):
         from drydock.project_status import read_status, record_status
 
-        for label in ("PLAN CREATED", "BUILT", "SCORE AC", "FINALIZED"):
+        for label in ("PLAN CREATED", "BUILT", "SCORE AC", "SCORE RELEASE"):
             record_status(target_dir, label, passed=True)
         return read_status
 
@@ -683,5 +683,5 @@ class TestRefitVoidsVerifications:
             "PLAN CREATED",
             "BUILT",
             "SCORE AC",
-            "FINALIZED",
+            "SCORE RELEASE",
         ]
