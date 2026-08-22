@@ -26,6 +26,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-21: `drydock build --help` now prints one concise command description and one option
+  list. It omits repeated command examples and configuration-setting commands while retaining
+  each build option and its default.
+- 2026-08-21: `drydock plan repair <Target>` now repairs advisory-only acceptance criteria when
+  invoked directly. The repair prompt distinguishes criteria that cannot run from named
+  measurement improvements; it still makes one surgical attempt per file and re-verifies before
+  retaining a write.
 - 2026-08-21: `drydock score ac <Target>` now prints `Running AC <n>/<total>: <id>` before each
   Programmatic Acceptance criterion begins. Long deterministic corpus slices therefore show
   bounded live progress while preserving the existing consolidated verdict report and

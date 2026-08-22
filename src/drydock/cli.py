@@ -476,9 +476,8 @@ def _add_bound_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="<n>",
         help=(
-            "Consecutive repair passes without acceptance progress before a block is stopped "
-            f"(default: {MAX_CONSECUTIVE_REPAIR_STALLS}, or "
-            "'drydock config set repair_stall_limit <n>')."
+            "Stop after this many repairs without acceptance progress "
+            f"(default: {MAX_CONSECUTIVE_REPAIR_STALLS})."
         ),
     )
     parser.add_argument(
@@ -488,9 +487,8 @@ def _add_bound_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="<MB>",
         help=(
-            "Output Drydock will hold from one acceptance command before stopping it and "
-            f"failing the gate (default: {DEFAULT_CAPTURE_OUTPUT_LIMIT_MB} MB, 0 disables; or "
-            "'drydock config set capture_output_limit <MB>')."
+            "Maximum acceptance-command output retained; 0 disables "
+            f"(default: {DEFAULT_CAPTURE_OUTPUT_LIMIT_MB} MB)."
         ),
     )
     parser.add_argument(
@@ -500,9 +498,8 @@ def _add_bound_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="<MB>",
         help=(
-            "Address-space ceiling for an acceptance run and everything it spawns "
-            f"(default: {DEFAULT_SANDBOX_MEM_LIMIT_MB} MB, 0 disables; or "
-            "'drydock config set sandbox_mem_limit <MB>')."
+            "Address-space limit for an acceptance run; 0 disables "
+            f"(default: {DEFAULT_SANDBOX_MEM_LIMIT_MB} MB)."
         ),
     )
 
@@ -1035,10 +1032,9 @@ def _print_plan_summary(plan) -> None:
 
 
 OVERRIDE_HELP = (
-    "Waive the gates that wait on a human answer — unanswered Analyze questionnaire decisions, "
-    "blocking DECISIONS.json records, and acceptance prerequisites awaiting authorization — and "
-    "report them instead of stopping. A blocked analysis (BLOCKERS.md, Quality: Blocked) is still "
-    "fatal. Intended for unattended regression runs; the Target is stamped as ungoverned."
+    "Waive answer-dependent gates and report them instead of stopping. Does not waive "
+    "BLOCKERS.md or Quality: Blocked. Intended for unattended regression; marks the Target "
+    "ungoverned."
 )
 
 
@@ -3182,8 +3178,7 @@ def _add_build_options(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="<n>",
         help=(
-            "Repair passes after a failed block (0 disables; default "
-            f"{DEFAULT_REPAIR_ATTEMPTS}, or 'drydock config set repair_attempts <n>')."
+            f"Repair passes after a failed block; 0 disables (default {DEFAULT_REPAIR_ATTEMPTS})."
         ),
     )
     _add_bound_arguments(parser)
@@ -3202,17 +3197,11 @@ def _build_operand_parser() -> argparse.ArgumentParser:
     """Return the parser for the operands of ``drydock build <Target>``."""
     parser = DrydockArgumentParser(
         prog="drydock build",
-        description="Build or inspect build state.",
+        description="Build a Target or inspect its build state.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_build_arguments(parser)
     return parser
-
-
-def _build_help_details() -> str:
-    """Return the build operand help rendered from its actual parser."""
-    parser = _build_operand_parser()
-    return parser.format_help().partition("\n\n")[2].rstrip()
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -3643,20 +3632,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_build = sub.add_parser(
         "build",
         help="Build or inspect build state.",
-        description=(
-            "drydock build <Target>          — build/resume the frontier (failed blocks resume in place)\n"
-            "drydock build <Target> --continue      — explicit alias for the default resume behavior\n"
-            "drydock build <Target> --step <id>     — build/resume only that block\n"
-            "drydock build <Target> --story <id>    — build/resume exactly one story, even in a feature\n"
-            "drydock build <Target> --ungate         — release acceptance-only failures as UNVERIFIED\n"
-            "drydock build <Target> --reset         — reset all blocks + wipe build dir, then rebuild\n"
-            "drydock build <Target> --step <id> --reset  — reset that block, then rebuild clean\n"
-            "drydock build <Target> --normalize-order  — normalize MANIFEST order, then build\n"
-            "drydock build <Target> --dry-run       — preview next build block without writes\n"
-            "drydock build status <Target>   — show build state\n"
-            "drydock build score <Target>    — generate SCORECARD.md"
-        ),
-        epilog="Build operands:\n" + _build_help_details(),
+        description="Build a Target or inspect its build state.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     # Declare build options on the dispatcher as well as in the REMAINDER operand parser. This

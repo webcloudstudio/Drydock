@@ -73,6 +73,32 @@ assert selector
 """
 
 
+_WARNING_ONLY = """# FEATURE: Diagnostics
+
+## Programmatic Acceptance
+
+=== AC quiet-suite ===
+Intent: Runs a suite and asserts overall success.
+
+import subprocess
+
+result = subprocess.run(["true"], capture_output=True)
+assert result.returncode == 0
+=== END AC quiet-suite ===
+"""
+
+_WARNING_ONLY_FIXED = """=== AC quiet-suite ===
+Intent: Runs a suite and asserts overall success.
+
+import subprocess
+
+result = subprocess.run(["true"], capture_output=True)
+print(result.returncode)
+assert result.returncode == 0
+=== END AC quiet-suite ===
+"""
+
+
 @dataclass
 class _Run:
     text: str
@@ -110,6 +136,26 @@ def test_nothing_to_repair_makes_no_model_call(tmp_path):
     assert result.nothing_to_repair
     assert result.ok
     assert runner.calls == []
+
+
+def test_a_warning_only_file_still_gets_a_repair_call(tmp_path):
+    """A criterion with no defect but an advisory is not unreachable: it is its own call."""
+    target = _target(tmp_path, FEATURE_Diagnostics=_WARNING_ONLY)
+    assert verify("Demo", target).ok  # confirms the fixture is warning-only, not defective
+    runner = _runner(_WARNING_ONLY_FIXED)
+
+    result = repair("Demo", target, runner=runner)
+
+    assert len(runner.calls) == 1
+    prompt = runner.calls[0]["prompt"]
+    assert "Criteria to improve" in prompt
+    assert "quiet-suite" in prompt
+    assert "prints none of it" in prompt
+    assert result.files_changed == ("FEATURE_Diagnostics.md",)
+    (item,) = [i for i in result.items if i.check_id == "quiet-suite"]
+    assert item.status == "repaired"
+    text = (target / "blueprint" / "FEATURE_Diagnostics.md").read_text(encoding="utf-8")
+    assert "print(result.returncode)" in text
 
 
 def test_a_repaired_criterion_is_spliced_in_and_verifies(tmp_path):

@@ -1,11 +1,18 @@
 """``drydock plan repair`` — make unrunnable acceptance criteria runnable, once.
 
-Paired with ``drydock plan verify`` and meaningless without it::
+Paired with ``drydock plan verify``::
 
     drydock plan verify <Target> || drydock plan repair <Target>
 
-Verification is free, so it runs every time; repair costs a model call, so it runs only when
-there is something to repair. That asymmetry is the whole reason the two are separate commands.
+Verification is free, so it runs every time; repair costs a model call, so the ``||`` idiom pays
+for it only when verify's exit status says the plan is not fit to build — i.e. only when there is
+a defect. Verify's warnings (advisories) never fail its exit status by design, so they never
+trigger that idiom on their own.
+
+Called directly, ``plan repair`` also makes one call per file whose only findings are advisories —
+otherwise an advisory-only file, one that never fails ``plan verify``, could never be repaired at
+all. What stays true from the defect case: one attempt per file, surgical splice, re-verify before
+keeping the write.
 
 Scope. This repairs *mechanics*: a criterion that raises before it asserts anything — a missing
 import, an undefined name, a syntax error. It never touches what a criterion asserts. A criterion
@@ -61,6 +68,10 @@ _BLOCK_RE = re.compile(
     r"^=== AC (?P<id>[^=\n]+?) ===[ \t]*$\n(?P<body>.*?)^=== END AC (?P=id) ===[ \t]*$\n?",
     re.MULTILINE | re.DOTALL,
 )
+
+#: Pulls the criterion id back out of a ``VerifyResult.warning`` string, whose format is fixed by
+#: ``plan_verify.verify`` as ``f"{filename} [{check_id}]: {detail}"``.
+_WARNING_ID_RE = re.compile(r"^\S+ \[(?P<id>[^\]]+)\]: ")
 
 
 class CompletedRun(Protocol):
@@ -145,6 +156,7 @@ def _assemble(
     rel_source: str,
     source_text: str,
     defects: list[Defect],
+    improve: tuple[Defect, ...] = (),
     advisories: tuple[str, ...] = (),
 ) -> PromptAssembly:
     """Build the repair prompt. Deterministic, so it is unit-testable without a process."""
@@ -152,10 +164,20 @@ def _assemble(
     for defect in defects:
         lines.append(f"- `{defect.check_id}` — {defect.detail}")
     lines.append("")
+    if improve:
+        # These criteria already run and judge correctly — plan verify would not gate the plan
+        # over them — but this call is already paying for the file, so fix what the advisory
+        # names. Never touch anything this criterion asserts, same as a defect repair.
+        lines += [
+            "## Criteria to improve (no defect — repair the issue named, re-emit the block)",
+            "",
+        ]
+        for defect in improve:
+            lines.append(f"- `{defect.check_id}` — {defect.detail}")
+        lines.append("")
     if advisories:
-        # Verification's non-fatal findings for this file. They never justify a call of their
-        # own — a criterion that runs is not worth a model call — but a call already being paid
-        # for can carry them.
+        # Verification's non-fatal findings for this file that are riding along with a defect
+        # repair already happening on the same criterion — informational, not a separate ask.
         lines += ["## Advisories for this file (act only while repairing it)", ""]
         lines += [f"- {advisory}" for advisory in advisories]
         lines.append("")
@@ -205,7 +227,7 @@ def repair(
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
 
     found = verify(target, target_dir)
-    if found.ok:
+    if not found.defects and not found.warnings:
         return RepairResult(target=target, nothing_to_repair=True)
 
     def emit(message: str) -> None:
@@ -226,17 +248,42 @@ def repair(
             continue
         by_file.setdefault(defect.filename, []).append(defect)
 
+    # Every warning, parsed back to the file and criterion it names. A warning whose criterion
+    # already has a defect keeps riding along with that defect's call, unchanged; a warning whose
+    # criterion has no defect becomes its own repair target, so it is never simply unreachable.
+    parsed_warnings: list[tuple[str, str, str]] = []
+    for warning in found.warnings:
+        match = _WARNING_ID_RE.match(warning)
+        if match is None:
+            continue
+        parsed_warnings.append((
+            warning[: warning.index(" [")],
+            match.group("id"),
+            warning[match.end() :],
+        ))
+
+    improve_by_file: dict[str, list[Defect]] = {}
+    for filename, check_id, detail in parsed_warnings:
+        if any(d.check_id == check_id for d in by_file.get(filename, [])):
+            continue
+        improve_by_file.setdefault(filename, []).append(
+            Defect(filename, check_id, "advisory", detail)
+        )
+
     prompt = load_prompt(PROMPT_NAME)
     changed: list[str] = []
     execution_ids: list[str] = []
 
-    for filename, defects in sorted(by_file.items()):
+    for filename in sorted(set(by_file) | set(improve_by_file)):
+        defects = by_file.get(filename, [])
+        improve = improve_by_file.get(filename, [])
+        targets = defects + improve
         path = blueprint_dir / filename
         original = path.read_text(encoding="utf-8")
         before = _blocks(original)
         emit(
             f"repair: {filename} · "
-            + ", ".join(defect.check_id for defect in defects)
+            + ", ".join(defect.check_id for defect in targets)
             + " · 1 of 1 attempt"
         )
         assembly = _assemble(
@@ -244,8 +291,11 @@ def repair(
             rel_source=filename,
             source_text=original,
             defects=defects,
+            improve=tuple(improve),
             advisories=tuple(
-                warning for warning in found.warnings if warning.startswith(f"{filename} [")
+                f"{wfile} [{wid}]: {detail}"
+                for wfile, wid, detail in parsed_warnings
+                if wfile == filename and any(d.check_id == wid for d in defects)
             ),
         )
         result = run(
@@ -262,7 +312,7 @@ def repair(
         if result.execution_id:
             execution_ids.append(result.execution_id)
         if not result.ok or not result.text.strip():
-            for defect in defects:
+            for defect in targets:
                 items.append(
                     RepairItem(
                         filename,
@@ -281,12 +331,12 @@ def repair(
         emitted = _blocks(result.text)
 
         # Splice from the end so earlier spans keep their offsets. Only the criteria that were
-        # reported defective are eligible: a model that returns a bonus block for an untouched
-        # criterion does not get to rewrite it.
+        # named — as a defect or as something to improve — are eligible: a model that returns a
+        # bonus block for an untouched criterion does not get to rewrite it.
         text = original
         applied: list[str] = []
         for defect in sorted(
-            defects, key=lambda d: before.get(d.check_id, (0, 0, ""))[0], reverse=True
+            targets, key=lambda d: before.get(d.check_id, (0, 0, ""))[0], reverse=True
         ):
             span = before.get(defect.check_id)
             replacement = emitted.get(defect.check_id)

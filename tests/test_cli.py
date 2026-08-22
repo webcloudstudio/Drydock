@@ -999,6 +999,9 @@ class TestAnalyzeCommand:
         assert "--repair-attempts" in out
         assert "default 6" in out
         assert "--escalate-model" in out
+        assert "Build operands:" not in out
+        assert "drydock config set repair_attempts" not in out
+        assert "—" not in out
         assert "--reset-failed" not in out
         assert "--force" not in out
 
@@ -1015,7 +1018,7 @@ class TestAnalyzeCommand:
         rc, out, err = run_cli(*argv)
 
         assert rc == 0, err
-        assert "Build or inspect build state." in out
+        assert "Build a Target or inspect its build state." in out
         assert "--ungate" in out
 
     @pytest.mark.parametrize(
