@@ -1077,20 +1077,6 @@ def _evidence_link(case_root: Path, relative: str, prefix: str, label: str = "")
     )
 
 
-_RUN_NOTES = (
-    "One run is evidence of one run. It is not a benchmark.",
-    "It is not a security certification of the delivered code.",
-)
-
-
-def run_notes() -> str:
-    return (
-        '<h2>RUN NOTES:</h2><ul class="limits">'
-        + "".join(f"<li>{html.escape(item)}</li>" for item in _RUN_NOTES)
-        + "</ul>"
-    )
-
-
 def _render_receipt(
     base: Path,
     checks: Sequence[Check],

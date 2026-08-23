@@ -956,7 +956,6 @@ def test_the_run_readme_leads_with_the_receipt_before_any_drydock_internals(
             "## Receipt",
             "## Run facts",
             "## RUN SUMMARY",
-            "## RUN NOTES:",
             "## Commands",
         )
     ]
@@ -964,7 +963,6 @@ def test_the_run_readme_leads_with_the_receipt_before_any_drydock_internals(
     assert "4 of 4 receipt claims proven" in readme
     assert "[`sources/toml-v1.0.0.md`](sources/toml-v1.0.0.md)" in readme
     assert "(build/commonmark)" in readme
-    assert "One run is evidence of one run. It is not a benchmark." in readme
     assert "It states no general success rate" not in readme
     assert "LLM execution is not deterministic" not in readme
 

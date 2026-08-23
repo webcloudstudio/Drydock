@@ -65,7 +65,6 @@ from drydock.report_render import (
     local_run_window,
     prune_generated,
     recorded_status_headline,
-    run_notes,
 )
 
 __all__ = ["REPORT_DIRNAME", "collect_run", "write_report"]
@@ -1474,7 +1473,6 @@ def _render(
                 ("Workspace", _anchor(_relative_href(report_root, target_dir), "open workspace")),
             ]
         ),
-        run_notes(),
     ])
     build_panel = _tabs(
         [

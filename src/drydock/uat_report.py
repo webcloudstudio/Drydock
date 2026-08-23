@@ -27,7 +27,6 @@ from drydock.report_render import (
     _INDEX_NAME,
     _KIT_OUTPUTS,
     _MARKDOWN_SUFFIXES,
-    _RUN_NOTES,
     _SUMS_NAME,
     ArtifactGroup,
     Check,
@@ -67,7 +66,6 @@ from drydock.report_render import (
     local_run_window,
     prune_generated,
     recorded_status_headline,
-    run_notes,
     token_counts,
 )
 
@@ -442,11 +440,7 @@ def _render_case_markdown(
         f"- Delivered Code: {_md_link(case_root, _delivered_directory(case_root, target))}",
         "- Test Results: "
         + _md_link(case_root, _relative(test.get("stdout_path"), case_root) if test else ""),
-        "",
-        "## RUN NOTES:",
-        "",
     ]
-    lines += [f"- {item}" for item in _RUN_NOTES]
     if result.get("degraded"):
         # A degraded run completed its lifecycle with a named shortfall. Labelling it a failure
         # would misreport a measurement that was taken.
@@ -1023,7 +1017,6 @@ def _render_case(
             _receipt(case_root, result),
             meta,
             _run_summary(case_root, result),
-            run_notes(),
             _decisions_block(case_root),
             "<h2>Run detail</h2>",
             '<p class="note">Everything below is the underlying record: the commands Drydock '
