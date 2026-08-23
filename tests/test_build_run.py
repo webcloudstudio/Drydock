@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from drydock.acceptance import MEMORY_FAILURE_PREFIX, AcceptanceRunResult
+from drydock.acceptance import MEMORY_FAILURE_PREFIX, UNVERIFIED_FAILURE_PREFIX, AcceptanceRunResult
 from drydock.build_plan import parse_build_plan, stale_applied_specs
 from drydock.build_run import (
     INTERRUPTED_VERIFICATION_PREFIX,
@@ -21,6 +21,7 @@ from drydock.build_run import (
     _render_repair_feedback,
     _resolve_step_selector,
     _select_build_unit,
+    _settle_empty_selections,
     _ungate_acceptance_plan,
     build_target,
 )
@@ -1118,6 +1119,185 @@ def test_missing_acceptance_fixture_is_skipped_and_recorded_as_decision(tmp_path
     decisions = json.loads((target_dir / "DECISIONS.json").read_text(encoding="utf-8"))
     assert decisions[0]["title"] == "Acceptance skipped: foundation-fixture"
     assert decisions[0]["status"] == "recommended"
+
+
+def _tally_result(check_id="c", *, passed, skipped=False, error=None, stdout="", stderr=""):
+    return AcceptanceRunResult(
+        check_id=check_id,
+        source="X.md",
+        intent="",
+        passed=passed,
+        return_code=0 if passed else 1,
+        stdout=stdout,
+        stderr=stderr,
+        error=error,
+        skipped=skipped,
+    )
+
+
+def test_settle_empty_selections_demotes_a_zero_total_failure_to_unverified():
+    result = _tally_result(passed=False, stdout="0 passed, 0 failed")
+    (settled,) = _settle_empty_selections((result,))
+    assert settled.skipped is True
+    assert settled.passed is False
+    assert settled.outcome == "UNVERIFIED"
+    assert settled.error == f"{UNVERIFIED_FAILURE_PREFIX}: selector matched zero cases"
+
+
+def test_settle_empty_selections_demotes_a_false_green_zero_total_pass():
+    """A criterion that only asserts ``fail == 0`` reports PASS on an empty selection unless
+    the override corrects it in both directions, not just the failing one."""
+    result = _tally_result(passed=True, stdout="0 passed, 0 failed")
+    (settled,) = _settle_empty_selections((result,))
+    assert settled.skipped is True
+    assert settled.passed is False
+    assert settled.outcome == "UNVERIFIED"
+
+
+def test_settle_empty_selections_leaves_a_nonzero_tally_untouched():
+    result = _tally_result(passed=False, stdout="3 passed, 2 failed")
+    (settled,) = _settle_empty_selections((result,))
+    assert settled is result
+
+
+def test_settle_empty_selections_leaves_a_tallyless_result_untouched():
+    result = _tally_result(passed=False, stdout="nothing tally-shaped here")
+    (settled,) = _settle_empty_selections((result,))
+    assert settled is result
+
+
+def test_settle_empty_selections_never_overrides_an_existing_terminal_classification():
+    """A killed/timed-out process can print a partial or zero tally on its way out. That is
+    still the failure it already is -- a timeout, a resource limit, a malformed snippet -- and
+    must never be relabeled as an empty selection."""
+    timed_out = _tally_result(
+        passed=False,
+        error="timeout: exceeded 10.0s",
+        stdout="0 passed, 0 failed",
+    )
+    (settled,) = _settle_empty_selections((timed_out,))
+    assert settled is timed_out
+
+    already_skipped = _tally_result(
+        passed=False,
+        skipped=True,
+        stdout="0 passed, 0 failed",
+    )
+    (settled,) = _settle_empty_selections((already_skipped,))
+    assert settled is already_skipped
+
+
+def test_a_zero_case_tally_settles_the_story_implemented_not_failed(tmp_path):
+    """The end-to-end contract: a story whose only AC selects zero cases must never fail the
+    build, must not spend a repair call, and closes ``closed/implemented`` -- not
+    ``closed/verified`` (nothing was actually examined) and not ``closed/failed``."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### empty-selection\n"
+        "A selector that matches nothing in the corpus.\n\n"
+        "```python\n"
+        'print("0 passed, 0 failed")\n'
+        'assert False, "no cases selected"\n'
+        "```\n",
+        encoding="utf-8",
+    )
+    runner = make_runner()
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=6,
+    )
+
+    step = result.steps[0]
+    assert step.acceptance[0].skipped is True
+    assert step.acceptance[0].outcome == "UNVERIFIED"
+    assert _state(target_dir, "foundation") == "closed/implemented"
+    assert len(runner.calls) == 1  # no repair call wasted on an unwinnable criterion
+
+
+def test_a_regression_sweep_that_now_selects_zero_cases_does_not_falsely_regress(tmp_path):
+    """A previously-proven criterion whose selection later drops to zero produced no evidence
+    either way -- it must settle UNVERIFIED on the sweep, never register as a regression."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### db-guard\n"
+        "Selects exactly one case while the guard file is present.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        'total = 1 if Path("guard.txt").exists() else 0\n'
+        'print(f"{total} passed, 0 failed")\n'
+        "assert total > 0\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=_regression_runner(tmp_path),
+        repair_attempts=0,
+    )
+
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "service") == "closed/verified"
+    finding = _finding(target_dir, "service") or ""
+    assert "acceptance regression" not in finding
+    assert result.steps[-1].status == "built"
+
+
+def test_a_failing_group_mate_does_not_blame_a_zero_case_sibling(tmp_path):
+    """A block that mixes a genuinely-failing binding criterion with a now-UNVERIFIED
+    zero-case criterion must attribute failure only to the real one -- the empty-selection
+    sibling's id must not appear in the failure finding, and its own story must not close
+    ``closed/failed`` on the strength of a criterion that proved nothing."""
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### db-real-fail\n"
+        "A real, non-empty conformance failure.\n\n"
+        "```python\n"
+        'print("1 passed, 1 failed")\n'
+        "assert False\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    (target_dir / "blueprint" / "SERVICE.md").write_text(
+        "SVC SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### svc-empty-selection\n"
+        "A selector that matches nothing.\n\n"
+        "```python\n"
+        'print("0 passed, 0 failed")\n'
+        "assert False\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        repair_attempts=0,
+    )
+
+    assert _state(target_dir, "foundation") == "closed/failed"
+    assert _state(target_dir, "service") != "closed/failed"
+    foundation_finding = _finding(target_dir, "foundation") or ""
+    service_finding = _finding(target_dir, "service") or ""
+    assert "db-real-fail" in foundation_finding
+    assert "svc-empty-selection" not in foundation_finding
+    assert "svc-empty-selection" not in service_finding
 
 
 def test_blueprint_programmatic_prepass_is_informational(tmp_path):

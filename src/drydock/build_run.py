@@ -31,6 +31,7 @@ from drydock.acceptance import (
     MALFORMED_FAILURE_PREFIX,
     MEMORY_FAILURE_PREFIX,
     TIMEOUT_FAILURE_PREFIX,
+    UNVERIFIED_FAILURE_PREFIX,
     AcceptanceObservation,
     AcceptanceRequirement,
     AcceptanceRunResult,
@@ -1492,6 +1493,41 @@ def _acceptance_case_tallies(
     )
 
 
+def _settle_empty_selections(
+    results: tuple[AcceptanceRunResult, ...],
+) -> tuple[AcceptanceRunResult, ...]:
+    """Demote a cleanly-completed, zero-case acceptance result to UNVERIFIED.
+
+    A scoped conformance check that selects ``total == 0`` cases from its corpus produced no
+    evidence about the product either way -- it can no more prove the story broken than it can
+    prove it correct. Left alone, ``fail == 0`` reads as a false PASS and ``sum(...) > 0`` reads
+    as a false FAIL; both are corrected here, unconditionally, once a tally is available.
+
+    Only a check that ran to completion and printed its own tally qualifies. A check already
+    carrying a terminal classification -- timeout, resource limit, malformed snippet, missing
+    fixture -- keeps that classification: a killed process can print a partial or zero tally on
+    its way out, and that is still the failure it already is, not an empty selection.
+    """
+    settled: list[AcceptanceRunResult] = []
+    for result in results:
+        if result.skipped or result.error is not None:
+            settled.append(result)
+            continue
+        tally = _case_tally(result)
+        if tally is not None and tally[1] == 0:
+            settled.append(
+                replace(
+                    result,
+                    passed=False,
+                    skipped=True,
+                    error=f"{UNVERIFIED_FAILURE_PREFIX}: selector matched zero cases",
+                )
+            )
+        else:
+            settled.append(result)
+    return tuple(settled)
+
+
 def _quantitative_acceptance_progress(
     previous: tuple[tuple[str, int, int], ...],
     current: tuple[tuple[str, int, int], ...],
@@ -2678,14 +2714,18 @@ def build_target(
             # same feedback repair passes use — rather than a clean prompt that must rediscover
             # it. If the checks already pass (a step fixed out of band), close green with no
             # LLM pass.
-            resume_live = run_programmatic_acceptance(
-                checks,
-                build_dir=resolved_build_dir,
-                target_dir=target_dir,
-                blueprint_dir=blueprint_dir,
-                strict_target=True,
+            resume_live = _settle_empty_selections(
+                run_programmatic_acceptance(
+                    checks,
+                    build_dir=resolved_build_dir,
+                    target_dir=target_dir,
+                    blueprint_dir=blueprint_dir,
+                    strict_target=True,
+                )
             )
-            resume_failed = tuple(check for check in resume_live if not check.passed)
+            resume_failed = tuple(
+                check for check in resume_live if not check.passed and not check.skipped
+            )
             if not resume_failed:
                 acceptance = resume_live
                 state, status, error, failure_detail = "closed/verified", "built", None, ""
@@ -2985,12 +3025,14 @@ def build_target(
                                 f"{item.kind}={item.name}" for item in unavailable_after_provision
                             )
                         acceptance = (
-                            run_programmatic_acceptance(
-                                checks,
-                                build_dir=resolved_build_dir,
-                                target_dir=target_dir,
-                                blueprint_dir=blueprint_dir,
-                                strict_target=True,
+                            _settle_empty_selections(
+                                run_programmatic_acceptance(
+                                    checks,
+                                    build_dir=resolved_build_dir,
+                                    target_dir=target_dir,
+                                    blueprint_dir=blueprint_dir,
+                                    strict_target=True,
+                                )
                             )
                             if status != "failed"
                             else ()
@@ -3150,12 +3192,14 @@ def build_target(
                         # here.
                         regressed_checks = ()
                         if regression_checks and status == "built":
-                            swept = run_programmatic_acceptance(
-                                regression_checks,
-                                build_dir=resolved_build_dir,
-                                target_dir=target_dir,
-                                blueprint_dir=blueprint_dir,
-                                strict_target=True,
+                            swept = _settle_empty_selections(
+                                run_programmatic_acceptance(
+                                    regression_checks,
+                                    build_dir=resolved_build_dir,
+                                    target_dir=target_dir,
+                                    blueprint_dir=blueprint_dir,
+                                    strict_target=True,
+                                )
                             )
                             regressed_checks = tuple(
                                 result
@@ -3595,7 +3639,9 @@ def build_target(
                 # closed/failed. A group-mate that passed its own gate, or has none, does not
                 # inherit the finding.
                 own_failed = tuple(
-                    check for check in own_checks if not check.passed and check.binding
+                    check
+                    for check in own_checks
+                    if not check.passed and not check.skipped and check.binding
                 )
                 if gate is not None:
                     # Governed: the gate is the verdict for this story, and its own criteria are
@@ -3678,7 +3724,9 @@ def build_target(
                     if (owner := story_by_check.get(check.check_id)) is not None
                     and owner.block_id == block.block_id
                 )
-                own_failed = tuple(check for check in own_checks if not check.passed)
+                own_failed = tuple(
+                    check for check in own_checks if not check.passed and not check.skipped
+                )
                 if not own_failed:
                     continue
                 manifest_updates[block.block_id] = {
