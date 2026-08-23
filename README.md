@@ -23,18 +23,22 @@ Enterprise guardrails.
 
 ## Overview
 
-**Drydock turns messy specifications into tested working software.**
-**A repeatable method to build from the specification and evolve with it.**
+**Drydock is a repeatable method to turn messy specifications into tested working software.**
 
-Drydock imports your source material, creates stories using agile best practices, decomposes your sources into typed blueprints (stories) related using a graph database.  Drydock will run context aware builds.  Each story has deterministic test driven acceptance criteria.
+Drydock imports your source material, defines stories using agile best practices, and then decomposes your sources into typed blueprints (stories) related using a graph database.  Drydock builds with a context aware compression based algorithm and tests stories with deterministic test driven acceptance criteria.
 
-- **Specification Driven Delivery** producing governed reproducible working software.
-- **Agile Methedology** to decompose buildable stories and for product owner / llm review.
+## Features
+- **Builds working software using small, cheap models**
+- **Agile Methodology** to decompose buildable stories and for product owner / llm review.
 - **Test driven development** with acceptance criteria embedded in each Story/Blueprint.
-- **Dependency graph of stories** in `MANIFEST.md` to relates nodes/stories and order builds.
+- **Dependency graph** relates stories and orders builds.
+- **QuarterDeck web console** to answer question and review the process
+- **Runs on existing subscriptions**
+- **Ingests your existing specs and notes in any format**
+- **Change management — edit the spec, rebuild only what's affected**
 - **Context compression** and **Grouping** for context aware builds.
-- **QuarterDeck web console** for easy questionaires, observability, and user direction.
 - **Enterprise guardrails** with embedded branding, best practices, and build gates
+- **Generates consistent apps and documentation**
 
 ## Drydock Documentation
 
