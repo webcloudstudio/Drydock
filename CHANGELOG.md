@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-23: `drydock score build <Target>` is now an observational report. Missing evidence
+  and unverified Build Blocks remain visible in its output but no longer produce a failing exit
+  code, alter `PROJECT_STATUS.jsonl`, or rewrite `SCORECARD.md`; `score ac` and `score release`
+  remain the acceptance and release gates.
 - 2026-08-23: `drydock uat` now ends each project with a terminal verdict banner, its
   `METADATA.md` description, and absolute paths to the UAT report, proof kit, checksums, evidence,
   and generated Target. The terminal summary no longer prints advisory score exit codes or UAT-kit

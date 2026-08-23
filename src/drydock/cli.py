@@ -2759,9 +2759,6 @@ def cmd_score_build(target: str) -> int:
     """Print the deterministic post-build report. Reads evidence and usage logs only."""
     from drydock.build_report import build_score_report
     from drydock.config import get_workspace, require_target_dir
-    from drydock.project_status import record_status
-    from drydock.score import emit_failure
-    from drydock.scorecard import write_scorecard
 
     target_dir = require_target_dir(target)
     report = build_score_report(
@@ -2770,41 +2767,8 @@ def cmd_score_build(target: str) -> int:
     for line in _render_build_score(report):
         print(line)
     print()
-    if not report.blocks:
-        emit_failure(f"no build evidence for {target}", (f"run: drydock build {target}",))
-        record_status(
-            target_dir,
-            "SCORE BUILD",
-            passed=False,
-            detail="no build evidence",
-            command=f"drydock score build {target}",
-        )
-        write_scorecard(target, target_dir)
-        return 1
-    if report.failed_blocks:
-        emit_failure(
-            f"{len(report.failed_blocks)} build block(s) unverified in {target}",
-            tuple(
-                f"{block.block_id} {block.name}: {block.state or 'not verified'}"
-                + (
-                    f"; failed: {', '.join(block.failed_check_ids)}"
-                    if block.failed_check_ids
-                    else ""
-                )
-                for block in report.failed_blocks
-            ),
-        )
-        record_status(
-            target_dir,
-            "SCORE BUILD",
-            passed=False,
-            detail=f"{len(report.failed_blocks)} block(s) unverified",
-            command=f"drydock score build {target}",
-        )
-        write_scorecard(target, target_dir)
-        return 1
-    record_status(target_dir, "SCORE BUILD", passed=True, command=f"drydock score build {target}")
-    write_scorecard(target, target_dir)
+    # This is an observation, not a gate. The rendered report names absent evidence and
+    # unverified blocks; acceptance and release scores own lifecycle verdicts and exit codes.
     return 0
 
 
