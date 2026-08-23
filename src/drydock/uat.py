@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import textwrap
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -1874,33 +1875,38 @@ def default_resume_stage(fixture: UATFixture, run: str | None = None) -> tuple[s
 
 
 def render_summary(results: Sequence[UATResult], base: Path | None = None) -> str:
-    lines = [
-        "# Drydock UAT Summary",
-        "",
-        "Open `index.html` for the linked proof kit; verify it with `sha256sum -c SHA256SUMS`.",
-        "",
-    ]
+    del base  # The terminal handoff is an operator command; its artifact paths must be absolute.
+    lines = ["# Drydock UAT Summary", ""]
     for result in results:
         usage = result.usage
+        case_root = Path(result.output_dir).resolve()
+        target_dir = case_root / "workspace" / "targets" / result.target
+        try:
+            description = parse_metadata(target_dir / METADATA_NAME).get("short_description", "")
+        except OSError:
+            description = ""
+        heading = f"PROJECT {result.target.upper()} — {result.status.upper()}"
+        lines.extend(_summary_banner(heading, description or "Description not recorded."))
         lines.extend([
-            f"## {result.fixture}: {result.status.upper()}",
-            "",
             f"- Execution: {result.execution_status} · Acceptance: {result.acceptance_status}",
             f"- Verdict: expected {result.expected_verdict}, observed {result.observed_verdict}",
-            f"- Target: `{result.target}`",
             f"- Run: `{result.run_id}`",
             f"- Ran: {local_run_window(result.environment)}",
             f"- Elapsed: {result.elapsed_ms / 1000:.1f}s",
             f"- Build passes: {result.build_passes}",
-            f"- Receipt: `{_relativize(result.output_dir, base) if base else result.output_dir}"
-            "/index.html`",
-            f"- Evidence: `{_relativize(result.evidence_dir, base) if base else result.evidence_dir}`",
+            "",
+            "## Artifacts",
+            "",
+            f"- UAT report: `{case_root / 'README.md'}`",
+            f"- Proof kit: `{case_root / 'index.html'}`",
+            f"- Checksums: `{case_root / 'SHA256SUMS'}` (`sha256sum -c {case_root / 'SHA256SUMS'}`)",
+            f"- Evidence: `{Path(result.evidence_dir).resolve()}`",
+            f"- Build target: `{target_dir}`",
+            "",
             f"- LLM calls: {usage['calls']}",
             f"- Tokens: cached {usage['cached_input_tokens']:,}; "
             f"uncached {usage['fresh_input_tokens']:,}; output {usage['output_tokens']:,}",
             f"- LLM elapsed: {usage['llm_elapsed_ms'] / 1000:.1f}s",
-            "- Advisory scores: "
-            + ", ".join(f"{name}=exit {code}" for name, code in result.score_exit_codes.items()),
         ])
         if result.error:
             # A kit that expects FAILED passes by reporting a product failure, so the detail is
@@ -1922,6 +1928,14 @@ def render_summary(results: Sequence[UATResult], base: Path | None = None) -> st
             lines.extend(f"- {item}" for item in result.attestations)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _summary_banner(heading: str, description: str) -> list[str]:
+    """Render a fixed-width terminal banner for one UAT project's terminal verdict."""
+    width = 76
+    content = [heading, *textwrap.wrap(description, width=width - 2)]
+    border = "━" * width
+    return [f"┏{border}┓", *(f"┃ {line:<{width - 2}} ┃" for line in content), f"┗{border}┛", ""]
 
 
 def run_uat(

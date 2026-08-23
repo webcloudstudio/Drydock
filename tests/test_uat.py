@@ -1687,7 +1687,19 @@ def test_the_summary_states_the_expected_and_observed_verdicts(tmp_path: Path) -
         now=datetime(2026, 8, 10, tzinfo=UTC),
     )
 
-    assert "Verdict: expected PASSED, observed PASSED" in render_summary(results)
+    summary = render_summary(results)
+    result = results[0]
+    case_root = Path(result.output_dir).resolve()
+    target_dir = case_root / "workspace" / "targets" / "ReadingList"
+
+    assert "PROJECT READINGLIST — PASSED" in summary
+    assert "Verdict: expected PASSED, observed PASSED" in summary
+    assert f"- UAT report: `{case_root / 'README.md'}`" in summary
+    assert f"- Proof kit: `{case_root / 'index.html'}`" in summary
+    assert f"- Checksums: `{case_root / 'SHA256SUMS'}`" in summary
+    assert f"- Evidence: `{Path(result.evidence_dir).resolve()}`" in summary
+    assert f"- Build target: `{target_dir}`" in summary
+    assert "Advisory scores:" not in summary
 
 
 def test_every_shipped_kit_declares_the_verdict_it_expects() -> None:

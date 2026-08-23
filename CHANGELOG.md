@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-23: `drydock uat` now ends each project with a terminal verdict banner, its
+  `METADATA.md` description, and absolute paths to the UAT report, proof kit, checksums, evidence,
+  and generated Target. The terminal summary no longer prints advisory score exit codes or UAT-kit
+  checkpoint chatter.
 - 2026-08-23: `drydock build status` now treats `closed/implemented` as completed rather than
   suggesting a nonexistent verification step. A completed one-story computed Build Block renders
   as one compact line; the aggregate still distinguishes built-but-unverified work from governed

@@ -39,7 +39,6 @@ def ensure_kit_repository(kit_root: Path) -> bool:
         raise SpecificationError(
             f"Cannot initialize UAT kit repository {kit_root}: {output or 'git failed'}"
         )
-    print(f"UAT kit - initialized {kit_root.name}")
     return True
 
 
@@ -98,7 +97,6 @@ def checkpoint_kit_repository(kit_root: Path, message: str = "Complete drydock u
     code, output = _run(kit_root, "rev-parse", "--short", "HEAD")
     if code != 0 or not output:
         raise SpecificationError(f"Cannot resolve UAT kit commit for {kit_root}")
-    print(f"UAT kit - committed {kit_root.name} ({output})")
     return output
 
 
