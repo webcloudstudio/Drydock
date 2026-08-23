@@ -222,6 +222,36 @@ def test_the_last_pass_of_an_unverified_block_still_reads_failed(tmp_path):
     assert block.outcome_of(block.attempts[-1]) == "failed"
 
 
+def test_a_nonterminal_attempts_reason_drops_the_terminal_failed_wording(tmp_path):
+    """Observed against the jq UAT of 2026-08-22: attempt 0 read "incomplete" beside "reason:
+    programmatic acceptance failed: ...", stating the block failed one line under stating it did
+    not. A non-terminal attempt's reason must read as unfinished, not as a terminal verdict; the
+    block's actual terminal attempt keeps the recorded wording unchanged."""
+    evidence = _REPAIRED.replace(
+        "- attempt 0 (initial build): failed; 1/2 checks; 243/243 cases "
+        "model=gpt-5.6-luna; execution exec-first",
+        "- attempt 0 (initial build): failed; 1/2 checks; 243/243 cases "
+        "model=gpt-5.6-luna; execution exec-first; "
+        "reason: programmatic acceptance failed: parse-003-conformance",
+    )
+    target_dir, records = _setup(
+        tmp_path,
+        {"feature-inline-parsing.md": evidence},
+        [
+            _record("exec-first", input_tokens=2000, cached=1600, output=80, elapsed=120000),
+            _record("exec-repair", input_tokens=1000, cached=900, output=40, elapsed=30000),
+        ],
+    )
+
+    report = build_score_report("commonmark", target_dir, records_path=records)
+    block = report.blocks[0]
+    first, second = block.attempts
+
+    assert first.reason == "programmatic acceptance failed: parse-003-conformance"
+    assert block.reason_of(first) == "not yet passing: parse-003-conformance"
+    assert block.reason_of(second) == second.reason
+
+
 def test_an_attempt_records_why_it_did_not_close(tmp_path):
     # A pass can meet every criterion and still be overturned. Without the reason the row reads
     # as a contradiction, so the reason is parsed and carried.

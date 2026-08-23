@@ -37,6 +37,7 @@ from drydock.acceptance import (
     AcceptanceRunResult,
     ProgrammaticAcceptance,
     assertion_summary,
+    case_tally,
     failure_detail,
     is_terminal_check_failure,
     observe_programmatic_acceptance,
@@ -1278,13 +1279,6 @@ class AttemptRecord:
 _SIZING_ADVISORY_CALLS = 4
 
 _REPAIR_FEEDBACK_CAP = 4000
-_CASE_TALLY_RE = re.compile(
-    r"(?m)(?P<passed>\d+)\s+passed,\s+"
-    r"(?P<failed>\d+)\s+failed"
-    r"(?:,\s+(?P<errored>\d+)\s+errored)?"
-)
-#: The acceptance harness's own tally line: ``cases: pass=123 fail=159 error=0 total=282``.
-_PROGRESS_TALLY_RE = re.compile(r"(?m)^cases:\s+(?P<counts>[a-z]+=\d+(?:\s+[a-z]+=\d+)*)")
 
 
 #: Names a block failed by its governed stage gate rather than by a model-authored criterion.
@@ -1445,31 +1439,10 @@ def _output_tail(result: AcceptanceRunResult, max_lines: int = 6) -> list[str]:
 def _case_tally(result: AcceptanceRunResult) -> tuple[int, int] | None:
     """Return the ``passed/total`` subcase tally an acceptance check reported, if any.
 
-    Two sources, in order of authority. The acceptance harness lifts a tally out of the failing
-    frame and prints it in a fenced block, which is exact and does not depend on the criterion
-    choosing to print anything. Failing that, a criterion that printed its own ``N passed, M
-    failed`` line is read directly.
+    Delegates to :func:`drydock.acceptance.case_tally`, shared with ``score ac`` so a check that
+    selected zero cases from its corpus is classified identically by both.
     """
-    if (match := _PROGRESS_TALLY_RE.search(result.stderr or "")) is not None:
-        counts = dict(
-            (name, int(number))
-            for name, _, number in (pair.partition("=") for pair in match.group("counts").split())
-        )
-        if "pass" in counts:
-            total = counts.get(
-                "total",
-                sum(counts[name] for name in ("pass", "fail", "error", "skip") if name in counts),
-            )
-            if total >= counts["pass"]:
-                return counts["pass"], total
-    matches = tuple(_CASE_TALLY_RE.finditer(f"{result.stdout}\n{result.stderr}"))
-    if not matches:
-        return None
-    match = matches[-1]
-    passed = int(match.group("passed"))
-    failed = int(match.group("failed"))
-    errored = int(match.group("errored") or 0)
-    return passed, passed + failed + errored
+    return case_tally(result.stdout, result.stderr)
 
 
 def _acceptance_case_totals(

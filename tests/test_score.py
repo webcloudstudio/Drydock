@@ -642,6 +642,40 @@ def test_a_failed_criterion_reports_the_assertion_and_what_the_check_observed():
     assert "10 passed, 1 failed" in block
 
 
+def test_a_zero_case_selection_is_unverified_not_failed():
+    """``score ac`` must classify an empty-selection check identically to the build loop.
+
+    Observed against the jq UAT of 2026-08-22: a corpus selector matching zero cases prints
+    ``pass=0 fail=0 error=0 skip=0 total=0`` and an ``assert sum(...) > 0`` failure. The build
+    loop demotes this to UNVERIFIED (``build_run._settle_empty_selections``) because it proved
+    nothing about the product either way; ``score ac`` re-running the same check must settle the
+    same way instead of reporting a bare FAIL for a criterion that never examined any code.
+    """
+    from drydock.acceptance import AcceptanceObservation
+    from drydock.score import UNVERIFIED, _observation_verdict
+
+    observation = AcceptanceObservation(
+        "text-003-regex-conformance",
+        "FEATURE-TEXT-003.md",
+        "intent",
+        False,
+        1,
+        '{"summary": {"pass": 0, "fail": 0, "error": 0, "skip": 0}, "cases": []}\n',
+        "--- drydock: progress ---\n"
+        "cases: pass=0 fail=0 error=0 skip=0 total=0 from=summary\n"
+        "--- drydock: end progress ---\n"
+        "Traceback (most recent call last):\n"
+        '  File "text-003-regex-conformance.py", line 17, in <module>\n'
+        "    assert sum(summary.values()) > 0\nAssertionError\n",
+    )
+
+    status, evidence, detail = _observation_verdict(observation)
+
+    assert status == UNVERIFIED
+    assert "zero cases" in evidence
+    assert detail == ()
+
+
 def test_proof_coverage_separates_evidence_from_criteria_that_only_look_green():
     """Half of Toml's board was green before the code that was supposed to satisfy it existed.
     Scattered one per row that reads as decoration; gathered with its owner it is a work list."""

@@ -33,6 +33,7 @@ from drydock.acceptance import (
     ProgrammaticAcceptance,
     all_programmatic_acceptance,
     assertion_summary,
+    case_tally,
     failure_detail,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
@@ -400,6 +401,20 @@ def _observation_verdict(
         )
         return UNVERIFIED, summary, tuple(detail)
     if not obs.passed:
+        # A scoped check that selected zero cases from its corpus produced no evidence about
+        # the product either way — it can no more prove the story broken than it can prove it
+        # correct. ``build_run`` demotes the identical shape to UNVERIFIED for the same reason
+        # (``build_run._settle_empty_selections``); a check re-run here must settle the same
+        # way, or the same non-issue reads as an outright FAIL depending only on which command
+        # asked.
+        tally = case_tally(obs.stdout, obs.stderr)
+        if tally is not None and tally[1] == 0:
+            return (
+                UNVERIFIED,
+                "selector matched zero cases: this check selected no cases from its corpus "
+                "and proved nothing about the product",
+                (),
+            )
         summary = assertion_summary(obs.stderr, obs.error, override=obs.error)
         detail = failure_detail(
             stderr=obs.stderr,

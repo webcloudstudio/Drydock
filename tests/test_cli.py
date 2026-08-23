@@ -3714,6 +3714,17 @@ class TestBuildScoreRendering:
                 return "incomplete"
             return "built" if self.verified else "failed"
 
+        def reason_of(self, attempt):
+            from drydock.build_report import _NONTERMINAL_REASON_PREFIXES
+
+            reason = attempt.reason
+            if not reason or self.outcome_of(attempt) != "incomplete":
+                return reason
+            for prefix in _NONTERMINAL_REASON_PREFIXES:
+                if reason.startswith(prefix + ":"):
+                    return "not yet passing" + reason[len(prefix) :]
+            return reason
+
     class _Report:
         def __init__(self, blocks, missing=()):
             from types import SimpleNamespace

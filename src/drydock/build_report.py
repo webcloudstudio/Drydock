@@ -40,6 +40,13 @@ _ATTEMPT_RE = re.compile(
     r"(?:;\s*stopped:\s*(?P<stopped>.+?))?"
     r"(?:;\s*reason:\s*(?P<reason>.+?))?\s*$"
 )
+# Reason prefixes written in terminal-failure vocabulary, softened by ``reason_of`` for an
+# attempt that did not end the block.
+_NONTERMINAL_REASON_PREFIXES = (
+    "programmatic acceptance failed",
+    "governed acceptance failed",
+    "acceptance regression",
+)
 
 
 @dataclass(frozen=True)
@@ -157,6 +164,24 @@ class BlockScore:
         if not self.attempts or attempt.index != self.attempts[-1].index:
             return "incomplete"
         return "built" if self.verified else "failed"
+
+    def reason_of(self, attempt: AttemptScore) -> str:
+        """The attempt's reason, reworded when the attempt did not end the block.
+
+        ``AttemptScore.reason`` is written once, in the vocabulary of a terminal verdict —
+        ``programmatic acceptance failed: ...`` — because the build loop does not know in
+        advance whether a given pass is the block's last. Printed beside ``outcome_of``'s
+        ``incomplete`` unchanged, it contradicts the word right next to it: the pass did not
+        fail, it just did not finish. Reworded only for a non-terminal attempt; a block's
+        actual terminal failure keeps the reason as recorded.
+        """
+        reason = attempt.reason
+        if not reason or self.outcome_of(attempt) != "incomplete":
+            return reason
+        for prefix in _NONTERMINAL_REASON_PREFIXES:
+            if reason.startswith(prefix + ":"):
+                return "not yet passing" + reason[len(prefix) :]
+        return reason
 
 
 @dataclass(frozen=True)
