@@ -68,6 +68,7 @@ from drydock.report_render import (
     prune_generated,
     recorded_status_headline,
     run_notes,
+    token_counts,
 )
 
 __all__ = [
@@ -534,7 +535,7 @@ def _sums_detail(case_root: Path) -> tuple[str, str]:
 
 
 def _receipt_checks(case_root: Path, result: dict) -> tuple[Check, ...]:
-    """Derive the six receipt claims from the recorded run, in fixed order."""
+    """Derive the four receipt claims from the recorded run, in fixed order."""
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
     scores = (
         result.get("score_exit_codes") if isinstance(result.get("score_exit_codes"), dict) else {}
@@ -558,11 +559,6 @@ def _receipt_checks(case_root: Path, result: dict) -> tuple[Check, ...]:
             "-test",
             "No external test command is defined for this project.",
         ),
-        (
-            "Target completion check passed",
-            "-complete",
-            "No completion check was recorded for this run.",
-        ),
     ):
         command = _command_by_suffix(commands, suffix)
         if command is None:
@@ -570,11 +566,6 @@ def _receipt_checks(case_root: Path, result: dict) -> tuple[Check, ...]:
             continue
         argv = _command_text(command.get("argv") or []) or str(command.get("label") or "")
         state = _exit_state(command.get("returncode"))
-        if suffix == "-complete" and state == "fail":
-            # ``drydock status --check`` reports Manifest state through its exit code. An
-            # incomplete Target has not made the receipt claim, but the status command itself
-            # did not fail.
-            state = "unknown"
         checks.append(
             Check(
                 name,
@@ -583,10 +574,7 @@ def _receipt_checks(case_root: Path, result: dict) -> tuple[Check, ...]:
                 _relative(command.get("stdout_path"), case_root),
             )
         )
-    for name, score in (
-        ("Acceptance score passed", "acceptance"),
-        ("Release score passed", "release"),
-    ):
+    for name, score in (("Release score passed", "release"),):
         command = _command_by_suffix(commands, f"-score-{score}")
         code = scores.get(score, command.get("returncode") if command else None)
         evidence = _relative(command.get("stdout_path"), case_root) if command else ""
@@ -634,8 +622,7 @@ def _run_facts(
     status = str(result.get("status") or "").upper()
     observed = str(result.get("observed_verdict") or "")
     verdict = f"{status} · verdict {observed}" if observed and observed != status else status
-    tokens = _tokens(dict(usage))
-    _, _, tokens = tokens.partition(" · ")  # the call count is already its own field
+    cached_tokens, uncached_tokens, output_tokens = token_counts(dict(usage))
 
     def recorded(key: str) -> str:
         return html.escape(str(environment.get(key) or "not recorded"))
@@ -653,7 +640,9 @@ def _run_facts(
         ("Python", recorded("python_version")),
         ("Elapsed", f"{int(result.get('elapsed_ms') or 0) / 1000:.1f}s"),
         ("LLM calls", html.escape(str(usage.get("calls", "not recorded")))),
-        ("Tokens", html.escape(tokens)),
+        ("Cached tokens", f"{cached_tokens:,}"),
+        ("Uncached tokens", f"{uncached_tokens:,}"),
+        ("Output tokens", f"{output_tokens:,}"),
         ("Build passes", html.escape(str(result.get("build_passes", "not recorded")))),
         ("Repairs", html.escape(_repair_budget(commands))),
         ("Conformance", html.escape(_conformance_result(commands))),
@@ -662,7 +651,7 @@ def _run_facts(
 
 
 def _receipt(case_root: Path, result: dict, prefix: str = "") -> str:
-    """Render the UAT receipt: the six claims a run either earned or did not."""
+    """Render the UAT receipt: the four claims a run either earned or did not."""
     return _render_receipt(case_root, _receipt_checks(case_root, result), prefix)
 
 
@@ -1195,7 +1184,7 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
         )
         usage = latest.get("usage") if isinstance(latest.get("usage"), dict) else {}
         summary = "\n".join([
-            _receipt(latest_root, latest, prefix),
+            "<h2>Latest run</h2>",
             _meta(
                 _run_facts(
                     latest_root,
@@ -1206,7 +1195,7 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
                 )
             ),
             _run_summary(latest_root, latest, prefix),
-            run_notes(),
+            _receipt(latest_root, latest, prefix),
         ])
     else:
         summary = ""
@@ -1222,8 +1211,6 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
                 "Approved" if passed else "Rejected",
             ),
             _verdict(passed, verdict, html.escape(detail)),
-            latest_link,
-            summary,
             "<h2>Runs</h2>",
             '<p class="note">Every unattended build of this project, each a complete, '
             "self-verifying record of the commands Drydock executed. Open a run to reach its "
@@ -1232,6 +1219,8 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
                 ("Run", "Status", "Model", "Commands", "Build passes", "Elapsed", "LLM usage"),
                 rows,
             ),
+            latest_link,
+            summary,
             "<h2>Decisions</h2>",
             '<p class="note">Questions Drydock raised while building this project, and how each '
             "was settled. A run has no operator at the keyboard, so a decision still marked "

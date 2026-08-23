@@ -851,18 +851,22 @@ def _meta(pairs: Sequence[tuple[str, str]]) -> str:
     return f'<dl class="meta">{items}</dl>' if items else ""
 
 
-def _tokens(usage: dict) -> str:
-    """Render usage the way it is billed: cache reads, full-rate input, generated output."""
-    if not usage:
-        return ""
+def token_counts(usage: Mapping[str, object]) -> tuple[int, int, int]:
+    """Split usage into (cached, uncached, output) input/output token counts, as billed."""
     cached = int(usage.get("cached_input_tokens", 0) or 0)
     uncached = int(usage.get("fresh_input_tokens", 0) or 0) or max(
         int(usage.get("input_tokens", 0) or 0) - cached, 0
     )
-    return (
-        f"{usage.get('calls', 0)} calls · cached {cached:,} · "
-        f"uncached {uncached:,} · output {int(usage.get('output_tokens', 0) or 0):,}"
-    )
+    output = int(usage.get("output_tokens", 0) or 0)
+    return cached, uncached, output
+
+
+def _tokens(usage: dict) -> str:
+    """Render usage the way it is billed: cache reads, full-rate input, generated output."""
+    if not usage:
+        return ""
+    cached, uncached, output = token_counts(usage)
+    return f"{usage.get('calls', 0)} calls · cached {cached:,} · uncached {uncached:,} · output {output:,}"
 
 
 # Directories holding unprocessed provider or runtime output. Their contents are kept for

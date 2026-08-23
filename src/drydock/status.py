@@ -68,6 +68,18 @@ _WORKFLOW_DISPLAY = {
     "SCORE BUILD": "Build score",
     "SCORE RELEASE": "Release score",
 }
+#: Recovery command for a workflow step's most recent failure, once every Manifest block has
+#: finished (nothing left in the build frontier) so ``drydock build`` cannot be the next step.
+_WORKFLOW_FAILURE_NEXT_OP = {
+    "IMPORTED": "drydock import {name} <source> --format markdown",
+    "ANALYZED": "drydock analyze {name}",
+    "PLAN CREATED": "drydock plan {name}",
+    "PLAN REPAIRED": "drydock plan {name}",
+    "BUILT": "drydock build {name}",
+    "SCORE AC": "drydock score ac {name} --full",
+    "SCORE BUILD": "drydock score build {name}",
+    "SCORE RELEASE": "drydock score release {name}",
+}
 
 
 @dataclass
@@ -404,20 +416,25 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
             phase = "Arrange"
             detail = "Draft plan created — review the Planning Session build tree"
             next_op = f"drydock run quarterdeck {name}"
-        elif plan_summary.total > 0 and plan_summary.count("closed/verified") == plan_summary.total:
+        elif plan_summary.total > 0 and not frontier:
+            # Every block has closed (verified or implemented) — nothing is left to build, so
+            # ``drydock build`` cannot be the next step even when a later workflow stage failed.
             phase = "Loop"
             detail = format_story_states(plan_summary)
-            next_op = f"drydock refit {name} BOTH <Scope> <Change>"
+            failed_step = next(
+                (outcome for outcome in reversed(workflow) if not outcome.passed), None
+            )
+            if failed_step is not None and failed_step.label in _WORKFLOW_FAILURE_NEXT_OP:
+                next_op = _WORKFLOW_FAILURE_NEXT_OP[failed_step.label].format(name=name)
+            else:
+                next_op = f"drydock refit {name} BOTH <Scope> <Change>"
         else:
             phase = "Implement"
             detail = format_story_states(plan_summary)
-            if frontier:
-                next_op = (
-                    f"drydock build {name}"
-                    f"  (frontier: {', '.join(block.name for block in frontier[:2])})"
-                )
-            else:
-                next_op = f"drydock build {name}"
+            next_op = (
+                f"drydock build {name}"
+                f"  (frontier: {', '.join(block.name for block in frontier[:2])})"
+            )
     elif imported_sources == 0 and not analysis and authored_blueprints == 0 and not has_content:
         phase, detail = "Set Up", "Target initialized — no source material imported yet"
         next_op = f"drydock import {name} <source> --format markdown"

@@ -421,6 +421,9 @@ the Target workspace for later analysis. Compass imports write `COMPASS.md` at t
 `drydock import <Target> --update` refreshes the imported snapshot from the recorded source root
 and records a new source version. `<Source>` is not accepted with `--update`.
 
+Imported source files must be UTF-8. A file that fails UTF-8 decoding is skipped and its content is
+not analyzed.
+
 ### drydock score spec
 
 `drydock score spec <Target>` diagnoses potential errors in the specification. Feed the output to your

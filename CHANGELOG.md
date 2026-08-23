@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-23: `drydock build status` now treats `closed/implemented` as completed rather than
+  suggesting a nonexistent verification step. A completed one-story computed Build Block renders
+  as one compact line; the aggregate still distinguishes built-but-unverified work from governed
+  verification.
 - 2026-08-23: `drydock plan verify` now requires a declared non-candidate probe for every
   statically recoverable staged-runner selector and rejects a missing, malformed, failed, or
   zero-case selection before build. `drydock plan repair` retains a selector repair only after

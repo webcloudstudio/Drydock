@@ -405,6 +405,40 @@ state: closed/verified
 """
 
 
+IMPLEMENTED_PLAN = """\
+# MANIFEST: TestProject
+state: approved
+updated: 2026-01-01T00:00:00
+plan_hash: abc123
+
+## story 1: Core feature
+id: core-feature
+state: closed/implemented
+
+## story 2: Extra feature
+id: extra-feature
+state: closed/implemented
+"""
+
+
+class TestNextOperation:
+    def test_failed_score_ac_after_full_build_does_not_suggest_build(self, tmp_target_root):
+        from drydock.project_status import record_status
+
+        tgt = tmp_target_root / "TestTarget"
+        tgt.mkdir()
+        (tgt / "MANIFEST.md").write_text(IMPLEMENTED_PLAN, encoding="utf-8")
+        record_status(tgt, "BUILT", passed=True, command="drydock build TestTarget")
+        record_status(tgt, "SCORE AC", passed=False, command="drydock score ac TestTarget")
+
+        result = status_blueprint_target(
+            "TestProject", "TestTarget", tgt / "blueprint", tmp_target_root
+        )
+        assert result.target_info is not None
+        assert result.target_info.next_operation == "drydock score ac TestTarget --full"
+        assert "drydock build" not in result.target_info.next_operation
+
+
 class TestCompletionCheck:
     def _target(self, tmp_target_root, manifest: str | None):
         tgt = tmp_target_root / "TestTarget"

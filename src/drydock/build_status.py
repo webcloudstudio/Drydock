@@ -43,6 +43,11 @@ class FeatureStatus:
         return sum(1 for s in self.steps if s.block.state == "closed/verified")
 
     @property
+    def completed(self) -> int:
+        """Terminal steps, whether a governed oracle verified them or not."""
+        return sum(1 for s in self.steps if s.block.state in FINISHED_STATES)
+
+    @property
     def total(self) -> int:
         return len(self.steps)
 

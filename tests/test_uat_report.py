@@ -511,7 +511,6 @@ def test_case_kit_reports_a_status_state_instead_of_grading_it(tmp_path: Path) -
     assert '<span class="tag raw" title="exit 1">INCOMPLETE</span>' in page
     assert '<span class="tag raw" title="exit 1">NOT READY</span>' in page
     assert "EXIT 1" not in page
-    assert 'Target completion check passed</td><td><span class="tag unknown">UNPROVEN' in page
     assert 'drydock status commonmark</code></td><td><span class="tag fail"' not in page
 
 
@@ -554,7 +553,9 @@ def test_case_kit_reports_usage_as_cached_and_uncached(tmp_path: Path) -> None:
     # 40 charged at full rate. That is the split the provider bills.
     assert "<th>Cached</th><th>Uncached</th><th>Output</th>" in page
     assert '<td class="num">60</td><td class="num">40</td>' in page
-    assert "cached 4 · uncached 6 · output 3" in page
+    assert "<dt>Cached tokens</dt><dd>4</dd>" in page
+    assert "<dt>Uncached tokens</dt><dd>6</dd>" in page
+    assert "<dt>Output tokens</dt><dd>3</dd>" in page
 
 
 def test_case_kit_names_the_directory_the_build_delivered_into(tmp_path: Path) -> None:
@@ -897,15 +898,15 @@ def _complete_run(kit: Path) -> Path:
     return case
 
 
-def test_the_receipt_states_six_claims_in_fixed_order_with_their_recorded_outcomes(
+def test_the_receipt_states_four_claims_in_fixed_order_with_their_recorded_outcomes(
     tmp_path: Path,
 ) -> None:
     case = _complete_run(tmp_path / "CommonMark")
 
     page = build_case_kit(case).read_text(encoding="utf-8")
     claims = re.findall(
-        r"<td>(Lifecycle completed|External conformance suite passed|Target completion check "
-        r"passed|Acceptance score passed|Release score passed|Integrity verification passed)"
+        r"<td>(Lifecycle completed|External conformance suite passed|"
+        r"Release score passed|Integrity verification passed)"
         r'</td><td><span class="tag (pass|fail|unknown)">(\w+)</span>',
         page,
     )
@@ -913,22 +914,17 @@ def test_the_receipt_states_six_claims_in_fixed_order_with_their_recorded_outcom
     assert [claim for claim, _, _ in claims] == [
         "Lifecycle completed",
         "External conformance suite passed",
-        "Target completion check passed",
-        "Acceptance score passed",
         "Release score passed",
         "Integrity verification passed",
     ]
     assert [verdict for _, _, verdict in claims] == [
         "PASS",
         "PASS",
-        "UNPROVEN",
-        "PASS",
         "PASS",
         "PASS",
     ]
     # The receipt reports the tally rather than letting the run status stand for every claim.
-    assert "5 of 6 claims proven" in page
-    assert "1 receipt claim is not proven (target completion check passed)" in page
+    assert "4 of 4 claims proven" in page
 
 
 def test_the_receipt_marks_a_claim_the_run_never_recorded_as_unproven(tmp_path: Path) -> None:
@@ -939,12 +935,11 @@ def test_the_receipt_marks_a_claim_the_run_never_recorded_as_unproven(tmp_path: 
 
     page = build_case_kit(case).read_text(encoding="utf-8")
 
-    assert page.count('<span class="tag unknown">UNPROVEN</span>') == 3
+    assert page.count('<span class="tag unknown">UNPROVEN</span>') == 2
     assert "No external test command is defined for this project." in page
-    assert "No completion check was recorded for this run." in page
     assert "No release score was recorded for this run." in page
     # An unproven claim is never dressed up as a pass by the run status above it.
-    assert "3 receipt claims are not proven" in page
+    assert "2 receipt claims are not proven" in page
 
 
 def test_the_run_readme_leads_with_the_receipt_before_any_drydock_internals(
@@ -966,8 +961,7 @@ def test_the_run_readme_leads_with_the_receipt_before_any_drydock_internals(
         )
     ]
     assert order == sorted(order)
-    assert "5 of 6 receipt claims proven" in readme
-    assert "| Target completion check passed | UNPROVEN |" in readme
+    assert "4 of 4 receipt claims proven" in readme
     assert "[`sources/toml-v1.0.0.md`](sources/toml-v1.0.0.md)" in readme
     assert "(build/commonmark)" in readme
     assert "One run is evidence of one run. It is not a benchmark." in readme
@@ -985,15 +979,15 @@ def test_the_kit_index_carries_the_latest_run_receipt_with_run_scoped_links(
     index = build_kit_index(kit)
     page = index.read_text(encoding="utf-8")
 
-    assert "5 of 6 claims proven" in page
+    assert "4 of 4 claims proven" in page
     assert f'href="runs/{run_id}/view/evidence/commands/04-test.stdout.log.html"' in page
     assert f'href="runs/{run_id}/build/commonmark/"' in page
     assert "RUN SUMMARY" in page
     assert "Input specification" in page
     assert "Delivered Code" in page
     assert "Test Results" in page
-    assert "RUN NOTES:" in page
-    assert "It is not a security certification of the delivered code." in page
+    assert "RUN NOTES:" not in page
+    assert "It is not a security certification of the delivered code." not in page
     assert "Verify this run in five minutes" not in page
     assert all((kit / link).exists() for link in _links(index))
 

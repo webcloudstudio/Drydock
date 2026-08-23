@@ -1488,6 +1488,28 @@ state: pending
         assert rc == 2
         assert "Usage: drydock build status" in err
 
+    def test_build_status_renders_completed_single_story_blocks_on_one_line(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        target = tmp_target_root / "ExampleTarget"
+        target.mkdir()
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: approved\nblocks: 1\n\n"
+            "## story 1: Foundation\nid: foundation\ntype: foundational\nphase: 1\n"
+            "block: 1\nstack: python.md\nstate: closed/implemented\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        rc, out, err = run_cli("build", "status", "ExampleTarget")
+
+        assert rc == 0, err
+        assert (
+            "Block: Build Block 1 · Foundational  [block-1]   — [built] story Foundation"
+            "  [foundation] — complete"
+        ) in out
+        assert "<- verify" not in out
+
     def test_build_executes_buildable_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):

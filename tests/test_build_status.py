@@ -180,6 +180,15 @@ def test_feature_rollup_counts_verified_over_total(tmp_path):
     assert (core.verified, core.total) == (1, 2)
 
 
+def test_feature_rollup_counts_implemented_as_complete(tmp_path):
+    report = _report(
+        tmp_path,
+        _PLAN.replace("state: closed/verified", "state: closed/implemented", 1),
+    )
+    core = report.groups[0]
+    assert (core.completed, core.total) == (1, 2)
+
+
 def test_failed_ids_lists_failed_steps_in_manifest_order(tmp_path):
     manifest = _PLAN.replace(
         "id: foundation\nparent: core\nstate: closed/verified",

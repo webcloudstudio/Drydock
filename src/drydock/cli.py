@@ -3023,16 +3023,23 @@ def cmd_build_status(blueprint: str, target: str) -> int:
         group_kind = (
             "Feature" if group.feature is not None or group.group_id == "ungrouped" else "Block"
         )
+        if group_kind == "Block" and group.total == 1 and group.completed == 1:
+            step = group.steps[0]
+            mark = _BUILD_STATE_MARK.get(step.block.state, step.block.state)
+            print(
+                f"{group_kind}: {group.name}  [{group.group_id}]"
+                f"   — {mark} {step.block.block_type} {step.block.name}"
+                f"  [{step.block.block_id}] — complete"
+            )
+            continue
         print(
             f"\n{group_kind}: {group.name}  [{group.group_id}]"
-            f"   — {group.verified}/{group.total} stories done"
+            f"   — {group.completed}/{group.total} stories complete"
         )
         for step in group.steps:
             mark = _BUILD_STATE_MARK.get(step.block.state, step.block.state)
             if step.block.state == "closed/failed":
                 arrow = "  <- resume (repairs in place)"
-            elif step.block.state == "closed/implemented":
-                arrow = "  <- verify"
             elif step.buildable:
                 arrow = "  <- next"
             else:
