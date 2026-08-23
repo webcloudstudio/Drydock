@@ -44,11 +44,26 @@ Drydock imports your source material, defines stories using agile best practices
 
 | Resource | PDF |
 |---|---|
-| [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/QUICK_START.pdf) |
+| [Quick Start Guide](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/QUICK_START.pdf) |
 | [User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf) ||
 | [Drydock Specification](https://webcloudstudio.com/project-docs/drydock/index_sections/introduction.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.pdf) |
 | [CHANGELOG.md](CHANGELOG.md) | — |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | — |
+
+## Drydock UAT Examples
+
+The following are 4 WORKING applications built as part of the Drydock Uat Cycle - **BUILD EVIDENCE STORED IN SEPARATE REPOS**
+
+| Project | Description | Web URL | Git URL |
+| --- | --- | --- | --- |
+| ReadingList | simple web app | https://webcloudstudio.github.io/drydock-example-readinglist/ | [Git](https://github.com/webcloudstudio/drydock-example-readinglist) |
+| CommonMark | markdown formatter | https://webcloudstudio.github.io/drydock-example-commonmark/ | [Git](https://github.com/webcloudstudio/drydock-example-commonmark) |
+| TOML | markup language | https://webcloudstudio.github.io/drydock-example-toml/ | [Git](https://github.com/webcloudstudio/drydock-example-toml) |
+| jq | Flagship - full build of the jq language | https://webcloudstudio.github.io/drydock-example-jq/ | [Git](https://github.com/webcloudstudio/drydock-example-jq) |
+
+
+All four built with gpt-5.6-luna on a Codex subscription. No API keys.  All build evendence should be in the separate git repo.
+
 
 ## Getting started
 
