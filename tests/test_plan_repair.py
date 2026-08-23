@@ -116,7 +116,9 @@ assert result.returncode == 0
 _FIXED_STAGED_REGEX_BLOCK = _fixed_block(
     "FEATURE_Bad.md",
     "lexer-conformance",
-    "Intent: Selects lexical conformance cases through the staged runner.\n\n"
+    "Intent: Selects lexical conformance cases through the staged runner.\n"
+    "Probe: --list\n"
+    "Probe Count: lines\n\n"
     "import subprocess\n"
     "import sys\n\n"
     'selector = r"\\(|@format"\n'
@@ -129,8 +131,11 @@ import re
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--select")
+parser.add_argument("--list", action="store_true")
 args = parser.parse_args()
 selector = re.compile(args.select) if args.select else None
+if args.list:
+    print("case-1")
 """
 
 _BAD_CONTAINER = """# FEATURE: Container
@@ -313,6 +318,98 @@ def test_a_staged_runner_regex_is_repaired_and_reverified(tmp_path):
     assert result.ok
     assert result.files_changed == ("FEATURE_Bad.md",)
     assert verify("Demo", target).ok
+
+
+_PROBE_RUNNER = """import argparse
+
+CASES = ["alpha", "beta", "gamma"]
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--select")
+parser.add_argument("--list", action="store_true")
+args = parser.parse_args()
+selected = [c for c in CASES if args.select in c] if args.select else CASES
+if args.list:
+    for case in selected:
+        print(case)
+"""
+
+_BROKEN_MISSING_PROBE = """# FEATURE: Selector
+
+## Programmatic Acceptance
+
+=== AC select-alpha ===
+Intent: Selects a conformance slice through the staged runner.
+
+import subprocess
+import sys
+
+result = subprocess.run(
+    [sys.executable, "sources/run_probe.py", "--select", "alpha"],
+    capture_output=True, text=True,
+)
+assert result.returncode == 0
+=== END AC select-alpha ===
+"""
+
+_FIXED_PROBE_BLOCK = _fixed_block(
+    "FEATURE_Selector.md",
+    "select-alpha",
+    "Intent: Selects a conformance slice through the staged runner.\n"
+    "Probe: --list\n"
+    "Probe Count: lines\n\n"
+    "import subprocess\n"
+    "import sys\n\n"
+    "result = subprocess.run(\n"
+    '    [sys.executable, "sources/run_probe.py", "--select", "alpha"],\n'
+    "    capture_output=True, text=True,\n"
+    ")\n"
+    "assert result.returncode == 0",
+)
+
+_STILL_EMPTY_PROBE_BLOCK = _fixed_block(
+    "FEATURE_Selector.md",
+    "select-alpha",
+    "Intent: Selects a conformance slice through the staged runner.\n"
+    "Probe: --list\n"
+    "Probe Count: lines\n\n"
+    "import subprocess\n"
+    "import sys\n\n"
+    "result = subprocess.run(\n"
+    '    [sys.executable, "sources/run_probe.py", "--select", "zzz"],\n'
+    "    capture_output=True, text=True,\n"
+    ")\n"
+    "assert result.returncode == 0",
+)
+
+
+def _probe_target(tmp_path, **specs: str):
+    target = _target(tmp_path, **specs)
+    sources = target / "blueprint" / "sources"
+    sources.mkdir()
+    (sources / "run_probe.py").write_text(_PROBE_RUNNER, encoding="utf-8")
+    return target
+
+
+def test_a_missing_selection_probe_is_repaired_and_reverified(tmp_path):
+    target = _probe_target(tmp_path, FEATURE_Selector=_BROKEN_MISSING_PROBE)
+
+    result = repair("Demo", target, runner=_runner(_FIXED_PROBE_BLOCK))
+
+    assert result.ok
+    assert result.files_changed == ("FEATURE_Selector.md",)
+    assert verify("Demo", target).ok
+
+
+def test_a_selector_still_empty_after_repair_stays_unrepaired(tmp_path):
+    """A declared probe that still proves zero cases is not a successful repair."""
+    target = _probe_target(tmp_path, FEATURE_Selector=_BROKEN_MISSING_PROBE)
+
+    result = repair("Demo", target, runner=_runner(_STILL_EMPTY_PROBE_BLOCK))
+
+    assert not result.ok
+    assert result.items[0].status == "unrepaired"
+    assert not verify("Demo", target).ok
 
 
 def test_a_block_emitted_without_a_trailing_newline_still_splices(tmp_path):

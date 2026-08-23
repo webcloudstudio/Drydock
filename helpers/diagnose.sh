@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Diagnose the latest failed Drydock UAT run with two subscription-authenticated CLI agents.
+# Diagnose the latest failed non-UAT Drydock command with two subscription-authenticated CLI agents.
 #
 # This helper is read-only with respect to the Target, Blueprint, build tree, and source tree.
-# It writes only a diagnosis transcript under the selected immutable UAT run.
+# It writes only a diagnosis transcript under the selected Target.
 
 set -euo pipefail
 
@@ -10,8 +10,11 @@ usage() {
   cat <<'EOF'
 Usage: helpers/diagnose.sh <Target> [--max-rounds N]
 
-Diagnoses the latest failed UAT run for <Target>.  Two independent agents inspect the run, then
-cross-critique each other until both emit VERDICT: AGREED or the bounded review budget ends.
+Diagnoses the latest failed non-UAT Drydock command for <Target>. Two independent agents inspect
+the command transcript and current Target evidence, then cross-critique until both emit
+VERDICT: AGREED or the bounded review budget ends.
+
+For an archived UAT run, use helpers/diagnose-uat.sh <Target> instead.
 
 Environment overrides:
   CODEX_MODEL     default: gpt-5.6-sol
@@ -19,8 +22,8 @@ Environment overrides:
   CLAUDE_MODEL    default: opus
   CLAUDE_EFFORT   default: max
 
-The helper invokes subscription-authenticated codex and claude CLIs.  It never edits the Blueprint,
-Target, build tree, or repository source.  It writes transcripts only to uat/<Target>/runs/<run>/diagnosis/.
+The helper invokes subscription-authenticated codex and claude CLIs. It never edits the Blueprint,
+build tree, or repository source. It writes transcripts only to targets/<Target>/diagnosis/<stamp>/.
 EOF
 }
 
@@ -29,6 +32,11 @@ die() {
   exit 2
 }
 
+mode=command
+if [[ ${1:-} == "--uat-run" ]]; then
+  mode=uat
+  shift
+fi
 [[ $# -ge 1 ]] || { usage >&2; exit 2; }
 [[ ${1:-} != "-h" && ${1:-} != "--help" ]] || { usage; exit 0; }
 
@@ -51,41 +59,52 @@ while [[ $# -gt 0 ]]; do
 done
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "run from a Drydock Git worktree"
-runs_dir="$repo_root/uat/$target/runs"
-[[ -d $runs_dir ]] || die "UAT runs directory not found: $runs_dir"
+target_dir="$repo_root/targets/$target"
+history_path="$repo_root/logs/history.jsonl"
 command -v codex >/dev/null || die "codex CLI is not installed or not on PATH"
 command -v claude >/dev/null || die "claude CLI is not installed or not on PATH"
 
-run_dir=$(python3 - "$runs_dir" <<'PY'
+if [[ $mode == uat ]]; then
+  run_dir=${DIAGNOSE_EVIDENCE_ROOT:-}
+  diagnosis_dir=${DIAGNOSE_OUTPUT_DIR:-}
+  [[ -d $run_dir && -n $diagnosis_dir ]] || die "UAT wrapper did not provide a valid archived run"
+  failure_stamp=${run_dir##*/}
+  latest_failure="archived UAT run $failure_stamp"
+  failure_transcript="evidence/commands/"
+  mkdir -p "$diagnosis_dir"
+else
+  [[ -d $target_dir ]] || die "Target directory not found: $target_dir"
+  [[ -f $history_path ]] || die "command history not found: $history_path"
+  latest_failure=$(python3 - "$history_path" "$target" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-runs = Path(sys.argv[1])
+history = Path(sys.argv[1])
+target = sys.argv[2]
 candidates = []
-for path in runs.iterdir():
-    result = path / "result.json"
-    if not path.is_dir() or not result.is_file():
-        continue
+for line in history.read_text(encoding="utf-8").splitlines():
     try:
-        data = json.loads(result.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
+        record = json.loads(line)
+    except json.JSONDecodeError:
         continue
-    assertions = data.get("assertions", {})
-    commands = data.get("commands", [])
-    failed = int(assertions.get("failed", 0) or 0) > 0 or any(
-        int(command.get("returncode", 0) or 0) != 0 for command in commands
-    )
-    if failed:
-        candidates.append(path)
+    if record.get("target") != target or int(record.get("return_code", 0) or 0) == 0:
+        continue
+    argv = record.get("argv", [])
+    if argv and argv[0] == "uat":
+        continue
+    candidates.append(record)
 if not candidates:
-    raise SystemExit("no failed UAT run with result.json found")
-print(max(candidates, key=lambda path: path.name))
+    raise SystemExit("no failed non-UAT command found")
+print(json.dumps(candidates[-1], sort_keys=True))
 PY
-) || die "no failed UAT run found for $target"
+) || die "no failed non-UAT command found for $target"
 
-diagnosis_dir="$run_dir/diagnosis"
-mkdir -p "$diagnosis_dir"
+  failure_stamp=$(python3 -c 'import json, sys; print(json.load(sys.stdin).get("stamp", "unknown"))' <<<"$latest_failure")
+  failure_transcript=$(python3 -c 'import json, sys; print(json.load(sys.stdin).get("transcript", ""))' <<<"$latest_failure")
+  diagnosis_dir="$target_dir/diagnosis/$failure_stamp"
+  mkdir -p "$diagnosis_dir"
+fi
 
 codex_model=${CODEX_MODEL:-gpt-5.6-sol}
 codex_effort=${CODEX_EFFORT:-xhigh}
@@ -93,15 +112,16 @@ claude_model=${CLAUDE_MODEL:-opus}
 claude_effort=${CLAUDE_EFFORT:-max}
 
 evidence_index="$diagnosis_dir/evidence-index.md"
-cat >"$evidence_index" <<EOF
+if [[ $mode == uat ]]; then
+  cat >"$evidence_index" <<EOF
 # UAT Diagnosis Evidence Index
 
 - Target: $target
-- Run: ${run_dir##*/}
+- Run: $failure_stamp
 - Run directory: $run_dir
 - Repository: $repo_root
 
-The run directory is immutable evidence. Inspect it directly. Do not edit it, the Target, the
+The archived UAT run is read-only evidence. Inspect it directly. Do not edit it, the Target, the
 Blueprint, the build tree, or repository source. Prefer exact file paths and line references.
 
 Primary evidence:
@@ -111,6 +131,27 @@ Primary evidence:
 - workspace/targets/$target/ — Blueprint, Manifest, evidence, and generated state from this run.
 - build/$target/ — built product at the run's stopping point, when present.
 - sources/ — imported source kit used by the run.
+EOF
+else
+  cat >"$evidence_index" <<EOF
+# Drydock Command Diagnosis Evidence Index
+
+- Target: $target
+- Failed command: $latest_failure
+- Target directory: $target_dir
+- Command history: $history_path
+- Command transcript: ${failure_transcript:-not recorded}
+- Repository: $repo_root
+
+The command transcript and Target evidence are read-only. Inspect them directly. Do not edit the
+Target, Blueprint, build tree, or repository source. Prefer exact file paths and line references.
+
+Primary evidence:
+
+- logs/history.jsonl — command ledger and selected failed command.
+- logs/ — command transcript and provider evidence.
+- targets/$target/ERRORS.md — current structured failure record, when present.
+- targets/$target/ — Blueprint, Manifest, evidence, and generated state.
 
 Required conclusion policy:
 
@@ -118,14 +159,15 @@ Required conclusion policy:
 - Do not recommend modifying a historical Blueprint merely to make this completed UAT pass.
 - Do not propose code changes without cited evidence.
 EOF
+fi
 
 base_prompt="$diagnosis_dir/base-prompt.md"
 cat >"$base_prompt" <<EOF
-You are performing a read-only adversarial diagnosis of a failed Drydock UAT run.
+You are performing a read-only adversarial diagnosis of a failed Drydock $([[ $mode == uat ]] && echo UAT || echo command).
 
-Read $evidence_index and inspect only files under $run_dir and the repository source needed to
-understand Drydock control flow. Do not edit files and do not run a build, test, UAT, or network
-operation. Your task is diagnosis, not implementation.
+Read $evidence_index and inspect only the named evidence and repository source needed to understand
+Drydock control flow. Do not edit files and do not run a build, test, UAT, or network operation.
+Your task is diagnosis, not implementation.
 
 Return concise Markdown using exactly these headings:
 
@@ -165,7 +207,7 @@ run_claude() {
   ) >"$output" 2>"${output%.md}.stderr.log"
 }
 
-echo "diagnose: target=$target run=${run_dir##*/}"
+echo "diagnose: target=$target $([[ $mode == uat ]] && echo uat-run || echo failed-command)-stamp=$failure_stamp"
 echo "diagnose: codex/$codex_model effort=$codex_effort"
 echo "diagnose: claude/$claude_model effort=$claude_effort"
 
@@ -215,7 +257,7 @@ done
 
 report="$diagnosis_dir/DIAGNOSIS.md"
 {
-  echo "# UAT Diagnosis: $target (${run_dir##*/})"
+  echo "# $([[ $mode == uat ]] && echo UAT || echo 'Drydock Command') Diagnosis: $target ($failure_stamp)"
   echo
   echo "- Codex: $codex_model; effort=$codex_effort"
   echo "- Claude: $claude_model; effort=$claude_effort"

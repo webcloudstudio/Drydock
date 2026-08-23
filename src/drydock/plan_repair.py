@@ -44,8 +44,10 @@ from pathlib import Path
 from typing import Protocol
 
 from drydock.acceptance import (
+    ProgrammaticAcceptance,
     parse_programmatic_acceptance,
     regex_defects,
+    selection_probe_reason,
     split_fused_acceptance_boundary,
     staged_regex_defects,
     syntax_defect,
@@ -142,14 +144,17 @@ class RepairResult:
         return 0 if self.ok else 1
 
 
-def _still_broken(code: str, *, source_root: Path) -> str | None:
+def _still_broken(check: ProgrammaticAcceptance, *, source_root: Path) -> str | None:
     """Return why a criterion still cannot run, or ``None``. The same test verification uses."""
+    code = check.code
     if (reason := syntax_defect(code)) is not None:
         return reason
     if reasons := regex_defects(code):
         return "; ".join(reasons)
     if reasons := staged_regex_defects(code, source_root):
         return "; ".join(reasons)
+    if (probe := selection_probe_reason(check, blueprint_dir=source_root)) is not None:
+        return probe[1]
     if names := unresolved_globals(code):
         return "reads undefined global name(s): " + ", ".join(f"`{n}`" for n in sorted(names))
     return None
@@ -384,7 +389,7 @@ def _splice_and_revert(
         if check is None:
             broken[check_id] = "repair dropped the criterion and was reverted"
             continue
-        if (reason := _still_broken(check.code, source_root=source_root)) is not None:
+        if (reason := _still_broken(check, source_root=source_root)) is not None:
             broken[check_id] = reason
 
     if broken:

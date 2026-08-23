@@ -29,8 +29,10 @@ from pathlib import Path
 
 from drydock.acceptance import (
     captures_without_reporting,
+    dynamic_selector_advisory,
     parse_programmatic_acceptance,
     regex_defects,
+    selection_probe_reason,
     staged_regex_defects,
     syntax_defect,
     unresolved_globals,
@@ -164,6 +166,10 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                     )
                 )
                 continue
+            if (probe := selection_probe_reason(check, blueprint_dir=blueprint_dir)) is not None:
+                kind, reason = probe
+                defects.append(Defect(path.name, check.check_id, kind, reason))
+                continue
             if names := unresolved_globals(check.code):
                 rendered = ", ".join(f"`{name}`" for name in sorted(names))
                 defects.append(
@@ -176,6 +182,12 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                     )
                 )
                 continue
+            if (
+                advisory := dynamic_selector_advisory(check, blueprint_dir=blueprint_dir)
+            ) is not None:
+                # Advisory, not gating: the selector is real but not statically recoverable, so
+                # no probe can be constructed. build_run's zero-case handling still guards it.
+                warnings.append(f"{path.name} [{check.check_id}]: {advisory}")
             for literal in check.retyped_expectations:
                 # Advisory, deliberately not a defect. A re-typed expectation is an authoring
                 # smell with a real false-positive rate, and gating on it would refuse correct

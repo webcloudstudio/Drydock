@@ -152,6 +152,8 @@ file completes:
 Intent: One sentence stating what the check proves.
 Suite: scoped
 Requires: executable=python3; scope=test
+Probe: --list
+Probe Count: summary
 
 <Python source, verbatim, to the end marker>
 === END AC {check-id} ===
@@ -161,6 +163,15 @@ The delimiters are the whole format. The id lives in the opening marker, so it i
 from a nearby heading. Declarations are the `Key: value` lines at the top of the block, ending at
 the first blank line; `Intent:` is required and the rest are optional. Everything after that blank
 line is the proof body, taken character for character to the matching end marker.
+
+`Probe:`/`Probe Count:` are required together whenever the body invokes a staged runner with a
+literal selection option (a flag choosing a subset of an imported corpus, such as `--sections` or
+`--select`). Drydock re-invokes that same runner with the same selector option and value, plus the
+`Probe:` flag(s) appended — flags that make the runner list or count the matched cases with no
+candidate present, e.g. `--list`. `Probe Count:` names how to read the probe's stdout: `lines`
+(one selected case per non-blank line) or `summary` (the count is the leading integer of the
+trailing non-blank line, e.g. `27 cases, 2 excluded`). Drydock runs the declared probe before
+build and refuses the plan if the selector proves to match nothing.
 
 Nothing inside the body can move a boundary. A Markdown fence, a `##` line, a `###` line, or a
 `Requires:` line inside a string is ordinary content — which matters, because a target that
@@ -558,6 +569,8 @@ assert response.get_json()["status"] == "ok"
 === AC suite-conformance ===
 Intent: The implementation passes the conformance sections this story owns.
 Suite: scoped
+Probe: --list
+Probe Count: summary
 
 import os
 import subprocess
@@ -598,7 +611,9 @@ runner the check gates on the whole test suite rather than a story-scoped sample
 **A scoped selector must select something.** A check that runs a suite with a section filter
 matching no cases exits zero and reports a pass while proving nothing. Select on a heading that
 actually owns cases, never on a chapter title that merely contains such headings. Drydock fails a
-criterion that is already green before the story's code exists.
+criterion that is already green before the story's code exists. This is checked mechanically, not
+only reasoned about: declare `Probe:`/`Probe Count:` for every such selector, and Drydock runs the
+declared probe before build and refuses the plan if it counts zero.
 **The runner's exit status is the verdict, and it is the whole verdict.** A conformance runner
 already decides pass or fail and reports it the one way a caller can rely on. Asserting on its
 printed summary as well adds no information and adds a failure mode: the case count belongs to the

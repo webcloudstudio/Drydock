@@ -13,6 +13,7 @@ import shutil
 import signal
 import subprocess
 import symtable
+import sys
 import tempfile
 import tokenize
 import warnings
@@ -623,6 +624,12 @@ class ProgrammaticAcceptance:
     #: authoring gate enforces. A target whose specification genuinely states an encoding
     #: requirement declares it here and may then use non-ASCII test data.
     encoding: str = ""
+    #: Literal flag(s) that make a staged corpus-selection runner list or count the cases its
+    #: selector matched, with no candidate present, from this criterion's ``Probe:`` declaration.
+    probe: str = ""
+    #: How to read the probe's stdout: ``lines`` (one case per non-blank line) or ``summary`` (the
+    #: count is parsed from the trailing non-blank line), from ``Probe Count:``.
+    probe_count: str = ""
 
     @property
     def timeout_seconds(self) -> int:
@@ -884,7 +891,16 @@ def _requirements_from_values(
 #: Metadata keys recognized inside an AC block. The set is closed on purpose: an unrecognized
 #: ``Key: value`` line ends the metadata run and begins the code, so an annotated assignment such
 #: as ``result: int = 5`` on the first code line cannot be mistaken for a declaration.
-_AC_META_KEYS = frozenset({"intent", "suite", "requires", "sea trials", "gate", "encoding"})
+_AC_META_KEYS = frozenset({
+    "intent",
+    "suite",
+    "requires",
+    "sea trials",
+    "gate",
+    "encoding",
+    "probe",
+    "probe count",
+})
 
 
 def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcceptance:
@@ -941,6 +957,8 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
         ),
         gate=" ".join(meta.get("gate", ())).strip(),
         encoding=" ".join(meta.get("encoding", ())).strip().lower(),
+        probe=" ".join(meta.get("probe", ())).strip(),
+        probe_count=" ".join(meta.get("probe count", ())).strip().lower(),
     )
 
 
@@ -1640,6 +1658,167 @@ def _runner_regex_options(source: Path) -> frozenset[str]:
         if destination in regex_destinations:
             options.update(name for name in names if name.startswith("-"))
     return frozenset(options)
+
+
+#: A ``Probe:`` flag token is a plain CLI literal — never a shell fragment. Anything outside this
+#: set is rejected before a probe is ever executed.
+_SAFE_PROBE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_./=-]+$")
+#: Recognized ``Probe Count:`` protocols: one case per non-blank stdout line, or a count parsed
+#: from the trailing non-blank line.
+_PROBE_COUNT_MODES = frozenset({"lines", "summary"})
+#: The trailing-line form a ``summary``-mode runner is expected to print, e.g. ``27 cases, 2
+#: excluded``. Only the leading integer is read; the rest is the runner's own words.
+_PROBE_SUMMARY_RE = re.compile(r"^(?P<count>\d+)\s+\S")
+#: Wall-clock budget for a selection probe. It lists or counts cases; it never runs them.
+_PROBE_TIMEOUT_SECONDS = 30
+
+
+def _recognized_staged_calls(
+    code: str, source_root: Path
+) -> list[tuple[Path, tuple[str | None, ...], int, int]]:
+    """Every ``subprocess`` call whose literal command vector names a staged ``.py`` runner.
+
+    Returns ``(runner_path, command, runner_index, node.lineno)`` per call, reusing the same
+    static recognition :func:`staged_regex_defects` uses. ``command`` may still contain ``None``
+    at positions other than the runner itself (a dynamic interpreter path, for instance) — only
+    the runner argument is required to be literal.
+    """
+    try:
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return []
+    strings = _module_string_literals(tree)
+    vectors = _module_string_vectors(tree, strings)
+    root = source_root.resolve()
+    calls: list[tuple[Path, tuple[str | None, ...], int, int]] = []
+    for node in ast.walk(tree):
+        if not _is_subprocess_call(node):
+            continue
+        command = _call_command_vector(node, strings, vectors)
+        if command is None:
+            continue
+        source = _staged_python_argument(command, source_root)
+        if source is None:
+            continue
+        index = next(
+            i
+            for i, value in enumerate(command)
+            if value is not None and (root / value).resolve() == source
+        )
+        calls.append((source, command, index, node.lineno))
+    return calls
+
+
+def selector_recognition(code: str, source_root: Path) -> tuple[str, str, str, int] | None:
+    """Return ``(runner_relpath, option, value, lineno)`` for the first statically-known staged
+    corpus-selector call in ``code``, or ``None`` when no such call is recognized.
+
+    A selector is any literal ``-``-prefixed option paired with a literal value in a fully
+    resolvable staged-runner command. Drydock cannot know a staged runner's own flag semantics, so
+    every such pair is treated as selection-shaped and made to prove it selects something.
+    """
+    for source, command, _index, lineno in _recognized_staged_calls(code, source_root):
+        options = _option_values(command)
+        if not options:
+            continue
+        option, value = next(iter(options.items()))
+        return (source.relative_to(source_root.resolve()).as_posix(), option, value, lineno)
+    return None
+
+
+def dynamic_selector_advisory(check: ProgrammaticAcceptance, *, blueprint_dir: Path) -> str | None:
+    """Advisory when a staged runner is invoked with a selector built at runtime.
+
+    The recognition that feeds :func:`selection_probe_reason` requires a literal option/value
+    pair to construct a probe from. A selector assembled from a variable is out of that reach —
+    real evidence, not a prediction — so it is reported rather than gated; :mod:`build_run`'s
+    zero-case handling still guards it when the build actually runs.
+    """
+    for source, command, index, lineno in _recognized_staged_calls(check.code, blueprint_dir):
+        if _option_values(command):
+            continue
+        if any(value is None for value in command[index + 1 :]):
+            relpath = source.relative_to(blueprint_dir.resolve()).as_posix()
+            return (
+                f"line {lineno}: {relpath} is invoked with a selector Drydock cannot statically "
+                "resolve, so its selection cannot be proven non-empty before build"
+            )
+    return None
+
+
+def selection_probe_reason(
+    check: ProgrammaticAcceptance, *, blueprint_dir: Path
+) -> tuple[str, str] | None:
+    """Judge whether a recognized staged-runner selector is proven to select at least one case.
+
+    Returns ``(kind, reason)`` for one of four hard defects, or ``None`` when no selector is
+    recognized or the declared probe proves a non-empty selection:
+
+    - ``missing-selection-probe`` — a selector is recognized and no ``Probe:`` is declared.
+    - ``invalid-selection-probe`` — ``Probe:``/``Probe Count:`` is malformed; nothing executes.
+    - ``probe-failed`` — the probe ran and exited nonzero, timed out, or its declared count
+      protocol did not hold. A failed probe is never read as "zero selected".
+    - ``empty-selection`` — the probe ran cleanly and counted zero cases.
+    """
+    recognized = selector_recognition(check.code, blueprint_dir)
+    if recognized is None:
+        return None
+    runner, option, value, lineno = recognized
+    where = f"line {lineno}: {runner} {option} {value!r} selects a subset of a staged corpus"
+
+    if not check.probe:
+        return (
+            "missing-selection-probe",
+            f"{where} with no declared Probe: to prove the selection is non-empty before build",
+        )
+
+    probe_flags = check.probe.split()
+    if not probe_flags or any(_SAFE_PROBE_TOKEN_RE.match(flag) is None for flag in probe_flags):
+        return (
+            "invalid-selection-probe",
+            f"{where}: Probe: {check.probe!r} is empty or not a plain flag literal",
+        )
+    if check.probe_count not in _PROBE_COUNT_MODES:
+        return (
+            "invalid-selection-probe",
+            f"{where}: Probe Count: {check.probe_count!r} must be 'lines' or 'summary'",
+        )
+
+    argv = [sys.executable, str(blueprint_dir.resolve() / runner), option, value, *probe_flags]
+    try:
+        result = subprocess.run(
+            argv,
+            cwd=blueprint_dir,
+            capture_output=True,
+            text=True,
+            env={"PATH": os.environ.get("PATH", "")},
+            timeout=_PROBE_TIMEOUT_SECONDS,
+            shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return ("probe-failed", f"{where}: probe could not run: {exc}")
+
+    if result.returncode != 0:
+        stderr_lines = [line for line in result.stderr.splitlines() if line.strip()]
+        detail = stderr_lines[-1] if stderr_lines else f"exit {result.returncode}"
+        return ("probe-failed", f"{where}: probe exited {result.returncode}: {detail}")
+
+    stdout_lines = [line for line in result.stdout.splitlines() if line.strip()]
+    if check.probe_count == "lines":
+        count = len(stdout_lines)
+    else:
+        match = _PROBE_SUMMARY_RE.match(stdout_lines[-1]) if stdout_lines else None
+        if match is None:
+            return (
+                "probe-failed",
+                f"{where}: probe output does not match the declared 'summary' protocol",
+            )
+        count = int(match.group("count"))
+
+    if count == 0:
+        return ("empty-selection", f"{where}: probe selected 0 cases")
+    return None
 
 
 def escape_defects(code: str) -> tuple[str, ...]:

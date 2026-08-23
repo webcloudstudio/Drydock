@@ -1,7 +1,7 @@
 ---
 name: plan_repair
-description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, and make each criterion executable without changing what it asserts. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20260822 V7
+description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
+version: 20260823 V8
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -12,10 +12,11 @@ output: One delimited AC block per defective criterion, or one repaired specific
 
 You are given a batch of acceptance criteria that **cannot execute as written**, possibly drawn
 from several different Blueprint specification files in one request. Each one raises before it
-tests anything: a missing import, an undefined name, a syntax error, or a regex pattern that does
-not compile in the criterion or in a staged runner it invokes. A criterion in this state is not a
-failing test. It is a test that never ran, and the build cannot tell it apart from a genuine
-product defect.
+tests anything, or cannot be proven to test anything: a missing import, an undefined name, a
+syntax error, a regex pattern that does not compile in the criterion or in a staged runner it
+invokes, or a staged-runner selector missing, malformed, or proven to select zero cases. A
+criterion in this state is not a failing test. It is a test that never ran — or that runs against
+nothing — and the build cannot tell either apart from a genuine product defect.
 
 Each criterion arrives as its own self-contained block:
 
@@ -62,7 +63,13 @@ Permitted:
   the intended fix);
 - correct a literal regex supplied to a staged runner option whose contract compiles that option
   as a regex, preserving the intended selected forms;
-- reorder imports to the top of the criterion.
+- reorder imports to the top of the criterion;
+- for a `missing-selection-probe` or `invalid-selection-probe` fault, add or correct the
+  criterion's `Probe:` and `Probe Count:` declaration lines so the selector it already invokes can
+  be proven non-empty, and only that;
+- for an `empty-selection` or `probe-failed` fault, correct the selector value itself (the option
+  passed to the staged runner) so it selects a real, existing section of the corpus, preserving
+  the section the criterion's `Intent:` names — never widen it to "select everything".
 
 Forbidden:
 
@@ -72,6 +79,8 @@ Forbidden:
   testing what it claims to test;
 - deleting a criterion, renaming its id, or altering its `Intent:` line;
 - adding a `Suite:` or `Requires:` line that was not already there;
+- adding, correcting, or removing `Probe:`/`Probe Count:` for any fault other than
+  `missing-selection-probe`, `invalid-selection-probe`, `empty-selection`, or `probe-failed`;
 - touching a criterion that was not named in its own block;
 - editing any other part of a specification.
 

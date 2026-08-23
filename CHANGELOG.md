@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-23: `drydock plan verify` now requires a declared non-candidate probe for every
+  statically recoverable staged-runner selector and rejects a missing, malformed, failed, or
+  zero-case selection before build. `drydock plan repair` retains a selector repair only after
+  the same probe succeeds with a nonzero count. A dynamic selector remains advisory-only at plan
+  time and is contained by the build-time zero-case `UNVERIFIED` backstop.
 - 2026-08-23: A completed acceptance criterion that reports an authoritative zero-case tally now
   settles `UNVERIFIED` rather than either a false pass or an unrecoverable product failure. Build
   repair and regression sweeps exclude it, and a resumed story supported only by such criteria
@@ -49,11 +54,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-08-23: `helpers/diagnose.sh <Target>` runs a bounded, read-only adversarial diagnosis of
-  the latest failed UAT run using subscription-authenticated Codex and Claude CLIs with explicit
-  model and reasoning-effort overrides. It persists both independent analyses, review rounds, and
-  the consensus report under that run's `diagnosis/` directory without changing the historical
-  Blueprint, Target, build tree, or source tree.
+- 2026-08-23: `helpers/diagnose-uat.sh <Target>` runs a bounded, read-only adversarial diagnosis
+  of the latest failed archived UAT run, while `helpers/diagnose.sh <Target>` diagnoses the latest
+  failed non-UAT command recorded for a Target. Both use subscription-authenticated Codex and
+  Claude CLIs with explicit model and reasoning-effort overrides, persist independent analyses,
+  review rounds, and a consensus report, and do not alter product or Blueprint evidence.
 - 2026-08-22: `drydock uat status <Project>` now lists every recorded step of the run, in the
   same numbered form `drydock uat <Project> --steps` prints, so the operator can read the exact
   `--from-step <n>` argument off the status output without a separate command.

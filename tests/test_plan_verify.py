@@ -188,6 +188,228 @@ def test_one_criterion_yields_one_defect(tmp_path):
     assert len(result.defects) == 1
 
 
+_PROBE_RUNNER_LINES = """import argparse
+
+CASES = ["alpha", "beta", "gamma"]
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--select")
+parser.add_argument("--list", action="store_true")
+args = parser.parse_args()
+selected = [c for c in CASES if args.select in c] if args.select else CASES
+if args.list:
+    for case in selected:
+        print(case)
+"""
+
+_PROBE_RUNNER_SUMMARY = """import argparse
+
+CASES = ["alpha", "beta", "gamma"]
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--select")
+parser.add_argument("--list", action="store_true")
+args = parser.parse_args()
+selected = [c for c in CASES if args.select in c] if args.select else CASES
+if args.list:
+    print(f"{len(selected)} cases, {len(CASES) - len(selected)} excluded")
+"""
+
+
+def _selector_ac(check_id: str, select: str, *, probe: str = "", probe_count: str = "") -> str:
+    declarations = ""
+    if probe:
+        declarations += f"Probe: {probe}\n"
+    if probe_count:
+        declarations += f"Probe Count: {probe_count}\n"
+    return f"""# FEATURE: Selector
+
+## Programmatic Acceptance
+
+=== AC {check_id} ===
+Intent: Selects a conformance slice through the staged runner.
+{declarations}
+import subprocess
+import sys
+
+result = subprocess.run(
+    [sys.executable, "sources/run_probe.py", "--select", "{select}"],
+    capture_output=True, text=True,
+)
+assert result.returncode == 0
+=== END AC {check_id} ===
+"""
+
+
+def _probe_target(tmp_path, runner_text: str, **specs: str):
+    target = _target(tmp_path, **specs)
+    sources = target / "blueprint" / "sources"
+    sources.mkdir()
+    (sources / "run_probe.py").write_text(runner_text, encoding="utf-8")
+    return target
+
+
+def test_a_missing_selection_probe_is_a_defect(tmp_path):
+    """A recognized selector with no declared Probe: cannot be proven non-empty before build."""
+    target = _probe_target(
+        tmp_path, _PROBE_RUNNER_LINES, FEATURE_Selector=_selector_ac("select-alpha", "alpha")
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.check_id == "select-alpha"
+    assert defect.kind == "missing-selection-probe"
+
+
+def test_an_invalid_selection_probe_is_a_defect(tmp_path, monkeypatch):
+    """Malformed Probe:/Probe Count: is rejected before anything executes."""
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not execute")),
+    )
+    target = _probe_target(
+        tmp_path,
+        _PROBE_RUNNER_LINES,
+        FEATURE_Selector=_selector_ac(
+            "select-alpha", "alpha", probe="--list; echo hi", probe_count="lines"
+        ),
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "invalid-selection-probe"
+
+
+def test_an_invalid_selection_probe_count_mode_is_a_defect(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not execute")),
+    )
+    target = _probe_target(
+        tmp_path,
+        _PROBE_RUNNER_LINES,
+        FEATURE_Selector=_selector_ac("select-alpha", "alpha", probe="--list", probe_count="tally"),
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "invalid-selection-probe"
+
+
+def test_a_failed_probe_is_a_defect_not_an_empty_selection(tmp_path):
+    """A probe that cannot run is never read as proof of zero cases."""
+    target = _probe_target(
+        tmp_path,
+        _PROBE_RUNNER_LINES,
+        FEATURE_Selector=_selector_ac(
+            "select-alpha", "alpha", probe="--not-a-real-flag", probe_count="lines"
+        ),
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "probe-failed"
+
+
+def test_an_empty_selection_in_lines_mode_is_a_defect(tmp_path):
+    target = _probe_target(
+        tmp_path,
+        _PROBE_RUNNER_LINES,
+        FEATURE_Selector=_selector_ac("select-nothing", "zzz", probe="--list", probe_count="lines"),
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "empty-selection"
+
+
+def test_an_empty_selection_in_summary_mode_is_a_defect(tmp_path):
+    target = _probe_target(
+        tmp_path,
+        _PROBE_RUNNER_SUMMARY,
+        FEATURE_Selector=_selector_ac(
+            "select-nothing", "zzz", probe="--list", probe_count="summary"
+        ),
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "empty-selection"
+
+
+def test_a_valid_probe_with_a_nonzero_count_is_not_a_defect(tmp_path):
+    target = _probe_target(
+        tmp_path,
+        _PROBE_RUNNER_LINES,
+        FEATURE_Selector=_selector_ac("select-alpha", "alpha", probe="--list", probe_count="lines"),
+    )
+
+    result = verify("Demo", target)
+
+    assert result.ok
+    assert result.defects == ()
+
+
+def test_a_valid_probe_in_summary_mode_with_a_nonzero_count_is_not_a_defect(tmp_path):
+    target = _probe_target(
+        tmp_path,
+        _PROBE_RUNNER_SUMMARY,
+        FEATURE_Selector=_selector_ac(
+            "select-alpha", "alpha", probe="--list", probe_count="summary"
+        ),
+    )
+
+    result = verify("Demo", target)
+
+    assert result.ok
+    assert result.defects == ()
+
+
+_DYNAMIC_SELECTOR = """# FEATURE: Dynamic Selector
+
+## Programmatic Acceptance
+
+=== AC select-dynamic ===
+Intent: Selects a conformance slice chosen at runtime.
+
+import os
+import subprocess
+import sys
+
+pattern = os.environ.get("SELECT", "alpha")
+result = subprocess.run(
+    [sys.executable, "sources/run_probe.py", "--select", pattern],
+    capture_output=True, text=True,
+)
+assert result.returncode == 0
+=== END AC select-dynamic ===
+"""
+
+
+def test_a_dynamic_selector_is_only_an_advisory(tmp_path):
+    """Drydock cannot statically recover the selector, so it cannot build a probe for it; Layer 1
+    (build_run's zero-case handling) still guards this case at runtime."""
+    target = _probe_target(tmp_path, _PROBE_RUNNER_LINES, FEATURE_Dynamic=_DYNAMIC_SELECTOR)
+
+    result = verify("Demo", target)
+
+    assert result.ok
+    assert result.defects == ()
+    assert any("cannot statically resolve" in warning for warning in result.warnings)
+
+
 def test_a_retyped_expectation_warns_and_does_not_gate(tmp_path):
     """Gating on this class would refuse correct specifications; it is reported instead."""
     result = verify("Demo", _target(tmp_path, FEATURE_Advisory=_RETYPED))

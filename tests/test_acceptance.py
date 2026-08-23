@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 import subprocess
 import sys
@@ -1097,6 +1098,184 @@ def test_regex_defects_ignores_a_pattern_it_cannot_resolve_statically():
 
 def test_regex_defects_is_silent_about_code_that_does_not_compile():
     assert acceptance.regex_defects("sample = (") == ()
+
+
+# --- Selection probes: a staged-runner selector must prove it selects something -------------
+
+
+def _write_probe_runner(tmp_path: Path) -> None:
+    (tmp_path / "run_probe.py").write_text(
+        "import argparse\n\n"
+        "CASES = ['alpha', 'beta', 'gamma']\n\n"
+        "parser = argparse.ArgumentParser()\n"
+        "parser.add_argument('--select')\n"
+        "parser.add_argument('--list', action='store_true')\n"
+        "args = parser.parse_args()\n"
+        "selected = [c for c in CASES if args.select in c] if args.select else CASES\n"
+        "if args.list:\n"
+        "    for case in selected:\n"
+        "        print(case)\n",
+        encoding="utf-8",
+    )
+
+
+def _selector_code(select: str) -> str:
+    return (
+        "import subprocess\nimport sys\n\n"
+        "result = subprocess.run(\n"
+        f'    [sys.executable, "run_probe.py", "--select", "{select}"],\n'
+        "    capture_output=True, text=True,\n"
+        ")\n"
+        "assert result.returncode == 0\n"
+    )
+
+
+def test_selector_recognition_finds_the_literal_option_and_value(tmp_path):
+    _write_probe_runner(tmp_path)
+
+    recognized = acceptance.selector_recognition(_selector_code("alpha"), tmp_path)
+
+    assert recognized is not None
+    runner, option, value, _lineno = recognized
+    assert runner == "run_probe.py"
+    assert option == "--select"
+    assert value == "alpha"
+
+
+def test_selection_probe_reason_is_none_without_a_recognized_selector(tmp_path):
+    check = ProgrammaticAcceptance(check_id="x", source="F.md", intent="i", code="assert True")
+
+    assert acceptance.selection_probe_reason(check, blueprint_dir=tmp_path) is None
+
+
+def test_selection_probe_reason_flags_a_missing_probe(tmp_path):
+    _write_probe_runner(tmp_path)
+    check = ProgrammaticAcceptance(
+        check_id="x", source="F.md", intent="i", code=_selector_code("alpha")
+    )
+
+    kind, _reason = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+
+    assert kind == "missing-selection-probe"
+
+
+def test_selection_probe_reason_rejects_a_probe_with_shell_metacharacters(tmp_path, monkeypatch):
+    """Rejected statically, before a probe is ever executed."""
+    _write_probe_runner(tmp_path)
+    monkeypatch.setattr(
+        subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run"))
+    )
+    check = ProgrammaticAcceptance(
+        check_id="x",
+        source="F.md",
+        intent="i",
+        code=_selector_code("alpha"),
+        probe="--list; rm -rf /",
+        probe_count="lines",
+    )
+
+    kind, _reason = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+
+    assert kind == "invalid-selection-probe"
+
+
+def test_selection_probe_reason_rejects_an_unknown_count_mode(tmp_path, monkeypatch):
+    _write_probe_runner(tmp_path)
+    monkeypatch.setattr(
+        subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run"))
+    )
+    check = ProgrammaticAcceptance(
+        check_id="x",
+        source="F.md",
+        intent="i",
+        code=_selector_code("alpha"),
+        probe="--list",
+        probe_count="tally",
+    )
+
+    kind, _reason = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+
+    assert kind == "invalid-selection-probe"
+
+
+def test_selection_probe_reason_reports_a_nonzero_probe_exit_as_probe_failed(tmp_path):
+    """A probe that cannot run is never read as proof of zero selected cases."""
+    _write_probe_runner(tmp_path)
+    check = ProgrammaticAcceptance(
+        check_id="x",
+        source="F.md",
+        intent="i",
+        code=_selector_code("alpha"),
+        probe="--not-a-real-flag",
+        probe_count="lines",
+    )
+
+    kind, _reason = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+
+    assert kind == "probe-failed"
+
+
+def test_selection_probe_reason_reports_a_zero_count_as_empty_selection(tmp_path):
+    _write_probe_runner(tmp_path)
+    check = ProgrammaticAcceptance(
+        check_id="x",
+        source="F.md",
+        intent="i",
+        code=_selector_code("zzz"),
+        probe="--list",
+        probe_count="lines",
+    )
+
+    kind, _reason = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+
+    assert kind == "empty-selection"
+
+
+def test_selection_probe_reason_is_none_for_a_nonzero_count(tmp_path):
+    _write_probe_runner(tmp_path)
+    check = ProgrammaticAcceptance(
+        check_id="x",
+        source="F.md",
+        intent="i",
+        code=_selector_code("alpha"),
+        probe="--list",
+        probe_count="lines",
+    )
+
+    assert acceptance.selection_probe_reason(check, blueprint_dir=tmp_path) is None
+
+
+def test_dynamic_selector_advisory_is_none_for_a_literal_selector(tmp_path):
+    _write_probe_runner(tmp_path)
+    check = ProgrammaticAcceptance(
+        check_id="x", source="F.md", intent="i", code=_selector_code("alpha")
+    )
+
+    assert acceptance.dynamic_selector_advisory(check, blueprint_dir=tmp_path) is None
+
+
+def test_dynamic_selector_advisory_flags_a_runtime_built_selector(tmp_path):
+    """Drydock cannot statically resolve this selector, so it cannot construct a probe for it."""
+    _write_probe_runner(tmp_path)
+    code = (
+        "import os\nimport subprocess\nimport sys\n\n"
+        "pattern = os.environ.get('SELECT', 'alpha')\n"
+        "result = subprocess.run(\n"
+        '    [sys.executable, "run_probe.py", "--select", pattern],\n'
+        "    capture_output=True, text=True,\n"
+        ")\n"
+        "assert result.returncode == 0\n"
+    )
+    check = ProgrammaticAcceptance(check_id="x", source="F.md", intent="i", code=code)
+
+    reason = acceptance.dynamic_selector_advisory(check, blueprint_dir=tmp_path)
+
+    assert reason is not None
+    assert "cannot statically resolve" in reason
+
+
+def test_a_selection_probe_never_executes_through_a_shell():
+    assert "shell=True" not in inspect.getsource(acceptance)
 
 
 # --- Prepassed criteria: recorded for reporting, never gated ----------------------------
