@@ -2728,10 +2728,16 @@ def build_target(
             )
             if not resume_failed:
                 acceptance = resume_live
-                state, status, error, failure_detail = "closed/verified", "built", None, ""
+                unexamined_resume = bool(resume_live) and not any(
+                    check.passed for check in resume_live
+                )
+                state = "closed/implemented" if unexamined_resume else "closed/verified"
+                status, error, failure_detail = "built", None, ""
                 _emit(
                     on_text,
-                    "resume: acceptance already green — no rebuild needed",
+                    "resume: acceptance settled UNVERIFIED — no rebuild needed"
+                    if unexamined_resume
+                    else "resume: acceptance already green — no rebuild needed",
                 )
             else:
                 seed_feedback = _render_repair_feedback(

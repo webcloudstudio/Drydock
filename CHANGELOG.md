@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-23: A completed acceptance criterion that reports an authoritative zero-case tally now
+  settles `UNVERIFIED` rather than either a false pass or an unrecoverable product failure. Build
+  repair and regression sweeps exclude it, and a resumed story supported only by such criteria
+  closes `implemented`, never `verified`. This prevents an empty corpus selection from consuming
+  repair calls or stopping the build.
 - 2026-08-22: `BLUEPRINTS_CONTRACT.md`'s oracle rule now covers reconstructed non-string
   expectations (a rebuilt path compared against one the code under test computes itself), not
   only re-typed string literals, with a worked example. Planning previously authored
@@ -44,6 +49,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-23: `helpers/diagnose.sh <Target>` runs a bounded, read-only adversarial diagnosis of
+  the latest failed UAT run using subscription-authenticated Codex and Claude CLIs with explicit
+  model and reasoning-effort overrides. It persists both independent analyses, review rounds, and
+  the consensus report under that run's `diagnosis/` directory without changing the historical
+  Blueprint, Target, build tree, or source tree.
 - 2026-08-22: `drydock uat status <Project>` now lists every recorded step of the run, in the
   same numbered form `drydock uat <Project> --steps` prints, so the operator can read the exact
   `--from-step <n>` argument off the status output without a separate command.
