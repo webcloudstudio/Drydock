@@ -1792,6 +1792,7 @@ def selection_probe_reason(
             cwd=blueprint_dir,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             env={"PATH": os.environ.get("PATH", "")},
             timeout=_PROBE_TIMEOUT_SECONDS,
             shell=False,
