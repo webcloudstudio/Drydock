@@ -858,48 +858,17 @@ def _render_case(
 
     excerpt = ""
     if failed:
-        # Every stage that exited nonzero, in the order it ran. The first is where the run
-        # diverged and the rest are usually its consequence, but a reader chasing a defect needs
-        # all of them: quoting two ends of the list hides whatever failed between them. stderr
-        # leads each block, because a command that exits nonzero states its cause there.
+        # The Error tab is stderr only. stdout is routine command output, even when the command
+        # failed, and remains available from the corresponding Steps row.
         blocks: list[str] = []
-        for position, command in enumerate(failed):
-            sections = []
-            for stream, name in (("stderr_path", "stderr"), ("stdout_path", "stdout")):
-                relative = _relative(command.get(stream), case_root)
-                text = _tail(case_root / relative) if relative else ""
-                if text:
-                    sections.append(
-                        f'<p class="note">Tail of <code>{html.escape(relative)}</code>.</p>'
-                        f"<pre>{html.escape(text[-4000:])}</pre>"
-                    )
-                elif name == "stderr":
-                    # A nonzero exit with an empty error stream is itself a defect: the command
-                    # failed without naming a cause. Say so rather than render nothing.
-                    sections.append(
-                        '<p class="note">This stage exited nonzero and wrote nothing to '
-                        "<code>stderr</code>. The failure is reported below from "
-                        "<code>stdout</code> only.</p>"
-                    )
-            if not sections:
-                continue
-            role = (
-                "is the first stage that exited nonzero, so it is where the run diverged"
-                if position == 0
-                else "exited nonzero"
-            )
-            label = html.escape(str(command.get("label") or ""))
-            code = html.escape(str(command.get("returncode")))
-            blocks.append(
-                f'<p class="note">Stage <code>{label}</code> {role} (exit {code}).</p>'
-                + "".join(sections)
-            )
-        if blocks:
-            excerpt = (
-                "<h2>Recorded failure output</h2>"
-                '<p class="note">Every stage that exited nonzero, quoted verbatim from the '
-                "captured streams, error stream first.</p>" + "".join(blocks)
-            )
+        for command in failed:
+            relative = _relative(command.get("stderr_path"), case_root)
+            text = _tail(case_root / relative) if relative else ""
+            if text:
+                blocks.append(
+                    f"<h2>{html.escape(relative)}</h2><pre>{html.escape(text[-4000:])}</pre>"
+                )
+        excerpt = "".join(blocks)
 
     call_rows = [
         [

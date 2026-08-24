@@ -1026,12 +1026,9 @@ def test_an_empty_artifact_is_listed_but_never_linked_or_given_a_viewer(tmp_path
     assert "04-test.stdout.log" in page  # still inventoried, marked empty
 
 
-def test_the_failure_excerpt_quotes_the_first_failing_stage_not_only_the_last(
+def test_the_error_tab_lists_each_nonempty_error_log(
     tmp_path: Path,
 ) -> None:
-    """The first non-zero stage is where the run diverged; later ones are usually its
-    consequence — a test harness the aborted build never delivered. Quoting only the last hands
-    the reader the symptom and hides the cause."""
     case = _complete_run(tmp_path / "CommonMark")
     record = json.loads((case / "result.json").read_text(encoding="utf-8"))
     for command in record["commands"]:
@@ -1043,10 +1040,13 @@ def test_the_failure_excerpt_quotes_the_first_failing_stage_not_only_the_last(
 
     page = build_case_kit(case).read_text(encoding="utf-8")
 
-    assert "Recorded failure output" in page
-    assert "cannot open full_test.sh" in page
-    assert "release refused" in page
-    assert "where the run diverged" in page
+    errors = re.search(r'id="panel-error">(.*?)</section>', page, re.DOTALL).group(1)
+
+    assert "<h2>evidence/commands/04-test.stderr.log</h2>" in errors
+    assert "cannot open full_test.sh" in errors
+    assert "<h2>evidence/commands/06-score-release.stderr.log</h2>" in errors
+    assert "release refused" in errors
+    assert "stdout.log" not in errors
 
 
 def test_case_kit_links_llm_activity_from_the_executions_the_command_recorded(
@@ -1071,7 +1071,7 @@ def test_case_kit_links_llm_activity_from_the_executions_the_command_recorded(
     assert "call.llm.log" not in init_row
 
 
-def test_case_kit_quotes_every_failing_step_error_stream_first(tmp_path: Path) -> None:
+def test_case_kit_error_tab_excludes_failing_step_stdout(tmp_path: Path) -> None:
     case = _case(tmp_path / "run", status="failed", failing=True)
     _stage(
         case,
@@ -1083,19 +1083,17 @@ def test_case_kit_quotes_every_failing_step_error_stream_first(tmp_path: Path) -
     )
 
     page = build_case_kit(case).read_text(encoding="utf-8")
-    errors = page.split('id="panel-error"')[1].split('id="panel-llm"')[0]
+    errors = re.search(r'id="panel-error">(.*?)</section>', page, re.DOTALL).group(1)
 
-    # Both failing steps are quoted, not just the first and the last.
+    # Both failing steps contribute their error logs, but stdout never leaks into this tab.
     assert "02-build" in errors and "03-score-acceptance" in errors
     assert "boom: acceptance failed" in errors
     assert "error: acceptance verification failed for commonmark" in errors
-    # stderr leads: a command that exits nonzero states its cause there.
-    assert errors.index("03-score-acceptance.stderr.log") < errors.index(
-        "03-score-acceptance.stdout.log"
-    )
+    assert "complete-conformance" not in errors
+    assert "stdout.log" not in errors
 
 
-def test_case_kit_calls_out_a_failing_step_that_wrote_no_error_stream(tmp_path: Path) -> None:
+def test_case_kit_drops_the_error_tab_when_failed_stages_wrote_no_error_log(tmp_path: Path) -> None:
     case = _case(tmp_path / "run", status="failed")
     _stage(
         case,
@@ -1106,10 +1104,7 @@ def test_case_kit_calls_out_a_failing_step_that_wrote_no_error_stream(tmp_path: 
     )
 
     page = build_case_kit(case).read_text(encoding="utf-8")
-    errors = page.split('id="panel-error"')[1].split('id="panel-llm"')[0]
-
-    assert "wrote nothing to" in errors
-    assert "complete-conformance" in errors
+    assert 'data-panel="error"' not in page
 
 
 def test_a_recorded_path_spelled_in_another_case_is_still_inside_the_kit() -> None:

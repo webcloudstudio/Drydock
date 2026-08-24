@@ -10,6 +10,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-23: The Error tab in a `drydock uat` proof kit now contains only nonempty captured
+  `stderr` logs, each headed by its filename. Captured `stdout` remains available only from its
+  lifecycle row in Steps.
 - 2026-08-23: `drydock score build <Target>` is now an observational report. Missing evidence
   and unverified Build Blocks remain visible in its output but no longer produce a failing exit
   code, alter `PROJECT_STATUS.jsonl`, or rewrite `SCORECARD.md`; `score ac` and `score release`
