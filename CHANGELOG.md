@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-23: `drydock uat` proof-kit run reports now identify the project from recorded
+  `METADATA.md` (`Project`, `Short description`, `Status`) instead of presenting the UAT run's
+  pass/fail result as project state. They no longer display `Verdict` or `Ran`; Decisions is a
+  dedicated report tab and the primary run artifacts are part of the Project section.
 - 2026-08-23: The Error tab in a `drydock uat` proof kit now contains only nonempty captured
   `stderr` logs, each headed by its filename. Captured `stdout` remains available only from its
   lifecycle row in Steps.

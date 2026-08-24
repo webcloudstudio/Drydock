@@ -201,33 +201,28 @@ def test_the_written_checksums_verify_against_the_kit_they_describe(tmp_path: Pa
     assert "evidence/manifest.json" not in listed
 
 
-def test_case_kit_reports_failure_and_quotes_the_recorded_output(tmp_path: Path) -> None:
+def test_case_kit_reports_failure_in_the_error_tab(tmp_path: Path) -> None:
     case = _case(tmp_path / "run", status="failed", failing=True)
 
     index = build_case_kit(case)
 
     page = index.read_text(encoding="utf-8")
-    assert "commonmark: FAILED" in page
-    assert "commonmark: build exited 1" in page
     assert "boom: acceptance failed" in page
     assert "FAIL 1" in page
 
 
-def test_case_kit_states_success_only_when_every_command_exited_zero(tmp_path: Path) -> None:
+def test_case_kit_lists_successful_command_results(tmp_path: Path) -> None:
     case = _case(tmp_path / "run")
 
     page = build_case_kit(case).read_text(encoding="utf-8")
 
-    assert "commonmark: PASSED" in page
-    assert "every required command exited 0" in page
     assert "drydock build commonmark" in page
+    assert '<span class="tag pass" title="exit 0">OK</span>' in page
 
 
-def test_case_kit_marks_a_resumed_run_instead_of_claiming_a_clean_lifecycle(
+def test_case_kit_does_not_present_a_resumed_run_as_project_status(
     tmp_path: Path,
 ) -> None:
-    # A resumed run's table still carries the prior attempt's failed rows, so the passing
-    # banner must say where the run re-entered rather than vouch for every command.
     case = _case(tmp_path / "run", failing=True)
     result = json.loads((case / "result.json").read_text(encoding="utf-8"))
     result["status"] = "passed"
@@ -237,9 +232,9 @@ def test_case_kit_marks_a_resumed_run_instead_of_claiming_a_clean_lifecycle(
 
     page = build_case_kit(case).read_text(encoding="utf-8")
 
-    assert "commonmark: PASSED" in page
-    assert "Resumed at" in page
-    assert "every required command exited 0" not in page
+    assert "<h1>COMMONMARK</h1>" in page
+    assert "Resumed at" not in page
+    assert "COMMONMARK: PASSED" not in page
 
 
 def test_case_kit_links_a_stream_only_when_it_captured_output(tmp_path: Path) -> None:
@@ -465,14 +460,13 @@ def test_case_kit_drops_the_error_tab_when_nothing_failed(tmp_path: Path) -> Non
     assert 'data-panel="steps"' in page
 
 
-def test_case_kit_stamps_the_verdict_and_carries_the_drydock_mark(tmp_path: Path) -> None:
+def test_case_kit_labels_the_project_without_a_run_verdict(tmp_path: Path) -> None:
     passing = build_case_kit(_case(tmp_path / "pass")).read_text(encoding="utf-8")
-    failing = build_case_kit(_case(tmp_path / "fail", status="failed", failing=True)).read_text(
-        encoding="utf-8"
-    )
 
-    assert '<div class="stamp pass"><span class="mark">Approved</span>' in passing
-    assert '<div class="stamp fail"><span class="mark">Rejected</span>' in failing
+    assert "User Acceptance Test — Project Record" in passing
+    assert "<h1>COMMONMARK</h1>" in passing
+    assert "<dt>Verdict</dt>" not in passing
+    assert "COMMONMARK: PASSED" not in passing
     # The mark is inlined, so a kit copied off this machine keeps its letterhead.
     assert 'src="data:image/png;base64,' in passing
 
@@ -780,9 +774,8 @@ def test_a_degraded_run_is_reported_as_neither_a_pass_nor_a_failure(tmp_path: Pa
     page = build_case_kit(case).read_text(encoding="utf-8")
     readme = (case / "README.md").read_text(encoding="utf-8")
 
-    assert "Degraded: <code>initial-build-1 exited 1; test exited 1</code>" in page
-    assert "Every later stage ran against the work the build produced." in page
-    assert "Failure:" not in page
+    assert "<dt>Status</dt><dd>NOT RECORDED</dd>" in page
+    assert "<dt>Verdict</dt>" not in page
     assert "- Degraded: initial-build-1 exited 1; test exited 1" in readme
 
 
@@ -805,10 +798,8 @@ def test_a_passing_run_names_the_guardrails_a_human_still_owes(tmp_path: Path) -
     readme = (case / "README.md").read_text(encoding="utf-8")
 
     assert "Manual verification required" in page
-    assert "1 project guardrail could not be settled from evidence" in page
     assert "st-003 is UNPROVEN" in page
-    assert "Approved" in page
-    assert "Rejected" not in page
+    assert "<dt>Verdict</dt>" not in page
     assert "## Manual verification required" in readme
     assert f"- {unproven}" in readme
 
@@ -938,8 +929,7 @@ def test_the_receipt_marks_a_claim_the_run_never_recorded_as_unproven(tmp_path: 
     assert page.count('<span class="tag unknown">UNPROVEN</span>') == 2
     assert "No external test command is defined for this project." in page
     assert "No release score was recorded for this run." in page
-    # An unproven claim is never dressed up as a pass by the run status above it.
-    assert "2 receipt claims are not proven" in page
+    assert "<dt>Verdict</dt>" not in page
 
 
 def test_the_run_readme_leads_with_the_receipt_before_any_drydock_internals(
@@ -1002,7 +992,7 @@ def test_the_uat_page_keeps_its_own_stamp_after_the_renderer_was_shared(tmp_path
     page = build_case_kit(case).read_text(encoding="utf-8")
 
     assert '<span class="sub">Drydock UAT</span>' in page
-    assert "User Acceptance Test — Run Report" in page
+    assert "User Acceptance Test — Project Record" in page
 
 
 def _write_stream(case: Path, label: str, stream: str, text: str) -> None:
@@ -1152,7 +1142,7 @@ _ANSWERED_DECISION = {
 }
 
 
-def test_a_run_page_shows_its_decisions_as_a_tier_one_section(tmp_path: Path) -> None:
+def test_a_run_page_shows_its_decisions_in_its_own_tab(tmp_path: Path) -> None:
     """A UAT run has no operator at the keyboard, so DECISIONS.json is its review surface and
     must be reachable without digging through the workspace mirror."""
     kit = tmp_path / "kit"
@@ -1163,12 +1153,27 @@ def test_a_run_page_shows_its_decisions_as_a_tier_one_section(tmp_path: Path) ->
     page = index.read_text(encoding="utf-8")
 
     assert "<h2>Decisions</h2>" in page
-    # Above the raw record, not buried inside it.
-    assert page.index("<h2>Decisions</h2>") < page.index("<h2>Run detail</h2>")
+    assert 'data-panel="decisions"' in page
     assert "Acceptance environment supplied: formats-suite" in page
     assert "JQ=./jq" in page
     assert "Chosen By Hand" in page
     assert "2 recorded · 1 still recommended" in page
+
+
+def test_a_run_page_uses_metadata_for_project_identity_and_status(tmp_path: Path) -> None:
+    case = _case(tmp_path / "kit")
+    metadata = case / "workspace" / "targets" / "commonmark" / "METADATA.md"
+    metadata.write_text(
+        "name: CommonMark\nshort_description: CommonMark parser implementation\nbuild_state: built\n",
+        encoding="utf-8",
+    )
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert "<dt>Project</dt><dd><code>COMMONMARK</code></dd>" in page
+    assert "<dt>Short description</dt><dd>CommonMark parser implementation</dd>" in page
+    assert "<dt>Status</dt><dd>BUILT</dd>" in page
+    assert "<dt>Ran</dt>" not in page
 
 
 def test_a_run_with_no_decisions_shows_no_decisions_section(tmp_path: Path) -> None:

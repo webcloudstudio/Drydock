@@ -21,6 +21,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
+from drydock.metadata import parse_metadata
 from drydock.report_render import (
     _CHECK_TAGS,
     _IGNORE_NAME,
@@ -63,10 +64,12 @@ from drydock.report_render import (
     _write_sums,
     _write_viewers,
     inventory_panels,
-    local_run_window,
     prune_generated,
     recorded_status_headline,
     token_counts,
+)
+from drydock.report_render import (
+    local_run_window as _local_run_window,
 )
 
 __all__ = [
@@ -80,6 +83,10 @@ __all__ = [
 
 _MANIFEST_PATH = "evidence/manifest.json"
 _LLM_CALL_RE = re.compile(r"\bCalling\s+[^\s/]+/\S+\s+\(([^)]+)\)\.\.\.")
+
+# Retained for ``drydock.uat`` and third-party callers that historically imported the helper
+# from this module. Run pages no longer render this value.
+local_run_window = _local_run_window
 
 
 def _command_llm_logs(
@@ -380,7 +387,7 @@ def _render_case_markdown(
     directory the reader lands in and shows HTML as source. ``index.html`` carries the same run
     for local ``file://`` reading, where nothing renders Markdown.
     """
-    fixture = str(result.get("fixture") or "")
+    project, description, project_status = _project_identity(case_root, result)
     usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
     scores = (
         result.get("score_exit_codes") if isinstance(result.get("score_exit_codes"), dict) else {}
@@ -393,7 +400,10 @@ def _render_case_markdown(
     source, _ = _primary_source(case_root, "")
     target = str(result.get("target") or case_root.name)
     lines = [
-        f"# {fixture}: {str(result.get('status') or '').upper()}",
+        f"# {project}",
+        "",
+        f"- Short description: {description}",
+        f"- Status: {project_status}",
         "",
         f"{proven} of {len(checks)} receipt claims proven. Open `index.html` for the linked "
         "proof kit; verify it with `sha256sum -c SHA256SUMS`.",
@@ -418,9 +428,7 @@ def _render_case_markdown(
         f"`{environment.get('model', '')}`",
         f"- Platform: `{environment.get('platform') or 'not recorded'}` on Python "
         f"`{environment.get('python_version') or 'not recorded'}`",
-        f"- Target: `{result.get('target') or ''}`",
         f"- Run: `{result.get('run_id') or ''}`",
-        f"- Ran: {local_run_window(environment)}",
         f"- Elapsed: {int(result.get('elapsed_ms') or 0) / 1000:.1f}s",
         f"- LLM calls: {usage.get('calls', 0)}",
         f"- Tokens: cached {usage.get('cached_input_tokens', 0):,}; "
@@ -429,8 +437,6 @@ def _render_case_markdown(
         f"- LLM elapsed: {int(usage.get('llm_elapsed_ms') or 0) / 1000:.1f}s",
         f"- Build passes: {result.get('build_passes', 0)}; repairs: {_repair_budget(commands)}",
         f"- Conformance: {_conformance_result(commands)}",
-        f"- Verdict: expected {result.get('expected_verdict') or ''}, "
-        f"observed {result.get('observed_verdict') or ''}",
         "- Advisory scores: "
         + (", ".join(f"{name}=exit {code}" for name, code in scores.items()) or "none recorded"),
         "",
@@ -613,19 +619,13 @@ def _run_facts(
 ) -> list[tuple[str, str]]:
     """The provenance a reader needs before reading anything else the run wrote."""
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
-    status = str(result.get("status") or "").upper()
-    observed = str(result.get("observed_verdict") or "")
-    verdict = f"{status} · verdict {observed}" if observed and observed != status else status
     cached_tokens, uncached_tokens, output_tokens = token_counts(dict(usage))
 
     def recorded(key: str) -> str:
         return html.escape(str(environment.get(key) or "not recorded"))
 
     return [
-        ("Verdict", html.escape(verdict)),
-        ("Target", f"<code>{html.escape(str(result.get('target') or case_root.name))}</code>"),
         ("Run", f"<code>{html.escape(str(result.get('run_id') or ''))}</code>"),
-        ("Ran", html.escape(local_run_window(environment))),
         ("Drydock", recorded("drydock_version")),
         ("Commit", f"<code>{recorded('git_commit')}</code>"),
         ("Provider", recorded("provider")),
@@ -677,8 +677,48 @@ def _delivered_directory(case_root: Path, target: str) -> str:
     return "build/" if root.is_dir() else ""
 
 
+def _project_identity(case_root: Path, result: Mapping[str, object]) -> tuple[str, str, str]:
+    """Return stable project identity and lifecycle state from recorded metadata."""
+    target = str(result.get("target") or case_root.name)
+    metadata: dict[str, str] = {}
+    for path in (
+        case_root / "workspace" / "targets" / target / "METADATA.md",
+        case_root / "inputs" / "METADATA.md",
+    ):
+        if path.is_file():
+            metadata = parse_metadata(path)
+            if metadata:
+                break
+    project = str(metadata.get("name") or target).upper()
+    description = str(metadata.get("short_description") or "not recorded")
+    status = str(metadata.get("build_state") or metadata.get("project_state") or "not recorded")
+    return project, description, status.upper()
+
+
+def _project_summary(case_root: Path, result: dict, prefix: str = "") -> str:
+    """Render project identity, lifecycle status, and the run's primary artifacts."""
+    target = str(result.get("target") or case_root.name)
+    project, description, status = _project_identity(case_root, result)
+    commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
+    test = _command_by_suffix(commands, "-test")
+    test_log = _relative(test.get("stdout_path"), case_root) if test else ""
+    source, _ = _primary_source(case_root, prefix)
+    delivered = _delivered_directory(case_root, target)
+    facts = (
+        ("Project", f"<code>{html.escape(project)}</code>"),
+        ("Short description", html.escape(description)),
+        ("Status", html.escape(status)),
+        ("Input specification", _evidence_link(case_root, source, prefix)),
+        ("Delivered Code", _evidence_link(case_root, delivered, prefix)),
+        ("Test Results", _evidence_link(case_root, test_log, prefix)),
+    )
+    return "<h2>Project</h2>" + _meta([
+        (label, value or "not recorded for this run.") for label, value in facts
+    ])
+
+
 def _run_summary(case_root: Path, result: dict, prefix: str = "") -> str:
-    """Render the three artifacts that summarize the run."""
+    """Render the primary artifacts for the kit landing page's latest-run section."""
     target = str(result.get("target") or case_root.name)
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
     test = _command_by_suffix(commands, "-test")
@@ -766,7 +806,6 @@ def _render_case(
     redirect: Mapping[str, str] | None = None,
 ) -> str:
     target = str(result.get("target") or case_root.name)
-    fixture = str(result.get("fixture") or case_root.name)
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
     failed = [
         item
@@ -774,55 +813,7 @@ def _render_case(
         if item.get("returncode") not in (0, None)
         and not _is_status_command(item.get("argv") or ())
     ]
-    status = str(result.get("status") or ("passed" if not failed else "failed"))
-    passed = status == "passed"
-
-    resumed = str(result.get("resumed_from") or "")
-    # Unproven guardrails do not gate the run: nothing demonstrated a violation. They are named
-    # because a prohibition the evidence could not settle still needs a human to settle it.
     attestations = _attestations(result)
-    detail = ""
-    if status == "degraded":
-        # Not a failure: the lifecycle ran end to end and the scores below describe the
-        # application the build actually produced. Name what fell short and leave it at that.
-        detail = (
-            "Degraded: <code>"
-            + html.escape("; ".join(str(item) for item in result.get("degraded") or ()))
-            + "</code>. Every later stage ran against the work the build produced."
-        )
-    elif result.get("error"):
-        detail = f"Failure: <code>{html.escape(str(result['error']))}</code>"
-    elif passed and resumed:
-        # A resumed run reuses state an earlier attempt produced, and its command table still
-        # carries that attempt's failures. Saying "every command exited 0" would be false.
-        detail = (
-            f"Resumed at <code>{html.escape(resumed)}</code>; every required command from that "
-            "stage onward exited 0. Earlier rows are the prior attempt, retained as evidence."
-        )
-    elif passed:
-        detail = (
-            f"{len(commands)} lifecycle commands ran; every required command exited 0. "
-            "Each row below links to its own captured output."
-        )
-    # A run status of PASSED is decided by the required commands. It does not settle the
-    # advisory claims the receipt reports, so the page never lets the verdict imply them.
-    unproven = [check for check in _receipt_checks(case_root, result) if check.state != "pass"]
-    if unproven:
-        names = ", ".join(check.name.lower() for check in unproven)
-        detail += (
-            f" {len(unproven)} receipt "
-            f"{'claim is' if len(unproven) == 1 else 'claims are'} not proven ({names}); "
-            "see the receipt below."
-        )
-    if passed and attestations:
-        count = len(attestations)
-        noun = "guardrail" if count == 1 else "guardrails"
-        detail += (
-            f" {count} project {noun} could not be settled from evidence and "
-            f"{'needs' if count == 1 else 'need'} manual verification before release; "
-            "see Manual verification required."
-        )
-    verdict = f"{fixture}: {status.upper()}"
 
     inventory = inventory_panels(
         groups, f"runs/{result.get('run_id') or case_root.name}/", _INVENTORY_TABS
@@ -973,20 +964,18 @@ def _render_case(
         if part
     )
     return _page(
-        f"Drydock UAT report — {fixture}",
+        f"Drydock UAT report — {target}",
         "\n".join([
             _letterhead(
-                "User Acceptance Test — Run Report",
-                fixture,
+                "User Acceptance Test — Project Record",
+                target.upper(),
                 docline,
-                passed,
-                "Approved" if passed else "Rejected",
+                "pass",
+                "",
             ),
-            _verdict(passed, verdict, detail),
+            _project_summary(case_root, result),
             _receipt(case_root, result),
             meta,
-            _run_summary(case_root, result),
-            _decisions_block(case_root),
             "<h2>Run detail</h2>",
             '<p class="note">Everything below is the underlying record: the commands Drydock '
             "executed, the model calls they made, and every file this run wrote.</p>",
@@ -994,6 +983,7 @@ def _render_case(
                 ("steps", "Steps", steps_panel),
                 ("error", "Error", excerpt),
                 ("llm", "LLM", llm_panel),
+                ("decisions", "Decisions", _decisions_block(case_root)),
                 *inventory,
             ]),
             "<footer>Generated by <code>drydock uat report</code>. Byte counts and digests are "
