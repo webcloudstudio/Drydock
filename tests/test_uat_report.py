@@ -991,7 +991,7 @@ def test_the_uat_page_keeps_its_own_stamp_after_the_renderer_was_shared(tmp_path
 
     page = build_case_kit(case).read_text(encoding="utf-8")
 
-    assert '<span class="sub">Drydock UAT</span>' in page
+    assert '<span class="mark">DRYDOCK UAT</span>' in page
     assert "User Acceptance Test — Project Record" in page
 
 
@@ -1174,6 +1174,23 @@ def test_a_run_page_uses_metadata_for_project_identity_and_status(tmp_path: Path
     assert "<dt>Short description</dt><dd>CommonMark parser implementation</dd>" in page
     assert "<dt>Status</dt><dd>BUILT</dd>" in page
     assert "<dt>Ran</dt>" not in page
+
+
+def test_a_run_page_uses_a_passing_release_score_as_its_terminal_status(tmp_path: Path) -> None:
+    case = _case(tmp_path / "kit")
+    target_dir = case / "workspace" / "targets" / "commonmark"
+    (target_dir / "PROJECT_STATUS.jsonl").write_text(
+        json.dumps({"label": "SCORE RELEASE", "result": "pass", "attempts": 1}) + "\n",
+        encoding="utf-8",
+    )
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert "<dt>Status</dt><dd>PROJECT COMPLETE</dd>" in page
+    assert '<span class="mark">DRYDOCK UAT</span>' in page
+    assert '<span class="sub">PROJECT COMPLETE</span>' in page
+    assert "Integrity verification" in page
+    assert "SHA256SUMS" in page
 
 
 def test_a_run_with_no_decisions_shows_no_decisions_section(tmp_path: Path) -> None:

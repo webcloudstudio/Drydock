@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-23: A `drydock uat` proof-kit run whose recorded `PROJECT_STATUS.jsonl` has a passing
+  `SCORE RELEASE` now displays terminal `PROJECT COMPLETE`, rather than the lower-level `BUILT`
+  metadata state. The top badge reads `DRYDOCK UAT` and that project status; Project also links
+  the final `SHA256SUMS` integrity verification.
 - 2026-08-23: `drydock uat` proof-kit run reports now identify the project from recorded
   `METADATA.md` (`Project`, `Short description`, `Status`) instead of presenting the UAT run's
   pass/fail result as project state. They no longer display `Verdict` or `Ran`; Decisions is a

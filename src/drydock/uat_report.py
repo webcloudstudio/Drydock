@@ -680,9 +680,10 @@ def _delivered_directory(case_root: Path, target: str) -> str:
 def _project_identity(case_root: Path, result: Mapping[str, object]) -> tuple[str, str, str]:
     """Return stable project identity and lifecycle state from recorded metadata."""
     target = str(result.get("target") or case_root.name)
+    target_dir = case_root / "workspace" / "targets" / target
     metadata: dict[str, str] = {}
     for path in (
-        case_root / "workspace" / "targets" / target / "METADATA.md",
+        target_dir / "METADATA.md",
         case_root / "inputs" / "METADATA.md",
     ):
         if path.is_file():
@@ -691,7 +692,15 @@ def _project_identity(case_root: Path, result: Mapping[str, object]) -> tuple[st
                 break
     project = str(metadata.get("name") or target).upper()
     description = str(metadata.get("short_description") or "not recorded")
-    status = str(metadata.get("build_state") or metadata.get("project_state") or "not recorded")
+    from drydock.project_status import current_state
+
+    current = current_state(target_dir)
+    if current and current.label == "SCORE RELEASE" and current.passed:
+        status = "PROJECT COMPLETE"
+    elif current:
+        status = current.label
+    else:
+        status = str(metadata.get("build_state") or metadata.get("project_state") or "not recorded")
     return project, description, status.upper()
 
 
@@ -704,6 +713,12 @@ def _project_summary(case_root: Path, result: dict, prefix: str = "") -> str:
     test_log = _relative(test.get("stdout_path"), case_root) if test else ""
     source, _ = _primary_source(case_root, prefix)
     delivered = _delivered_directory(case_root, target)
+    integrity_state, integrity_detail = _sums_detail(case_root)
+    integrity = (
+        _evidence_link(case_root, _SUMS_NAME, prefix) + f" — {html.escape(integrity_detail)}"
+        if integrity_state == "pass"
+        else html.escape(integrity_detail)
+    )
     facts = (
         ("Project", f"<code>{html.escape(project)}</code>"),
         ("Short description", html.escape(description)),
@@ -711,6 +726,7 @@ def _project_summary(case_root: Path, result: dict, prefix: str = "") -> str:
         ("Input specification", _evidence_link(case_root, source, prefix)),
         ("Delivered Code", _evidence_link(case_root, delivered, prefix)),
         ("Test Results", _evidence_link(case_root, test_log, prefix)),
+        ("Integrity verification", integrity),
     )
     return "<h2>Project</h2>" + _meta([
         (label, value or "not recorded for this run.") for label, value in facts
@@ -806,6 +822,7 @@ def _render_case(
     redirect: Mapping[str, str] | None = None,
 ) -> str:
     target = str(result.get("target") or case_root.name)
+    _, _, project_status = _project_identity(case_root, result)
     commands = [item for item in result.get("commands") or [] if isinstance(item, dict)]
     failed = [
         item
@@ -970,8 +987,9 @@ def _render_case(
                 "User Acceptance Test — Project Record",
                 target.upper(),
                 docline,
-                "pass",
-                "",
+                "pass" if project_status == "PROJECT COMPLETE" else "warn",
+                "DRYDOCK UAT",
+                project_status,
             ),
             _project_summary(case_root, result),
             _receipt(case_root, result),
