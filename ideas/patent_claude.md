@@ -21,23 +21,54 @@ untrue: the wheel ships plain-text Python with every docstring intact, and those
 the design rationale in prose an examiner can read directly.
 
 **Bar dates run per mechanism, from that mechanism's own first public commit** — not from the
-first release. This is the useful form of the question and it materially helps:
+first release. This is the useful form of the question and it changes the picture substantially.
+Every date below was recovered with `git log --diff-filter=A` and `git log -S` over
+`src/drydock/`, and is reproducible:
 
-| Mechanism | First public commit | First release | US bar |
-|---|---|---|---|
-| Compaction, plan graph, compass hierarchy (pre-July core) | ≤ 2026-07-08 | v0.1.1, 2026-07-08 | 2027-07-08 |
-| Repair loop, repairable/terminal classification | 2026-07-23 | v0.1.5, 2026-07-29 | 2027-07-23 |
-| Monotonic non-regression progress | 2026-07-28 | v0.1.5, 2026-07-29 | 2027-07-28 |
-| Bounded child execution, configurable stall limit | 2026-08-15 | v0.2.0, 2026-08-23 | 2027-08-15 |
+| § | Mechanism | First public commit | Release | US bar |
+|---|---|---|---|---|
+| 3 | Role-typed compaction (`rigging_compact.py`) | 2026-06-11 `fc6c348` | v0.1.1 | 2027-06-11 |
+| 3 | First-use full/compact substitution + applied registry | 2026-06-22 `42e0629` | v0.1.1 | 2027-06-22 |
+| 1 | `closed/verified` vs `closed/implemented` state pair | 2026-06-11 `5cc3f74` | v0.1.1 | 2027-06-11 |
+| 4 | Compass hierarchy (`compass_sources.py`) | 2026-07-13 `939b193` | v0.1.3 | 2027-07-13 |
+| 9 | Baseline-differential PREPASSED | 2026-07-17 `391f9e3` | v0.1.4 | 2027-07-17 |
+| 1 | Vacuity analysis (`proof_integrity.py`) | 2026-07-17 `31f423f` | v0.1.4 | 2027-07-17 |
+| 10 | Dependency legitimacy gate | 2026-07-17 `b0e5a20` | v0.1.4 | 2027-07-17 |
+| 2 | Repair loop, repairable/terminal classification | 2026-07-23 `dd58768` | v0.1.5 | 2027-07-23 |
+| 2 | Monotonic non-regression progress | 2026-07-28 `1cf29e9` | v0.1.5 | 2027-07-28 |
+| 7 | Authorship/verification split (plan graph) | 2026-08-01 `3e09d87` | v0.1.6 | 2027-08-01 |
+| 6 | Declared-count ruler (`plan_score.py`) | 2026-08-02 `c9df6f2` | v0.1.6 | 2027-08-02 |
+| 4 | Machine-owned guardrail region (strip/re-apply) | 2026-08-02 `7612693` | v0.1.6 | 2027-08-02 |
+| 8 | Lineage + unified change ticket | 2026-08-06 `a07c898` | v0.1.6 | 2027-08-06 |
+| 12 | Verifiable UAT proof kit | 2026-08-08 `f616ea8` | v0.1.7 | 2027-08-08 |
+| 2 | `AC_BROKEN:` escape token | 2026-08-09 `0267a71` | v0.1.7 | 2027-08-09 |
+| 1 | **Governed oracles decide state** (`acceptance_contract.py`) | 2026-08-13 `575d1c4` | v0.2.0 | 2027-08-13 |
+| 1 | **`retyped_expectations` binding test** | 2026-08-13 `dfaae29` | v0.2.0 | 2027-08-13 |
+| 5 | **Release gate fold** (`gate_policy.py`) | 2026-08-13 `f825a9c` | v0.2.0 | 2027-08-13 |
+| 2 | Configurable stall limit, bounded children | 2026-08-15 `6cb182d` | v0.2.0 | 2027-08-15 |
+| 12 | Build receipt (`score_report.py`) | 2026-08-15 `e38b11d` | v0.2.0 | 2027-08-15 |
+| 1 | Commander/plan provenance split (`story_guidance.py`) | 2026-08-17 `f8dfceb` | v0.2.0 | 2027-08-17 |
+| 11 | Cross-stage halt condition | 2026-08-17 `88df286` | v0.2.0 | 2027-08-17 |
 
-The earliest bar governs the filing, because one provisional must cover everything: **2027-07-08.**
+**The finding that matters: the three highest-value claims are the three newest.** §1's operative
+elements (governed oracles deciding state, the `retyped_expectations` binding test, the
+Commander/plan provenance split) date from 2026-08-13 to 08-17. §5 dates from 2026-08-13. §2's
+core dates from 2026-07-23. None of them existed in the 2026-07-08 release. Only §3 — the claim
+with the worst prior-art neighbourhood — sits squarely in the pre-July core, together with the
+bare state-name pair that §1 later gave meaning to.
 
-| Jurisdiction | Grace period | Consequence for the pre-July core |
+Two consequences. First, the binding US date for a single omnibus provisional is **2027-06-11**,
+not 2027-07-08: the compaction work predates the first PyPI release by four weeks, because the
+repository was public from 2026-06-10. Second, if counsel advises splitting, §§1, 2 and 5 could
+each carry a bar into August 2027 — but they gain nothing abroad by waiting, for the reason
+below, so splitting buys time and no territory. **Assume 2027-06-11 and file once.**
+
+| Jurisdiction | Grace period | Consequence for the earliest-disclosed matter (§3, 2026-06-11) |
 |---|---|---|
-| United States | 12 months, §102(b)(1) | Alive until 2027-07-08 |
-| Japan | 12 months, Art. 30(2) — procedural statement required at filing | Alive until 2027-07-08 |
-| Korea | 12 months, Art. 30 — must be claimed | Alive until 2027-07-08 |
-| Australia, Canada | 12 months | Alive until 2027-07-08 |
+| United States | 12 months, §102(b)(1) | Alive until 2027-06-11 |
+| Japan | 12 months, Art. 30(2) — procedural statement required at filing | Alive until 2027-06-11 |
+| Korea | 12 months, Art. 30 — must be claimed | Alive until 2027-06-11 |
+| Australia, Canada | 12 months | Alive until 2027-06-11 |
 | EPO, UK | None applicable (Art. 55 covers abuse and official exhibitions only) | **Barred** |
 | China | 6 months, narrow grounds only; a voluntary release does not qualify | **Barred** |
 | India | Narrow exhibition/learned-society grounds only | Effectively barred |
@@ -62,6 +93,23 @@ after a given commit, that commit's disclosure date is the later of the push and
 visibility change, and the PyPI release is then the operative disclosure for anything shipped in
 a wheel. **Establish the repository's public-visibility date and give it to counsel.** Everything
 in the tables above assumes the repository was public and contemporaneously pushed.
+
+**The rule going forward: file before you push.** Every mechanism above was disclosed by the act
+of pushing it, typically the same day it was written, and the highest-value ones were disclosed
+six weeks ago by a repository that publishes itself. Nothing in the portfolio needed to be
+disclosed that fast. From today, any mechanism intended for a claim should reach a provisional —
+or at minimum a dated, witnessed invention record — **before** it reaches `origin`. This costs
+nothing and is the only lever left that recovers foreign rights on future work.
+
+**Immediate hazard: this document is tracked and unpushed.** `ideas/` is gitignored, but
+`ideas/patent_claude.md` and `ideas/patent_codex.md` were force-added and are staged in commits
+that have not yet reached `origin/main`. The repository has an autopush path in its history. If
+these commits push, a complete written description of every intended claim becomes public on
+GitHub — which is far more novelty-destroying than the code itself, because it states the claims
+in claim language, and which hands a competitor the entire strategy including the weak points
+named in §§3, 8, 10 and 12. **Untrack both memos before the next push.** Keep them local, or move
+them to a private repository counsel can read.
+
 
 **MIT licensing does not forfeit patent rights.** MIT grants copyright permissions only and
 contains no patent grant or estoppel clause (unlike Apache-2.0 §3). Existing users acquire no
@@ -89,6 +137,10 @@ infringement). Priority = the order to spend money in.
 
 Implemented in `src/drydock/acceptance_contract.py`, `story_guidance.py`, `acceptance.py`
 (`retyped_expectations`, `binding`), `proof_integrity.py`, `manifest.py` (state vocabulary).
+
+**Disclosed:** operative elements 2026-08-13 (`575d1c4`, `dfaae29`) and 2026-08-17
+(`f8dfceb`); vacuity analysis 2026-07-17; the bare state-name pair 2026-06-11. US bar 2027-06-11
+on the state pair, 2027-08-13 on the mechanism that gives it meaning. **Not present in v0.1.1.**
 
 This is the deepest first-principles result in the product and it is the one to lead with. The
 observation is that when a generative model authors the implementation, the acceptance criterion,
@@ -139,6 +191,10 @@ expected values; vacuity demotion; the `--override` waiver ledger and ungoverned
 Implemented in `src/drydock/build_run.py` — `_is_repairable`, `_quantitative_acceptance_progress`,
 `AttemptRecord`, `_settle_empty_selections`, `repair_attempts` / `repair_stall_limit` configuration.
 
+**Disclosed:** 2026-07-23 (`dd58768`), monotonic progress 2026-07-28 (`1cf29e9`),
+`AC_BROKEN:` 2026-08-09, configurable stall limit 2026-08-15. US bar 2027-07-23.
+**Not present in v0.1.1** — this is the mechanism whose late arrival prompted the bar-date audit.
+
 The naive retry loop re-invokes the model on any failure until a fixed attempt count is exhausted,
 which spends the budget on failures no further pass can address and terminates work that was
 converging. Drydock's loop is governed by two orthogonal deterministic predicates. The first
@@ -186,6 +242,10 @@ Implemented in `src/drydock/rigging_compact.py` (role-typed derivation), `build.
 (`assemble_step`, first-use tracking, `compact_stack`), `manifest.py` (applied registry),
 `prompt_assembly.py` (per-part byte and token accounting, `PROMPT_WARN_TOKENS` ceiling).
 
+**Disclosed:** 2026-06-11 (`fc6c348`), first-use substitution 2026-06-22 (`42e0629`).
+US bar **2027-06-11 — the earliest in the portfolio, and therefore the date that governs a single
+omnibus provisional.** Squarely inside the pre-July core; foreign rights gone.
+
 Drydock's compression is not summarization and is not retrieval. Each governed input document is
 compacted once, offline, through a **role-selected extraction contract** chosen by the document's
 identity — contracts, architecture, or database API — where each role names precisely the surface a
@@ -231,6 +291,9 @@ Implemented in `src/drydock/compass_sources.py` (`COMPASS.md`, `PLAN_COMPASS.md`
 `ANALYZE_COMPASS.md`), `compass_guardrail.py` (marker-delimited managed section, strip/re-apply),
 `analyze.py:185`, `planning_session.py:1393`.
 
+**Disclosed:** compass hierarchy 2026-07-13 (`939b193`); the machine-owned guardrail region
+2026-08-02 (`7612693`). US bar 2027-07-13.
+
 Two separable inventions sharing one artifact, and both are clean. The first is the **hierarchy of
 scoped direction**: a project-level constitution injected into every stage, plus per-stage guidance
 files injected only into the stage that owns them, created once with a default prompt, never
@@ -265,6 +328,8 @@ solid, cost is low. This is a good early continuation.
 **Value 8 · Difficulty 4 · Priority 5**
 
 Implemented in `src/drydock/gate_policy.py`, consumed by `score.py` / `score_report.py`.
+
+**Disclosed:** 2026-08-13 (`f825a9c`). US bar 2027-08-13. **Not present in v0.1.1.**
 
 The scoring stage's inventive matter is an **evidentiary asymmetry applied to a model's judgments**.
 A criterion may be graded MET by inference, because a competent reader can conclude a capability
@@ -302,6 +367,8 @@ run — a testable, technical, and claimable property.
 Implemented in `src/drydock/plan_score.py`, `plan_shape.py` (`OutputContract.leading`),
 `planning_session.py` (bounded continuation batches).
 
+**Disclosed:** 2026-08-02 (`c9df6f2`), on the 2026-08-01 plan restructure. US bar 2027-08-01.
+
 A large generation fails when the output budget runs out mid-emission, and the failure is silent:
 the response looks like a response. Drydock's answer is to require the generator to emit a
 **count-bearing declaration first** — the topology, naming every artifact that must exist — so that
@@ -333,6 +400,10 @@ evidence that it was not cut mid-emission.
 
 Implemented in `src/drydock/plan_graph.py` (deterministic core), `plan_topology.py` (declaration
 parsing and projection), `manifest.py` (serialization).
+
+**Disclosed:** 2026-08-01 (`3e09d87`, "Restructure plan around authorship versus
+verification" — a commit subject that is itself a clean statement of the inventive step).
+US bar 2027-08-01.
 
 Ed's framing — "I cannot patent the decomposition methodology, but I can patent a simple version of
 the build graph" — is correct, and the patentable line is exactly the division of labour. The model
@@ -371,6 +442,8 @@ independent claim must be anchored on *declaration-by-generative-process plus de
 Implemented in `src/drydock/change_ticket.py`, `lineage.py`, `lineage_route.py`, `refit.py`,
 `lineage_impact.py`.
 
+**Disclosed:** 2026-08-06 (`a07c898`). US bar 2027-08-06.
+
 Specifications freeze at plan time and the graph thereafter only grows. A change arrives as a
 **typed change ticket** that becomes a new work item whose `implements:` names the ticket, so the
 effective specification of any item is its frozen original plus its ticket chain — no edit, no
@@ -408,6 +481,8 @@ semantic analysis of a hash-identified source version, not on traceability as su
 Implemented in `src/drydock/build_run.py` (baseline evaluation, `record_prepassed_acceptance`),
 `acceptance.py`, `standard_artifacts.py` (`~ PREPASSED`).
 
+**Disclosed:** 2026-07-17 (`391f9e3`). US bar 2027-07-17.
+
 Small, sharp, and cheap to claim. A criterion that is green *before* its work item builds has not
 been shown to be satisfied by that item's work. Drydock evaluates each item's criteria against the
 pre-build baseline, records the identifiers that were already green, and reports them under a third
@@ -435,6 +510,8 @@ existed in the same tree one item earlier.
 
 Implemented in `src/drydock/dependency_gate.py`.
 
+**Disclosed:** 2026-07-17 (`b0e5a20`). US bar 2027-07-17.
+
 Generative builders hallucinate package names, and an attacker who registers a frequently
 hallucinated name owns the build ("slopsquatting"). Drydock parses the generated dependency
 manifest, canonicalizes each name to the registry's rules, checks registry existence, and checks
@@ -457,6 +534,8 @@ into enterprise procurement review.
 
 Implemented in `src/drydock/stop_condition.py`.
 
+**Disclosed:** 2026-08-17 (`88df286`). US bar 2027-08-17 — the latest in the portfolio.
+
 A stage reaching terminal failure records the cause at the workspace root in an operator-readable
 file naming the stage, the reason, and the time. Every later stage checks the condition before
 spending anything. Two design points carry the claim: it is a **stop condition, not a stop flag** —
@@ -473,6 +552,9 @@ failure it caused. Best filed as a dependent claim on the lifecycle application 
 **Value 5 · Difficulty 7 · Priority 12**
 
 Implemented in `src/drydock/uat_report.py`, `score_report.py`, `execution.py`, `logs/*.jsonl`.
+
+**Disclosed:** UAT proof kit 2026-08-08 (`f616ea8`); build receipt 2026-08-15 (`e38b11d`).
+US bar 2027-08-08.
 
 Every command invocation and every model execution is journalled with exit code, token accounting,
 prompt hash, and transcript pointer; the reporter joins the two journals and renders a
@@ -519,18 +601,23 @@ way it is worthless. Say this to counsel explicitly.
 
 ## Recommended Filing Sequence
 
-1. **Now, and in any case before 2027-07-08.** One US provisional, drafted broadly, covering §§1–13. A provisional
-   requires no claims and its cost is dominated by the time spent writing a complete specification.
-   Include every mechanism in this document, including the ones scored low — a provisional's
-   disclosure is free breadth, and matter omitted here cannot be claimed in the non-provisional.
-2. **Immediately after filing.** Add `Patent Pending` to `README.md` and the package metadata. Do
+1. **Today, before the next `git push`.** Untrack `ideas/patent_claude.md` and
+   `ideas/patent_codex.md` (see §0). Both are committed and unpushed; the repository has an
+   autopush path. A public memo describing the claims in claim language is worse prior art
+   against you than the code is, and it publishes the strategy as well as the invention.
+2. **Now, and in any case before 2027-06-11.** One US provisional, drafted broadly, covering
+   §§1-13. A provisional requires no claims and its cost is dominated by the time spent writing a
+   complete specification. Include every mechanism in this document, including the ones scored
+   low — a provisional's disclosure is free breadth, and matter omitted here cannot be claimed in
+   the non-provisional.
+3. **Immediately after filing.** Add `Patent Pending` to `README.md` and the package metadata. Do
    not relicense to Apache-2.0. Continue publishing freely; the provisional's priority date is
    secured and further disclosure of the same matter no longer harms the US application.
-3. **Within twelve months.** Convert to one non-provisional with §1, §2, and §3 as separate
+4. **Within twelve months.** Convert to one non-provisional with §1, §2, and §3 as separate
    independent claims and the umbrella of §13 as a fourth, or split into two applications if
    counsel advises against restriction risk. Expect a restriction requirement; be prepared to
    prosecute §1 first as the strongest and file divisionals on the rest.
-4. **Concurrent.** Keep a dated invention notebook. The design rationale already embedded in the
+5. **Concurrent.** Keep a dated invention notebook. The design rationale already embedded in the
    module docstrings — `acceptance_contract.py`, `gate_policy.py`, `proof_integrity.py`,
    `plan_score.py` — is unusually good evidence of conception, reduction to practice, and the
    problem-solution narrative an examiner responds to. Give counsel those files verbatim; they are
@@ -538,12 +625,65 @@ way it is worthless. Say this to counsel explicitly.
 
 ## Open Questions for Counsel
 
-- Confirm the per-mechanism bar dates in §0. My reading is that each mechanism's clock starts at
-  its own first public commit, not at the 2026-07-08 release, which makes 2027-07-08 the binding
-  date only because the pre-July core is the earliest — everything else has more room.
+- Confirm the per-mechanism bar dates in §0 and the resulting **2027-06-11** filing deadline. My
+  reading is that each mechanism's clock starts at its own first public commit, not at the first
+  release; the governing date is then the compaction work of 2026-06-11, four weeks before v0.1.1.
 - Is the JP/KR/AU/CA route worth preserving, given EPO and China are already barred? If yes, the
   PCT timing has to be planned into the provisional-to-non-provisional conversion now.
 - Is §3 salvageable over the 2023–2026 context-compression patent tail, or should the budget move
   to §1 and §2?
 - Restriction strategy: one omnibus application with four independents, or three applications
   filed together?
+
+---
+
+## Appendix A - Evidence Trail
+
+Everything counsel needs to date and corroborate the portfolio is already in the repository. This
+is unusually strong evidence for a solo inventor and should be handed over as-is.
+
+**Release timeline.** Tags, each with a datable PyPI artifact:
+
+| Tag | Date | Tag | Date |
+|---|---|---|---|
+| v0.1.1 | 2026-07-08 | v0.1.5 | 2026-07-29 |
+| v0.1.2 | 2026-07-08 | v0.1.6 | 2026-08-07 |
+| v0.1.3 | 2026-07-12 | v0.1.7 | 2026-08-07 |
+| v0.1.4 | 2026-07-16 | v0.2.0 | 2026-08-23 |
+
+First commit: 2026-06-10, `Lay the Keel: initialize Drydock Python CLI foundation`.
+
+**Reproducing any date.** Two commands date any claim limitation to the commit that introduced it:
+
+```bash
+git log --diff-filter=A --format="%ad %h %s" --date=short -- src/drydock/<module>.py | tail -1
+git log -S"<identifier>" --format="%ad %h %s" --date=short -- src/drydock/ | tail -1
+```
+
+The second is the one that matters: it dates a *limitation* rather than a file, which is the
+granularity a bar-date analysis actually needs.
+
+**The published wheel contains the disclosure.** Verified against
+`dist/drydock_sdd-0.2.0-py3-none-any.whl`: the archive holds `drydock/build_run.py` as plain-text
+Python with docstrings intact, including
+
+```python
+def _quantitative_acceptance_progress(previous, current) -> bool:
+    """True only when every comparable AC is non-regressing and at least one improves."""
+```
+
+That is the inventive step of §2 stated in one sentence of prose, inside a distributed binary
+artifact. No version of the "code was released but not documented" argument survives it. The same
+holds for `acceptance_contract.py`, `gate_policy.py`, `proof_integrity.py`, and `plan_score.py`,
+whose module docstrings run to twenty and thirty lines of problem statement, rejected
+alternatives, and design rationale.
+
+**That cuts both ways, and mostly in your favour.** Those docstrings are contemporaneous,
+timestamped, version-controlled inventor documentation of conception and reduction to practice,
+written before any patent was contemplated and therefore free of the drafting artifice an examiner
+discounts. They record what problem was faced, what was tried, why it failed, and what replaced
+it: `proof_integrity.py` documents the retraction of six analyzers and states the asymmetry
+argument justifying the seventh; `acceptance_contract.py` states the authority problem from first
+principles before describing the solution. Hand counsel these files verbatim. They are most of a
+specification's background and detailed-description sections already written, in the inventor's
+own voice, on dates the repository proves.
