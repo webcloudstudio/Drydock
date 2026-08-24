@@ -6,23 +6,62 @@
 
 ---
 
-## 0. Read This First — Two Facts That Bound Everything Below
+## 0. Read This First — Facts That Bound Everything Below
 
-**Bar dates.** Drydock 0.1.1 published to PyPI on 2026-07-08 under MIT, with the source public on
-GitHub. That is a public disclosure and a printed publication of everything then implemented.
+**Publishing code is publishing the invention.** The test in every jurisdiction is whether the
+subject matter was *made available to the public*, not whether it was described, documented, or
+read. Source code is a written description under EPC Art. 54(2) and a printed publication under
+35 U.S.C. §102(a)(1). It is also the most enabling form of disclosure there is — it executes, so
+the enablement requirement of T 206/83 is satisfied by construction, and no examiner has to
+speculate about whether a skilled person could carry the teaching out. Nobody needs to have read
+it; datable public accessibility is sufficient, and a GitHub commit and a PyPI release are both
+datable to the second. **"We shipped the mechanism but never wrote it up" is not a defense, and
+is the weaker position rather than the stronger one.** It is also, for this repository, factually
+untrue: the wheel ships plain-text Python with every docstring intact, and those docstrings state
+the design rationale in prose an examiner can read directly.
 
-| Jurisdiction | Consequence |
-|---|---|
-| United States | 35 U.S.C. §102(b)(1) grace period. **A provisional must be on file by 2027-07-08.** |
-| EPO, China, Korea | Absolute novelty. Anything disclosed on 2026-07-08 is already unpatentable there. |
-| Post-July mechanisms | Each later commit that first discloses a mechanism starts its own US clock. |
+**Bar dates run per mechanism, from that mechanism's own first public commit** — not from the
+first release. This is the useful form of the question and it materially helps:
 
-Practical reading: the US filing window is open for roughly ten and a half months and closes hard.
-Foreign rights on the pre-July core are gone; foreign rights on mechanisms first disclosed after
-2026-07-08 survive only until each one's own disclosure date, which for most of the list below is
-already past. **File one US provisional covering the whole system, immediately.** A provisional is
-cheap, needs no claims, and converts within twelve months; it is the correct instrument for a
-solo inventor with a live bar date.
+| Mechanism | First public commit | First release | US bar |
+|---|---|---|---|
+| Compaction, plan graph, compass hierarchy (pre-July core) | ≤ 2026-07-08 | v0.1.1, 2026-07-08 | 2027-07-08 |
+| Repair loop, repairable/terminal classification | 2026-07-23 | v0.1.5, 2026-07-29 | 2027-07-23 |
+| Monotonic non-regression progress | 2026-07-28 | v0.1.5, 2026-07-29 | 2027-07-28 |
+| Bounded child execution, configurable stall limit | 2026-08-15 | v0.2.0, 2026-08-23 | 2027-08-15 |
+
+The earliest bar governs the filing, because one provisional must cover everything: **2027-07-08.**
+
+| Jurisdiction | Grace period | Consequence for the pre-July core |
+|---|---|---|
+| United States | 12 months, §102(b)(1) | Alive until 2027-07-08 |
+| Japan | 12 months, Art. 30(2) — procedural statement required at filing | Alive until 2027-07-08 |
+| Korea | 12 months, Art. 30 — must be claimed | Alive until 2027-07-08 |
+| Australia, Canada | 12 months | Alive until 2027-07-08 |
+| EPO, UK | None applicable (Art. 55 covers abuse and official exhibitions only) | **Barred** |
+| China | 6 months, narrow grounds only; a voluntary release does not qualify | **Barred** |
+| India | Narrow exhibition/learned-society grounds only | Effectively barred |
+
+Post-July mechanisms retain the same grace-period map measured from their own commit dates, so
+Europe and China are barred for those too. **File one US provisional covering the whole system,
+immediately**, and instruct counsel to preserve the JP/KR/AU/CA route via PCT if foreign rights
+matter. A provisional is cheap, needs no claims, and converts within twelve months.
+
+**The one argument that survives, and its limits.** Novelty destruction requires the claimed
+subject matter to be *directly and unambiguously derivable* from the disclosure. A claim
+limitation genuinely absent from the published code is therefore not anticipated by it — for
+example, a limitation reciting operator-configurable budgets against a version that hardcoded
+them. This is a limitation-by-limitation salvage operation yielding narrow claims, not a defense
+of the invention as a whole, and EPC Art. 56 closes most of what it opens: an obvious modification
+of published code is unpatentable even where it is not literally disclosed. Do not build a
+strategy on it.
+
+**Unverified fact that moves every date above.** I cannot determine from the repository when
+`github.com/webcloudstudio/Drydock` became publicly visible. If it was private until some date
+after a given commit, that commit's disclosure date is the later of the push and the
+visibility change, and the PyPI release is then the operative disclosure for anything shipped in
+a wheel. **Establish the repository's public-visibility date and give it to counsel.** Everything
+in the tables above assumes the repository was public and contemporaneously pushed.
 
 **MIT licensing does not forfeit patent rights.** MIT grants copyright permissions only and
 contains no patent grant or estoppel clause (unlike Apache-2.0 §3). Existing users acquire no
@@ -499,9 +538,11 @@ way it is worthless. Say this to counsel explicitly.
 
 ## Open Questions for Counsel
 
-- Does the 2026-07-08 PyPI release start the US grace period for mechanisms added afterward, or
-  does each later commit start its own clock? My reading is the latter, which makes the July date
-  binding only for the pre-July core — but it is the difference between one deadline and a dozen.
+- Confirm the per-mechanism bar dates in §0. My reading is that each mechanism's clock starts at
+  its own first public commit, not at the 2026-07-08 release, which makes 2027-07-08 the binding
+  date only because the pre-July core is the earliest — everything else has more room.
+- Is the JP/KR/AU/CA route worth preserving, given EPO and China are already barred? If yes, the
+  PCT timing has to be planned into the provisional-to-non-provisional conversion now.
 - Is §3 salvageable over the 2023–2026 context-compression patent tail, or should the budget move
   to §1 and §2?
 - Restriction strategy: one omnibus application with four independents, or three applications
