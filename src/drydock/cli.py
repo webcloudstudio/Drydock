@@ -699,6 +699,21 @@ def cmd_init(args: argparse.Namespace) -> int:
         raise
 
 
+def cmd_diagnose(args: argparse.Namespace) -> int:
+    """Diagnose a Target's latest run and offer the amendments the diagnosis proposes."""
+    from drydock.diagnose_command import parse_mode, run
+
+    mode = parse_mode(apply_all=args.apply_all, no_apply=args.no_apply)
+    result = run(
+        args.Target or "",
+        run_stamp=args.run_stamp,
+        mode=mode,
+        llm=getattr(args, "llm_provider", None),
+        model=getattr(args, "model", None),
+    )
+    return result.exit_code
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     from drydock.config import require_target_dir
     from drydock.validate_specification import validate_specification
@@ -3408,6 +3423,44 @@ def _build_parser() -> argparse.ArgumentParser:
     p_status.add_argument("args", nargs=argparse.REMAINDER, metavar="[<Target>]")
 
     # ── validate ─────────────────────────────────────────────────────────────
+    # ── diagnose ─────────────────────────────────────────────────────────────
+    p_diag = sub.add_parser(
+        "diagnose",
+        help="Explain why the latest run stopped and propose amendments.",
+        description=(
+            "drydock diagnose                  — diagnose the latest run of the current Target\n"
+            "drydock diagnose <Target>         — diagnose the latest run of one Target\n"
+            "drydock diagnose <Target> --apply — apply every verified amendment without asking\n"
+            "drydock diagnose <Target> --no-apply\n"
+            "                                  — record amendments as decisions, change nothing\n\n"
+            "One LLM call. The stage ladder is printed first and costs nothing; amendments are\n"
+            "unified diffs against COMPASS.md, PLAN_COMPASS.md, ANALYZE_COMPASS.md, or\n"
+            "MANIFEST.md, confirmed one at a time."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_llm_override_flags(p_diag)
+    p_diag.add_argument("Target", nargs="?", default=None, metavar="<Target>")
+    p_diag.add_argument(
+        "--run",
+        dest="run_stamp",
+        default="",
+        metavar="<stamp>",
+        help="Diagnose the run beginning at this log stamp instead of the latest.",
+    )
+    p_diag.add_argument(
+        "--apply",
+        dest="apply_all",
+        action="store_true",
+        help="Apply every verified amendment without prompting.",
+    )
+    p_diag.add_argument(
+        "--no-apply",
+        dest="no_apply",
+        action="store_true",
+        help="Apply nothing; record every amendment as a recommended decision.",
+    )
+
     p_val = sub.add_parser("validate", help="Validate a Blueprint's Typed Specification.")
     _add_llm_override_flags(p_val)
     p_val.add_argument("Target", metavar="<Target>")
@@ -4053,6 +4106,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     if command == "uat":
         return cmd_uat(args)
+
+    if command == "diagnose":
+        return cmd_diagnose(args)
 
     if command == "validate":
         rc = cmd_validate(args)

@@ -77,6 +77,21 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-30: `drydock diagnose [<Target>] [--run <stamp>] [--apply] [--no-apply]` explains why a
+  Target's latest run stopped and proposes durable corrections. It prints a stage ladder derived
+  from `PROJECT_STATUS.jsonl` and a failure classification taken from the recorded stop before any
+  model call, so the deterministic account costs nothing. It then makes exactly one LLM call and
+  writes a Drydock Incident Report to `targets/<Target>/diagnostics/<stamp>_INCIDENT.md`: break
+  point, reason, the failures that are wreckage rather than defects, open blockers and blocking
+  decisions, cited evidence, and a table of local log paths with SHA-256 digests drawn from
+  `logs/llm.jsonl` and `logs/history.jsonl`. The report is self-contained: a reader who never saw
+  the run can repair the defect from it. Amendments are unified diffs against `COMPASS.md`,
+  `PLAN_COMPASS.md`, `ANALYZE_COMPASS.md`, or `MANIFEST.md`, each verified to apply before the
+  operator is asked, then confirmed one at a time; `--apply` applies all without prompting and
+  `--no-apply` records them as `recommended` decisions in `DECISIONS.json`. A malformed model
+  answer still writes the report, marked `MALFORMED`, with the raw text preserved. Every exit
+  names the next command to run.
+
 - 2026-08-23: `helpers/diagnose-uat.sh <Target>` runs a bounded, read-only adversarial diagnosis
   of the latest failed archived UAT run, while `helpers/diagnose.sh <Target>` diagnoses the latest
   failed non-UAT command recorded for a Target. Both use subscription-authenticated Codex and

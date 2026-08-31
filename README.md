@@ -150,6 +150,7 @@ ai  drydock build             MyApp            # Iterative context-aware process
 ai  drydock score release     MyApp            # Score project success criteria (EARS)
 
 # ── L ── LOOP ────────────────────────────────────────────────────────────
+ai  drydock diagnose          MyApp            # Explain the stop; propose Compass amendments
 ai  drydock refit             MyApp            # Diff -> ticket -> dependency graph
 ```
 
@@ -157,6 +158,8 @@ ai  drydock refit             MyApp            # Diff -> ticket -> dependency gr
 
 ```text
     drydock build status      MyApp            # Show build state
+ai  drydock diagnose          [MyApp] --apply  # Apply every verified amendment without asking
+ai  drydock diagnose          [MyApp] --no-apply # Record amendments as decisions; change nothing
 ai  drydock uat               [Project]        # Scored UAT testing
     drydock uat status        <Project>        # Current run, failure, and recovery command
 ai  drydock uat resume        <Project>        # Resume the current failed run

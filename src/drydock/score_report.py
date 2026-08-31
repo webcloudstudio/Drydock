@@ -25,11 +25,9 @@ from __future__ import annotations
 
 import html
 import json
-import re
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
-from datetime import UTC, datetime
 from pathlib import Path
 
 from drydock.markdown_render import render_markdown
@@ -66,6 +64,19 @@ from drydock.report_render import (
     prune_generated,
     recorded_status_headline,
 )
+from drydock.run_window import (
+    LOG_NAME_RE,
+    RUN_START_VERB,
+    history_tokens,
+    history_verb,
+    llm_records,
+    run_logs,
+    run_window,
+    sibling_prefixes,
+    stamp_key,
+    stamp_to_iso,
+    target_history,
+)
 
 __all__ = ["REPORT_DIRNAME", "collect_run", "write_report"]
 
@@ -84,13 +95,6 @@ _LOGS_DIR = "logs"
 _WORKSPACE_DIR = "workspace"
 _SOUNDINGS_NAME = "SOUNDINGS.md"
 
-#: ``20260815.085220.134Z_jq_build_codex.log`` — stamp, then the components ``log_basename``
-#: joined. The stamp is fixed-width, so lexical order is chronological order.
-_LOG_NAME_RE = re.compile(r"^(?P<stamp>\d{8}\.\d{6}\.\d{3}Z)_(?P<rest>.+)$")
-
-#: A run begins where the Target does. Everything the Target has recorded since its most recent
-#: ``drydock init`` is one run; a Target initialised once therefore reports its whole life,
-#: which is what an operator means by "the latest run" for a project they have built repeatedly.
 _RUN_START_VERB = "init"
 
 #: Evidence a person reads: the command transcript and the output that came back. What is left
@@ -119,142 +123,27 @@ _SKIP_NAMES = frozenset({"__pycache__", "node_modules", ".venv"})
 _RECEIPT_TAGS = {"pass": "PASS", "fail": "FAIL", "unknown": "NOT RUN"}
 
 
+#: The latest run and the evidence it wrote are resolved by ``run_window``, which this
+#: command and ``drydock diagnose`` share. The private names stay as aliases so the rest of
+#: this module reads unchanged.
+_LOG_NAME_RE = LOG_NAME_RE
+_RUN_START_VERB = RUN_START_VERB
+_verb = history_verb
+_stamp_key = stamp_key
+_iso = stamp_to_iso
+_target_history = target_history
+_history_tokens = history_tokens
+_run_window = run_window
+_sibling_prefixes = sibling_prefixes
+_run_logs = run_logs
+_llm_records = llm_records
+
+
 class ReportError(Exception):
     """The Target has recorded nothing this command could report."""
 
 
 # ── the recorded run ─────────────────────────────────────────────────────────────────
-
-
-def _verb(record: Mapping[str, object]) -> str:
-    """The Drydock verb a history record invoked, e.g. ``build`` for ``drydock build jq``."""
-    argv = record.get("argv")
-    tokens = (
-        [str(item) for item in argv]
-        if isinstance(argv, list) and argv
-        else str(record.get("command") or "").split()[1:]
-    )
-    return tokens[0] if tokens else ""
-
-
-def _stamp_key(record: Mapping[str, object]) -> str:
-    """A sortable stamp for a history record, whatever vintage it is.
-
-    Records written before the journal carried ``stamp`` keep only a minute-resolution ``time``.
-    Widening that to the stamp format puts them in the right order relative to stamped records
-    and to the log files on disk; it cannot recover the second they actually ran.
-    """
-    stamp = str(record.get("stamp") or "")
-    if stamp:
-        return stamp
-    try:
-        moment = datetime.strptime(str(record.get("time") or ""), "%Y-%m-%d %H:%M")
-    except ValueError:
-        return ""
-    return f"{moment:%Y%m%d.%H%M}00.000Z"
-
-
-def _iso(stamp: str) -> str:
-    """Render a log stamp as the ISO instant the report's clock formatting expects."""
-    try:
-        moment = datetime.strptime(stamp, "%Y%m%d.%H%M%S.%fZ").replace(tzinfo=UTC)
-    except ValueError:
-        return ""
-    return moment.strftime("%Y-%m-%dT%H:%M:%S.") + f"{moment.microsecond // 1000:03d}Z"
-
-
-def _target_history(workspace: Path, target: str) -> list[Mapping[str, object]]:
-    """Every command whose operands name one Target, oldest first.
-
-    The journal's legacy ``target`` field held a score sub-verb for some score commands.
-    Target resolution therefore follows the command operands, the same contract as
-    ``drydock score <Target>``.
-    """
-    from drydock.config import read_command_history
-
-    records = [
-        record
-        for record in read_command_history(workspace, limit=1_000_000)
-        if target in _history_tokens(record)[1:]
-    ]
-    return sorted(records, key=_stamp_key)
-
-
-def _history_tokens(record: Mapping[str, object]) -> list[str]:
-    """The Drydock operands a journal record invoked, without the executable shim."""
-    argv = record.get("argv")
-    if isinstance(argv, list) and argv:
-        tokens = [str(item) for item in argv]
-        return tokens[1:] if tokens[0] == "drydock" else tokens
-    return str(record.get("command") or "").split()[1:]
-
-
-def _run_window(records: Sequence[Mapping[str, object]]) -> list[Mapping[str, object]]:
-    """Narrow a Target's history to its latest run: everything since the last ``init``.
-
-    A Target whose history predates any recorded ``init`` reports all of it rather than
-    nothing — the alternative is a receipt that silently omits the work it is meant to prove.
-    """
-    starts = [index for index, record in enumerate(records) if _verb(record) == _RUN_START_VERB]
-    return list(records[starts[-1] :] if starts else records)
-
-
-def _sibling_prefixes(targets_root: Path, target: str) -> tuple[str, ...]:
-    """Log-name prefixes belonging to other Targets whose names extend this one.
-
-    ``commonmark`` and ``commonmark_2`` are different Targets that share a filename prefix, so
-    matching on ``_commonmark_`` alone would pull a neighbour's transcripts into this receipt.
-    """
-    from drydock.execution import log_component
-
-    component = log_component(target)
-    if not targets_root.is_dir():
-        return ()
-    return tuple(
-        f"{other}_"
-        for other in sorted(log_component(path.name) for path in targets_root.iterdir())
-        if other != component and other.startswith(f"{component}_")
-    )
-
-
-def _run_logs(
-    logs_dir: Path, target: str, start_key: str, siblings: Sequence[str] = ()
-) -> list[Path]:
-    """Every log file this Target wrote at or after the window opened, oldest first."""
-    from drydock.execution import log_component
-
-    component = log_component(target)
-    if not logs_dir.is_dir() or not component:
-        return []
-    chosen: list[Path] = []
-    for path in sorted(logs_dir.iterdir()):
-        if not path.is_file():
-            continue
-        match = _LOG_NAME_RE.match(path.name)
-        if match is None or match.group("stamp") < start_key:
-            continue
-        rest = match.group("rest")
-        if not rest.startswith(f"{component}_"):
-            continue
-        remainder = rest[len(component) + 1 :]
-        if any(remainder.startswith(sibling[len(component) + 1 :]) for sibling in siblings):
-            continue  # a longer Target name that merely starts with this one
-        chosen.append(path)
-    return chosen
-
-
-def _llm_records(records_path: Path, target: str, start_key: str) -> list[Mapping[str, object]]:
-    """Recorded model executions for one Target inside the window, oldest first."""
-    from drydock.llm_usage import read_records, record_target
-
-    records, _invalid = read_records(records_path)
-    chosen = [
-        record
-        for record in records
-        if record_target(record) == target
-        and str(record.get("execution_id") or "").split("-")[0] >= start_key
-    ]
-    return sorted(chosen, key=lambda record: str(record.get("execution_id") or ""))
 
 
 def _usage_totals(records: Sequence[Mapping[str, object]]) -> dict[str, int]:

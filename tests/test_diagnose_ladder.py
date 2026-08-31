@@ -1,0 +1,198 @@
+"""Deterministic ladder, stop resolution, and false-positive detection for ``drydock diagnose``."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from drydock.diagnose_ladder import (
+    LadderRow,
+    build_ladder,
+    classify,
+    render_ladder,
+    stop_point,
+    stop_point_of,
+    superseded_failures,
+)
+from drydock.project_status import StatusEntry, read_status
+
+
+def _entry(label: str, passed: bool, *, detail: str = "", attempts: int = 1) -> StatusEntry:
+    return StatusEntry(
+        label=label,
+        passed=passed,
+        at="2026-08-21T18:44:02.113+00:00",
+        detail=detail,
+        command=f"drydock {label.lower()} T",
+        attempts=attempts,
+    )
+
+
+def _write_status(target_dir: Path, rows: list[dict]) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    (target_dir / "PROJECT_STATUS.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+    )
+
+
+# ── the ladder ───────────────────────────────────────────────────────────────────────
+
+
+def test_ladder_renders_every_state_including_the_unreached(tmp_path):
+    _write_status(
+        tmp_path,
+        [{"label": "INITIALIZED", "result": "pass", "at": "2026-08-21T17:07:00.000+00:00"}],
+    )
+    rows = build_ladder(tmp_path)
+    assert [row.label for row in rows][:2] == ["INITIALIZED", "IMPORTED"]
+    assert rows[0].state == "pass"
+    assert rows[1].state == "not run"
+    # Three-valued and no more: no state renders as unknown.
+    assert {row.state for row in rows} <= {"pass", "fail", "not run"}
+
+
+def test_ladder_note_comes_from_the_caller_not_the_ladder(tmp_path):
+    _write_status(tmp_path, [{"label": "ANALYZED", "result": "pass", "at": ""}])
+    rows = build_ladder(tmp_path, {"ANALYZED": "12 stories"})
+    analyzed = next(row for row in rows if row.label == "ANALYZED")
+    assert analyzed.note == "12 stories"
+    assert "12 stories" in render_ladder(rows)
+
+
+def test_render_marks_each_state_distinctly():
+    rows = (
+        LadderRow(label="INITIALIZED", state="pass", at="2026-08-21T17:07:00.000+00:00"),
+        LadderRow(label="ANALYZED", state="fail", at="2026-08-21T17:12:00.000+00:00"),
+        LadderRow(label="BUILT", state="not run"),
+    )
+    text = render_ladder(rows)
+    assert "[OK]   INITIALIZED   2026-08-21 17:07" in text
+    assert "[FAIL] ANALYZED" in text
+    assert "[--]   BUILT" in text and "not run" in text
+
+
+def test_render_names_retry_exhaustion(tmp_path):
+    rows = (LadderRow(label="SCORE AC", state="fail", attempts=7),)
+    assert "retried 7 times" in render_ladder(rows)
+
+
+def test_render_survives_a_malformed_timestamp():
+    rows = (LadderRow(label="BUILT", state="pass", at="not-a-timestamp"),)
+    assert "BUILT" in render_ladder(rows)
+
+
+def test_ladder_of_a_target_with_no_status_file_is_all_not_run(tmp_path):
+    rows = build_ladder(tmp_path)
+    assert all(row.state == "not run" for row in rows)
+
+
+def test_ladder_skips_corrupt_rows_rather_than_failing(tmp_path):
+    target = tmp_path / "T"
+    target.mkdir()
+    (target / "PROJECT_STATUS.jsonl").write_text(
+        '{"label": "INITIALIZED", "result": "pass", "at": ""}\nnot json at all\n',
+        encoding="utf-8",
+    )
+    rows = build_ladder(target)
+    assert next(row for row in rows if row.label == "INITIALIZED").state == "pass"
+
+
+# ── the stop ─────────────────────────────────────────────────────────────────────────
+
+
+def test_no_failure_is_no_stop():
+    assert stop_point_of([_entry("INITIALIZED", True), _entry("BUILT", True)]) is None
+
+
+def test_stop_is_the_highest_failure_not_the_lowest():
+    """A repaired plan is the repair working, not the defect the operator must fix."""
+    entries = [
+        _entry("PLAN CREATED", False, detail="malformed batch"),
+        _entry("PLAN REPAIRED", True),
+        _entry("BUILT", False, detail="provider rate limit: 429"),
+    ]
+    stop = stop_point_of(entries)
+    assert stop is not None
+    assert stop.label == "BUILT"
+    assert stop.classification == "provider rate limit"
+
+
+def test_a_failure_answered_by_a_later_pass_is_superseded():
+    entries = [
+        _entry("PLAN CREATED", False, detail="malformed batch"),
+        _entry("PLAN REPAIRED", True),
+    ]
+    assert stop_point_of(entries) is None
+    assert [entry.label for entry in superseded_failures(entries)] == ["PLAN CREATED"]
+
+
+def test_a_live_failure_is_not_reported_as_superseded():
+    entries = [_entry("BUILT", True), _entry("SCORE AC", False, detail="6 of 45 failed")]
+    assert superseded_failures(entries) == ()
+    assert stop_point_of(entries).label == "SCORE AC"
+
+
+def test_stop_carries_the_retry_count():
+    stop = stop_point_of([_entry("SCORE AC", False, detail="failed", attempts=7)])
+    assert stop.retried is True
+    assert stop.attempts == 7
+
+
+def test_stop_point_reads_a_target_directory(tmp_path):
+    _write_status(
+        tmp_path,
+        [
+            {"label": "BUILT", "result": "pass", "at": ""},
+            {"label": "SCORE AC", "result": "fail", "at": "", "detail": "context/token limit"},
+        ],
+    )
+    stop = stop_point(tmp_path)
+    assert stop.label == "SCORE AC"
+    assert stop.classification == "context/token limit"
+
+
+# ── classification ───────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("detail", "expected"),
+    [
+        ("provider rate limit: 429 too many requests", "provider rate limit"),
+        ("The model reported a context/token limit.", "context/token limit"),
+        ("execution timed out after 900s", "execution timed out"),
+        ("programmatic acceptance failed for 6 criteria", "programmatic acceptance failed"),
+        ("", ""),
+        ("the product's own test suite disagreed", ""),
+    ],
+)
+def test_classification_reports_only_what_drydock_recorded(detail, expected):
+    assert classify(detail) == expected
+
+
+def test_rate_limit_is_not_shadowed_by_the_broader_provider_error():
+    assert classify("provider error: provider rate limit reached") == "provider rate limit"
+
+
+def test_headline_without_a_classification_still_names_the_stage():
+    stop = stop_point_of([_entry("SCORE AC", False, detail="six criteria disagreed")])
+    assert stop.headline == "Drydock failed at SCORE AC"
+
+
+def test_headline_with_a_classification_names_the_cause():
+    stop = stop_point_of([_entry("BUILT", False, detail="provider rate limit")])
+    assert stop.headline == "Drydock failed at BUILT — provider rate limit"
+
+
+def test_status_round_trip_against_a_written_target(tmp_path):
+    _write_status(
+        tmp_path,
+        [
+            {"label": "INITIALIZED", "result": "pass", "at": "", "attempts": 1},
+            {"label": "ANALYZED", "result": "fail", "at": "", "detail": "x", "attempts": 2},
+        ],
+    )
+    entries = read_status(tmp_path)
+    assert [entry.label for entry in entries] == ["INITIALIZED", "ANALYZED"]
+    assert stop_point_of(entries).attempts == 2
