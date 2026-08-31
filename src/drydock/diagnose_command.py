@@ -99,8 +99,10 @@ def run(
         out(NEXT_STEP.format(command=f"drydock diagnose {target}"))
         return Result(exit_code=1)
 
-    report_path = write_report(bundle, diagnosis)
-    out(f"Incident report: {report_path}")
+    written = write_report(bundle, diagnosis)
+    report_path = written.markdown
+    out(f"Incident report: {written.markdown}")
+    out(f"               : {written.html}")
 
     if not diagnosis.ok:
         out("")

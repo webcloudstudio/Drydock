@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-30: Drydock's recorded project state is now resolved at milestone granularity — INIT,
+  ANALYZE, PLAN, BUILD, SCORE — with supersession named explicitly in
+  `project_status.SUPERSEDES` rather than inferred from ladder position. A passing
+  `PLAN REPAIRED` retires a failed `PLAN CREATED` and a passing `BUILT` retires a failed
+  `BUILDING`, so `drydock status`, `drydock score report`, and `drydock diagnose` no longer
+  report a failure the project already recovered from. A passing `SCORE BUILD` deliberately does
+  not retire a failed `SCORE AC`: the build report is observational and reports on different
+  work than the acceptance gate. A passing `SCORE RELEASE` remains the terminal gate over the
+  scores beneath it, and an earlier milestone failure that was never answered still stands as the
+  lifecycle frontier however far the project later advanced.
+
 - 2026-08-23: A `drydock uat` proof-kit run whose recorded `PROJECT_STATUS.jsonl` has a passing
   `SCORE RELEASE` now displays terminal `PROJECT COMPLETE`, rather than the lower-level `BUILT`
   metadata state. The top badge reads `DRYDOCK UAT` and that project status; Project also links
@@ -90,7 +101,10 @@ command surface and Typed Specification contract are unstable and may change bet
   operator is asked, then confirmed one at a time; `--apply` applies all without prompting and
   `--no-apply` records them as `recommended` decisions in `DECISIONS.json`. A malformed model
   answer still writes the report, marked `MALFORMED`, with the raw text preserved. Every exit
-  names the next command to run.
+  names the next command to run. The report is written in two surfaces beside each other:
+  `<stamp>_INCIDENT.md` for pasting into a ticket or handing to another agent, and
+  `<stamp>_INCIDENT.html` for reading, sharing `drydock score report`'s letterhead, verdict
+  stamp, tab strip, and table styling while remaining a separate artifact.
 
 - 2026-08-23: `helpers/diagnose-uat.sh <Target>` runs a bounded, read-only adversarial diagnosis
   of the latest failed archived UAT run, while `helpers/diagnose.sh <Target>` diagnoses the latest

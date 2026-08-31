@@ -98,7 +98,8 @@ def assemble(bundle: Bundle, body: str) -> PromptAssembly:
             lines_part(
                 "Superseded failures",
                 [
-                    "These stages failed and a later stage answered them. They are not defects.",
+                    "These states failed and a later state in the same milestone answered "
+                    "them. They are not defects.",
                     *(
                         f"- {entry.label}: {entry.detail or 'no detail recorded'}"
                         for entry in bundle.superseded
@@ -259,18 +260,36 @@ def split_sections(text: str) -> dict[str, str]:
     return found
 
 
-def write_report(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str = "") -> Path:
-    """Write the Incident Report and return its path.
+@dataclass(frozen=True)
+class Written:
+    """Both surfaces of one Incident Report."""
+
+    markdown: Path
+    html: Path
+    stamp: str
+
+
+def write_report(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str = "") -> Written:
+    """Write both surfaces of the Incident Report and return their paths.
+
+    The Markdown is what an operator pastes into a ticket or hands to another agent; the page
+    is what they read. Both render from the same verified diagnosis, so neither can say
+    something the other does not.
 
     The header, ladder, and log table are written from the deterministic bundle, so they are
     correct even when the model's answer was not.
     """
+    from drydock.diagnose_html import write_page
+
     stamp = stamp or datetime.now(UTC).strftime("%Y%m%d.%H%M%S.%f")[:-3] + "Z"
     directory = bundle.target_dir / REPORT_DIRNAME
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"{stamp}_INCIDENT.md"
-    path.write_text(render_report(bundle, diagnosis, stamp=stamp), encoding="utf-8", newline="\n")
-    return path
+    markdown = directory / f"{stamp}_INCIDENT.md"
+    markdown.write_text(
+        render_report(bundle, diagnosis, stamp=stamp), encoding="utf-8", newline="\n"
+    )
+    page = write_page(bundle, diagnosis, stamp=stamp, directory=directory)
+    return Written(markdown=markdown, html=page, stamp=stamp)
 
 
 def render_report(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str) -> str:
@@ -294,6 +313,8 @@ def render_report(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str) -> str:
             f"| Run stamp | `{bundle.run_stamp or 'not recorded'}` |",
             f"| Drydock version | {__version__} |",
             f"| Classification | {bundle.stop.classification if bundle.stop and bundle.stop.classification else 'none recorded'} |",
+            f"| Milestone | {bundle.stop.milestone if bundle.stop else 'none failed'} |",
+            f"| Recorded state | {bundle.stop.label if bundle.stop else '—'} |",
             f"| Stop | {bundle.stop.headline if bundle.stop else 'no live failure recorded'} |",
             f"| Report written | {stamp} |",
         ])

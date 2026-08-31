@@ -22,6 +22,7 @@ the file for the answer.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -57,6 +58,41 @@ MUTATING_LABELS = frozenset({
     "BUILDING",
     "BUILT",
 })
+
+#: The lifecycle at the granularity an operator thinks in. The ten ladder states are what
+#: commands record; these five are what the project is *doing*, and they are what a status
+#: line, a receipt, and a diagnosis report.
+#:
+#: Reporting a superseded failure sends an operator to fix something that is no longer broken,
+#: which is the single most expensive kind of wrong answer a status can give. Which states
+#: supersede which is named in :data:`SUPERSEDES`, never inferred from ladder position: two
+#: states can share a milestone without one answering the other.
+MILESTONES = (
+    ("INIT", ("INITIALIZED", "IMPORTED")),
+    ("ANALYZE", ("ANALYZED",)),
+    ("PLAN", ("PLAN CREATED", "PLAN REPAIRED")),
+    ("BUILD", ("BUILDING", "BUILT")),
+    ("SCORE", ("SCORE AC", "SCORE BUILD", "SCORE RELEASE")),
+)
+
+MILESTONE_NAMES = tuple(name for name, _ in MILESTONES)
+
+#: The states that answer an earlier failure, and the failures they answer. A state here is a
+#: second attempt at work that already failed, so its success retires the earlier record.
+#:
+#: Position within a milestone is not enough to establish this. ``SCORE BUILD`` sits above
+#: ``SCORE AC`` and reports on a different thing — it is an observational build report, not a
+#: re-run of the acceptance gate — so a passing build report leaves a failed acceptance gate
+#: exactly as failed as it was. Only a passing ``SCORE RELEASE``, the terminal gate judged with
+#: every earlier rung in view, retires the scores beneath it.
+SUPERSEDES = {
+    "PLAN REPAIRED": ("PLAN CREATED",),
+    "BUILT": ("BUILDING",),
+    "SCORE RELEASE": ("SCORE AC", "SCORE BUILD"),
+}
+
+_MILESTONE_OF = {label: name for name, labels in MILESTONES for label in labels}
+_MILESTONE_INDEX = {name: index for index, name in enumerate(MILESTONE_NAMES)}
 
 STATUS_FILENAME = "PROJECT_STATUS.jsonl"
 
@@ -210,18 +246,89 @@ def current_state(target_dir: Path) -> StatusEntry | None:
     return standing_state(read_status(target_dir))
 
 
-def standing_state(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:
-    """Where the workflow stands: terminal release, blocker, or furthest passing rung.
+def milestone_of(label: str) -> str:
+    """The milestone a ladder state belongs to, or ``""`` for a state outside the machine."""
+    return _MILESTONE_OF.get(label, "")
 
-    A passing ``SCORE RELEASE`` is the terminal pass condition, so it supersedes every earlier
-    failed rung. Without it, the first failure remains the lifecycle frontier; otherwise the
-    furthest passing rung is current. Publishing a receipt creates no additional state.
+
+def answered(entries: Sequence[StatusEntry]) -> frozenset[str]:
+    """Labels whose failure a passing state in :data:`SUPERSEDES` has retired."""
+    passing = {entry.label for entry in entries if entry.passed}
+    return frozenset(
+        label for winner, losers in SUPERSEDES.items() if winner in passing for label in losers
+    )
+
+
+def authoritative(entries: Sequence[StatusEntry], milestone: str) -> StatusEntry | None:
+    """The state that speaks for a milestone.
+
+    An unanswered failure speaks for its milestone however far above it the milestone later
+    got: a failed acceptance gate is not made to pass by a later observational report. Only
+    when no failure is left standing does the furthest recorded state speak.
+    """
+    labels = dict(MILESTONES).get(milestone, ())
+    within = [entry for entry in entries if entry.label in labels]
+    if not within:
+        return None
+    retired = answered(entries)
+    standing_failures = [
+        entry for entry in within if not entry.passed and entry.label not in retired
+    ]
+    if standing_failures:
+        return min(standing_failures, key=lambda entry: _LADDER_INDEX[entry.label])
+    return max(within, key=lambda entry: _LADDER_INDEX[entry.label])
+
+
+def milestone_states(entries: Sequence[StatusEntry]) -> tuple[tuple[str, StatusEntry | None], ...]:
+    """Every milestone in order, with the state that speaks for it, or ``None`` if unreached."""
+    return tuple((name, authoritative(entries, name)) for name in MILESTONE_NAMES)
+
+
+def reached(entries: Sequence[StatusEntry]) -> str:
+    """The furthest milestone the project has recorded anything in, or ``""`` for none."""
+    names = [name for name, entry in milestone_states(entries) if entry is not None]
+    return names[-1] if names else ""
+
+
+def standing_state(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:
+    """Where the workflow stands: the state speaking for the furthest milestone reached.
+
+    Milestone granularity is what makes this correct. A failed rung with a later rung above it
+    *in the same milestone* has been answered and is not where the project stands; a failed
+    rung that is the last word in the furthest milestone is exactly where it stands. Reading
+    the raw ladder instead reports the lowest failure, which is usually one the project already
+    moved past.
+
+    A passing ``SCORE RELEASE`` is the exception that overrides all of it. It is the terminal
+    gate: the project was judged releasable with every earlier rung's evidence in view, so no
+    earlier failure describes where it now stands.
+
+    Publishing a receipt creates no additional state.
     """
     release = next(
-        (entry for entry in entries if entry.label == "SCORE RELEASE" and entry.passed),
-        None,
+        (entry for entry in entries if entry.label == "SCORE RELEASE" and entry.passed), None
     )
-    return release or blocking(entries) or last_good(entries)
+    if release is not None:
+        return release
+
+    furthest = reached(entries)
+    if not furthest:
+        return None
+    current = authoritative(entries, furthest)
+    if current is not None and not current.passed:
+        return current
+    # The furthest milestone stands. An earlier one that never recovered is still the
+    # lifecycle frontier: the project advanced past a milestone it never actually completed.
+    unresolved = [
+        entry
+        for name, entry in milestone_states(entries)
+        if entry is not None
+        and not entry.passed
+        and _MILESTONE_INDEX[name] < _MILESTONE_INDEX[furthest]
+    ]
+    if unresolved:
+        return min(unresolved, key=lambda entry: _LADDER_INDEX[entry.label])
+    return current
 
 
 def blocking(entries: tuple[StatusEntry, ...]) -> StatusEntry | None:

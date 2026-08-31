@@ -180,7 +180,7 @@ def bundle(workspace: Path):
 
 def test_bundle_names_the_live_stop_not_the_repaired_one(bundle):
     assert bundle.stop is not None
-    assert bundle.stop.label == "SCORE AC"
+    assert bundle.stop.milestone == "SCORE"
     assert bundle.stop.classification == "programmatic acceptance failed"
     assert [entry.label for entry in bundle.superseded] == ["PLAN CREATED"]
 
@@ -220,7 +220,7 @@ def test_bundle_survives_a_truncated_scorecard(workspace):
 
 
 def test_ladder_notes_come_from_target_artifacts(bundle):
-    analyzed = next(row for row in bundle.ladder if row.label == "ANALYZED")
+    analyzed = next(row for row in bundle.ladder if row.milestone == "ANALYZE")
     assert analyzed.note == "2 stories"
 
 
@@ -229,7 +229,7 @@ def test_ladder_notes_come_from_target_artifacts(bundle):
 
 def test_prompt_carries_the_deterministic_facts_and_the_amendable_files(bundle):
     text = assemble(bundle, load_prompt("diagnose_incident").body).rendered_text
-    assert "SCORE AC" in text
+    assert "SCORE" in text
     assert "Superseded failures" in text
     assert "PLAN CREATED" in text
     assert "PLAN_COMPASS.md" in text
@@ -278,7 +278,7 @@ def test_report_carries_every_section_and_the_log_paths(bundle):
     for heading in ("Break Point", "Reason", "Not A Real Failure", "Evidence", "Log Files"):
         assert f"## {heading}" in text
     assert "## Stage Ladder" in text
-    assert "[FAIL] SCORE AC" in text
+    assert "[FAIL] SCORE" in text
     assert "programmatic acceptance failed" in text
 
 
@@ -296,10 +296,13 @@ def test_a_malformed_answer_is_still_written_with_the_raw_text(bundle):
     assert "the model said something else entirely" in text
 
 
-def test_write_report_lands_under_the_target(bundle):
-    path = write_report(bundle, verify(GOOD_ANSWER, bundle), stamp="20260830.120000.000Z")
-    assert path.name == "20260830.120000.000Z_INCIDENT.md"
-    assert path.parent.name == "diagnostics"
+def test_write_report_writes_both_surfaces_under_the_target(bundle):
+    written = write_report(bundle, verify(GOOD_ANSWER, bundle), stamp="20260830.120000.000Z")
+    assert written.markdown.name == "20260830.120000.000Z_INCIDENT.md"
+    assert written.html.name == "20260830.120000.000Z_INCIDENT.html"
+    assert written.markdown.parent.name == "diagnostics"
+    assert written.html.parent == written.markdown.parent
+    assert written.markdown.is_file() and written.html.is_file()
 
 
 # ── confirmation and application ─────────────────────────────────────────────────────
@@ -407,8 +410,8 @@ def _run(workspace, monkeypatch, **kwargs):
 
 def test_run_prints_the_ladder_before_diagnosing(workspace, monkeypatch):
     result, output = _run(workspace, monkeypatch, target="Demo", mode="none")
-    assert output.index("[FAIL] SCORE AC") < output.index("Diagnosing...")
-    assert "Drydock failed at SCORE AC — programmatic acceptance failed" in output
+    assert output.index("[FAIL] SCORE") < output.index("Diagnosing...")
+    assert "Drydock failed at SCORE — programmatic acceptance failed" in output
     assert result.report_path is not None
 
 

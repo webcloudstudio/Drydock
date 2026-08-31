@@ -158,17 +158,17 @@ def collect(target: str, workspace: Path, target_dir: Path, *, run: str = "") ->
 
 
 def ladder_notes(target_dir: Path) -> dict[str, str]:
-    """Short deterministic annotations for the ladder rows, drawn from Target artifacts.
+    """Short deterministic annotations for the milestone rows, drawn from Target artifacts.
 
     Purely cosmetic: a missing or malformed artifact yields no note, never an error.
     """
     notes: dict[str, str] = {}
     stories = _manifest_story_count(target_dir / "MANIFEST.md")
     if stories:
-        notes["ANALYZED"] = f"{stories} stories"
+        notes["ANALYZE"] = f"{stories} stories"
     acceptance = _acceptance_tally(target_dir / "ACCEPTANCE.json")
     if acceptance:
-        notes["SCORE AC"] = acceptance
+        notes["SCORE"] = acceptance
     return notes
 
 

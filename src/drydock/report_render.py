@@ -355,6 +355,15 @@ h2 { font-size: .9rem; margin: 1.75rem 0 .4rem; text-transform: uppercase; lette
 .panel > h2:first-child { margin-top: 0; }
 p.note { color: var(--muted); margin: .2rem 0 .8rem; font-size: .82rem; }
 
+/* ── incident report ────────────────────────────────────────── */
+section.block { margin: 0 0 1.5rem; }
+section.block h3 { font-size: .84rem; margin: 1.2rem 0 .4rem; text-transform: uppercase; letter-spacing: .1em; }
+pre.diff { line-height: 1.5; }
+pre.diff .add { display: block; background: #eaf5ee; color: var(--pass); }
+pre.diff .del { display: block; background: #fbecea; color: var(--fail); }
+pre.diff .hunk { display: block; color: var(--muted); }
+td.state.not-run { color: var(--muted); }
+
 /* ── tables ─────────────────────────────────────────────────── */
 .scroll { overflow-x: auto; border: 1px solid var(--rule); }
 table { border-collapse: collapse; width: 100%; font-size: .82rem; }
