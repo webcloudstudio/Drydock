@@ -228,7 +228,7 @@ def test_ladder_notes_come_from_target_artifacts(bundle):
 
 
 def test_prompt_carries_the_deterministic_facts_and_the_amendable_files(bundle):
-    text = assemble(bundle, load_prompt("diagnose_incident").body).rendered_text
+    text = assemble(bundle, load_prompt("diagnose_report").body).rendered_text
     assert "SCORE" in text
     assert "Superseded failures" in text
     assert "PLAN CREATED" in text
@@ -237,7 +237,7 @@ def test_prompt_carries_the_deterministic_facts_and_the_amendable_files(bundle):
 
 
 def test_prompt_numbers_the_amendable_lines_so_a_diff_can_apply(bundle):
-    text = assemble(bundle, load_prompt("diagnose_incident").body).rendered_text
+    text = assemble(bundle, load_prompt("diagnose_report").body).rendered_text
     assert "    1\t# Plan Compass" in text
 
 
@@ -296,12 +296,13 @@ def test_a_malformed_answer_is_still_written_with_the_raw_text(bundle):
     assert "the model said something else entirely" in text
 
 
-def test_write_report_writes_both_surfaces_under_the_target(bundle):
+def test_write_report_writes_both_surfaces_in_the_target_root(bundle):
     written = write_report(bundle, verify(GOOD_ANSWER, bundle), stamp="20260830.120000.000Z")
-    assert written.markdown.name == "20260830.120000.000Z_INCIDENT.md"
-    assert written.html.name == "20260830.120000.000Z_INCIDENT.html"
-    assert written.markdown.parent.name == "diagnostics"
-    assert written.html.parent == written.markdown.parent
+    assert written.markdown.name == "DIAGNOSE_20260830.120000.000Z.md"
+    assert written.html.name == "DIAGNOSE_20260830.120000.000Z.html"
+    # The Target root, beside SCORECARD.md and MANIFEST.md — not a subdirectory.
+    assert written.markdown.parent == bundle.target_dir
+    assert written.html.parent == bundle.target_dir
     assert written.markdown.is_file() and written.html.is_file()
 
 

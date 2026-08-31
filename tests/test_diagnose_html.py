@@ -1,4 +1,4 @@
-"""The HTML surface of the Drydock Incident Report.
+"""The HTML surface of ``drydock diagnose``.
 
 The page and the Markdown render from one verified diagnosis, so the tests that matter are the
 ones proving they agree and that no model text reaches the page unescaped.
@@ -36,8 +36,8 @@ def test_page_is_a_complete_standalone_document(page):
 
 
 def test_page_carries_the_letterhead_and_the_verdict_stamp(page):
-    assert "DRYDOCK INCIDENT REPORT" in page
-    assert "Demo — Incident Report" in page
+    assert "DRYDOCK DIAGNOSE" in page
+    assert "Demo — Diagnosis" in page
     assert "STOPPED" in page
 
 

@@ -1,4 +1,4 @@
-"""Assemble the diagnosis prompt, run it once, verify the answer, and write the Incident Report.
+"""Assemble the diagnosis prompt, run it once, verify the answer, and write the diagnosis.
 
 The model writes section prose. This module writes the file. That split is what lets the report
 carry a deterministic header, a deterministic ladder, and a deterministic table of local evidence
@@ -34,9 +34,9 @@ from drydock.prompt_assembly import (
 )
 from drydock.prompts import load_prompt
 
-PROMPT_NAME = "diagnose_incident"
+PROMPT_NAME = "diagnose_report"
 DIAGNOSE_TIMEOUT_SECONDS = 900.0
-REPORT_DIRNAME = "diagnostics"
+REPORT_PREFIX = "DIAGNOSE"
 
 #: The report's fixed section order. The model must return all six; a missing one is a
 #: malformed answer, because a reader cannot tell an omitted section from an empty finding.
@@ -262,7 +262,7 @@ def split_sections(text: str) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class Written:
-    """Both surfaces of one Incident Report."""
+    """Both surfaces of one diagnosis."""
 
     markdown: Path
     html: Path
@@ -270,7 +270,7 @@ class Written:
 
 
 def write_report(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str = "") -> Written:
-    """Write both surfaces of the Incident Report and return their paths.
+    """Write both surfaces of the diagnosis and return their paths.
 
     The Markdown is what an operator pastes into a ticket or hands to another agent; the page
     is what they read. Both render from the same verified diagnosis, so neither can say
@@ -282,9 +282,9 @@ def write_report(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str = "") -> Wr
     from drydock.diagnose_html import write_page
 
     stamp = stamp or datetime.now(UTC).strftime("%Y%m%d.%H%M%S.%f")[:-3] + "Z"
-    directory = bundle.target_dir / REPORT_DIRNAME
+    directory = bundle.target_dir
     directory.mkdir(parents=True, exist_ok=True)
-    markdown = directory / f"{stamp}_INCIDENT.md"
+    markdown = directory / f"{REPORT_PREFIX}_{stamp}.md"
     markdown.write_text(
         render_report(bundle, diagnosis, stamp=stamp), encoding="utf-8", newline="\n"
     )
@@ -293,11 +293,16 @@ def write_report(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str = "") -> Wr
 
 
 def render_report(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str) -> str:
-    """The Incident Report as text, rule-separated, in a fixed section order."""
+    """The diagnosis as text, rule-separated, in a fixed section order.
+
+    It reads as an incident report — masthead facts, ladder, findings, cited evidence — because
+    that is the shape a reader can act on. It is not titled one: this is what ``drydock
+    diagnose`` produced, and naming it after the command is how an operator finds it again.
+    """
     from drydock import __version__
 
     blocks: list[str] = []
-    title = "# Drydock Incident Report"
+    title = f"# Drydock Diagnosis: {bundle.target}"
     if not diagnosis.ok:
         title += "\n\n> **MALFORMED** — the diagnosis did not satisfy the output contract. "
         title += (

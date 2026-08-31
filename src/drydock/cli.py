@@ -3433,9 +3433,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock diagnose <Target> --apply — apply every verified amendment without asking\n"
             "drydock diagnose <Target> --no-apply\n"
             "                                  — record amendments as decisions, change nothing\n\n"
-            "One LLM call. The stage ladder is printed first and costs nothing; amendments are\n"
-            "unified diffs against COMPASS.md, PLAN_COMPASS.md, ANALYZE_COMPASS.md, or\n"
-            "MANIFEST.md, confirmed one at a time."
+            "One LLM call. The milestone ladder is printed first and costs nothing.\n"
+            "Writes DIAGNOSE_<stamp>.md and DIAGNOSE_<stamp>.html to the Target directory.\n"
+            "Amendments are unified diffs against COMPASS.md, PLAN_COMPASS.md,\n"
+            "ANALYZE_COMPASS.md, or MANIFEST.md, each verified to apply and confirmed one at\n"
+            "a time. Exit 0 clean, 1 findings, 2 usage."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

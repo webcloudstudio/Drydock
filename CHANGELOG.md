@@ -92,7 +92,7 @@ command surface and Typed Specification contract are unstable and may change bet
   Target's latest run stopped and proposes durable corrections. It prints a stage ladder derived
   from `PROJECT_STATUS.jsonl` and a failure classification taken from the recorded stop before any
   model call, so the deterministic account costs nothing. It then makes exactly one LLM call and
-  writes a Drydock Incident Report to `targets/<Target>/diagnostics/<stamp>_INCIDENT.md`: break
+  writes a diagnosis to `targets/<Target>/DIAGNOSE_<stamp>.md`: break
   point, reason, the failures that are wreckage rather than defects, open blockers and blocking
   decisions, cited evidence, and a table of local log paths with SHA-256 digests drawn from
   `logs/llm.jsonl` and `logs/history.jsonl`. The report is self-contained: a reader who never saw
@@ -102,9 +102,10 @@ command surface and Typed Specification contract are unstable and may change bet
   `--no-apply` records them as `recommended` decisions in `DECISIONS.json`. A malformed model
   answer still writes the report, marked `MALFORMED`, with the raw text preserved. Every exit
   names the next command to run. The report is written in two surfaces beside each other:
-  `<stamp>_INCIDENT.md` for pasting into a ticket or handing to another agent, and
-  `<stamp>_INCIDENT.html` for reading, sharing `drydock score report`'s letterhead, verdict
-  stamp, tab strip, and table styling while remaining a separate artifact.
+  `DIAGNOSE_<stamp>.md` for pasting into a ticket or handing to another agent, and
+  `DIAGNOSE_<stamp>.html` for reading, sharing `drydock score report`'s letterhead, verdict
+  stamp, tab strip, and table styling while remaining a separate artifact. Both sit in the
+  Target root beside `SCORECARD.md`.
 
 - 2026-08-23: `helpers/diagnose-uat.sh <Target>` runs a bounded, read-only adversarial diagnosis
   of the latest failed archived UAT run, while `helpers/diagnose.sh <Target>` diagnoses the latest

@@ -1,13 +1,13 @@
 ---
-name: diagnose_incident
+name: diagnose_report
 description: Explain why a Drydock run stopped and propose confirmed diffs to the governed inputs that would stop it recurring.
 version: 1
-intent: Produce a Drydock Incident Report complete enough that a reader who never saw the run can repair the defect from it, plus unified diffs against the Compass files and Manifest that an operator can approve one at a time.
+intent: Produce a diagnosis complete enough that a reader who never saw the run can repair the defect from it, plus unified diffs against the Compass files and Manifest that an operator can approve one at a time.
 command: drydock diagnose
 output: Six fixed sections; amendments as unified diffs against named files.
 ---
 
-# Drydock Incident Report
+# Diagnose a Drydock Run
 
 You are diagnosing one Drydock run for its operator. The stage ladder, the stop, and the failure
 classification are already established deterministically and are given to you below — do not

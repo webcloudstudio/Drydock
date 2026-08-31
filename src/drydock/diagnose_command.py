@@ -101,8 +101,8 @@ def run(
 
     written = write_report(bundle, diagnosis)
     report_path = written.markdown
-    out(f"Incident report: {written.markdown}")
-    out(f"               : {written.html}")
+    out(f"Diagnosis: {written.markdown}")
+    out(f"           {written.html}")
 
     if not diagnosis.ok:
         out("")

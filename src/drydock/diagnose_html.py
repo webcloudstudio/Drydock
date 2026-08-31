@@ -1,18 +1,18 @@
-"""The HTML surface of the Drydock Incident Report.
+"""The HTML surface of ``drydock diagnose``.
 
-The Markdown report is what an operator pastes into a ticket or hands to another agent. The
-page is what they read. Both are rendered from the same verified diagnosis, so neither can say
-something the other does not.
+The Markdown is what an operator pastes into a ticket or hands to another agent. The page is
+what they read. Both render from the same verified diagnosis, so neither can say something the
+other does not.
 
 It shares :mod:`drydock.report_render` with ``drydock score report`` — the same letterhead,
 verdict stamp, tab strip, and table styling — so the two documents are recognisably the same
-family. It is a separate artifact all the same: a receipt proves what a run delivered, and an
-incident report explains why one stopped. Publishing them together would make the second look
-like a section of the first.
+family, and it reads like an incident report because that is the shape a reader can act on. It
+is a separate artifact all the same: a receipt proves what a run delivered, a diagnosis explains
+why one stopped. Publishing them together would make the second look like a section of the first.
 
 A receipt's kit machinery is deliberately absent. There is no file tree, no checksum manifest,
-and no generated viewers: an incident report cites local paths rather than copying evidence, so
-it stays a single page that opens from anywhere.
+and no generated viewers: a diagnosis cites local paths rather than copying evidence, so it stays
+a single page that opens from anywhere.
 """
 
 from __future__ import annotations
@@ -26,31 +26,33 @@ from drydock.diagnose_report import REQUIRED_SECTIONS, Diagnosis
 from drydock.markdown_render import render_markdown
 from drydock.report_render import _cell, _letterhead, _meta, _page, _table, _tabs, _verdict
 
-#: The verdict stamp. An incident report has three outcomes, not two: a stop it explained, a
-#: run with nothing live to explain, and an answer that did not satisfy the output contract.
+#: The verdict stamp. A diagnosis has three outcomes, not two: a stop it explained, a run with
+#: nothing live to explain, and an answer that did not satisfy the output contract.
 _MARKS = {"fail": "STOPPED", "pass": "NO STOP", "warn": "INCOMPLETE"}
 
 
 def render_page(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str) -> str:
-    """The Incident Report as a self-contained HTML page."""
+    """The diagnosis as a self-contained HTML page."""
     state = _state(bundle, diagnosis)
-    heading = f"{bundle.target} — Incident Report"
+    heading = f"{bundle.target} — Diagnosis"
     docline = f"Run {bundle.run_stamp or 'not recorded'} · reported {stamp}"
 
     body = [
-        _letterhead("DRYDOCK INCIDENT REPORT", heading, docline, state, _MARKS[state], "Drydock"),
+        _letterhead("DRYDOCK DIAGNOSE", heading, docline, state, _MARKS[state], "Drydock"),
         _verdict(state, _headline(bundle, diagnosis), _classification(bundle)),
         _meta(_facts(bundle, diagnosis)),
         _ladder_table(bundle),
         _tabs(_panels(bundle, diagnosis)),
     ]
-    return _page(f"Drydock Incident Report — {bundle.target}", "\n".join(body))
+    return _page(f"Drydock Diagnosis — {bundle.target}", "\n".join(body))
 
 
 def write_page(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str, directory: Path) -> Path:
     """Write the page beside its Markdown twin and return its path."""
+    from drydock.diagnose_report import REPORT_PREFIX
+
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"{stamp}_INCIDENT.html"
+    path = directory / f"{REPORT_PREFIX}_{stamp}.html"
     path.write_text(render_page(bundle, diagnosis, stamp=stamp), encoding="utf-8", newline="\n")
     return path
 
