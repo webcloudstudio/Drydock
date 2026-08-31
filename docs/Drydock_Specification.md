@@ -871,6 +871,10 @@ A Refit lets the Commander update the application while keeping the Blueprint an
 ### Commands
 
 ```text
+drydock diagnose <Target>
+drydock diagnose <Target> --apply
+drydock diagnose <Target> --no-apply
+
 drydock refit <Target>
 drydock refit <Target> --sources
 drydock refit <Target> --relineage
@@ -891,6 +895,20 @@ flowchart LR
   REFIT --> SPECOUT(["Updated Blueprint"]):::dir
   REFIT --> SOFTWARE(["Working Software"]):::output
 ```
+### drydock diagnose
+
+`drydock diagnose` explains why a Target's latest run stopped. It reads the recorded workflow state, the command history, and the run's logs, then reports the milestone the project stands on — `INIT`, `ANALYZE`, `PLAN`, `BUILD`, or `SCORE` — and what stopped it. The milestone ladder is deterministic and prints before any model call.
+
+The diagnosis separates a real defect from the failures that follow one. A stage that exhausted its retries, a stage a later stage already answered, and a command that exits non-zero as a state signal are each named as such, so the Commander does not repair work that is not broken.
+
+It writes `DIAGNOSE_<stamp>.md` and `DIAGNOSE_<stamp>.html` to the Target directory. Both carry the break point, the reason, the failures that are not defects, open blockers and decisions, the evidence the conclusions rest on, and the local log files with their checksums. The report is self-contained: a reader who did not see the run can repair the defect from it.
+
+The diagnosis proposes amendments as unified diffs against `COMPASS.md`, `PLAN_COMPASS.md`, `ANALYZE_COMPASS.md`, and `MANIFEST.md`. Each is verified to apply before it is offered and is confirmed one at a time. A declined amendment is recorded in `DECISIONS.json`. `--apply` applies every verified amendment without prompting; `--no-apply` records them all and changes nothing. Blueprint files are described in prose and never patched.
+
+`drydock diagnose` makes one LLM call and never edits Drydock's own source.
+
+**Exit codes.** `0` no live failure; `1` findings or an incomplete diagnosis; `2` usage error.
+
 ### drydock refit
 
 The `drydock refit` processes change tickets in `blueprint/changes/`, updates the Manifest, and resets impacted work so it can be 
