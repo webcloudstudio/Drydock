@@ -209,6 +209,10 @@ def _command(
             "--ignore-user-config",
             "--ignore-rules",
             "--ephemeral",
+            # Build directories are created from the Target workspace and need not
+            # be Git repositories.  Drydock supplies the working root explicitly
+            # and runs Codex with an isolated, ephemeral configuration.
+            "--skip-git-repo-check",
             "--sandbox",
             codex_sandbox,
             "--cd",

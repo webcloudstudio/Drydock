@@ -31,6 +31,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-10: `drydock build` now passes Codex's non-repository override when launching the
+  isolated build agent. Builds invoked for a newly created target directory no longer fail before
+  the agent starts because that directory has not yet been initialized as a Git repository.
+
 - 2026-08-30: Drydock's recorded project state is now resolved at milestone granularity — INIT,
   ANALYZE, PLAN, BUILD, SCORE — with supersession named explicitly in
   `project_status.SUPERSEDES` rather than inferred from ladder position. A passing

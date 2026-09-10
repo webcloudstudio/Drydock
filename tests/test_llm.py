@@ -95,6 +95,14 @@ def test_build_prompt_breakdown_shows_block_and_stories():
     assert any("FEATURE-REPORT-INGEST.md" in line and "role=implements" in line for line in lines)
 
 
+def test_codex_command_skips_git_repository_check(tmp_path):
+    artifacts = drydock.llm.ExecutionArtifacts.create(tmp_path, "build", "codex")
+
+    command = drydock.llm._command("codex", tmp_path, artifacts, model=None, allow_tools=True)
+
+    assert "--skip-git-repo-check" in command
+
+
 def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monkeypatch):
     raw = "\n".join([
         json.dumps({
@@ -547,6 +555,7 @@ def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, m
     assert "--ignore-user-config" in result.command
     assert "--ignore-rules" in result.command
     assert "--ephemeral" in result.command
+    assert "--skip-git-repo-check" in result.command
     assert result.command[result.command.index("--sandbox") + 1] == "danger-full-access"
     assert result.stats.model == "codex-test"
     assert result.stats.input_tokens == 8
