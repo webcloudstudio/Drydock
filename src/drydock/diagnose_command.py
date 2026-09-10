@@ -17,9 +17,21 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.diagnose_apply import Outcome, resolve
+from drydock.diagnose_console import (
+    BOLD,
+    DIM,
+    GREEN,
+    INDENT,
+    RED,
+    YELLOW,
+    Style,
+    render_banner,
+    render_findings,
+    render_ladder_lines,
+    render_report_paths,
+)
 from drydock.diagnose_evidence import BLUEPRINT_PREFIX, collect
-from drydock.diagnose_ladder import render_ladder
-from drydock.diagnose_report import diagnose_run, render_terminal, write_report
+from drydock.diagnose_report import diagnose_run, write_report
 from drydock.errors import UsageError
 
 #: Printed when the operator has to do something before this command can work.
@@ -45,11 +57,13 @@ def run(
     runner: Callable[..., object] | None = None,
     confirm: Callable[[str], bool] | None = None,
     out: Callable[[str], None] = print,
+    style: Style | None = None,
 ) -> Result:
     """Diagnose a Target's latest run.
 
     ``mode`` is ``"confirm"``, ``"apply"``, or ``"none"``; see :func:`drydock.diagnose_apply.resolve`.
-    ``runner`` and ``confirm`` are injected so tests spend nothing and touch no terminal.
+    ``runner`` and ``confirm`` are injected so tests spend nothing and touch no terminal;
+    ``style`` defaults to what stdout supports.
     """
     from drydock.config import get_target_directory, get_workspace
 
@@ -67,13 +81,14 @@ def run(
         out(NEXT_STEP.format(command=f"drydock init {target}"))
         return Result(exit_code=2)
 
+    style = style or Style.detect()
     bundle = collect(target, workspace, target_dir, run=run_stamp)
     headline = (
         bundle.stop.headline if bundle.stop else f"Drydock recorded no live failure for {target}"
     )
-    out(headline)
+    out(render_banner(target, headline, bundle.stop is not None, style))
     out("")
-    out(render_ladder(bundle.ladder))
+    out(render_ladder_lines(bundle.ladder, style))
     out("")
 
     if not bundle.commands and not any(row.state != "not run" for row in bundle.ladder):
@@ -87,42 +102,54 @@ def run(
         out(NEXT_STEP.format(command="drydock config set llm-provider <name>"))
         return Result(exit_code=2)
 
-    out("Diagnosing...")
+    out(style.rule("Diagnosing"))
     try:
         diagnosis = diagnose_run(bundle, llm=llm, model=model, runner=runner)
     except Exception as error:  # noqa: BLE001 — a failed call still owes the operator a next step
-        out(f"Diagnosis could not run: {error}")
-        out(NEXT_STEP.format(command=f"drydock diagnose {target}"))
+        out(INDENT + style.paint(f"✗ Diagnosis could not run: {error}", RED, BOLD))
+        _next(out, style, f"drydock diagnose {target}")
         return Result(exit_code=1)
 
     written = write_report(bundle, diagnosis)
     report_path = written.markdown
     out("")
-    out(render_terminal(bundle, diagnosis))
+    out(render_findings(bundle, diagnosis, style))
     out("")
-    out(f"Report: {written.markdown}")
-    out(f"        {written.html}")
+    out(render_report_paths(written.markdown, written.html, style))
 
     if not diagnosis.ok:
         out("")
-        out("Diagnosis incomplete — the model's answer did not satisfy the output contract.")
-        out(NEXT_STEP.format(command=f"drydock diagnose {target}"))
+        out(
+            INDENT
+            + style.paint(
+                "✗ Diagnosis incomplete — the model's answer did not satisfy the output contract.",
+                RED,
+                BOLD,
+            )
+        )
+        _next(out, style, f"drydock diagnose {target}")
         return Result(exit_code=1, report_path=report_path)
 
     if not diagnosis.amendments:
         out("")
         out(
-            "No amendments proposed."
-            if not diagnosis.unapplicable
-            else _unapplicable_line(diagnosis)
+            INDENT
+            + style.paint(
+                "No amendments proposed."
+                if not diagnosis.unapplicable
+                else _unapplicable_line(diagnosis),
+                DIM,
+            )
         )
         return Result(exit_code=_verdict(bundle), report_path=report_path)
 
     if mode == "confirm" and not _interactive(confirm):
         out("")
-        out(f"{len(diagnosis.amendments)} amendment(s) proposed; this session cannot prompt.")
-        out(f"They are recorded in {target_dir / 'DECISIONS.json'}.")
-        out(NEXT_STEP.format(command=f"drydock diagnose {target} --apply"))
+        out(
+            f"{INDENT}{len(diagnosis.amendments)} amendment(s) proposed; this session cannot prompt."
+        )
+        out(f"{INDENT}They are recorded in {target_dir / 'DECISIONS.json'}.")
+        _next(out, style, f"drydock diagnose {target} --apply")
         outcome = resolve(diagnosis.amendments, target_dir, mode="none", report_path=report_path)
         return Result(exit_code=1, report_path=report_path, outcome=outcome)
 
@@ -132,10 +159,13 @@ def run(
         mode=mode,
         confirm=confirm,
         report_path=report_path,
+        style=style,
     )
     rebuild = _rebuild_repaired_blueprints(outcome, target_dir)
-    _report_outcome(outcome, target, target_dir, report_path, out, rebuild)
-    _commit_repairs(outcome, target_dir, out)
+    command = _report_outcome(outcome, target, target_dir, report_path, out, rebuild, style)
+    _commit_repairs(outcome, target_dir, out, style)
+    if command:
+        _next(out, style, command)
     return Result(exit_code=_verdict(bundle), report_path=report_path, outcome=outcome)
 
 
@@ -178,16 +208,20 @@ def _rebuild_repaired_blueprints(outcome: Outcome, target_dir: Path) -> tuple[st
     return tuple(dict.fromkeys(block_id for reset in resets for block_id in reset.reset_ids))
 
 
-def _commit_repairs(outcome: Outcome, target_dir: Path, out: Callable[[str], None]) -> None:
+def _commit_repairs(
+    outcome: Outcome, target_dir: Path, out: Callable[[str], None], style: Style
+) -> None:
     """Checkpoint applied repairs in the Target repository as their own commit."""
     if not outcome.applied:
         return
     from drydock.target_git import commit_target
 
     summary = "; ".join(amendment.summary for amendment in outcome.applied)
-    commit = commit_target(target_dir, f"Apply drydock diagnose repairs: {summary}")
+    commit = commit_target(target_dir, f"Apply drydock diagnose repairs: {summary}", quiet=True)
     if commit:
-        out(f"Committed repairs as {commit}.")
+        out(
+            f"{INDENT}{style.paint('✓', GREEN)} Committed repairs to the Target repository as {commit}."
+        )
 
 
 def _report_outcome(
@@ -197,24 +231,43 @@ def _report_outcome(
     report_path: Path,
     out: Callable[[str], None],
     rebuild: tuple[str, ...] = (),
-) -> None:
+    style: Style | None = None,
+) -> str:
+    """Print what happened to each amendment; return the next command, or ``""`` for none."""
+    style = style or Style()
     out("")
+    out(style.rule("Outcome"))
     if outcome.applied:
-        out(f"Applied {len(outcome.applied)} amendment(s) to {', '.join(outcome.changed_files)}.")
+        out(
+            f"{INDENT}{style.paint('✓', GREEN)} Applied {len(outcome.applied)} amendment(s) to "
+            f"{', '.join(outcome.changed_files)}."
+        )
     if rebuild:
-        out(f"Reset {len(rebuild)} Manifest block(s) to pending for rebuild: {', '.join(rebuild)}.")
+        out(
+            f"{INDENT}{style.paint('✓', GREEN)} Reset {len(rebuild)} Manifest block(s) to pending "
+            "for rebuild:"
+        )
+        for line in style.wrap(", ".join(rebuild) + ".", first=INDENT * 3):
+            out(style.paint(line, DIM))
     for amendment, error in outcome.failed:
-        out(f"Could not apply '{amendment.summary}': {error}")
+        out(f"{INDENT}{style.paint('✗', RED)} Could not apply '{amendment.summary}': {error}")
     if outcome.declined:
         out(
-            f"Recorded {len(outcome.declined)} declined amendment(s) in "
-            f"{target_dir / 'DECISIONS.json'}."
+            f"{INDENT}{style.paint('•', YELLOW)} Recorded {len(outcome.declined)} declined "
+            f"amendment(s) in {target_dir / 'DECISIONS.json'}."
         )
-        out(NEXT_STEP.format(command=f"drydock diagnose {target} --apply"))
-    elif rebuild:
-        out(NEXT_STEP.format(command=f"drydock build {target}"))
-    elif not outcome.applied:
-        out(f"Nothing changed. The report stands at {report_path}.")
+        return f"drydock diagnose {target} --apply"
+    if rebuild:
+        return f"drydock build {target}"
+    if not outcome.applied:
+        out(f"{INDENT}Nothing changed. The report stands at {report_path}.")
+    return ""
+
+
+def _next(out: Callable[[str], None], style: Style, command: str) -> None:
+    """The closing line of every exit that leaves work to do."""
+    out("")
+    out(INDENT + style.paint(NEXT_STEP.format(command=command), BOLD))
 
 
 def _unapplicable_line(diagnosis) -> str:

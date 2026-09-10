@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from drydock.project_status import (
@@ -209,7 +210,7 @@ def render_ladder(rows: Sequence[LadderRow]) -> str:
         if row.state == "not run":
             annotations = ["not run"]
         else:
-            annotations = [part for part in (_clock(row.at), row.note) if part]
+            annotations = [part for part in (local_clock(row.at), row.note) if part]
             if row.retried:
                 annotations.append(RETRY_NOTE.format(attempts=row.attempts))
             if row.failed and row.detail:
@@ -219,13 +220,21 @@ def render_ladder(rows: Sequence[LadderRow]) -> str:
     return "\n".join(lines)
 
 
-def _clock(at: str) -> str:
-    """``2026-08-21T18:44:02.113+00:00`` rendered as ``2026-08-21 18:44``.
+def local_clock(at: str) -> str:
+    """``2026-08-21T18:44:02.113+00:00`` rendered in local time as ``2026-08-21 14:44``.
 
-    A malformed or absent instant renders as nothing rather than raising: the ladder's job is
-    to show the state, and a state with an unreadable timestamp is still a state.
+    Status instants are recorded in UTC; every other clock an operator sees — the model-call
+    progress line, the Target commit — is local, so the ladder is too. A malformed or absent
+    instant renders as its date or as nothing rather than raising: a state with an unreadable
+    timestamp is still a state.
     """
     if not at or "T" not in at:
         return ""
-    date, _, rest = at.partition("T")
-    return f"{date} {rest[:5]}" if len(rest) >= 5 else date
+    try:
+        moment = datetime.fromisoformat(at)
+    except ValueError:
+        date, _, rest = at.partition("T")
+        return f"{date} {rest[:5]}" if len(rest) >= 5 else date
+    if moment.tzinfo is not None:
+        moment = moment.astimezone()
+    return moment.strftime("%Y-%m-%d %H:%M")

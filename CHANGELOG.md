@@ -23,6 +23,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-10: `drydock diagnose` terminal output is restructured for reading and approval. A
+  `DRYDOCK DIAGNOSE · <Target>` masthead carries the verdict; each section (Root Cause, Details,
+  Commander Feedback Requested, Repair Proposal, Not Offered, Missing Evidence, Report, Outcome) is
+  titled by a rule and wrapped to the terminal (at most 100 columns) without splitting `code`
+  spans. Details lists evidence first and groups `Not a defect:` bullets under `Not defects`. Each
+  amendment prompt now shows the file, the `+N -M` size, the reason, and the unified diff itself
+  (cut at 60 lines; the report keeps it whole) before `Apply? [y/N]`. The outcome block reports the
+  applied files, the reset Manifest blocks, and the Target commit once, and `Next: <command>` is
+  the final line. Colour is used only on a terminal that supports it (`NO_COLOR` honoured);
+  captured output is plain. Ladder times in the terminal, `DIAGNOSE_<stamp>.md`, and
+  `DIAGNOSE_<stamp>.html` are now local time rather than UTC. `target_git.commit_target` accepts
+  `quiet=True` for callers that report the commit themselves.
+
 - 2026-09-10: `drydock diagnose` repairs Blueprints. The report has four sections — Root Cause,
   Details (evidence plus `Not a defect:` wreckage), Commander Feedback Requested (next steps drawn
   from `BLOCKERS.md` and `DECISIONS.json`), and Repair Proposal — under prompt contract

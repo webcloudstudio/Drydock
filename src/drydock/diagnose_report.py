@@ -366,40 +366,6 @@ def render_report(bundle: Bundle, diagnosis: Diagnosis, *, stamp: str) -> str:
     return _RULE.join(blocks) + "\n"
 
 
-def render_terminal(bundle: Bundle, diagnosis: Diagnosis) -> str:
-    """The diagnosis findings as the command's own output.
-
-    The ladder has already printed and the log table is file-verification material, so the
-    terminal carries the findings alone: enough to act on without opening the report.
-    """
-    blocks: list[str] = []
-    for name in REQUIRED_SECTIONS[:-1]:
-        body = diagnosis.sections.get(name, "").strip()
-        blocks.append(f"{name.upper()}\n{body or 'Not returned by the diagnosis.'}")
-    if diagnosis.amendments:
-        blocks.append(
-            "REPAIR PROPOSAL\n"
-            + "\n".join(
-                f"{index}. {amendment.summary} ({amendment.file})"
-                for index, amendment in enumerate(diagnosis.amendments, start=1)
-            )
-        )
-    if diagnosis.unapplicable:
-        blocks.append(
-            "NOT OFFERED\n"
-            + "\n".join(
-                f"- {item.summary} ({item.file}) — {item.rejection}"
-                for item in diagnosis.unapplicable
-            )
-        )
-    if bundle.missing:
-        blocks.append("MISSING EVIDENCE\n" + ", ".join(bundle.missing))
-    if not diagnosis.ok:
-        blocks.append("CONTRACT VIOLATIONS\n" + "\n".join(f"- {p}" for p in diagnosis.problems))
-        blocks.append("RAW MODEL ANSWER\n" + (diagnosis.raw.strip() or "(empty)"))
-    return "\n\n".join(blocks)
-
-
 def _log_table(bundle: Bundle) -> str:
     """Local evidence paths, cited from the run's own records rather than reconstructed."""
     if not bundle.logs:

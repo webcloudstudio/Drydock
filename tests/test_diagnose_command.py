@@ -13,6 +13,7 @@ import pytest
 
 from drydock.diagnose_apply import resolve
 from drydock.diagnose_command import parse_mode
+from drydock.diagnose_console import Style
 from drydock.diagnose_evidence import collect
 from drydock.diagnose_report import assemble, render_report, verify, write_report
 from drydock.errors import UsageError
@@ -399,23 +400,26 @@ def _run(workspace, monkeypatch, **kwargs):
     monkeypatch.setattr(command, "_provider_unavailable", lambda llm=None: "")
     printed: list[str] = []
     kwargs.setdefault("runner", fake_runner())
+    kwargs.setdefault("style", Style(width=1000))
     result = command.run(out=printed.append, **kwargs)
     return result, "\n".join(printed)
 
 
 def test_run_prints_the_ladder_before_diagnosing(workspace, monkeypatch):
     result, output = _run(workspace, monkeypatch, target="Demo", mode="none")
-    assert output.index("[FAIL] SCORE") < output.index("Diagnosing...")
-    assert "Drydock failed at SCORE — programmatic acceptance failed" in output
+    assert output.index("DRYDOCK DIAGNOSE · Demo") < output.index("[FAIL] SCORE")
+    assert output.index("[FAIL] SCORE") < output.index("── Diagnosing ")
+    assert "✗ Drydock failed at SCORE — programmatic acceptance failed" in output
     assert result.report_path is not None
 
 
 def test_run_prints_the_findings_before_the_report_paths(workspace, monkeypatch):
     result, output = _run(workspace, monkeypatch, target="Demo", mode="none")
     assert "Governed-input defect: the criteria do not name the assertion they run." in output
-    assert "`PLAN CREATED` failed and `PLAN REPAIRED` answered it." in output
-    assert "1. Require every criterion to name its assertion (PLAN_COMPASS.md)" in output
-    assert output.index("ROOT CAUSE") < output.index(f"Report: {result.report_path}")
+    assert "· `PLAN CREATED` failed and `PLAN REPAIRED` answered it." in output
+    assert output.index("Not defects") < output.index("`PLAN CREATED` failed")
+    assert "1. Require every criterion to name its assertion\n     PLAN_COMPASS.md  +2 -0" in output
+    assert output.index("── Root Cause ") < output.index(f"Markdown  {result.report_path}")
 
 
 def test_run_exits_one_while_a_live_failure_stands(workspace, monkeypatch):
@@ -435,8 +439,8 @@ def test_a_malformed_diagnosis_names_the_rerun(workspace, monkeypatch):
     )
     assert result.exit_code == 1
     assert "Diagnosis incomplete" in output
-    assert "RAW MODEL ANSWER\nnonsense" in output
-    assert "Next: drydock diagnose Demo" in output
+    assert output.index("── Raw Model Answer ") < output.index("\nnonsense")
+    assert output.rstrip().endswith("Next: drydock diagnose Demo")
     assert result.report_path.is_file()
 
 
@@ -468,10 +472,18 @@ def test_no_apply_reports_where_the_amendments_went(workspace, monkeypatch):
 
 
 def test_confirm_mode_applies_what_the_operator_accepts(workspace, monkeypatch):
-    result, output = _run(
-        workspace, monkeypatch, target="Demo", mode="confirm", confirm=lambda _: True
-    )
-    assert "Applied 1 amendment(s) to PLAN_COMPASS.md" in output
+    asked: list[str] = []
+
+    def accept(question: str) -> bool:
+        asked.append(question)
+        return True
+
+    result, output = _run(workspace, monkeypatch, target="Demo", mode="confirm", confirm=accept)
+    assert "✓ Applied 1 amendment(s) to PLAN_COMPASS.md" in output
+    # The operator sees the diff before being asked to apply it.
+    assert "Amendment 1 of 1" in asked[0]
+    assert "+Every acceptance criterion must name the assertion it runs." in asked[0]
+    assert asked[0].endswith("Apply? [y/N] ")
     target = workspace / "targets" / "Demo"
     assert "must name the assertion" in (target / "PLAN_COMPASS.md").read_text(encoding="utf-8")
 
@@ -637,10 +649,12 @@ def test_apply_repairs_the_blueprint_resets_its_consumers_and_commits(repairable
         "unrelated": "closed/verified",
     }
     assert "OTHER.md" in plan.applied_specs
-    assert "Reset 2 Manifest block(s) to pending for rebuild: screen-a, screen-b." in output
-    assert "Next: drydock build Demo" in output
+    assert "Reset 2 Manifest block(s) to pending for rebuild:\n      screen-a, screen-b." in output
     subject = subprocess.run(
         ["git", "log", "-1", "--format=%s"], cwd=target, capture_output=True, text=True
     ).stdout.strip()
     assert subject == "Apply drydock diagnose repairs: Specify the empty list state"
-    assert "Committed repairs as" in output
+    # The commit is reported once, by diagnose, and the next command is the last line.
+    assert "Target - committed" not in output
+    assert output.index("Committed repairs to the Target repository as") < output.index("Next:")
+    assert output.rstrip().endswith("Next: drydock build Demo")

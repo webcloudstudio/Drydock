@@ -211,10 +211,9 @@ def _raw_panel(diagnosis: Diagnosis) -> str:
 
 
 def _clock(at: str) -> str:
-    if not at or "T" not in at:
-        return at or "—"
-    date, _, rest = at.partition("T")
-    return f"{date} {rest[:5]}"
+    from drydock.diagnose_ladder import local_clock
+
+    return local_clock(at) or at or "—"
 
 
 def _sections_of(diagnosis: Diagnosis) -> Sequence[str]:

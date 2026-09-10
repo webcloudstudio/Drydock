@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.decisions import Decision, DecisionOption, load_decisions, write_decisions
+from drydock.diagnose_console import Style, render_amendment
 from drydock.patch import Amendment
 
 #: How a declined amendment is filed. ``recommended`` is the status Drydock already uses for a
@@ -55,16 +56,19 @@ def resolve(
     mode: str = "confirm",
     confirm: Confirm | None = None,
     report_path: Path | None = None,
+    style: Style | None = None,
 ) -> Outcome:
     """Apply, decline, or ask about each amendment, then record what was declined.
 
     ``mode`` is ``"confirm"`` (ask per amendment), ``"apply"`` (apply all), or ``"none"``
-    (decline all). ``confirm`` is injected so tests never touch a terminal.
+    (decline all). ``confirm`` is injected so tests never touch a terminal; it receives the
+    rendered amendment card, which ends in the question.
     """
     if not amendments:
         return Outcome()
 
     ask = confirm if confirm is not None else _terminal_confirm
+    style = style or Style.detect()
     applied: list[Amendment] = []
     declined: list[Amendment] = []
     failed: list[tuple[Amendment, str]] = []
@@ -73,7 +77,9 @@ def resolve(
         if mode == "none":
             declined.append(amendment)
             continue
-        if mode == "confirm" and not ask(_question(index, len(amendments), amendment)):
+        if mode == "confirm" and not ask(
+            render_amendment(index, len(amendments), amendment, style)
+        ):
             declined.append(amendment)
             continue
         error = apply_one(amendment, target_dir)
@@ -167,24 +173,21 @@ def _decision_id(amendment: Amendment) -> str:
     return f"diagnose-{amendment.file.lower().removesuffix('.md')}-{slug.strip('-')[:60]}"
 
 
-def _question(index: int, total: int, amendment: Amendment) -> str:
-    return (
-        f"\nAmendment {index} of {total} — {amendment.file}\n"
-        f"  {amendment.summary}\n"
-        f"  {amendment.why}\n"
-        f"  Apply? [y/N] "
-    )
-
-
 def _terminal_confirm(question: str) -> bool:
     """Ask at the terminal. A session with no terminal answers no.
 
+    The card is written through ``sys.stdout`` and only its last line goes to ``input``: on a
+    terminal ``input`` writes its prompt past the glyph-tier wrapper, so the prompt stays ASCII.
     An interrupted prompt is also no: the operator who hits Ctrl-C wants the command to stop
     changing their files, not to fall through to the next question.
     """
     if not sys.stdin.isatty():
         return False
+    card, _, prompt = question.rpartition("\n")
     try:
-        return input(question).strip().lower() in {"y", "yes"}
+        if card:
+            sys.stdout.write(card + "\n")
+            sys.stdout.flush()
+        return input(prompt).strip().lower() in {"y", "yes"}
     except (EOFError, KeyboardInterrupt):
         return False

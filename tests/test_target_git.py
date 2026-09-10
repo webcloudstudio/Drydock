@@ -74,6 +74,16 @@ def test_commit_target_reports_one_line_checkpoint(tmp_path, capsys):
     assert sha == head_commit(target)
 
 
+def test_quiet_commit_target_leaves_reporting_to_the_caller(tmp_path, capsys):
+    target = _repo(tmp_path)
+    _write(target, "a.md", "a\n")
+
+    sha = commit_target(target, "Apply repairs", quiet=True)
+
+    assert sha == head_commit(target)
+    assert capsys.readouterr().out == ""
+
+
 def test_commit_target_clears_a_stale_index_lock_and_completes(tmp_path, capsys):
     target = _repo(tmp_path)
     _write(target, "a.md", "a\n")

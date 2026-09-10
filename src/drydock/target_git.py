@@ -111,13 +111,14 @@ def head_commit(target_dir: Path) -> str | None:
     return out.strip()
 
 
-def commit_target(target_dir: Path, message: str) -> str | None:
+def commit_target(target_dir: Path, message: str, *, quiet: bool = False) -> str | None:
     """Commit a Target repository when one exists; never commit the parent workspace.
 
     The commit stages every pending change in the Target, not only the files the calling command
-    wrote. Success is reported in one line. A Git failure aborts the calling command rather than
-    allowing it to report success without the required checkpoint. Returns the new short sha, or
-    ``None`` when nothing was committed.
+    wrote. Success is reported in one line unless ``quiet``, for a caller that reports the sha
+    itself. A Git failure aborts the calling command rather than allowing it to report success
+    without the required checkpoint. Returns the new short sha, or ``None`` when nothing was
+    committed.
     """
     if not is_repo(target_dir):
         return None
@@ -139,7 +140,8 @@ def commit_target(target_dir: Path, message: str) -> str | None:
     commit = head_commit(target_dir)
     if commit is None:
         raise SpecificationError("Cannot resolve Target Git checkpoint after commit")
-    print("Target - committed project workspace git store")
+    if not quiet:
+        print("Target - committed project workspace git store")
     return commit
 
 

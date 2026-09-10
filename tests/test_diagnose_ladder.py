@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from drydock.diagnose_ladder import (
     build_ladder,
     classify,
     ladder_of,
+    local_clock,
     render_ladder,
     stop_point,
     stop_point_of,
@@ -83,9 +85,25 @@ def test_render_marks_each_state_distinctly():
         LadderRow(milestone="BUILD", state="not run"),
     )
     text = render_ladder(rows)
-    assert "[OK]   INIT      2026-08-21 17:07" in text
+    assert f"[OK]   INIT      {local_clock('2026-08-21T17:07:00.000+00:00')}" in text
     assert "[FAIL] ANALYZE" in text
     assert "[--]   BUILD" in text and "not run" in text
+
+
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="needs time.tzset")
+def test_ladder_times_are_local_not_utc(monkeypatch):
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        assert local_clock("2026-09-10T19:29:00.000+00:00") == "2026-09-10 15:29"
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+def test_local_clock_keeps_a_malformed_instant_readable():
+    assert local_clock("2026-09-10Tgarbage") == "2026-09-10 garba"
+    assert local_clock("") == ""
 
 
 def test_render_names_retry_exhaustion(tmp_path):
