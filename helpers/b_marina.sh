@@ -1,24 +1,36 @@
-set -x
 export PROJECT=Marina
 export PROJECT_DIR=/mnt/c/Users/barlo/projects
 export SOURCE=$PROJECT_DIR/Specifications/Marina
 
-#export OPTS="--llm-provider codex --model gpt-5.4"
 export OPTS="--llm-provider codex --model gpt-5.6-luna"
-#export OPTS2="--llm-provider claude --model opus"
-export OPTS2="--llm-provider codex --model gpt-5.6-sol"
-#export OPTS="--llm-provider claude --model sonnet"
+
+# export OPTS2="--llm-provider codex --model gpt-5.6-sol"
+# export OPTS="--llm-provider codex --model gpt-5.4"
+# export OPTS2="--llm-provider claude --model opus"
+# export OPTS="--llm-provider claude --model sonnet"
 
 # On WSL/DrvFs, a directory can enter a zombie state where stat returns ENOENT
 # but mkdir returns EEXIST.  cmd.exe rmdir resolves it when plain rm cannot.
-rm -rf targets/$PROJECT 2>/dev/null || cmd.exe /c "rmdir /s /q targets" 2>/dev/null || true
-rm -rf ../$PROJECT 2>/dev/null
+if [ -d targets/$PROJECT ]
+then
+	echo remove the targets/$PROJECT
+	rm -rf targets/$PROJECT 2>/dev/null || cmd.exe /c "rmdir /s /q targets" 2>/dev/null || true
+fi
+
+if [ -d targets/$PROJECT ]
+then
+	echo remove $PROJECT
+	rm -rf ../$PROJECT 2>/dev/null
+fi
 read
+
+set -x
+
 drydock init $PROJECT $OPTS
 
 drydock status $PROJECT $OPTS
 
-./Import_Marina.sh
+./b_Import_Marina.sh
 # drydock import Marina3 $SOURCE/INTENT.md --format compass --force
 # drydock import $PROJECT $SOURCE --format markdown $OPTS
 
