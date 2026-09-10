@@ -54,7 +54,7 @@ def test_page_names_the_state_that_superseded_a_failure(page):
 
 
 def test_page_has_a_tab_for_every_reader_task(page):
-    for label in ("Findings", "Amendments", "Commands", "Log Files"):
+    for label in ("Findings", "Repair Proposal", "Commands", "Log Files"):
         assert f">{label}</button>" in page
 
 

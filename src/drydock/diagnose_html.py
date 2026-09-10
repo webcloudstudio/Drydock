@@ -125,7 +125,7 @@ def _panels(bundle: Bundle, diagnosis: Diagnosis) -> list[tuple[str, str, str]]:
         if diagnosis.sections.get(name, "").strip()
     )
     panels.append(("findings", "Findings", findings))
-    panels.append(("amendments", "Amendments", _amendments_panel(diagnosis)))
+    panels.append(("amendments", "Repair Proposal", _amendments_panel(diagnosis)))
     panels.append(("commands", "Commands", _commands_panel(bundle)))
     panels.append(("logs", "Log Files", _logs_panel(bundle)))
     if not diagnosis.ok:

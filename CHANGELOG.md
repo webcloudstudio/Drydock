@@ -23,10 +23,21 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
-- 2026-09-10: `drydock diagnose` now prints its findings to the terminal — Break Point, Reason,
-  Not A Real Failure, Blockers and Decisions, Evidence, proposed and unoffered amendments, missing
-  evidence, and on a malformed answer the contract violations and raw model answer — followed by
-  the `DIAGNOSE_<stamp>.md` and `.html` paths. Previously it printed only the paths. The duplicate
+- 2026-09-10: `drydock diagnose` repairs Blueprints. The report has four sections — Root Cause,
+  Details (evidence plus `Not a defect:` wreckage), Commander Feedback Requested (next steps drawn
+  from `BLOCKERS.md` and `DECISIONS.json`), and Repair Proposal — under prompt contract
+  `diagnose_report` v2. Repairs are verified unified diffs against the Blueprints implemented by
+  `blocked/questions` and `closed/failed` Manifest blocks (read in full, at most six), plus the
+  Compass files and `MANIFEST.md`; imported sources, change tickets, and `*_compact.md`
+  derivatives are rejected. An applied Blueprint repair deletes the Blueprint's stale
+  `_compact.md`, resets its consuming blocks and their dependency closure to `pending` through
+  `refit.reset_blueprint_consumers` (the reset `drydock refit` drift reconciliation now shares),
+  and names `drydock build <Target>` as the next step. Applied repairs are committed to the Target
+  repository as `Apply drydock diagnose repairs: <summaries>`. No change ticket is written. Amendment
+  `File:` paths now keep directory prefixes such as `blueprint/`.
+
+- 2026-09-10: `drydock diagnose` now prints its findings to the terminal, followed by the
+  `DIAGNOSE_<stamp>.md` and `.html` paths; previously it printed only the paths. The duplicate
   copyright line after the masthead is removed.
 
 - 2026-09-10: `drydock refit` now scopes an unapplied `rebuild` database migration to Manifest

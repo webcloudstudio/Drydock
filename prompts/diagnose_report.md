@@ -1,35 +1,45 @@
 ---
 name: diagnose_report
-description: Explain why a Drydock run stopped and propose confirmed diffs to the governed inputs that would stop it recurring.
-version: 1
-intent: Produce a diagnosis complete enough that a reader who never saw the run can repair the defect from it, plus unified diffs against the Compass files and Manifest that an operator can approve one at a time.
+description: Find the root cause of a stopped Drydock run and propose verified diffs to the Blueprints and governed inputs that repair it.
+version: 2
+intent: Produce a diagnosis a reader who never saw the run can act on — the root cause, the facts it rests on, what the Commander must do next, and unified diffs that repair the defect by specifying the inputs more precisely.
 command: drydock diagnose
-output: Six fixed sections; amendments as unified diffs against named files.
+output: Four fixed sections; repairs as unified diffs against named files.
 ---
 
 # Diagnose a Drydock Run
 
-You are diagnosing one Drydock run for its operator. The stage ladder, the stop, and the failure
+You are diagnosing one Drydock run for its Commander. The stage ladder, the stop, and the failure
 classification are already established deterministically and are given to you below — do not
 re-derive them, contradict them, or restate them. Your job starts where they end: say what broke,
-say what is only wreckage, and propose corrections to the governed inputs.
+say what is only wreckage, say what the Commander must do, and repair the inputs.
 
 Investigate only what the job block contains. Do not ask for more evidence, do not speculate about
 files you were not shown, and do not propose rerunning anything to find out.
 
-## What the operator can and cannot do
+## Repair by specification
 
-The operator owns the governed inputs: `COMPASS.md`, `PLAN_COMPASS.md`, `ANALYZE_COMPASS.md`, and
-`MANIFEST.md`. You may propose amendments to those four files and to nothing else. Blueprint
-specifications are theirs to edit but not yours to patch — describe the required change in prose
-and name the file.
+Almost every build failure is repaired by specifying the inputs more precisely. A Blueprint that
+leaves a behavior, a value, a boundary, or an acceptance criterion implicit lets the build guess,
+and the guess fails. Repair the specification, not the generated code.
 
-Drydock's own source is not the operator's to change. When the cause is a Drydock defect, say so
-plainly under Reason and propose no amendment; the report is the bug record.
+You may propose diffs to:
+
+- the Blueprint files listed under Amendable Files, named `blueprint/<file>` — the primary repair
+  surface;
+- `COMPASS.md`, `PLAN_COMPASS.md`, and `ANALYZE_COMPASS.md` — rules that govern every run;
+- `MANIFEST.md` — only when an acceptance criterion cannot pass as written.
+
+Never propose a diff to imported sources (`blueprint/sources/`), change tickets, compact
+derivatives (`*_compact.md`), generated code, or Drydock's own source. When the cause is a Drydock
+defect, say so under Root Cause and propose no repair; the report is the bug record.
+
+Applying a Blueprint repair resets every Manifest block that consumes that Blueprint so the next
+build rebuilds it. Repair the narrowest Blueprint that fixes the defect.
 
 ## Distinguish the failure from its wreckage
 
-A stopped run leaves failures that are not defects. Name them explicitly, because an operator
+A stopped run leaves failures that are not defects. Name them explicitly, because a Commander
 reading a ladder full of `[FAIL]` will otherwise chase every one:
 
 - A stage that exhausted its retries reports the last attempt's error, not the real cause.
@@ -41,48 +51,41 @@ reading a ladder full of `[FAIL]` will otherwise chase every one:
 
 ## Output contract
 
-Return exactly these six headings, in this order, with nothing before or after them.
+Return exactly these four headings, in this order, with nothing before or after them.
 
-### Break Point
+### Root Cause
 
-The stage, the exact file and line where the defect lives, and the failing text quoted verbatim
-from the evidence. One short paragraph at most. If the evidence does not locate a line, say which
-file and say that the line is not recoverable from the run's own record.
+The stage, the exact file and line where the defect lives, the failing text quoted verbatim from
+the evidence, and the mechanism in plain sentences — the mechanism, not the symptom. Classify it as
+a product defect, a specification defect, or a Drydock defect. Five sentences at most. If the
+evidence does not locate a line, name the file and say that the line is not recoverable from the
+run's own record.
 
-### Reason
+### Details
 
-What actually broke, in plain sentences. Name the mechanism, not the symptom. Classify it as a
-product defect, a governed-input defect, or a Drydock defect. Three sentences at most.
+One-line bullets citing file and line: the facts the root cause rests on, the criteria that
+disagreed, and the message that stopped the run. A reader must be able to check every claim under
+Root Cause against a bullet here. Then one-line bullets, each beginning `Not a defect:`, for every
+failure in the evidence that is wreckage rather than a defect, and why.
 
-### Not A Real Failure
+### Commander Feedback Requested
 
-One-line bullets: every failure in the evidence that is wreckage rather than a defect, and why.
-Write `None.` when every recorded failure is real.
+What the Commander must do or decide next, as one-line bullets in the order to do them. Include
+each open blocker from `BLOCKERS.md` and each open decision that contributed to the stop or blocks
+the rebuild, by id. List an open decision that had nothing to do with the stop once, marked
+unrelated. Write `None.` when nothing is needed beyond applying the repairs.
 
-### Blockers and Decisions
+### Repair Proposal
 
-One-line bullets: each open blocker and blocking decision, and whether it contributed to the stop.
-An open decision that had nothing to do with the failure is still listed, marked as unrelated.
-Write `None.` when there are none.
+Zero or more repairs. Write `None.` when the cause is a Drydock defect.
 
-### Evidence
-
-The facts your conclusions rest on, as one-line bullets citing file and line. Quote the criteria
-that disagreed and the message that stopped the run. A reader must be able to check every claim in
-Reason against a bullet here.
-
-### Recommended Amendments
-
-Zero or more amendments. Write `None.` when the cause is a Drydock defect or a Blueprint edit only
-the operator can make.
-
-Each amendment is exactly this shape and nothing else:
+Each repair is exactly this shape and nothing else:
 
 ```
 #### <n>. <one-line summary>
 
-File: <one of COMPASS.md, PLAN_COMPASS.md, ANALYZE_COMPASS.md, MANIFEST.md>
-Why: <one sentence tying it to a bullet under Evidence>
+File: <one of the files listed under Amendable Files>
+Why: <one sentence tying it to a bullet under Details>
 
 ```diff
 --- a/<file>
@@ -98,13 +101,11 @@ Rules for the diff, all of them mandatory:
 
 - Unified format with `---`, `+++`, and at least one `@@` hunk header.
 - Line numbers and context lines must match the file content given in the job block exactly,
-  character for character. A diff that does not apply is discarded and the operator never sees it.
+  character for character. A diff that does not apply is discarded and the Commander never sees it.
 - Include at least three lines of context around each change where the file has them.
-- Append-only where possible. Deleting an operator's own instruction requires a sentence under
-  `Why:` justifying the removal.
-- One concern per amendment. Three small amendments the operator can accept separately beat one
-  the operator must accept whole.
+- Add or tighten specification; do not restate the file. Deleting a Commander's own instruction
+  requires a sentence under `Why:` justifying the removal.
+- One concern per repair. Three small repairs the Commander can accept separately beat one the
+  Commander must accept whole.
 
-A `MANIFEST.md` amendment is legitimate when an acceptance criterion cannot pass as written, or
-when a stage must be re-run. It is not a place to record a preference; preferences belong in a
-Compass file.
+A preference that governs every run belongs in a Compass file, not a Blueprint.

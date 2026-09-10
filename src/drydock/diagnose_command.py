@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.diagnose_apply import Outcome, resolve
-from drydock.diagnose_evidence import collect
+from drydock.diagnose_evidence import BLUEPRINT_PREFIX, collect
 from drydock.diagnose_ladder import render_ladder
 from drydock.diagnose_report import diagnose_run, render_terminal, write_report
 from drydock.errors import UsageError
@@ -133,7 +133,9 @@ def run(
         confirm=confirm,
         report_path=report_path,
     )
-    _report_outcome(outcome, target, target_dir, report_path, out)
+    rebuild = _rebuild_repaired_blueprints(outcome, target_dir)
+    _report_outcome(outcome, target, target_dir, report_path, out, rebuild)
+    _commit_repairs(outcome, target_dir, out)
     return Result(exit_code=_verdict(bundle), report_path=report_path, outcome=outcome)
 
 
@@ -153,12 +155,54 @@ def _verdict(bundle) -> int:
     return 1 if bundle.stop is not None else 0
 
 
+def _rebuild_repaired_blueprints(outcome: Outcome, target_dir: Path) -> tuple[str, ...]:
+    """Reset every Manifest block that consumes a repaired Blueprint; return the reset ids.
+
+    A repaired Blueprint's ``_compact.md`` derivative is deleted: build never regenerates an
+    existing compact, so a later consumer would otherwise read the unrepaired text.
+    """
+    from drydock.config import blueprint_dir_for
+    from drydock.refit import reset_blueprint_consumers
+
+    names = [
+        amendment.file.removeprefix(BLUEPRINT_PREFIX)
+        for amendment in outcome.applied
+        if amendment.file.startswith(BLUEPRINT_PREFIX)
+    ]
+    if not names:
+        return ()
+    blueprint_dir = blueprint_dir_for(target_dir)
+    for name in names:
+        (blueprint_dir / f"{Path(name).stem}_compact.md").unlink(missing_ok=True)
+    resets = reset_blueprint_consumers(target_dir / "MANIFEST.md", blueprint_dir, names)
+    return tuple(dict.fromkeys(block_id for reset in resets for block_id in reset.reset_ids))
+
+
+def _commit_repairs(outcome: Outcome, target_dir: Path, out: Callable[[str], None]) -> None:
+    """Checkpoint applied repairs in the Target repository as their own commit."""
+    if not outcome.applied:
+        return
+    from drydock.target_git import commit_target
+
+    summary = "; ".join(amendment.summary for amendment in outcome.applied)
+    commit = commit_target(target_dir, f"Apply drydock diagnose repairs: {summary}")
+    if commit:
+        out(f"Committed repairs as {commit}.")
+
+
 def _report_outcome(
-    outcome: Outcome, target: str, target_dir: Path, report_path: Path, out: Callable[[str], None]
+    outcome: Outcome,
+    target: str,
+    target_dir: Path,
+    report_path: Path,
+    out: Callable[[str], None],
+    rebuild: tuple[str, ...] = (),
 ) -> None:
     out("")
     if outcome.applied:
         out(f"Applied {len(outcome.applied)} amendment(s) to {', '.join(outcome.changed_files)}.")
+    if rebuild:
+        out(f"Reset {len(rebuild)} Manifest block(s) to pending for rebuild: {', '.join(rebuild)}.")
     for amendment, error in outcome.failed:
         out(f"Could not apply '{amendment.summary}': {error}")
     if outcome.declined:
@@ -167,6 +211,8 @@ def _report_outcome(
             f"{target_dir / 'DECISIONS.json'}."
         )
         out(NEXT_STEP.format(command=f"drydock diagnose {target} --apply"))
+    elif rebuild:
+        out(NEXT_STEP.format(command=f"drydock build {target}"))
     elif not outcome.applied:
         out(f"Nothing changed. The report stands at {report_path}.")
 

@@ -37,6 +37,13 @@ MAX_TRANSCRIPT_LINES = 120
 MAX_SCORECARD_LINES = 80
 MAX_BLOCKERS_LINES = 60
 MAX_GOVERNED_LINES = 400
+MAX_BLUEPRINT_LINES = 600
+
+#: Blueprint repairs are offered for the Blueprints the blocked and failed Manifest blocks
+#: implement, and only those; a Blueprint the prompt did not carry in full cannot be verified.
+MAX_BLUEPRINTS = 6
+BLUEPRINT_PREFIX = "blueprint/"
+REPAIR_STATES = frozenset({"blocked/questions", "closed/failed"})
 
 #: The files an amendment may target. ``MANIFEST.md`` is included: an acceptance criterion that
 #: cannot pass, or a stage that must be rerun, is a Manifest-level correction.
@@ -91,6 +98,8 @@ class Bundle:
     decisions: tuple[Mapping[str, object], ...]
     governed: tuple[Excerpt, ...]
     missing: tuple[str, ...] = field(default_factory=tuple)
+    #: Repairable Blueprints, named ``blueprint/<file>``.
+    blueprints: tuple[Excerpt, ...] = field(default_factory=tuple)
 
     @property
     def failed_commands(self) -> tuple[Mapping[str, object], ...]:
@@ -154,6 +163,38 @@ def collect(target: str, workspace: Path, target_dir: Path, *, run: str = "") ->
         decisions=open_decisions(target_dir),
         governed=governed,
         missing=tuple(missing),
+        blueprints=failing_blueprints(target_dir),
+    )
+
+
+def failing_blueprints(target_dir: Path) -> tuple[Excerpt, ...]:
+    """The Blueprints the blocked and failed Manifest blocks implement, in Manifest order.
+
+    These are what a repair can specify more precisely. Imported sources and change tickets are
+    never candidates, and a compact derivative resolves to its source, which is what a repair edits.
+    """
+    from drydock.build_plan import compact_source, parse_build_plan
+    from drydock.config import blueprint_dir_for
+
+    try:
+        plan = parse_build_plan(target_dir / "MANIFEST.md")
+    except Exception:  # noqa: BLE001 — an unreadable Manifest leaves nothing to repair against
+        return ()
+    blueprint_dir = blueprint_dir_for(target_dir)
+    names: list[str] = []
+    for block in plan.blocks:
+        if block.state not in REPAIR_STATES:
+            continue
+        for name in block.fields.get("implements", ()):
+            source = compact_source(str(name))
+            if "/" in source or source in names or not (blueprint_dir / source).is_file():
+                continue
+            names.append(source)
+    return tuple(
+        excerpt
+        for name in names[:MAX_BLUEPRINTS]
+        if (excerpt := _excerpt(blueprint_dir / name, BLUEPRINT_PREFIX + name, MAX_BLUEPRINT_LINES))
+        is not None
     )
 
 

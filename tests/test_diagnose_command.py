@@ -43,28 +43,22 @@ STATUS_ROWS = [
     },
 ]
 
-GOOD_ANSWER = """### Break Point
+GOOD_ANSWER = """### Root Cause
 
 `SCORE AC` stopped the run at `blueprint/FEATURE-Lexer.md:41`.
-
-### Reason
-
 Governed-input defect: the criteria do not name the assertion they run.
 
-### Not A Real Failure
+### Details
 
-- `PLAN CREATED` failed and `PLAN REPAIRED` answered it.
-- The seven attempts at `SCORE AC` are one failure retried.
+- `SCORECARD.md:5` — `PASS 39 FAIL 6`.
+- Not a defect: `PLAN CREATED` failed and `PLAN REPAIRED` answered it.
+- Not a defect: the seven attempts at `SCORE AC` are one failure retried.
 
-### Blockers and Decisions
+### Commander Feedback Requested
 
 None.
 
-### Evidence
-
-- `SCORECARD.md:5` — `PASS 39 FAIL 6`.
-
-### Recommended Amendments
+### Repair Proposal
 
 #### 1. Require every criterion to name its assertion
 
@@ -253,9 +247,9 @@ def test_a_conforming_answer_verifies_and_keeps_only_applicable_diffs(bundle):
 
 
 def test_a_missing_section_is_a_contract_violation(bundle):
-    diagnosis = verify(GOOD_ANSWER.replace("### Evidence", "### Notes"), bundle)
+    diagnosis = verify(GOOD_ANSWER.replace("### Details", "### Notes"), bundle)
     assert not diagnosis.ok
-    assert any("Evidence" in problem for problem in diagnosis.problems)
+    assert any("Details" in problem for problem in diagnosis.problems)
 
 
 def test_an_amendment_against_a_forbidden_file_is_never_offered(bundle):
@@ -275,7 +269,7 @@ def test_prose_without_a_diff_is_not_an_amendment():
 def test_report_carries_every_section_and_the_log_paths(bundle):
     diagnosis = verify(GOOD_ANSWER, bundle)
     text = render_report(bundle, diagnosis, stamp="20260830.120000.000Z")
-    for heading in ("Break Point", "Reason", "Not A Real Failure", "Evidence", "Log Files"):
+    for heading in ("Root Cause", "Details", "Commander Feedback Requested", "Log Files"):
         assert f"## {heading}" in text
     assert "## Stage Ladder" in text
     assert "[FAIL] SCORE" in text
@@ -421,7 +415,7 @@ def test_run_prints_the_findings_before_the_report_paths(workspace, monkeypatch)
     assert "Governed-input defect: the criteria do not name the assertion they run." in output
     assert "`PLAN CREATED` failed and `PLAN REPAIRED` answered it." in output
     assert "1. Require every criterion to name its assertion (PLAN_COMPASS.md)" in output
-    assert output.index("BREAK POINT") < output.index(f"Report: {result.report_path}")
+    assert output.index("ROOT CAUSE") < output.index(f"Report: {result.report_path}")
 
 
 def test_run_exits_one_while_a_live_failure_stands(workspace, monkeypatch):
@@ -480,3 +474,173 @@ def test_confirm_mode_applies_what_the_operator_accepts(workspace, monkeypatch):
     assert "Applied 1 amendment(s) to PLAN_COMPASS.md" in output
     target = workspace / "targets" / "Demo"
     assert "must name the assertion" in (target / "PLAN_COMPASS.md").read_text(encoding="utf-8")
+
+
+# ── Blueprint repair ─────────────────────────────────────────────────────────────────
+
+SCREEN_A = "# SCREEN-A\nShows the list.\nNo filters.\n"
+
+BLUEPRINT_ANSWER = """### Root Cause
+
+`BUILD` blocked `screen-a`: `blueprint/SCREEN-A.md:2` leaves the empty list unspecified.
+
+### Details
+
+- `MANIFEST.md` — `screen-a` is `blocked/questions`.
+
+### Commander Feedback Requested
+
+None.
+
+### Repair Proposal
+
+#### 1. Specify the empty list state
+
+File: `SCREEN-A.md`
+Why: the build could not infer the empty state.
+
+```diff
+--- a/blueprint/SCREEN-A.md
++++ b/blueprint/SCREEN-A.md
+@@ -1,3 +1,4 @@
+ # SCREEN-A
+ Shows the list.
+ No filters.
++An empty list shows "No items".
+```
+
+#### 2. Patch an imported source
+
+File: `blueprint/sources/raw.md`
+Why: never allowed.
+
+```diff
+--- a/blueprint/sources/raw.md
++++ b/blueprint/sources/raw.md
+@@ -1 +1,2 @@
+ raw
++more
+```
+
+#### 3. Patch a Blueprint the diagnosis never read
+
+File: `blueprint/OTHER.md`
+Why: not a failing block's Blueprint.
+
+```diff
+--- a/blueprint/OTHER.md
++++ b/blueprint/OTHER.md
+@@ -1 +1,2 @@
+ other
++more
+```
+"""
+
+
+@pytest.fixture
+def repairable(workspace: Path) -> Path:
+    """The Demo workspace with a blocked screen whose Blueprint a repair can specify."""
+    import hashlib
+
+    target = workspace / "targets" / "Demo"
+    blueprint = target / "blueprint"
+    (blueprint / "sources").mkdir(parents=True)
+    (blueprint / "SCREEN-A.md").write_text(SCREEN_A, encoding="utf-8")
+    (blueprint / "SCREEN-A_compact.md").write_text("stale compact\n", encoding="utf-8")
+    (blueprint / "OTHER.md").write_text("other\n", encoding="utf-8")
+    (blueprint / "sources" / "raw.md").write_text("raw\n", encoding="utf-8")
+    other_hash = hashlib.sha256(b"other\n").hexdigest()
+    (target / "MANIFEST.md").write_text(
+        f"""# MANIFEST: Demo
+state: approved
+applied_specs: |
+  OTHER.md sha256={other_hash} commit=- applied_by=unrelated applied_at=2026-07-01
+
+## story 1: Foundation
+id: foundation
+implements: ARCHITECTURE.md
+state: closed/verified
+
+## story 2: Screen A
+id: screen-a
+implements: SCREEN-A.md
+depends: foundation
+state: blocked/questions
+
+## story 3: Screen B
+id: screen-b
+implements: SCREEN-B.md
+depends: screen-a
+state: closed/verified
+
+## story 4: Unrelated
+id: unrelated
+implements: OTHER.md
+state: closed/verified
+""",
+        encoding="utf-8",
+    )
+    return workspace
+
+
+def test_parsed_blueprint_path_keeps_its_directory():
+    section = BLUEPRINT_ANSWER.split("### Repair Proposal", 1)[1]
+    assert [item.file for item in parse_amendments(section)][1] == "blueprint/sources/raw.md"
+
+
+def test_bundle_carries_only_the_failing_blocks_blueprints(repairable):
+    bundle = collect("Demo", repairable, repairable / "targets" / "Demo")
+    assert [excerpt.name for excerpt in bundle.blueprints] == ["blueprint/SCREEN-A.md"]
+    text = assemble(bundle, load_prompt("diagnose_report").body).rendered_text
+    assert "    2\tShows the list." in text
+
+
+def test_blueprint_repairs_verify_and_sources_never_do(repairable):
+    bundle = collect("Demo", repairable, repairable / "targets" / "Demo")
+    diagnosis = verify(BLUEPRINT_ANSWER, bundle)
+    assert diagnosis.ok
+    assert [item.file for item in diagnosis.amendments] == ["blueprint/SCREEN-A.md"]
+    rejected = {item.file: item.rejection for item in diagnosis.unapplicable}
+    assert "not an amendable file" in rejected["blueprint/sources/raw.md"]
+    assert "not read in full" in rejected["blueprint/OTHER.md"]
+
+
+def test_apply_repairs_the_blueprint_resets_its_consumers_and_commits(repairable, monkeypatch):
+    import subprocess
+
+    from drydock.build_plan import parse_build_plan
+
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "Test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "test@example.com")
+    target = repairable / "targets" / "Demo"
+    subprocess.run(["git", "init", "-q"], cwd=target, check=True)
+
+    result, output = _run(
+        repairable, monkeypatch, target="Demo", mode="apply", runner=fake_runner(BLUEPRINT_ANSWER)
+    )
+
+    blueprint = target / "blueprint"
+    assert (
+        (blueprint / "SCREEN-A.md")
+        .read_text(encoding="utf-8")
+        .endswith('An empty list shows "No items".\n')
+    )
+    assert not (blueprint / "SCREEN-A_compact.md").exists()
+    assert (blueprint / "sources" / "raw.md").read_text(encoding="utf-8") == "raw\n"
+    plan = parse_build_plan(target / "MANIFEST.md")
+    states = {block.block_id: block.state for block in plan.blocks}
+    assert states == {
+        "foundation": "closed/verified",
+        "screen-a": "pending",
+        "screen-b": "pending",
+        "unrelated": "closed/verified",
+    }
+    assert "OTHER.md" in plan.applied_specs
+    assert "Reset 2 Manifest block(s) to pending for rebuild: screen-a, screen-b." in output
+    assert "Next: drydock build Demo" in output
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"], cwd=target, capture_output=True, text=True
+    ).stdout.strip()
+    assert subject == "Apply drydock diagnose repairs: Specify the empty list state"
+    assert "Committed repairs as" in output

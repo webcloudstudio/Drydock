@@ -14,7 +14,7 @@ untouched. Tests inject a fake runner instead of spending API credits.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -387,15 +387,47 @@ def _reconcile_drift(
     if not resettable:
         return [], errors
 
+    resets = reset_blueprint_consumers(
+        manifest_path,
+        blueprint_dir,
+        [spec.rel_path for spec in resettable],
+        applied_commits={spec.rel_path: spec.record.commit for spec in resettable},
+    )
+    return resets, errors
+
+
+def reset_blueprint_consumers(
+    manifest_path: Path,
+    blueprint_dir: Path,
+    rel_paths: Sequence[str],
+    *,
+    applied_commits: Mapping[str, str] | None = None,
+) -> list[RefitReset]:
+    """Reset the Manifest blocks that consume changed Blueprint files, so build rebuilds them.
+
+    Each file resets its cascade to ``pending``: the blocks that implement or reference it, their
+    dependents and children, and reopened parent features. The file's ``applied_specs`` record and
+    those stamped by reset blocks are dropped. ``DATABASE.md`` resets only the consumers of its
+    changed rebuild operations when the encapsulation contract is present. ``applied_commits``
+    names the commit each file was last applied at; it defaults to the file's own record.
+    """
+    paths = tuple(dict.fromkeys(rel_paths))
+    if not paths or not manifest_path.is_file():
+        return []
+    plan = parse_build_plan(manifest_path)
+    commits = applied_commits or {}
+
     resets_by_path: dict[str, tuple[str, ...]] = {}
-    for spec in resettable:
-        if spec.rel_path == "DATABASE.md":
-            scoped = _database_reset_ids(plan, blueprint_dir, applied_commit=spec.record.commit)
-            resets_by_path[spec.rel_path] = (
-                cascade_reset_ids(plan, [spec.rel_path]) if scoped is None else scoped
+    for rel_path in paths:
+        if rel_path == "DATABASE.md":
+            record = plan.applied_specs.get(rel_path)
+            commit = commits.get(rel_path, record.commit if record else "")
+            scoped = _database_reset_ids(plan, blueprint_dir, applied_commit=commit)
+            resets_by_path[rel_path] = (
+                cascade_reset_ids(plan, [rel_path]) if scoped is None else scoped
             )
         else:
-            resets_by_path[spec.rel_path] = cascade_reset_ids(plan, [spec.rel_path])
+            resets_by_path[rel_path] = cascade_reset_ids(plan, [rel_path])
     all_ids = tuple(dict.fromkeys(item for ids in resets_by_path.values() for item in ids))
     by_id = plan.by_id()
     updates: dict[str, dict[str, str | None]] = {
@@ -405,7 +437,7 @@ def _reconcile_drift(
         batch_set_block_fields(manifest_path, updates)
 
     reset_set = set(all_ids)
-    reset_paths = {spec.rel_path for spec in resettable}
+    reset_paths = set(paths)
     remaining = {
         rel_path: record
         for rel_path, record in plan.applied_specs.items()
@@ -414,15 +446,14 @@ def _reconcile_drift(
     if remaining != plan.applied_specs:
         set_applied_specs(manifest_path, remaining)
 
-    resets = [
+    return [
         RefitReset(
-            path=spec.rel_path,
-            foundational=foundational_source(spec.rel_path) is not None,
-            reset_ids=resets_by_path[spec.rel_path],
+            path=rel_path,
+            foundational=foundational_source(rel_path) is not None,
+            reset_ids=resets_by_path[rel_path],
         )
-        for spec in resettable
+        for rel_path in paths
     ]
-    return resets, errors
 
 
 def refit_target(

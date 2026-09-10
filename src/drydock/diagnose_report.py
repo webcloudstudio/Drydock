@@ -15,11 +15,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from drydock.diagnose_evidence import AMENDABLE, Bundle, Excerpt
+from drydock.build_plan import compact_source
+from drydock.diagnose_evidence import AMENDABLE, BLUEPRINT_PREFIX, Bundle, Excerpt
 from drydock.diagnose_ladder import render_ladder
 from drydock.patch import Amendment, parse_amendments
 from drydock.prompt_assembly import (
@@ -38,15 +39,13 @@ PROMPT_NAME = "diagnose_report"
 DIAGNOSE_TIMEOUT_SECONDS = 900.0
 REPORT_PREFIX = "DIAGNOSE"
 
-#: The report's fixed section order. The model must return all six; a missing one is a
+#: The report's fixed section order. The model must return all four; a missing one is a
 #: malformed answer, because a reader cannot tell an omitted section from an empty finding.
 REQUIRED_SECTIONS = (
-    "Break Point",
-    "Reason",
-    "Not A Real Failure",
-    "Blockers and Decisions",
-    "Evidence",
-    "Recommended Amendments",
+    "Root Cause",
+    "Details",
+    "Commander Feedback Requested",
+    "Repair Proposal",
 )
 
 _SECTION_RE = re.compile(r"(?m)^###\s+(?P<title>.+?)\s*$")
@@ -154,12 +153,13 @@ def assemble(bundle: Bundle, body: str) -> PromptAssembly:
             "Amendment rules",
             [
                 "Diffs must apply to these exact contents. Line numbers and context must match.",
-                f"Amendable files: {', '.join(AMENDABLE)}",
+                "Amendable files: "
+                + ", ".join((*AMENDABLE, *(excerpt.name for excerpt in bundle.blueprints))),
             ],
             role="contract",
         )
     )
-    for excerpt in bundle.governed:
+    for excerpt in (*bundle.blueprints, *bundle.governed):
         parts.append(_numbered_part(excerpt))
 
     return PromptAssembly(parts=tuple(parts))
@@ -216,12 +216,14 @@ def verify(text: str, bundle: Bundle) -> Diagnosis:
     sections = split_sections(text)
     problems = [f"Missing section: {name}" for name in REQUIRED_SECTIONS if name not in sections]
 
-    amendments = parse_amendments(sections.get("Recommended Amendments", ""))
-    current = {excerpt.name: excerpt for excerpt in bundle.governed}
+    amendments = parse_amendments(sections.get("Repair Proposal", ""))
+    current = {excerpt.name: excerpt for excerpt in (*bundle.governed, *bundle.blueprints)}
     applicable: list[Amendment] = []
     unapplicable: list[Amendment] = []
     for amendment in amendments:
-        if amendment.file not in AMENDABLE:
+        if amendment.file not in current and BLUEPRINT_PREFIX + amendment.file in current:
+            amendment = replace(amendment, file=BLUEPRINT_PREFIX + amendment.file)
+        if not amendable(amendment.file):
             unapplicable.append(amendment.rejected(f"{amendment.file} is not an amendable file"))
             continue
         excerpt = current.get(amendment.file)
@@ -245,6 +247,22 @@ def verify(text: str, bundle: Bundle) -> Diagnosis:
         unapplicable=tuple(unapplicable),
         raw=text,
         problems=tuple(problems),
+    )
+
+
+def amendable(file: str) -> bool:
+    """Whether a repair may target ``file``: a governed input or a top-level source Blueprint.
+
+    Imported sources, change tickets, and compact derivatives are never repair targets.
+    """
+    if file in AMENDABLE:
+        return True
+    name = file.removeprefix(BLUEPRINT_PREFIX)
+    return (
+        file.startswith(BLUEPRINT_PREFIX)
+        and "/" not in name
+        and name.endswith(".md")
+        and compact_source(name) == name
     )
 
 
@@ -360,7 +378,7 @@ def render_terminal(bundle: Bundle, diagnosis: Diagnosis) -> str:
         blocks.append(f"{name.upper()}\n{body or 'Not returned by the diagnosis.'}")
     if diagnosis.amendments:
         blocks.append(
-            "PROPOSED AMENDMENTS\n"
+            "REPAIR PROPOSAL\n"
             + "\n".join(
                 f"{index}. {amendment.summary} ({amendment.file})"
                 for index, amendment in enumerate(diagnosis.amendments, start=1)
@@ -401,7 +419,7 @@ def _log_table(bundle: Bundle) -> str:
 
 def _amendment_block(diagnosis: Diagnosis) -> str:
     """The amendments section, with unapplicable proposals reported rather than hidden."""
-    blocks = ["## Recommended Amendments"]
+    blocks = ["## Repair Proposal"]
     if not diagnosis.amendments:
         blocks.append("None applicable.")
     for index, amendment in enumerate(diagnosis.amendments, start=1):

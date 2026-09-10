@@ -104,7 +104,7 @@ def parse_amendments(section: str) -> tuple[Amendment, ...]:
         found.append(
             Amendment(
                 summary=heading.group("summary"),
-                file=file_match.group("file").strip().lstrip("ab/").lstrip("/"),
+                file=re.sub(r"^[ab]/", "", file_match.group("file").strip()).lstrip("/"),
                 why=why_match.group("why").strip() if why_match else "",
                 diff=diff,
                 hunks=parse_hunks(diff),
