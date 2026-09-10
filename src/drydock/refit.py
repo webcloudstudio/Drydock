@@ -32,6 +32,7 @@ from drydock.build_plan import (
 )
 from drydock.change_ticket import parse_ticket_header
 from drydock.database_contract import (
+    changed_operation_ids_since,
     create_ticket_migration_records,
     parse_database_contract,
     parse_database_interface,
@@ -290,7 +291,9 @@ def _patch_manifest(manifest_path: Path, new_rows: str) -> None:
     graph.save()
 
 
-def _database_reset_ids(plan, blueprint_dir: Path) -> tuple[str, ...] | None:
+def _database_reset_ids(
+    plan, blueprint_dir: Path, *, applied_commit: str = ""
+) -> tuple[str, ...] | None:
     """Return the scoped reset closure for planned rebuilding database operations.
 
     ``None`` means a legacy DATABASE Blueprint without the encapsulation surface; the caller
@@ -311,6 +314,7 @@ def _database_reset_ids(plan, blueprint_dir: Path) -> tuple[str, ...] | None:
     validate_database_interfaces(contract, interfaces)
     patterns = contract.by_id()
     staged = staged_operation_ids(blueprint_dir)
+    changed = changed_operation_ids_since(blueprint_dir, applied_commit)
     unknown = set(staged) - set(patterns)
     if unknown:
         raise SpecificationError(
@@ -319,8 +323,11 @@ def _database_reset_ids(plan, blueprint_dir: Path) -> tuple[str, ...] | None:
         )
     # The published contract implements rebuild sensitivity for all Blueprint types. ``data``
     # and ``unchanged`` therefore preserve consumers until a later sensitivity policy is added.
+    active = set(staged)
+    if changed is not None:
+        active &= set(changed)
     rebuilding = {
-        identifier for identifier in staged if patterns[identifier].compatibility == "rebuild"
+        identifier for identifier in active if patterns[identifier].compatibility == "rebuild"
     }
     consumer_seeds = {
         block.block_id
@@ -383,7 +390,7 @@ def _reconcile_drift(
     resets_by_path: dict[str, tuple[str, ...]] = {}
     for spec in resettable:
         if spec.rel_path == "DATABASE.md":
-            scoped = _database_reset_ids(plan, blueprint_dir)
+            scoped = _database_reset_ids(plan, blueprint_dir, applied_commit=spec.record.commit)
             resets_by_path[spec.rel_path] = (
                 cascade_reset_ids(plan, [spec.rel_path]) if scoped is None else scoped
             )

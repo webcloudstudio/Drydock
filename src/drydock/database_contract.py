@@ -9,6 +9,7 @@ not executable Alembic files and therefore never claim that a deployed database 
 from __future__ import annotations
 
 import re
+import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -355,3 +356,46 @@ def create_ticket_migration_records(
         )
         created.append(path)
     return tuple(created)
+
+
+def changed_operation_ids_since(blueprint_dir: Path, commit: str) -> tuple[str, ...] | None:
+    """Compare DATABASE access patterns to the applied Git revision when it is available.
+
+    ``None`` represents an unavailable Git baseline, not an empty diff. Callers still use the
+    Blueprint migration ledger in that case, which keeps non-Git Targets deterministic.
+    """
+    if not commit or commit == "-":
+        return None
+    database_path = blueprint_dir / "DATABASE.md"
+    if not database_path.is_file():
+        return None
+    root = subprocess.run(
+        ["git", "-C", str(blueprint_dir), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if root.returncode:
+        return None
+    root_path = Path(root.stdout.strip())
+    try:
+        relative = database_path.relative_to(root_path).as_posix()
+    except ValueError:
+        return None
+    prior = subprocess.run(
+        ["git", "-C", str(root_path), "show", f"{commit}:{relative}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if prior.returncode:
+        return None
+    old = parse_database_contract(prior.stdout, source=f"{commit}:{relative}").by_id()
+    current = parse_database_contract(database_path.read_text(encoding="utf-8")).by_id()
+    return tuple(
+        sorted(
+            identifier
+            for identifier in set(old) | set(current)
+            if old.get(identifier) != current.get(identifier)
+        )
+    )

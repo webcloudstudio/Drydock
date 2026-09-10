@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from drydock.database_contract import (
+    changed_operation_ids_since,
     create_ticket_migration_records,
     mark_migrations_built,
     migration_records,
@@ -159,3 +160,41 @@ def test_database_ticket_creates_a_planned_migration_ledger_record(tmp_path: Pat
     assert record.access_pattern == "FEATURE-ORDER-001"
     assert record.compatibility == "rebuild"
     assert record.state == "planned"
+
+
+def test_git_contract_diff_names_only_changed_operations(tmp_path: Path):
+    import subprocess
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    database = blueprint / "DATABASE.md"
+    database.write_text(_DATABASE, encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "blueprint/DATABASE.md"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-qm",
+            "database",
+        ],
+        check=True,
+    )
+    baseline = subprocess.run(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    database.write_text(
+        _DATABASE.replace("| Compatibility | rebuild |", "| Compatibility | data |", 1),
+        encoding="utf-8",
+    )
+
+    assert changed_operation_ids_since(blueprint, baseline) == ("FEATURE-ORDER-001",)
