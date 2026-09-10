@@ -2029,6 +2029,16 @@ class TestClassifyFailure:
         assert category == "execution environment unavailable"
         assert "danger-full-access" in detail
 
+    def test_codex_trusted_directory_rejection_is_security_policy_blocked(self):
+        category, detail = self._classify(
+            ok=False,
+            summary="",
+            stderr="Not inside a trusted directory and --skip-git-repo-check was not specified.",
+            wrote_files=(),
+        )
+        assert category == "execution security policy blocked"
+        assert "another build attempt cannot change" in detail
+
     def test_token_limit_signature(self):
         category, _ = self._classify(summary="Error: prompt is too long for the context window")
         assert category == "context/token limit"

@@ -960,6 +960,11 @@ _SANDBOX_SIGNATURES = (
     "sandbox denied",
     "failed to spawn sandbox",
 )
+_SECURITY_POLICY_SIGNATURES = (
+    "not inside a trusted directory",
+    "--skip-git-repo-check was not specified",
+    "unsafe repository",
+)
 _TOKEN_SIGNATURES = (
     "context length",
     "maximum context",
@@ -1093,6 +1098,15 @@ def _classify_failure(
             "'danger-full-access' (runs in the invoking shell) or install the helper, then rerun."
         )
         return "execution environment unavailable", detail
+
+    if any(sig in haystack for sig in _SECURITY_POLICY_SIGNATURES):
+        detail = (
+            "Codex rejected the Drydock-selected working directory before agent execution "
+            "because its repository security policy was not satisfied. Correct the local Codex "
+            "execution configuration, then rerun; another build attempt cannot change this "
+            "condition."
+        )
+        return "execution security policy blocked", detail
 
     if any(sig in haystack for sig in _TOKEN_SIGNATURES):
         detail = (

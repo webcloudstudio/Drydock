@@ -3242,6 +3242,29 @@ class TestStatus:
         assert "NOT READY: Unplanned" in out
         assert err == ""
 
+    def test_status_ready_stops_after_nonretryable_llm_security_failure(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from drydock.errors import write_error_record
+
+        self._setup(tmp_target_root, monkeypatch)
+        target_dir = tmp_target_root / "TestTarget"
+        write_error_record(
+            target_dir,
+            command="build",
+            phase="LLM execution",
+            classification="execution security policy blocked",
+            detail="Codex rejected the working directory.",
+            recovery="Correct the Codex execution policy.",
+        )
+
+        rc, out, err = run_cli("status", "TestTarget", "--ready")
+
+        assert rc == 1
+        assert err == ""
+        assert "NOT READY: TestTarget" in out
+        assert "stopped: execution security policy blocked" in out
+
     def test_status_check_and_ready_mutually_exclusive(
         self, tmp_target_root, isolated_config, monkeypatch
     ):

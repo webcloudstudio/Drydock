@@ -48,6 +48,7 @@ BLOCKED_PREFIXES = (
     "provider error",
     "execution timed out",
     "execution environment unavailable",
+    "execution security policy blocked",
     "context/token limit",
 )
 

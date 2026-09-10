@@ -31,6 +31,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-10: Codex repository-security rejections now classify as a non-retryable local
+  execution-policy failure. They do not trigger an advisory diagnosis call, and `drydock status
+  <Target> --ready` stops an automatic build loop until the local condition is corrected.
+
 - 2026-09-10: `drydock build` now passes Codex's non-repository override when launching the
   isolated build agent. Builds invoked for a newly created target directory no longer fail before
   the agent starts because that directory has not yet been initialized as a Git repository.

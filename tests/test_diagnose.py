@@ -109,6 +109,15 @@ def test_usage_limit_failure_is_blocked(tmp_path):
     assert should_diagnose(record=record) is False
 
 
+def test_codex_security_policy_failure_is_blocked(tmp_path):
+    record = make_record(
+        tmp_path,
+        classification="execution security policy blocked",
+        detail="Not inside a trusted directory and --skip-git-repo-check was not specified.",
+    )
+    assert should_diagnose(record=record) is False
+
+
 @pytest.mark.parametrize(
     "exc",
     [

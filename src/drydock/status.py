@@ -497,6 +497,13 @@ BLOCKED = "blocked"  # exit 2 — build cannot help; a human must plan/approve/f
 _OUTCOME_EXIT = {COMPLETE: 0, RETRYABLE: 1, BLOCKED: 2}
 _OUTCOME_LABEL = {COMPLETE: "COMPLETE", RETRYABLE: "INCOMPLETE", BLOCKED: "BLOCKED"}
 
+#: A build-loop retry cannot change these local execution conditions. Keep this narrow: an
+#: ordinary failed build remains eligible for an intentional resumed build.
+_BUILD_LOOP_STOP_ERROR_PREFIXES = (
+    "execution environment unavailable",
+    "execution security policy blocked",
+)
+
 
 @dataclass(frozen=True)
 class CompletionCheck:
@@ -529,6 +536,19 @@ class CompletionCheck:
 
     def exit_code(self) -> int:
         return _OUTCOME_EXIT[self.outcome]
+
+
+def build_loop_stop_reason(target_dir: Path) -> str | None:
+    """Return a persistent local build error that an automatic loop must not retry."""
+    from drydock.errors import read_error_record
+
+    record = read_error_record(target_dir)
+    if record is None or record.command != "build":
+        return None
+    classification = record.classification.strip().lower()
+    if any(classification.startswith(prefix) for prefix in _BUILD_LOOP_STOP_ERROR_PREFIXES):
+        return record.classification
+    return None
 
 
 def completion_check(target: str, target_dir: Path) -> CompletionCheck:

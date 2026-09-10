@@ -2016,15 +2016,21 @@ def cmd_status_ready(target: str) -> int:
     Designed for ``while drydock status <Target> --ready; do drydock build <Target>; done``.
     Returns 0 only when buildable work remains; complete and blocked Targets both stop the loop.
     """
+    from drydock.config import get_target_directory
+    from drydock.status import build_loop_stop_reason
+
+    target_dir = get_target_directory() / target
     check = _resolve_check_target(target)
     ready = False
     reason = check.reason
-    if not check.complete and not check.blocked:
+    loop_stop = build_loop_stop_reason(target_dir)
+    if loop_stop is not None:
+        reason = f"stopped: {loop_stop}"
+    elif not check.complete and not check.blocked:
         from drydock.build_plan import parse_build_plan
         from drydock.build_status import build_status
-        from drydock.config import get_target_directory
 
-        plan = parse_build_plan(get_target_directory() / target / "MANIFEST.md")
+        plan = parse_build_plan(target_dir / "MANIFEST.md")
         frontier = build_status(plan).buildable_ids
         ready = bool(frontier)
         reason = f"frontier: {', '.join(frontier)}" if frontier else "no buildable frontier"
