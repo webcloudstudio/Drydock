@@ -388,3 +388,23 @@ def test_canonical_specification_documents_current_command_surface():
     )
     for phase in specification.split("## SAIL Phase ")[1:]:
         assert "### Commands" in phase
+
+
+def test_every_theme_defines_a_readable_code_block_foreground(tmp_path: Path):
+    """A dark ``--pre-bg`` must not inherit the light-theme body ink.
+
+    The slate theme paints code blocks and table headers on a dark panel. Those two rules
+    previously used ``--ink``, which is near-black in every theme, so slate rendered black text
+    on a dark navy ground.
+    """
+    source = tmp_path / "post.md"
+    output = tmp_path / "post.html"
+    source.write_text(SOURCE, encoding="utf-8")
+
+    publish_document(source, output, theme="slate")
+    page = output.read_text(encoding="utf-8")
+
+    assert "#content pre { background: var(--pre-bg); color: var(--pre-ink);" in page
+    assert "#content th { background: var(--pre-bg); color: var(--pre-ink);" in page
+    assert page.count("--pre-ink:") == 3
+    assert "--pre-ink: #7fdcb0;" in page

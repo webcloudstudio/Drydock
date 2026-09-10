@@ -251,14 +251,17 @@ def render_page(
 :root {{
   --ink: #17212b; --muted: #5b6875; --paper: #f8fafb; --panel: #ffffff;
   --navy: #123047; --green: #0a7650; --line: #d6dee4; --code: #eef3f5; --pre-bg: #f0f1f3;
+  --pre-ink: #17212b;
 }}
 body.theme-slate {{
   --ink: #26313d; --muted: #647180; --paper: #f4f6f8; --panel: #ffffff;
   --navy: #17212b; --green: #2cb67d; --line: #d7dee5; --code: #e8edf2; --pre-bg: #202a34;
+  --pre-ink: #7fdcb0;
 }}
 body.theme-paper {{
   --ink: #2e312d; --muted: #6a6f68; --paper: #fbfbf8; --panel: #ffffff;
   --navy: #2f3430; --green: #427a5b; --line: #dfe3dd; --code: #eceee9; --pre-bg: #f0f2ed;
+  --pre-ink: #2e312d;
 }}
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; background: var(--paper); color: var(--ink);
@@ -333,10 +336,10 @@ h1 .h1-sub {{ display: block; font-size: 22px; font-weight: 600; color: var(--mu
 #content p {{ margin: 6px 0 10px; }}
 #content table {{ border-collapse: collapse; display: block; overflow-x: auto; width: 100%; margin: 8px 0; }}
 #content th, #content td {{ border: 1px solid var(--line); padding: 3px 8px; text-align: left; }}
-#content th {{ background: var(--pre-bg); color: var(--ink); font-size: 13px; }}
+#content th {{ background: var(--pre-bg); color: var(--pre-ink); font-size: 13px; }}
 #content td {{ font-size: 13px; }}
 #content code {{ background: var(--code); border-radius: 3px; padding: 1px 4px; font-size: 13px; }}
-#content pre {{ background: var(--pre-bg); color: var(--ink); overflow-x: auto;
+#content pre {{ background: var(--pre-bg); color: var(--pre-ink); overflow-x: auto;
   padding: 10px 14px; margin: 6px 0 12px; border-left: 3px solid var(--line); font-size: 13px; }}
 #content pre code {{ background: transparent; padding: 0; font-size: inherit; }}
 #content blockquote {{ border-left: 4px solid var(--green); background: var(--paper);
