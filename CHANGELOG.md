@@ -88,6 +88,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-09: `docs/posts/devlog_2026-09-09.md` publishes the first Drydock development log,
+  covering the SQLAlchemy/Alembic persistence boundary and `drydock diagnose`, with the reasoning
+  behind each. It follows `Rigging/BRANDING_POSTS.md` and renders through
+  `drydock publish --theme slate` to `docs/posts/devlog_2026-09-09.html`.
+
 - 2026-09-09: Python Targets with relational `DATABASE.md` now require `sqlalchemy.md` and
   `alembic.md` in `TECHNOLOGY_STACK.md`. QuarterDeck rejects stack approval until both Rigging
   selections are present, and `drydock plan` blocks before authoring when either is absent.
