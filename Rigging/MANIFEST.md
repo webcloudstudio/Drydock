@@ -12,6 +12,7 @@ not open individual component files.
 | `BRANDING_PROJECT_DOCS.md` | Branding | The users voice, structure, and editing protocol for the authoritative project specification document. | — |
 | `BRANDING_WEBSITE.md` | Branding | Website branding, voice, and presentation rules. | `BRANDING_MAIN.md` |
 | `BRANDING_WHITEPAPERS.md` | Branding | Whitepaper branding and long-form presentation rules. | `BRANDING_MAIN.md` |
+| `alembic.md` | Persistence | Alembic revision workflow, migration verification, and rollback policy. | `python.md`, `sqlalchemy.md` |
 | `alexa-skills-kit.md` | AWS | Alexa Skill kit configuration, interaction models, and intent handling. | `common.md`, `python.md` |
 | `aws-api-gateway.md` | AWS | AWS HTTP API Gateway Rules. | `aws-lambda.md` |
 | `aws-dynamodb.md` | AWS | AWS DynamoDB single-table catalog and state patterns. | `cloud-client-library.md` |
@@ -30,6 +31,7 @@ not open individual component files.
 | `persistence.md` | Persistence | Typed boundary for persistent stores and external services. | `common.md` |
 | `postgres.md` | Persistence | PostgreSQL schema, pooling, migrations, and indexing patterns. | `python.md`, `persistence.md` |
 | `python.md` | Technologies | Python conventions, typing, configuration, testing, and dependencies. | `common.md` |
+| `sqlalchemy.md` | Persistence | SQLAlchemy 2 repositories, DTO boundaries, sessions, and dialect-neutral runtime access. | `python.md`, `persistence.md` |
 | `sqlite.md` | Persistence | SQLite connections, migrations, WAL, and typed access patterns. | `python.md`, `persistence.md` |
 | `terraform.md` | Technologies | Layered Terraform infrastructure and remote-state patterns. | `aws-dynamodb.md`, `aws-s3.md` |
 | `typescript.md` | Technologies | TypeScript strict typing, domain modeling, and boundary validation. | `common.md` |

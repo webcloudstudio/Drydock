@@ -1,12 +1,16 @@
 # PostgreSQL Best Practices
 
-**Version:** 20260320 V1  
+**Version:** 20260909 V2
 **Category:** Persistence
 **Description:** PostgreSQL database patterns: schema, queries, and connection management
 
 Technology reference for PostgreSQL in Python applications. This file does not change between projects.
 
 Prerequisites: `stack/python.md`
+
+**SQLAlchemy override**: Python relational Targets use SQLAlchemy 2 repositories and Alembic.
+The direct `psycopg2` examples below are driver background only; builders do not expose cursors or
+write raw SQL outside persistence implementations and Alembic revisions.
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: refit_sources_route
 description: Decompose an imported source change into Manifest stories seated on existing Blueprints.
-version: 2
+version: 3
 intent: Route a source diff into the minimum set of new stories, each seated on an existing Blueprint with an explicit scope and ordering.
 command: drydock refit --sources
 output: routed stories
@@ -42,13 +42,19 @@ Planning decomposed the original source into stories; you decompose what changed
   separate story implementing the database Blueprint rather than folding the schema change into
   the feature that uses it. A migration buried in a display specification has no ticket
   authorizing it, and the build will not perform it.
+- **Alembic migration:** A relational persistence change that alters physical schema emits one
+  `DATABASE.md` story containing an Alembic revision. Its `contract` is `unchanged` when every
+  named repository-call input, output, nullability, type, and behavior remains unchanged;
+  `data` when an observable input/output type or nullability changes; and `rebuild` when a call
+  is removed or renamed, an input becomes required, an output field is removed, or semantics
+  change. Consumers rebuild only at or above their declared sensitivity.
 - **State removals explicitly.** When the diff deletes a requirement, say what behavior must be
   removed. If deleting it removes something other stories use, name that in `provides` on a
   `<deleted>` tag so the impact can be checked.
-- **Declare a contract change.** Add `contract="changed"` to a story only when it alters what
-  consumers of that service use — the shape of an interface, a route, a schema other stories read.
-  Changing how the service is built internally is not a contract change. This governs whether
-  downstream work is reported for rebuild, so do not set it defensively.
+- **Declare a contract change.** Set `contract="unchanged"`, `contract="data"`, or
+  `contract="rebuild"`. `unchanged` means storage or construction changes remain behind the
+  repository contract; `data` means only type/nullability-sensitive consumers rebuild; `rebuild`
+  means all consumers rebuild. Do not set a broader level defensively.
 - **Scope:** `additive` when the story only adds behavior and every existing assertion in the
   parent Blueprint stays true. `amending` when the story changes or removes behavior the parent
   already specifies. When `amending`, list the parent's section headings you supersede in
@@ -66,8 +72,8 @@ The reader can mark a book as read and view whether each book is unread or read.
 </requirement>
 
 <story id="mark-read-schema" implements="DATABASE.md" scope="amending" sections="Schema"
-       requirement="mark-book-read" contract="changed">
-Add persisted read state per book and the migration for existing rows.
+       requirement="mark-book-read" contract="rebuild">
+Add persisted read state per book and its Alembic revision for existing rows.
 </story>
 
 <story id="mark-read-route" implements="FEATURE-Reading-List-Display.md" scope="additive"

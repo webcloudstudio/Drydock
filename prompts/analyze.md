@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260817 V23
+version: 20260909 V24
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, RIGGING_MANIFEST, IMPORTED_SOURCES
@@ -153,7 +153,8 @@ without the decision.
 
 Blockers halt analysis progression. Every question marked `required_before_plan` gates
 `plan create`; other questionnaire action items distinguish `Questions` from `Ready` but do not
-gate. `TECHNOLOGY_STACK.md` never gates planning.
+gate. `TECHNOLOGY_STACK.md` gates planning only when a Python Target has relational persistence:
+it must select both `sqlalchemy.md` and `alembic.md`.
 
 ---
 
@@ -672,6 +673,13 @@ a Rigging filename that is not in the catalog, and never list a Rigging file tha
 Derive the technologies from the sources. Where the sources are silent on a slot the product
 plainly needs, propose the conventional choice and say so in `Notes`. Do not emit a stack blocker
 and do not raise a stack questionnaire; the Commander edits this file directly.
+
+When a Python product persists relational data, emit all three rows: `Python` → `python.md`,
+`SQLAlchemy` → `sqlalchemy.md`, and `Alembic` → `alembic.md`. For each route or service that reads
+or writes persistent data, identify a stable repository-call contract `DATA-<DOMAIN>-<NNN>`, its
+DTO input/output, and consumer sensitivity: `rebuild` for web or `data` for API, CLI, worker, and
+library consumers. Typed Blueprint authoring records those contracts in `DATABASE.md`; routes cite
+the call id and fields, never a table, column, ORM model, session, or SQL statement.
 
 ```
 === BEGIN ARTIFACT TECHNOLOGY_STACK.md ===

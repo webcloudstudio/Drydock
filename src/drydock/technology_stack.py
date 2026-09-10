@@ -39,6 +39,9 @@ _DEFAULT_CATEGORY = "Technologies"
 _CATEGORY_ORDER = ["Web Server", "Persistence", "AWS", "Technologies", "Branding"]
 _CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
+#: Relational persistence in a Python Target has one governed implementation path.
+_PYTHON_RELATIONAL_RIGGING = ("sqlalchemy.md", "alembic.md")
+
 _PREAMBLE = (
     "Technology decisions of record for this Target. One row per technology, naming the",
     "Rigging best-practice file that governs building it.",
@@ -274,7 +277,7 @@ def is_approved(target_dir: Path) -> bool:
     An absent file is not approved: the stack is an outstanding action until the
     Commander either edits and approves it or approves it as proposed.
     """
-    return approved_on(target_dir) is not None
+    return approved_on(target_dir) is not None and not missing_required_rigging(target_dir)
 
 
 def approve(target_dir: Path, when: str | None = None) -> Path:
@@ -283,7 +286,13 @@ def approve(target_dir: Path, when: str | None = None) -> Path:
     Rewrites the document from its parsed rows so the marker is placed
     canonically. Approving an already approved stack re-dates it.
     """
-    return write(target_dir, load(target_dir), when or date.today().isoformat())
+    entries = load(target_dir)
+    missing = missing_required_rigging(target_dir, entries)
+    if missing:
+        raise ValueError(
+            "Python relational persistence requires Rigging selection: " + ", ".join(missing)
+        )
+    return write(target_dir, entries, when or date.today().isoformat())
 
 
 def stack_files_from(entries: list[StackEntry]) -> list[str]:
@@ -298,6 +307,25 @@ def stack_files_from(entries: list[StackEntry]) -> list[str]:
 def stack_files(target_dir: Path) -> list[str]:
     """Return the distinct Rigging filenames named by the target's Technology Stack."""
     return stack_files_from(load(target_dir))
+
+
+def required_rigging(target_dir: Path, entries: list[StackEntry] | None = None) -> tuple[str, ...]:
+    """Return mandatory Rigging files for the Target's declared architecture."""
+    rows = load(target_dir) if entries is None else entries
+    python_declared = any(
+        _normalize(row.technology) == "python" or row.rigging == "python.md" for row in rows
+    )
+    has_database = (target_dir / "blueprint" / "DATABASE.md").is_file()
+    return _PYTHON_RELATIONAL_RIGGING if python_declared and has_database else ()
+
+
+def missing_required_rigging(
+    target_dir: Path, entries: list[StackEntry] | None = None
+) -> tuple[str, ...]:
+    """Return required files absent from the Commander's stack selection."""
+    rows = load(target_dir) if entries is None else entries
+    selected = set(stack_files_from(rows))
+    return tuple(name for name in required_rigging(target_dir, rows) if name not in selected)
 
 
 # ── Seeding and migration ───────────────────────────────────────────────────────

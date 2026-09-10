@@ -176,6 +176,27 @@ def test_parse_route_output_reads_requirements_stories_and_deletions():
     assert proposal.deleted_provisions == ("legacy interface",)
 
 
+def test_parse_route_output_preserves_data_contract_level():
+    proposal = parse_route_output(
+        '<story id="nullable-output" implements="DATABASE.md" scope="amending" '
+        'contract="data">Expose nullable output.</story>'
+    )
+
+    story = proposal.stories[0]
+    assert story.contract_level == "data"
+    assert not story.contract_changed
+
+
+def test_validate_route_rejects_an_unknown_contract_level(tmp_path):
+    proposal = parse_route_output(
+        '<story id="bad-contract" implements="DATABASE.md" scope="amending" '
+        'contract="unknown">Bad contract.</story>'
+    )
+
+    with pytest.raises(SpecificationError, match="unknown contract level"):
+        validate_route(proposal, manifest=_manifest(), blueprint_dir=_blueprints(tmp_path))
+
+
 def test_parse_route_output_ignores_model_preamble():
     proposal = parse_route_output(_OUTPUT)
 

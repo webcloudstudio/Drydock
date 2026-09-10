@@ -4505,8 +4505,15 @@ def create_plan(
         raise SpecificationError(
             "ANALYSIS.md quality is Blocked — resolve blockers and re-run analyze before planning."
         )
-    # TECHNOLOGY_STACK.md never gates planning. An absent or empty stack file means the stack is
-    # undecided, which plan resolves from the sources — it is not a Commander decision to await.
+    missing_persistence_rigging = technology_stack.missing_required_rigging(target_dir)
+    if missing_persistence_rigging:
+        raise SpecificationError(
+            "Python relational persistence requires Rigging selections before planning: "
+            + ", ".join(missing_persistence_rigging)
+            + f". Set them in {technology_stack.FILENAME} through QuarterDeck."
+        )
+    # TECHNOLOGY_STACK.md otherwise never gates planning. An absent or empty stack file means the
+    # stack is undecided, which plan resolves from the sources — it is not a Commander decision to await.
     waivers: list[WaivedGate] = []
     required_decisions = _required_plan_decisions(target_dir)
     if required_decisions and not override:

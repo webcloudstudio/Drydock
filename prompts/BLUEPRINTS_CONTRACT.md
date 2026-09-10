@@ -726,19 +726,27 @@ A file can only be built in a phase after all its `Depends On` files are built.
 ## Persistence Encapsulation (DATABASE.md scope)
 
 `DATABASE.md` is the project's persistence contract — not SQL schema alone. It documents every
-persistent store and the typed class that encapsulates it:
+persistent store and the typed repository contract that encapsulates it:
 
-- **Relational tables** — schema plus the row dataclass / CRUD class / composing `Database` class.
+- **Relational stores** — private SQLAlchemy models and sessions, repository interfaces, DTO
+  inputs/outputs, and Alembic revisions.
 - **Config / `.env`** — required keys and the typed `Config` class.
 - **File stores** — directories and the `FileStore` class.
 - **External services** — the service contract and its wrapper.
 
-Application code reaches each store only through its class. A storage change that leaves the
-interface unchanged does not invalidate downstream features.
+Routes call services; services call project-owned repository methods. ORM models, sessions, SQL,
+table names, and column names never cross that boundary. A storage change that leaves the named
+repository-call contract unchanged does not invalidate downstream features.
 
 Every `DATABASE.md` includes `## Access Patterns` and `## Persistence Interfaces` before schema
-details. Access patterns name the caller, operation, store, and interface method. Persistence
-interfaces name the store, public interface, module location, allowed callers, and notes.
+details. Every access pattern has a stable `DATA-<DOMAIN>-<NNN>` id, repository method, DTO input
+and output shapes, consumers, and compatibility level: `unchanged`, `data`, or `rebuild`.
+Route and screen Blueprints cite only those ids and the fields they render or accept; they do not
+cite a physical store. Persistence interfaces name the repository, module location, and allowed
+callers.
+
+Python relational persistence requires `sqlalchemy.md` and `alembic.md` in the Technology Stack.
+SQLAlchemy owns runtime access; Alembic owns every schema revision.
 
 `ARCHITECTURE.md` includes a module ownership table for persistence, configuration, file-store, and
 external-service boundaries. It states which module owns each boundary and which low-level APIs that

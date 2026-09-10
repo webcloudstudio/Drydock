@@ -250,5 +250,37 @@ def test_approve_defaults_to_today_and_re_dates_an_approved_stack(tmp_path):
     assert technology_stack.load_text(tmp_path).count("**Approved:**") == 1
 
 
+def test_python_relational_persistence_requires_sqlalchemy_and_alembic(tmp_path):
+    import pytest
+
+    (tmp_path / "blueprint").mkdir()
+    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
+    entries = [StackEntry("Python", "python.md")]
+    technology_stack.write(tmp_path, entries)
+
+    assert technology_stack.required_rigging(tmp_path) == ("sqlalchemy.md", "alembic.md")
+    assert technology_stack.missing_required_rigging(tmp_path) == ("sqlalchemy.md", "alembic.md")
+    with pytest.raises(ValueError, match="sqlalchemy.md, alembic.md"):
+        technology_stack.approve(tmp_path)
+    assert not technology_stack.is_approved(tmp_path)
+
+
+def test_python_relational_persistence_approves_with_required_rigging(tmp_path):
+    (tmp_path / "blueprint").mkdir()
+    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
+    technology_stack.write(
+        tmp_path,
+        [
+            StackEntry("Python", "python.md"),
+            StackEntry("SQLAlchemy", "sqlalchemy.md"),
+            StackEntry("Alembic", "alembic.md"),
+        ],
+    )
+
+    technology_stack.approve(tmp_path, "2026-09-09")
+
+    assert technology_stack.is_approved(tmp_path)
+
+
 def test_is_approved_is_false_for_a_missing_document(tmp_path):
     assert not technology_stack.is_approved(tmp_path / "absent")

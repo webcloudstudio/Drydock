@@ -15,14 +15,15 @@
 
 | Boundary | Rule |
 |----------|------|
-| Raw storage access | Only the typed persistence classes access storage internals. |
-| Caller dependency | Features depend on class methods, not schemas or provider APIs. |
+| Raw storage access | Only repository implementations access SQLAlchemy models and sessions. |
+| Caller dependency | Features depend on named repository calls and DTOs, not schemas or provider APIs. |
+| Python relational stack | `sqlalchemy.md` and `alembic.md` are required selections. |
 
 ## Access Patterns
 
-| ID | Caller | Operation | Store | Interface | Notes |
+| ID | Caller | Operation | Repository call | Input / Output | Compatibility |
 |----|--------|-----------|-------|-----------|-------|
-| AP-001 | FEATURE-Example.md | Create item | table_name | Database.table_name.create | |
+| DATA-EXAMPLE-001 | FEATURE-Example.md | Create item | `ItemRepository.create()` | `CreateItem` → `Item` | rebuild |
 
 ## Persistence Interfaces
 
@@ -30,7 +31,7 @@
 
 | Store | Interface | Module | Allowed Callers | Notes |
 |-------|-----------|--------|-----------------|-------|
-| table_name | Database.table_name | db.py | FEATURE-Example.md | row dataclass + CRUD |
+| table_name | `ItemRepository` | persistence/items.py | Item service | SQLAlchemy models remain private |
 
 ## Schemas
 
@@ -44,9 +45,9 @@
 
 ## Migrations
 
-| Migration | Trigger | Action |
+| Revision | Trigger | Action |
 |-----------|---------|--------|
-| initial_schema | startup | Create required stores if absent. |
+| `0001_initial_items` | deployment / explicit migration | Alembic creates required stores. |
 
 ## Config (.env)
 

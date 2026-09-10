@@ -88,6 +88,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-09: Python Targets with relational `DATABASE.md` now require `sqlalchemy.md` and
+  `alembic.md` in `TECHNOLOGY_STACK.md`. QuarterDeck rejects stack approval until both Rigging
+  selections are present, and `drydock plan` blocks before authoring when either is absent.
+  SQLAlchemy repository/DTO boundaries and Alembic revision discipline are distributed as Rigging;
+  `drydock refit --sources` now classifies persistence changes as `unchanged`, `data`, or
+  `rebuild` rather than treating every internal migration as a downstream rebuild.
+
 - 2026-08-30: `drydock diagnose [<Target>] [--run <stamp>] [--apply] [--no-apply]` explains why a
   Target's latest run stopped and proposes durable corrections. It prints a stage ladder derived
   from `PROJECT_STATUS.jsonl` and a failure classification taken from the recorded stop before any

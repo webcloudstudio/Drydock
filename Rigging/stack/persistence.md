@@ -1,6 +1,6 @@
 # Persistence & Service Encapsulation
 
-**Version:** 20260603 V1
+**Version:** 20260909 V2
 **Category:** Persistence
 **Description:** The single boundary rule for all persistent stores and external services — typed access classes, no raw access in application code
 
@@ -25,15 +25,19 @@ outside the wrapper fails review), generalized to every store.
 A code review that finds raw SQL, `os.environ`, `open()` on application data, or a cloud SDK
 import outside its encapsulation class fails.
 
-**ORM exception**: where an ORM is used (Django, SQLAlchemy), the ORM model class *is* the
-table encapsulation and satisfies §1 — do not add a second hand-written layer.
+**ORM rule**: SQLAlchemy models are storage internals, not application interfaces. A project-owned
+repository returns DTOs and is the required application boundary; see `stack/sqlalchemy.md`.
 
 ---
 
-## 1. Relational tables → typed Database class
+## 1. Relational stores → repository interfaces
 
-Each table gets a row dataclass and a CRUD class. One `Database` class composes them and owns
-the connections. Application code calls `db.<table>.method()` — never raw SQL.
+Each store has a project-owned repository whose methods return DTOs. Application code calls a
+service, which calls the repository — never raw SQL or an ORM model. Python relational Targets use
+SQLAlchemy 2 and Alembic; `stack/sqlalchemy.md` and `stack/alembic.md` are mandatory.
+
+**Legacy examples below do not govern Python relational Targets.** They remain background for
+non-ORM adapters only and must not be copied into a Python application.
 
 **Caller contract**: `Database` presents single-threaded semantics. Callers construct one
 instance, share it freely, call methods synchronously, and never reason about threads,

@@ -29,6 +29,7 @@ PROMPT_NAME = "refit_sources_route"
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _EXCLUDED_BLUEPRINTS = frozenset({"COMPASS.md", "MANIFEST.md"})
+_CONTRACT_LEVELS = frozenset({"unchanged", "data", "rebuild"})
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,12 @@ class RoutedStory:
     requirement: str = ""
     depends: tuple[str, ...] = ()
     sections: tuple[str, ...] = ()
-    contract_changed: bool = False
+    contract_level: str = "unchanged"
+
+    @property
+    def contract_changed(self) -> bool:
+        """Whether this change invalidates every consumer contract."""
+        return self.contract_level == "rebuild"
 
 
 @dataclass(frozen=True)
@@ -168,6 +174,9 @@ def parse_route_output(text: str) -> RouteProposal:
             implements = block.attrs.get("implements", "").strip()
             if not story_id or not implements:
                 continue
+            raw_contract = block.attrs.get("contract", "").strip().casefold()
+            # ``changed`` was the prior binary spelling. Existing Target lineage remains valid.
+            contract_level = "rebuild" if raw_contract == "changed" else raw_contract or "unchanged"
             stories.append(
                 RoutedStory(
                     id=story_id,
@@ -177,8 +186,7 @@ def parse_route_output(text: str) -> RouteProposal:
                     requirement=block.attrs.get("requirement", "").strip(),
                     depends=_split(block.attrs.get("depends", "")),
                     sections=_split(block.attrs.get("sections", "")),
-                    contract_changed=block.attrs.get("contract", "").strip().casefold()
-                    == "changed",
+                    contract_level=contract_level,
                 )
             )
         elif block.name == "unseatable":
@@ -225,7 +233,7 @@ def _resolve_collisions(
             requirement=story.requirement,
             depends=tuple(renames.get(item, item) for item in story.depends),
             sections=story.sections,
-            contract_changed=story.contract_changed,
+            contract_level=story.contract_level,
         )
         for story, new_id in zip(stories, resolved_ids, strict=True)
     )
@@ -292,6 +300,10 @@ def validate_route(
             raise SpecificationError(f"Routed story id is not a valid slug: {story.id}")
         if story.scope not in SCOPES:
             raise SpecificationError(f"Routed story {story.id} has unknown scope: {story.scope}")
+        if story.contract_level not in _CONTRACT_LEVELS:
+            raise SpecificationError(
+                f"Routed story {story.id} has unknown contract level: {story.contract_level}"
+            )
 
     existing_ids = [node.block_id for node in manifest.blocks]
     stories = _resolve_collisions(proposal.stories, existing_ids)

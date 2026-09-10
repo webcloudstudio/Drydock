@@ -2674,8 +2674,10 @@ def render_technology_stack(item: dict[str, Any]) -> str:
     from drydock import technology_stack
 
     try:
-        entries = technology_stack.parse(resolve_path(item["path"]).read_text(encoding="utf-8"))
+        source_path = resolve_path(item["path"])
+        entries = technology_stack.parse(source_path.read_text(encoding="utf-8"))
     except HTTPException:
+        source_path = None
         entries = []
     rows = "".join(_tech_row(e.technology, e.rigging, e.notes) for e in entries)
     helper = _render_help_note(item)
@@ -2683,12 +2685,25 @@ def render_technology_stack(item: dict[str, Any]) -> str:
         name.removesuffix(".md").lower().replace("-", "").replace("_", ""): name
         for name in technology_stack.rigging_names()
     })
+    required = (
+        technology_stack.missing_required_rigging(source_path.parent, entries)
+        if source_path is not None
+        else ()
+    )
+    required_note = (
+        "<p class='item-warning'>Python relational persistence requires these Rigging selections: "
+        + ", ".join(html.escape(name) for name in required)
+        + ".</p>"
+        if required
+        else ""
+    )
     return (
         helper
         + "<h1>Technology Stack</h1>"
         + "<p class='q-autosave-hint'>Rows save automatically when you leave a field. "
         f"Set Rigging to {html.escape(technology_stack.NONE_CELL)} when no Rigging guidance "
         "exists — the builder then applies general best practice.</p>"
+        + required_note
         + f"<div class='ts-editor' data-item='{html.escape(item['id'])}' "
         f"data-catalog='{html.escape(catalog)}'>"
         + "<table class='ts-table'><thead><tr>"
@@ -3323,6 +3338,13 @@ def api_approve_item(item_id: str, request: Request = None) -> dict[str, Any]:
                 entries = technology_stack.parse(path.read_text(encoding="utf-8"))
             except OSError:
                 entries = []
+            missing = technology_stack.missing_required_rigging(path.parent, entries)
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Python relational persistence requires Rigging selection: "
+                    + ", ".join(missing),
+                )
             _atomic_write_text(path, technology_stack.render(entries, approved))
         return {"ok": True, "item_id": item_id, "state": "approved", "approved": approved}
 

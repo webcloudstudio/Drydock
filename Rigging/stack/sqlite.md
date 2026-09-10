@@ -1,6 +1,6 @@
 # SQLite Best Practices
 
-**Version:** 20260603 V1  
+**Version:** 20260909 V2
 **Category:** Persistence
 **Description:** SQLite database patterns: schema, queries, migrations, and connection management
 
@@ -11,6 +11,10 @@ Prerequisites: `stack/python.md`, `stack/persistence.md`
 **Encapsulation**: the connection, helpers, and migrations below are the *internals* of the
 `Database`/table classes defined in `stack/persistence.md`. Application code calls
 `db.<table>.method()` — it never calls `get_db()`, `query()`, or `execute()` directly.
+
+**SQLAlchemy override**: Python relational Targets use SQLAlchemy 2 repositories and Alembic.
+The raw `sqlite3` examples in this legacy reference are implementation background only; builders
+must not copy them into application routes, services, or migration code.
 
 ---
 
