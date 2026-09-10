@@ -22,6 +22,7 @@ from typing import Protocol
 
 from drydock.artifact_blocks import RESERVED_BLOCK_NAMESPACE
 from drydock.build_plan import (
+    cascade_reset_from_ids,
     cascade_reset_ids,
     compact_source,
     foundational_source,
@@ -30,6 +31,13 @@ from drydock.build_plan import (
     stale_applied_specs,
 )
 from drydock.change_ticket import parse_ticket_header
+from drydock.database_contract import (
+    create_ticket_migration_records,
+    parse_database_contract,
+    parse_database_interface,
+    staged_operation_ids,
+    validate_database_interfaces,
+)
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.manifest_edit import batch_set_block_fields
@@ -282,6 +290,60 @@ def _patch_manifest(manifest_path: Path, new_rows: str) -> None:
     graph.save()
 
 
+def _database_reset_ids(plan, blueprint_dir: Path) -> tuple[str, ...] | None:
+    """Return the scoped reset closure for planned rebuilding database operations.
+
+    ``None`` means a legacy DATABASE Blueprint without the encapsulation surface; the caller
+    retains the historic whole-file reset for that one migration path. A malformed new contract
+    is an error, never a reason to broaden a reset.
+    """
+    database_path = blueprint_dir / "DATABASE.md"
+    text = database_path.read_text(encoding="utf-8")
+    if "## Access Patterns" not in text:
+        return None
+    contract = parse_database_contract(text, source=str(database_path))
+    interfaces = {
+        path.name: parse_database_interface(path.read_text(encoding="utf-8"), source=path.name)
+        for path in blueprint_dir.glob("*.md")
+        if path.name not in {"DATABASE.md", "DATABASE_compact.md"}
+        and not path.name.endswith("_compact.md")
+    }
+    validate_database_interfaces(contract, interfaces)
+    patterns = contract.by_id()
+    staged = staged_operation_ids(blueprint_dir)
+    unknown = set(staged) - set(patterns)
+    if unknown:
+        raise SpecificationError(
+            "Blueprint migration references unknown access pattern(s): "
+            + ", ".join(sorted(unknown))
+        )
+    # The published contract implements rebuild sensitivity for all Blueprint types. ``data``
+    # and ``unchanged`` therefore preserve consumers until a later sensitivity policy is added.
+    rebuilding = {
+        identifier for identifier in staged if patterns[identifier].compatibility == "rebuild"
+    }
+    consumer_seeds = {
+        block.block_id
+        for block in plan.blocks
+        for blueprint, uses in interfaces.items()
+        if block.fields.get("implements", ()) == (blueprint,)
+        and any(use.identifier in rebuilding for use in uses)
+    }
+    # Rebuild the persistence owner without treating it as a broad dependency seed: legacy
+    # feature graphs commonly depend on DATABASE.md as a whole, which would defeat operation
+    # encapsulation by pulling every feature back into the reset closure.
+    database_seeds = {
+        block.block_id
+        for block in plan.blocks
+        if "DATABASE.md" in block.fields.get("implements", ())
+    }
+    return tuple(
+        block.block_id
+        for block in plan.blocks
+        if block.block_id in database_seeds | set(cascade_reset_from_ids(plan, consumer_seeds))
+    )
+
+
 def _reconcile_drift(
     manifest_path: Path,
     blueprint_dir: Path,
@@ -318,7 +380,16 @@ def _reconcile_drift(
     if not resettable:
         return [], errors
 
-    all_ids = cascade_reset_ids(plan, [spec.rel_path for spec in resettable])
+    resets_by_path: dict[str, tuple[str, ...]] = {}
+    for spec in resettable:
+        if spec.rel_path == "DATABASE.md":
+            scoped = _database_reset_ids(plan, blueprint_dir)
+            resets_by_path[spec.rel_path] = (
+                cascade_reset_ids(plan, [spec.rel_path]) if scoped is None else scoped
+            )
+        else:
+            resets_by_path[spec.rel_path] = cascade_reset_ids(plan, [spec.rel_path])
+    all_ids = tuple(dict.fromkeys(item for ids in resets_by_path.values() for item in ids))
     by_id = plan.by_id()
     updates: dict[str, dict[str, str | None]] = {
         block_id: {"state": "pending"} for block_id in all_ids if by_id[block_id].state != "pending"
@@ -340,7 +411,7 @@ def _reconcile_drift(
         RefitReset(
             path=spec.rel_path,
             foundational=foundational_source(spec.rel_path) is not None,
-            reset_ids=cascade_reset_ids(plan, [spec.rel_path]),
+            reset_ids=resets_by_path[spec.rel_path],
         )
         for spec in resettable
     ]
@@ -376,6 +447,7 @@ def refit_target(
     today = date.today().isoformat()
     items: list[RefitItem] = []
     amended_sources: set[str] = set()
+    database_ticket_texts: list[str] = []
 
     for ticket_path in tickets:
         assert prompt is not None
@@ -453,6 +525,7 @@ def refit_target(
 
         if ticket_content:
             ticket_path.write_text(ticket_content.rstrip() + "\n", encoding="utf-8", newline="\n")
+            ticket_text = ticket_content
 
         if manifest_rows:
             _patch_manifest(manifest_path, manifest_rows)
@@ -465,6 +538,10 @@ def refit_target(
             )
         )
 
+        if amends == "DATABASE.md":
+            database_ticket_texts.append(ticket_text)
+
+    create_ticket_migration_records(blueprint_dir, database_ticket_texts)
     resets, drift_errors = _reconcile_drift(manifest_path, blueprint_dir, amended_sources)
 
     return RefitResult(target_dir=target_dir, items=items, resets=resets, drift_errors=drift_errors)

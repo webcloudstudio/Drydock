@@ -93,6 +93,7 @@ from drydock.config import (
     get_sandbox_mem_limit_mb,
     max_consecutive_stalls,
 )
+from drydock.database_contract import mark_migrations_built
 from drydock.decisions import load_decisions, render_commander_guidance
 from drydock.dependency_gate import (
     DependencyGateResult,
@@ -3755,6 +3756,11 @@ def build_target(
             if changed:
                 set_applied_registry(manifest_path, updated_registry)
         if status not in {"failed", "blocked"}:
+            database_built = any(
+                "DATABASE.md" in step.fields.get("implements", ()) for step in unit.steps
+            )
+            if database_built:
+                mark_migrations_built(blueprint_dir)
             applied_specs = dict(parse_build_plan(manifest_path).applied_specs)
             applied_at = datetime.now(UTC).isoformat(timespec="seconds")
             changed = False

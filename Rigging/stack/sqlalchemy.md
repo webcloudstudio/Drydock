@@ -19,7 +19,7 @@ route → service → repository → SQLAlchemy session/model → database
 Only `persistence/` imports SQLAlchemy. Routes and services receive DTOs and call repository
 methods. They never receive an ORM model, `Session`, `Row`, SQL string, table name, or column name.
 
-Each public repository method corresponds to one `DATA-<DOMAIN>-<NNN>` contract in `DATABASE.md`.
+Each public repository method corresponds to one feature-owned `FEATURE-<DOMAIN>-<NNN>` contract in `DATABASE.md`.
 Its signature and DTO input/output are the public persistence API.
 
 ```python

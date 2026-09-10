@@ -43,7 +43,8 @@ Planning decomposed the original source into stories; you decompose what changed
   the feature that uses it. A migration buried in a display specification has no ticket
   authorizing it, and the build will not perform it.
 - **Alembic migration:** A relational persistence change that alters physical schema emits one
-  `DATABASE.md` story containing an Alembic revision. Its `contract` is `unchanged` when every
+  `DATABASE.md` story and one `blueprint/migrations/MIGRATION-<AccessPatternId>.md` ledger record
+  containing Alembic `upgrade`/`downgrade` snippets. Its `contract` is `unchanged` when every
   named repository-call input, output, nullability, type, and behavior remains unchanged;
   `data` when an observable input/output type or nullability changes; and `rebuild` when a call
   is removed or renamed, an input becomes required, an output field is removed, or semantics

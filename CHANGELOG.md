@@ -8,6 +8,27 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-09-10: `DATABASE.md` now has a parsed, feature-owned persistence contract. Its named
+  `FEATURE-<DOMAIN>-<NNN>` access patterns declare owner, read/write access, repository call,
+  typed DTO input/output fields, and compatibility. Feature and screen Blueprints may cite only
+  those operations through `## Database Interface`; Drydock rejects cross-owner calls and
+  undeclared supplied or returned fields.
+
+- 2026-09-10: Relational schema work now has a Blueprint-owned migration ledger at
+  `blueprint/migrations/MIGRATION-<AccessPatternId>.md`. Records hold Alembic revision metadata,
+  `upgrade`/`downgrade` snippets, and `planned`/`built`/`applied` state. A successful
+  `DATABASE.md` build advances planned records to `built`.
+
+### Changed
+
+- 2026-09-10: `drydock refit` now scopes an unapplied `rebuild` database migration to Manifest
+  stories whose Blueprint `## Database Interface` cites the affected access pattern, then resets
+  only their dependency closure. The DATABASE owner story is rebuilt without using it as a broad
+  cascade seed; `data` and `unchanged` records leave consumers intact until a consumer-sensitivity
+  policy is introduced.
+
 ### Fixed
 
 - 2026-08-30: Drydock's recorded project state is now resolved at milestone granularity — INIT,

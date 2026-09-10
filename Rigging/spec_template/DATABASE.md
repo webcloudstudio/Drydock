@@ -21,9 +21,27 @@
 
 ## Access Patterns
 
-| ID | Caller | Operation | Repository call | Input / Output | Compatibility |
-|----|--------|-----------|-------|-----------|-------|
-| DATA-EXAMPLE-001 | FEATURE-Example.md | Create item | `ItemRepository.create()` | `CreateItem` → `Item` | rebuild |
+### FEATURE-EXAMPLE-001 — Create item
+
+| Field | Value |
+|-------|-------|
+| Owner | FEATURE-Example.md |
+| Access | write |
+| Repository operation | `ItemRepository.create(CreateItem) -> Item` |
+| Compatibility | rebuild |
+
+Input: CreateItem
+
+| Field | Type | Required |
+|-------|------|----------|
+| name | str | yes |
+
+Output: Item
+
+| Field | Type |
+|-------|------|
+| id | UUID |
+| name | str |
 
 ## Persistence Interfaces
 
@@ -45,9 +63,13 @@
 
 ## Migrations
 
-| Revision | Trigger | Action |
-|-----------|---------|--------|
-| `0001_initial_items` | deployment / explicit migration | Alembic creates required stores. |
+Each relational change has one staged record in `migrations/MIGRATION-<AccessPatternId>.md`.
+The record carries Alembic `upgrade`/`downgrade` snippets and progresses from `planned` to `built`
+only when its DATABASE build story completes. Alembic records deployment application separately.
+
+| Access Pattern | Revision | State |
+|----------------|----------|-------|
+| FEATURE-EXAMPLE-001 | `0001_initial_items` | planned |
 
 ## Config (.env)
 

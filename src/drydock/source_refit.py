@@ -16,6 +16,7 @@ from pathlib import Path
 
 from drydock import change_ticket, lineage_impact, lineage_route, target_git
 from drydock.compass_sources import is_compass_source
+from drydock.database_contract import create_ticket_migration_records
 from drydock.errors import SpecificationError
 from drydock.lineage import (
     Requirement,
@@ -239,6 +240,12 @@ def source_refit_target(
         for path in changes_directory.glob("*.md")
         if path.is_file()
     }
+    migrations_directory = blueprint_dir / "migrations"
+    original_migrations = {
+        path: path.read_text(encoding="utf-8")
+        for path in migrations_directory.glob("MIGRATION-*.md")
+        if path.is_file()
+    }
 
     def rollback() -> None:
         manifest_path.write_text(original_manifest, encoding="utf-8", newline="\n")
@@ -247,6 +254,12 @@ def source_refit_target(
             if path not in original_tickets:
                 path.unlink()
         for path, content in original_tickets.items():
+            path.write_text(content, encoding="utf-8", newline="\n")
+        if migrations_directory.is_dir():
+            for path in migrations_directory.glob("MIGRATION-*.md"):
+                if path not in original_migrations:
+                    path.unlink()
+        for path, content in original_migrations.items():
             path.write_text(content, encoding="utf-8", newline="\n")
 
     diffs = []
@@ -330,11 +343,16 @@ def source_refit_target(
                 ),
             )
             ticket_path = changes_directory / filename
+            rendered_ticket = change_ticket.render_ticket(
+                header, name=name, body=body, parent_text=parent_text
+            )
             ticket_path.write_text(
-                change_ticket.render_ticket(header, name=name, body=body, parent_text=parent_text),
+                rendered_ticket,
                 encoding="utf-8",
                 newline="\n",
             )
+            if blueprint == "DATABASE.md":
+                create_ticket_migration_records(blueprint_dir, [rendered_ticket])
             for story in group:
                 manifest.add(
                     DrydockManifest.create_node(

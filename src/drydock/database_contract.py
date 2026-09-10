@@ -1,0 +1,357 @@
+"""Typed Blueprint contracts for encapsulated relational persistence.
+
+``DATABASE.md`` owns the public repository operations.  Feature Blueprints only name those
+operations through ``## Database Interface``; tables and Alembic implementation remain private.
+Migration records under ``blueprint/migrations/`` are Drydock's planned/built ledger.  They are
+not executable Alembic files and therefore never claim that a deployed database was upgraded.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from pathlib import Path
+
+from drydock.errors import SpecificationError
+
+_SECTION_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
+_H3_RE = re.compile(r"^###\s+([A-Z][A-Z0-9-]*-\d{3})\s+—\s+(.+?)\s*$", re.MULTILINE)
+_TABLE_ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$")
+_INPUT_OUTPUT_RE = re.compile(r"^(Input|Output):\s*(.+?)\s*$", re.MULTILINE)
+_INTERFACE_RE = re.compile(
+    r"^\s*-\s+`(?P<id>[A-Z][A-Z0-9-]*-\d{3})`\s+—\s+"
+    r"(?P<access>read|write)\s*:\s*.*?\s+-\s+supplies:\s*(?P<input>.*?)"
+    r"\s+-\s+returns:\s*(?P<output>.*?)\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+_MIGRATION_FILE_RE = re.compile(r"^MIGRATION-([A-Z][A-Z0-9-]*-\d{3})\.md$")
+_OPERATION_ID_RE = re.compile(r"\b([A-Z][A-Z0-9-]*-\d{3})\b")
+_COMPATIBILITY = frozenset({"unchanged", "data", "rebuild"})
+_MIGRATION_STATES = frozenset({"planned", "built", "applied"})
+
+
+@dataclass(frozen=True)
+class Field:
+    name: str
+    type: str
+    required: bool = False
+
+
+@dataclass(frozen=True)
+class AccessPattern:
+    identifier: str
+    owner: str
+    access: str
+    repository_operation: str
+    compatibility: str
+    input_name: str
+    inputs: tuple[Field, ...]
+    output_name: str
+    outputs: tuple[Field, ...]
+
+
+@dataclass(frozen=True)
+class DatabaseContract:
+    patterns: tuple[AccessPattern, ...]
+
+    def by_id(self) -> dict[str, AccessPattern]:
+        return {item.identifier: item for item in self.patterns}
+
+
+@dataclass(frozen=True)
+class DatabaseUse:
+    identifier: str
+    access: str
+    supplies: tuple[str, ...]
+    returns: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MigrationRecord:
+    path: Path
+    access_pattern: str
+    revision: str
+    compatibility: str
+    state: str
+
+
+def _section(text: str, heading: str) -> str:
+    match = next((m for m in _SECTION_RE.finditer(text) if m.group(1).strip() == heading), None)
+    if match is None:
+        return ""
+    next_match = _SECTION_RE.search(text, match.end())
+    return text[match.end() : next_match.start() if next_match else len(text)]
+
+
+def _rows(text: str) -> list[tuple[str, str]]:
+    result: list[tuple[str, str]] = []
+    for line in text.splitlines():
+        match = _TABLE_ROW_RE.match(line.strip())
+        if not match:
+            continue
+        left, right = (part.strip() for part in match.groups())
+        if left.casefold() == "field" or set(left) <= {"-", ":"}:
+            continue
+        result.append((left, right))
+    return result
+
+
+def _field_table(text: str, start: int) -> tuple[Field, ...]:
+    fields: list[Field] = []
+    seen_table = False
+    for line in text[start:].splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if seen_table:
+                break
+            continue
+        if not stripped.startswith("|"):
+            if seen_table:
+                break
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if cells[0].casefold() == "field" or set(cells[0]) <= {"-", ":"}:
+            seen_table = True
+            continue
+        if len(cells) < 2:
+            continue
+        seen_table = True
+        fields.append(
+            Field(
+                name=cells[0].strip("`"),
+                type=cells[1].strip("`"),
+                required=len(cells) > 2 and cells[2].casefold() in {"yes", "true", "required"},
+            )
+        )
+    return tuple(fields)
+
+
+def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> DatabaseContract:
+    """Parse the public operation surface from a DATABASE Blueprint."""
+    access_patterns = _section(text, "Access Patterns")
+    if not access_patterns.strip():
+        raise SpecificationError(f"{source}: missing required ## Access Patterns section")
+    patterns: list[AccessPattern] = []
+    matches = list(_H3_RE.finditer(access_patterns))
+    if not matches:
+        raise SpecificationError(f"{source}: ## Access Patterns has no named operation")
+    for index, match in enumerate(matches):
+        block = access_patterns[
+            match.end() : matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(access_patterns)
+        ]
+        metadata = {key.casefold(): value for key, value in _rows(block)}
+        missing = [
+            label
+            for label in ("owner", "access", "repository operation", "compatibility")
+            if not metadata.get(label)
+        ]
+        if missing:
+            raise SpecificationError(
+                f"{source}: {match.group(1)} missing access-pattern field(s): {', '.join(missing)}"
+            )
+        access = metadata["access"].casefold()
+        compatibility = metadata["compatibility"].casefold()
+        if access not in {"read", "write"}:
+            raise SpecificationError(f"{source}: {match.group(1)} has invalid Access: {access}")
+        if compatibility not in _COMPATIBILITY:
+            raise SpecificationError(
+                f"{source}: {match.group(1)} has invalid Compatibility: {compatibility}"
+            )
+        io = list(_INPUT_OUTPUT_RE.finditer(block))
+        values: dict[str, tuple[str, tuple[Field, ...]]] = {}
+        for io_match in io:
+            values[io_match.group(1).casefold()] = (
+                io_match.group(2).strip("` "),
+                _field_table(block, io_match.end()),
+            )
+        if "input" not in values or "output" not in values:
+            raise SpecificationError(f"{source}: {match.group(1)} requires Input and Output tables")
+        patterns.append(
+            AccessPattern(
+                identifier=match.group(1),
+                owner=metadata["owner"].strip(),
+                access=access,
+                repository_operation=metadata["repository operation"].strip("`"),
+                compatibility=compatibility,
+                input_name=values["input"][0],
+                inputs=values["input"][1],
+                output_name=values["output"][0],
+                outputs=values["output"][1],
+            )
+        )
+    ids = [pattern.identifier for pattern in patterns]
+    if len(ids) != len(set(ids)):
+        raise SpecificationError(f"{source}: duplicate access-pattern identifier")
+    return DatabaseContract(tuple(patterns))
+
+
+def parse_database_interface(text: str, *, source: str = "Blueprint") -> tuple[DatabaseUse, ...]:
+    """Read a Blueprint's optional database-interface declaration."""
+    section = _section(text, "Database Interface")
+    if not section.strip():
+        return ()
+    uses: list[DatabaseUse] = []
+    for match in _INTERFACE_RE.finditer(section):
+        uses.append(
+            DatabaseUse(
+                identifier=match.group("id"),
+                access=match.group("access").casefold(),
+                supplies=_names(match.group("input")),
+                returns=_names(match.group("output")),
+            )
+        )
+    if not uses:
+        raise SpecificationError(f"{source}: malformed ## Database Interface entry")
+    return tuple(uses)
+
+
+def _names(value: str) -> tuple[str, ...]:
+    return tuple(
+        item.strip().strip("`") for item in value.split(",") if item.strip() and item.strip() != "—"
+    )
+
+
+def validate_database_interfaces(
+    contract: DatabaseContract, interfaces: Mapping[str, Iterable[DatabaseUse]]
+) -> None:
+    """Reject feature contracts that escape the declared persistence API."""
+    patterns = contract.by_id()
+    for blueprint, uses in interfaces.items():
+        for use in uses:
+            pattern = patterns.get(use.identifier)
+            if pattern is None:
+                raise SpecificationError(
+                    f"{blueprint}: unknown database operation {use.identifier}"
+                )
+            if pattern.owner != blueprint:
+                raise SpecificationError(
+                    f"{blueprint}: {use.identifier} is owned by {pattern.owner}, not this Blueprint"
+                )
+            if use.access != pattern.access:
+                raise SpecificationError(
+                    f"{blueprint}: {use.identifier} declares {use.access}, expected {pattern.access}"
+                )
+            allowed_input = {field.name for field in pattern.inputs}
+            allowed_output = {field.name for field in pattern.outputs}
+            required_input = {field.name for field in pattern.inputs if field.required}
+            supplied, returned = set(use.supplies), set(use.returns)
+            if unknown := supplied - allowed_input:
+                raise SpecificationError(
+                    f"{blueprint}: {use.identifier} supplies undeclared field(s): {', '.join(sorted(unknown))}"
+                )
+            if missing := required_input - supplied:
+                raise SpecificationError(
+                    f"{blueprint}: {use.identifier} omits required field(s): {', '.join(sorted(missing))}"
+                )
+            if unknown := returned - allowed_output:
+                raise SpecificationError(
+                    f"{blueprint}: {use.identifier} returns undeclared field(s): {', '.join(sorted(unknown))}"
+                )
+
+
+def migration_records(blueprint_dir: Path) -> tuple[MigrationRecord, ...]:
+    """Load Blueprint migration ledger records. Missing ledger means no staged migration."""
+    directory = blueprint_dir / "migrations"
+    if not directory.is_dir():
+        return ()
+    records: list[MigrationRecord] = []
+    for path in sorted(directory.glob("MIGRATION-*.md")):
+        match = _MIGRATION_FILE_RE.match(path.name)
+        if match is None:
+            continue
+        text = path.read_text(encoding="utf-8")
+        rows = {key.casefold(): value for key, value in _rows(text)}
+        access_pattern = rows.get("access pattern", match.group(1)).strip()
+        compatibility = rows.get("compatibility", "").casefold()
+        state = rows.get("state", "planned").casefold()
+        if access_pattern != match.group(1):
+            raise SpecificationError(f"{path}: Access Pattern must match its filename")
+        if compatibility not in _COMPATIBILITY or state not in _MIGRATION_STATES:
+            raise SpecificationError(f"{path}: invalid Compatibility or State")
+        if not _section(text, "Upgrade").strip() or not _section(text, "Downgrade").strip():
+            raise SpecificationError(f"{path}: requires ## Upgrade and ## Downgrade snippets")
+        records.append(
+            MigrationRecord(
+                path, access_pattern, rows.get("revision", "").strip(), compatibility, state
+            )
+        )
+    return tuple(records)
+
+
+def staged_operation_ids(blueprint_dir: Path) -> tuple[str, ...]:
+    """Operations with a migration not yet built into the generated application."""
+    return tuple(
+        record.access_pattern
+        for record in migration_records(blueprint_dir)
+        if record.state == "planned"
+    )
+
+
+def mark_migrations_built(blueprint_dir: Path) -> tuple[Path, ...]:
+    """Advance planned ledger records after their DATABASE build story completes."""
+    changed: list[Path] = []
+    for record in migration_records(blueprint_dir):
+        if record.state != "planned":
+            continue
+        text = record.path.read_text(encoding="utf-8")
+        updated, count = re.subn(r"(?m)^(\|\s*State\s*\|\s*)planned(\s*\|\s*)$", r"\1built\2", text)
+        if count != 1:
+            raise SpecificationError(f"{record.path}: requires one State row")
+        record.path.write_text(updated, encoding="utf-8", newline="\n")
+        changed.append(record.path)
+    return tuple(changed)
+
+
+def create_ticket_migration_records(
+    blueprint_dir: Path, ticket_texts: Iterable[str]
+) -> tuple[Path, ...]:
+    """Create planned ledger records for DATABASE ticket operations not already recorded.
+
+    A ticket names affected operation ids; its migration blocks remain intentionally skeletal
+    until the DATABASE build story renders the application-specific Alembic directives.
+    """
+    database_path = blueprint_dir / "DATABASE.md"
+    if not database_path.is_file() or "## Access Patterns" not in database_path.read_text(
+        encoding="utf-8"
+    ):
+        return ()
+    contract = parse_database_contract(database_path.read_text(encoding="utf-8"))
+    patterns = contract.by_id()
+    requested = {
+        identifier
+        for text in ticket_texts
+        for identifier in _OPERATION_ID_RE.findall(text)
+        if identifier in patterns
+    }
+    existing = {record.access_pattern for record in migration_records(blueprint_dir)}
+    directory = blueprint_dir / "migrations"
+    created: list[Path] = []
+    for identifier in sorted(requested - existing):
+        pattern = patterns[identifier]
+        path = directory / f"MIGRATION-{identifier}.md"
+        directory.mkdir(parents=True, exist_ok=True)
+        revision = identifier.casefold().replace("-", "_")
+        path.write_text(
+            f"# Migration: {identifier}\n\n"
+            "| Field | Value |\n"
+            "|---|---|\n"
+            f"| Access Pattern | {identifier} |\n"
+            f"| Revision | {revision} |\n"
+            f"| Compatibility | {pattern.compatibility} |\n"
+            "| State | planned |\n\n"
+            "## Upgrade\n\n"
+            "```python\n"
+            f"# Implement the {identifier} schema change with Alembic op directives.\n"
+            "```\n\n"
+            "## Downgrade\n\n"
+            "```python\n"
+            f"# Reverse the {identifier} schema change when supported.\n"
+            "```\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        created.append(path)
+    return tuple(created)

@@ -676,7 +676,7 @@ and do not raise a stack questionnaire; the Commander edits this file directly.
 
 When a Python product persists relational data, emit all three rows: `Python` → `python.md`,
 `SQLAlchemy` → `sqlalchemy.md`, and `Alembic` → `alembic.md`. For each route or service that reads
-or writes persistent data, identify a stable repository-call contract `DATA-<DOMAIN>-<NNN>`, its
+or writes persistent data, identify a stable repository-call contract `FEATURE-<DOMAIN>-<NNN>`, its
 DTO input/output, and consumer sensitivity: `rebuild` for web or `data` for API, CLI, worker, and
 library consumers. Typed Blueprint authoring records those contracts in `DATABASE.md`; routes cite
 the call id and fields, never a table, column, ORM model, session, or SQL statement.

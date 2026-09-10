@@ -739,14 +739,17 @@ table names, and column names never cross that boundary. A storage change that l
 repository-call contract unchanged does not invalidate downstream features.
 
 Every `DATABASE.md` includes `## Access Patterns` and `## Persistence Interfaces` before schema
-details. Every access pattern has a stable `DATA-<DOMAIN>-<NNN>` id, repository method, DTO input
-and output shapes, consumers, and compatibility level: `unchanged`, `data`, or `rebuild`.
-Route and screen Blueprints cite only those ids and the fields they render or accept; they do not
-cite a physical store. Persistence interfaces name the repository, module location, and allowed
-callers.
+details. Every access pattern has a stable feature-owned `FEATURE-<DOMAIN>-<NNN>` id, Owner,
+read/write access, repository method, DTO input and output shapes, and compatibility level:
+`unchanged`, `data`, or `rebuild`. Route and screen Blueprints cite only those ids through an
+optional `## Database Interface` section, including only fields they supply or receive; they do
+not cite a physical store. Persistence interfaces name the repository, module location, and
+allowed callers.
 
 Python relational persistence requires `sqlalchemy.md` and `alembic.md` in the Technology Stack.
-SQLAlchemy owns runtime access; Alembic owns every schema revision.
+SQLAlchemy owns runtime access; Alembic owns every schema revision. A Blueprint migration ledger
+record lives at `blueprint/migrations/MIGRATION-<AccessPatternId>.md`; it holds `upgrade` and
+`downgrade` snippets and is `planned` until the DATABASE build story completes, then `built`.
 
 `ARCHITECTURE.md` includes a module ownership table for persistence, configuration, file-store, and
 external-service boundaries. It states which module owns each boundary and which low-level APIs that

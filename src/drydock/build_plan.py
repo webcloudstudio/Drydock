@@ -963,6 +963,12 @@ def cascade_reset_ids(plan: BuildPlan, changed_files: Iterable[str]) -> tuple[st
         if refs & variants:
             reset.add(block.block_id)
 
+    return cascade_reset_from_ids(plan, reset)
+
+
+def cascade_reset_from_ids(plan: BuildPlan, seed_ids: Iterable[str]) -> tuple[str, ...]:
+    """Expand explicit Manifest reset seeds through dependency and parent relationships."""
+    reset = set(seed_ids)
     changed_pass = True
     while changed_pass:
         changed_pass = False

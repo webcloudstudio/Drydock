@@ -8,6 +8,7 @@ from pathlib import Path
 from drydock.refit import (
     RefitResult,
     _assemble_refit_prompt,
+    _database_reset_ids,
     _find_block_boundaries,
     _parse_amends,
     _parse_parent_depends,
@@ -628,6 +629,113 @@ class TestDriftReconciliation:
         assert "DATABASE.md" not in plan.applied_specs
         # SCREEN-A.md was stamped by the reset screen-a block, so it is dropped too.
         assert "SCREEN-A.md" not in plan.applied_specs
+
+
+def test_database_drift_resets_only_consumers_of_unbuilt_rebuild_operation(tmp_path):
+    from drydock.build_plan import parse_build_plan
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "DATABASE.md").write_text(
+        """# DATABASE: Demo
+
+## Access Patterns
+
+### FEATURE-ORDER-001 — Create order
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-Order.md |
+| Access | write |
+| Repository operation | OrderRepository.create(CreateOrder) -> Order |
+| Compatibility | rebuild |
+
+Input: CreateOrder
+
+| Field | Type | Required |
+|---|---|---|
+| customer_id | UUID | yes |
+
+Output: Order
+
+| Field | Type |
+|---|---|
+| id | UUID |
+""",
+        encoding="utf-8",
+    )
+    (blueprint / "FEATURE-Order.md").write_text(
+        """# FEATURE: Order
+
+## Database Interface
+
+- `FEATURE-ORDER-001` — write: create order - supplies: `customer_id` - returns: `id`
+""",
+        encoding="utf-8",
+    )
+    (blueprint / "FEATURE-Inventory.md").write_text("# FEATURE: Inventory\n", encoding="utf-8")
+    ledger = blueprint / "migrations"
+    ledger.mkdir()
+    (ledger / "MIGRATION-FEATURE-ORDER-001.md").write_text(
+        """# Migration: FEATURE-ORDER-001
+
+| Field | Value |
+|---|---|
+| Access Pattern | FEATURE-ORDER-001 |
+| Revision | add_orders |
+| Compatibility | rebuild |
+| State | planned |
+
+## Upgrade
+
+```python
+op.create_table("orders")
+```
+
+## Downgrade
+
+```python
+op.drop_table("orders")
+```
+""",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "MANIFEST.md"
+    manifest.write_text(
+        """# MANIFEST: Demo
+state: approved
+
+## story 1: Database
+id: database
+implements: DATABASE.md
+state: closed/verified
+
+## story 2: Orders
+id: orders
+implements: FEATURE-Order.md
+depends: database
+state: closed/verified
+
+## story 3: Order view
+id: order-view
+implements: SCREEN-Orders.md
+depends: orders
+state: closed/verified
+
+## story 4: Inventory
+id: inventory
+implements: FEATURE-Inventory.md
+depends: database
+state: closed/verified
+""",
+        encoding="utf-8",
+    )
+
+    assert _database_reset_ids(parse_build_plan(manifest), blueprint) == (
+        "database",
+        "orders",
+        "order-view",
+    )
 
 
 class TestRefitVoidsVerifications:
