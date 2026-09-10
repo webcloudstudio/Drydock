@@ -54,6 +54,20 @@ def test_unavailable_acceptance_tooling_creates_blocking_decision(tmp_path):
     assert "health" in decisions[0].description
 
 
+def test_unavailable_runtime_python_package_still_creates_blocking_decision(tmp_path):
+    blocks = {
+        "FEATURE-Health.md": "# FEATURE: Health\n\n## Programmatic Acceptance\n\n### health\n"
+        "Requires: python-package=missing-package; scope=runtime\n\n```python\nassert True\n```\n"
+    }
+
+    decisions = project_plan_requirement_decisions(
+        blocks, target_dir=tmp_path, build_dir=tmp_path / "build"
+    )
+
+    assert len(decisions) == 1
+    assert "missing-package" in decisions[0].description
+
+
 def test_manifest_gate_reads_only_unanswered_blocking_decisions(tmp_path):
     target = tmp_path / "Demo"
     blueprint = target / "blueprint"

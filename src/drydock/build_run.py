@@ -54,6 +54,7 @@ from drydock.acceptance_env import read_staged_assets, repair_staged_asset_env
 from drydock.acceptance_requirements import (
     authorization_for,
     discover_missing_requirement,
+    is_automatic_test_requirement,
     record_requirement_decision,
     requirement_available,
 )
@@ -3090,7 +3091,11 @@ def build_target(
                                 (
                                     (check, requirement)
                                     for check in failed_checks
-                                    if (requirement := discover_missing_requirement(check.stderr))
+                                    if (
+                                        requirement := discover_missing_requirement(
+                                            check.stderr, build_dir=resolved_build_dir
+                                        )
+                                    )
                                     is not None
                                     and all(
                                         declared.kind != requirement.kind
@@ -3104,7 +3109,9 @@ def build_target(
                                 ),
                                 None,
                             )
-                            if undeclared is not None:
+                            if undeclared is not None and not is_automatic_test_requirement(
+                                undeclared[1]
+                            ):
                                 failed_result, requirement = undeclared
                                 declared_check = next(
                                     item

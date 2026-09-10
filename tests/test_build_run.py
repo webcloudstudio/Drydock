@@ -25,7 +25,7 @@ from drydock.build_run import (
     _ungate_acceptance_plan,
     build_target,
 )
-from drydock.decisions import Decision, load_decisions, write_decisions
+from drydock.decisions import Decision, write_decisions
 from drydock.dependency_gate import RegistryPackageInfo
 from drydock.errors import SpecificationError, write_error_record
 
@@ -3905,7 +3905,7 @@ assert "failed" not in result.stdout.lower()
 """
 
 
-def test_undeclared_runtime_prerequisite_blocks_without_repair_and_preserves_work(tmp_path):
+def test_undeclared_test_package_fails_acceptance_without_a_question(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         """# DATABASE: Demo
@@ -3954,16 +3954,12 @@ assert health() == "ok"
         repair_attempts=3,
     )
 
-    assert calls == [0]
-    assert result.steps[0].status == "blocked"
-    assert _state(target_dir, "foundation") == "blocked/questions"
+    assert calls == [0, 1, 2]
+    assert result.steps[0].status == "failed"
+    assert _state(target_dir, "foundation") == "closed/failed"
     assert (build_dir / "target_app.py").is_file()
-    decision = load_decisions(target_dir / "DECISIONS.json")[0]
-    assert decision.origin == "build"
-    assert decision.severity == "blocking"
-    assert "python-package=surprise_transport" in decision.description
     evidence = result.steps[0].evidence_path.read_text(encoding="utf-8")
-    assert "acceptance prerequisite requires authorization" in evidence
+    assert "programmatic acceptance failed" in evidence
 
 
 def test_active_commander_guidance_is_injected_into_build_prompt(tmp_path):
@@ -4031,12 +4027,8 @@ def test_build_without_an_example_writes_no_env(tmp_path):
     assert not (build_dir / ".env").exists()
 
 
-def test_undeclared_runtime_prerequisite_fails_loudly_under_override(tmp_path):
-    """Override refuses to park a story on a question it can never answer.
-
-    The prerequisite really is absent and acceptance really did fail on it. Blocking exits 0 and
-    reads as success to an unattended driver; failing is the honest signal.
-    """
+def test_undeclared_test_package_stays_failed_under_override(tmp_path):
+    """Automatic test dependencies leave a missing undeclared package as an ordinary failure."""
     target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         """# DATABASE: Demo
@@ -4087,8 +4079,7 @@ assert health() == "ok"
     assert result.steps[0].status == "failed"
     assert _state(target_dir, "foundation") == "closed/failed"
     assert result.exit_code() == 1
-    authorization = [w for w in result.waivers if w.kind == "acceptance-authorization"]
-    assert authorization and "surprise_transport" in authorization[0].detail
+    assert not [w for w in result.waivers if w.kind == "acceptance-authorization"]
     # Partial work is still preserved for the next pass.
     assert (build_dir / "target_app.py").is_file()
 

@@ -120,7 +120,7 @@ drydock build MyApp --capture-output-limit 64   # a legitimately loud conformanc
 | **import** | `drydock import <Target>` | import source material<br>**Creates:** `targets/<Target>/sources` |
 | **analyze** | `drydock analyze <Target>` | Decompose into stories, acceptance criteria, questions, and blockers.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, questionnaires. |
 | **plan** | `drydock plan <Target>` | Create story blueprints and a graph datbase.<br>**Creates:** `blueprints/` and `MANIFEST.md`.<br>`drydock plan verify <Target>` reports acceptance criteria that cannot run; `drydock plan repair <Target>` makes them runnable in one pass. |
-| **build** | `drydock build <Target>` | Executes context-aware builds gated by deterministic acceptance criteria.<br>**Creates:** `\$drydock_build_directory/<Target>` with working software. |
+| **build** | `drydock build <Target>` | Executes context-aware builds gated by deterministic acceptance criteria. Test-scoped Python acceptance dependencies are automatically authorized; runtime dependencies and external executables remain governed.<br>**Creates:** `\$drydock_build_directory/<Target>` with working software. |
 | **refit** | `drydock refit <Target>` | git diff changes into change tickets and Manifest nodes.<br>**Updates:** `Blueprints/`, `MANIFEST.md`; continue with a  `build`. |
 
 ## The Drydock CLI

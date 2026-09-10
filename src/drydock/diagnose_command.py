@@ -16,11 +16,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock import __copyright__
 from drydock.diagnose_apply import Outcome, resolve
 from drydock.diagnose_evidence import collect
 from drydock.diagnose_ladder import render_ladder
-from drydock.diagnose_report import diagnose_run, write_report
+from drydock.diagnose_report import diagnose_run, render_terminal, write_report
 from drydock.errors import UsageError
 
 #: Printed when the operator has to do something before this command can work.
@@ -68,9 +67,6 @@ def run(
         out(NEXT_STEP.format(command=f"drydock init {target}"))
         return Result(exit_code=2)
 
-    out(__copyright__)
-    out("")
-
     bundle = collect(target, workspace, target_dir, run=run_stamp)
     headline = (
         bundle.stop.headline if bundle.stop else f"Drydock recorded no live failure for {target}"
@@ -101,13 +97,15 @@ def run(
 
     written = write_report(bundle, diagnosis)
     report_path = written.markdown
-    out(f"Diagnosis: {written.markdown}")
-    out(f"           {written.html}")
+    out("")
+    out(render_terminal(bundle, diagnosis))
+    out("")
+    out(f"Report: {written.markdown}")
+    out(f"        {written.html}")
 
     if not diagnosis.ok:
         out("")
         out("Diagnosis incomplete — the model's answer did not satisfy the output contract.")
-        out("The recorded facts and the raw answer are both in the report.")
         out(NEXT_STEP.format(command=f"drydock diagnose {target}"))
         return Result(exit_code=1, report_path=report_path)
 

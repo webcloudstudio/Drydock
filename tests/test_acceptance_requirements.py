@@ -12,6 +12,7 @@ from drydock.acceptance_requirements import (
     discover_missing_requirement,
     project_plan_requirement_decisions,
     recommend_external_declarations,
+    retire_automatic_test_tooling_decisions,
     undeclared_external_usage,
 )
 from drydock.decisions import Decision, write_decisions
@@ -232,7 +233,7 @@ def _authorize(target, answer: str, package: str = "httpx") -> None:
     )
 
 
-def test_plan_projects_a_blocking_tooling_decision(tmp_path):
+def test_plan_automatically_authorizes_test_python_packages(tmp_path):
     target = tmp_path / "Demo"
     target.mkdir()
     blocks = {
@@ -245,16 +246,40 @@ def test_plan_projects_a_blocking_tooling_decision(tmp_path):
         blocks, target_dir=target, build_dir=tmp_path / "build"
     )
 
-    decision = decisions[0]
-    assert decision.id == "acceptance-health-route-tooling"
-    assert decision.blueprint == "FEATURE-Health.md"
-    assert decision.origin == "plan"
-    assert decision.severity == "blocking"
-    assert "python-package=httpx" in decision.description
-    assert "uv add --dev httpx" in decision.description
+    assert decisions == ()
 
 
-def test_broad_commander_test_harness_guidance_authorizes_later_tools(tmp_path):
+def test_automatic_test_authorization_does_not_authorize_runtime_scope(tmp_path):
+    target = tmp_path / "Demo"
+    target.mkdir()
+
+    test_auth = authorization_for(
+        AcceptanceRequirement("python-package", "httpx", "test"),
+        target_dir=target,
+        build_dir=tmp_path / "build",
+    )
+    runtime_auth = authorization_for(
+        AcceptanceRequirement("python-package", "httpx", "runtime"),
+        target_dir=target,
+        build_dir=tmp_path / "build",
+    )
+
+    assert test_auth.authorized
+    assert test_auth.source == "Drydock test environment"
+    assert not runtime_auth.authorized
+
+
+def test_automatic_test_authorization_retires_existing_tooling_decisions(tmp_path):
+    target = tmp_path / "Demo"
+    target.mkdir()
+    _authorize(target, "")
+
+    retired = retire_automatic_test_tooling_decisions(target)
+
+    assert retired[0].archived
+
+
+def test_test_harness_guidance_is_superseded_by_automatic_authorization(tmp_path):
     target = tmp_path / "Demo"
     target.mkdir()
     _authorize(target, "Approve all test harnesses")
@@ -266,7 +291,8 @@ def test_broad_commander_test_harness_guidance_authorizes_later_tools(tmp_path):
     )
 
     assert auth.authorized
-    assert auth.commander_text == "Approve all test harnesses"
+    assert auth.source == "Drydock test environment"
+    assert auth.commander_text == ""
 
 
 def test_broad_test_guidance_does_not_authorize_runtime_scope(tmp_path):
@@ -283,7 +309,7 @@ def test_broad_test_guidance_does_not_authorize_runtime_scope(tmp_path):
     assert not auth.authorized
 
 
-def test_narrow_commander_answer_authorizes_only_named_tool_and_scope(tmp_path):
+def test_test_python_packages_are_automatic_but_runtime_scope_is_not(tmp_path):
     target = tmp_path / "Demo"
     target.mkdir()
     package = "commander-httpx-fixture"
@@ -306,7 +332,7 @@ def test_narrow_commander_answer_authorizes_only_named_tool_and_scope(tmp_path):
     )
 
     assert httpx.authorized
-    assert not playwright.authorized
+    assert playwright.authorized
     assert not runtime.authorized
 
 
@@ -358,4 +384,17 @@ def test_a_missing_module_is_still_discovered_as_a_package():
 
     assert discover_missing_requirement(stderr) == AcceptanceRequirement(
         "python-package", "httpx", "test"
+    )
+
+
+def test_a_missing_project_submodule_is_not_external_tooling(tmp_path):
+    package = tmp_path / "marina_app"
+    package.mkdir()
+    (package / "__init__.py").touch()
+
+    assert (
+        discover_missing_requirement(
+            "ModuleNotFoundError: No module named 'marina_app.web.theme'\n", build_dir=tmp_path
+        )
+        is None
     )

@@ -23,6 +23,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-10: `drydock diagnose` now prints its findings to the terminal — Break Point, Reason,
+  Not A Real Failure, Blockers and Decisions, Evidence, proposed and unoffered amendments, missing
+  evidence, and on a malformed answer the contract violations and raw model answer — followed by
+  the `DIAGNOSE_<stamp>.md` and `.html` paths. Previously it printed only the paths. The duplicate
+  copyright line after the masthead is removed.
+
 - 2026-09-10: `drydock refit` now scopes an unapplied `rebuild` database migration to Manifest
   stories whose Blueprint `## Database Interface` cites the affected access pattern, then resets
   only their dependency closure. The DATABASE owner story is rebuilt without using it as a broad
@@ -30,6 +36,14 @@ command surface and Typed Specification contract are unstable and may change bet
   policy is introduced.
 
 ### Fixed
+
+- 2026-09-10: `drydock build` and `drydock plan` now treat test-scoped Python acceptance
+  dependencies as automatically authorized hermetic test-environment inputs, not Commander
+  authorization decisions.
+  Existing per-check test-package decisions are archived during gate synchronization, releasing
+  their affected stories without QuarterDeck action. Missing project-local submodules discovered
+  during acceptance now remain implementation failures instead of being misclassified as external
+  package authorization requests. Runtime packages and external executables remain governed.
 
 - 2026-09-10: Codex repository-security rejections now classify as a non-retryable local
   execution-policy failure. They do not trigger an advisory diagnosis call, and `drydock status

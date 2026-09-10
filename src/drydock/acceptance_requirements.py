@@ -7,7 +7,7 @@ import importlib.metadata
 import re
 import shutil
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
 
@@ -43,6 +43,16 @@ class RequirementAuthorization:
     authorized: bool
     source: str = ""
     commander_text: str = ""
+
+
+def is_automatic_test_requirement(requirement: AcceptanceRequirement) -> bool:
+    """Return whether Drydock provisions this hermetic test dependency without review.
+
+    Test-only Python packages affect neither the delivered runtime dependency surface nor the
+    operator's host tooling. They are ordinary acceptance-harness inputs and must not create one
+    Commander decision per criterion.
+    """
+    return requirement.kind == "python-package" and requirement.scope == "test"
 
 
 @cache
@@ -249,6 +259,8 @@ def authorization_for(
     build_dir: Path,
     current_manifest_approved: bool = False,
 ) -> RequirementAuthorization:
+    if is_automatic_test_requirement(requirement):
+        return RequirementAuthorization(requirement, True, "Drydock test environment")
     if requirement_available(requirement, build_dir):
         return RequirementAuthorization(requirement, True, "existing Target environment/manifest")
     if requirement.kind == "python-package" and canonicalize_package_name(
@@ -266,6 +278,30 @@ def authorization_for(
     if current_manifest_approved:
         return RequirementAuthorization(requirement, True, "current Manifest approval")
     return RequirementAuthorization(requirement, False)
+
+
+def retire_automatic_test_tooling_decisions(target_dir: Path) -> tuple[Decision, ...]:
+    """Archive obsolete per-check authorization records for test Python packages.
+
+    Earlier Drydock versions persisted these records as blocking decisions. Retiring them during
+    gate synchronization upgrades existing Targets without a replan or manual QuarterDeck work.
+    """
+    path = target_dir / "DECISIONS.json"
+    decisions = load_decisions(path)
+    updated = tuple(
+        replace(item, archived=True)
+        if (
+            not item.archived
+            and item.origin in {"plan", "build"}
+            and "authorize python-package=" in item.description.lower()
+            and "for test scope." in item.description.lower()
+        )
+        else item
+        for item in decisions
+    )
+    if updated != decisions:
+        write_decisions(path, updated)
+    return updated
 
 
 def tooling_decision(
@@ -323,7 +359,8 @@ def project_plan_requirement_decisions(
             missing = [
                 requirement
                 for requirement in check.requirements
-                if not authorization_for(
+                if not is_automatic_test_requirement(requirement)
+                and not authorization_for(
                     requirement, target_dir=target_dir, build_dir=build_dir
                 ).authorized
             ]
@@ -368,9 +405,19 @@ def record_requirement_decision(
     return prior[item.id]
 
 
-def discover_missing_requirement(result_stderr: str) -> AcceptanceRequirement | None:
+def discover_missing_requirement(
+    result_stderr: str, *, build_dir: Path | None = None
+) -> AcceptanceRequirement | None:
     if match := _MISSING_MODULE_RE.search(result_stderr):
-        return AcceptanceRequirement("python-package", match.group(1).split(".", 1)[0], "test")
+        root = match.group(1).split(".", 1)[0]
+        # ``import project.module`` can fail because the implementation has not yet created the
+        # requested submodule. The project root is not a third-party distribution and must drive
+        # ordinary acceptance repair, never an authorization question.
+        if build_dir is not None and (
+            (build_dir / f"{root}.py").is_file() or (build_dir / root / "__init__.py").is_file()
+        ):
+            return None
+        return AcceptanceRequirement("python-package", root, "test")
     if match := _MISSING_EXECUTABLE_RE.search(result_stderr):
         candidate = match.group(1)
         # Same rule ``visible_external_usage`` applies to declared commands: a path is the

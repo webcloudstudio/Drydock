@@ -416,6 +416,14 @@ def test_run_prints_the_ladder_before_diagnosing(workspace, monkeypatch):
     assert result.report_path is not None
 
 
+def test_run_prints_the_findings_before_the_report_paths(workspace, monkeypatch):
+    result, output = _run(workspace, monkeypatch, target="Demo", mode="none")
+    assert "Governed-input defect: the criteria do not name the assertion they run." in output
+    assert "`PLAN CREATED` failed and `PLAN REPAIRED` answered it." in output
+    assert "1. Require every criterion to name its assertion (PLAN_COMPASS.md)" in output
+    assert output.index("BREAK POINT") < output.index(f"Report: {result.report_path}")
+
+
 def test_run_exits_one_while_a_live_failure_stands(workspace, monkeypatch):
     result, _ = _run(workspace, monkeypatch, target="Demo", mode="none")
     assert result.exit_code == 1
@@ -433,6 +441,7 @@ def test_a_malformed_diagnosis_names_the_rerun(workspace, monkeypatch):
     )
     assert result.exit_code == 1
     assert "Diagnosis incomplete" in output
+    assert "RAW MODEL ANSWER\nnonsense" in output
     assert "Next: drydock diagnose Demo" in output
     assert result.report_path.is_file()
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from drydock.acceptance_requirements import retire_automatic_test_tooling_decisions
 from drydock.decisions import load_decisions
 from drydock.errors import SpecificationError
 from drydock.manifest import DrydockManifest
@@ -25,6 +26,7 @@ def synchronize_manifest_question_gates(
     """
     del blueprint_dir  # attachment is persisted on the decision record
     manifest = DrydockManifest.load(manifest_path, compatibility=True)
+    retire_automatic_test_tooling_decisions(manifest_path.parent)
     decisions = load_decisions(manifest_path.parent / "DECISIONS.json")
     blocking = {
         item
