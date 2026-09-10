@@ -1,6 +1,6 @@
 # Branding — Posts
 
-**Version:** 20260702 V2
+**Version:** 20260910 V3
 **Category:** Branding
 **Description:** Standard for development-log posts Ed publishes on his site.
 
@@ -11,10 +11,10 @@ published development-log posts. Authoritative; not auto-distributed.
 
 ## Purpose
 
-Published development logs assembled from real project decision history.
-The reader is an engineering peer or hiring manager. The post proves real, serious,
-well-governed engineering work by naming it precisely. Same calm, technical, confident
-brand as everything else; written to be skimmed quickly.
+Published development logs covering what shipped and what it does.
+The reader is a working developer. The post earns their attention by saying plainly what each
+piece of work does and why it exists, not by proving how much of it there was. Same calm,
+technical, confident brand as everything else; written to be read in one sitting.
 
 ## Voice
 
@@ -26,32 +26,41 @@ third-person, concrete.
 | Register | Specification prose. "`drydock build` blocks when the source repository has uncommitted changes." Never first-person narrative, never marketing. |
 | Nouns | Real ones. The project name, its command surface, and its component names appear in the post. A log that names nothing proves nothing. |
 | Sentences | Short and factual. No metaphors, no slogans, no coined "principles," no superlatives, no emoji, no contractions in the body. |
-| Titles | Fixed format: `Drydock Development Log — <start> to <end>` (period) or `— <date>: <topic>` (single decision). Never a coined headline. |
-| Dates | Every entry carries the date the work was recorded. The post date is the end of the work window, never the generation date. |
+| Titles | The post is `Drydock Development Log`. A milestone title is the thing itself — `drydock diagnose`, `DATABASE.md persistence layer` — never a coined headline. |
+| Dates | One date: the publication date, in the form `September 9, 2026`. Milestones are not dated and the post does not state a work period. |
+| Subject | Every paragraph answers what the work does. Rationale earns its place only where the reader would otherwise ask why. |
 
 ## Structure
 
-1. Lead paragraph — two to four sentences stating the period and the main threads of work.
-2. `## Milestones` — dated bullets for completed milestones (omit when none).
-3. `## Changes` — dated bullets for decisions, in date order, each with the recorded rationale.
+1. `## Milestones` — the post opens here. One undated bullet per milestone, each a single
+   sentence saying what it does.
+2. One `## <milestone>` section per bullet, in the same order, under the same title.
 
-Bullet format: `- **YYYY-MM-DD — <name>.** One or two sentences.`
+Bullet format: `- **<milestone>** — one sentence.`
+
+A section is two or three short paragraphs and stops. Lead with what the thing does; a command
+gets its invocation in a `text` block first. State a limitation where one exists.
 
 ## Length
 
-As long as the period's work requires. Do not compress real work to hit a word count;
-do not pad. One or two sentences per bullet.
+One screen per milestone at most. Cut every sentence that does not tell the reader something
+they can act on or repeat. A post that lists more than it explains is too long whatever its size.
 
 ## Anti-patterns
 
 - Essay or think-piece framing of any kind.
 - Headline-style titles written for social media.
 - Abstract paraphrase where the concrete name exists ("the governance surface" for QuarterDeck).
+- Inventories: lists of file names, log names, module paths, function names, or artifact names
+  the reader has no reason to hold. Name a file when the reader opens or edits it.
+- Invented vocabulary for an ordinary idea. Say what the code does instead.
+- A change list in date order. The changelog is the change list.
 - Tags, hashtags, or subtitle lines.
 - Explaining the writing itself.
 
 ## Rendering
 
-Rendered pages implement the Slate brand from `BRANDING_MAIN.md`: dark chrome header
-carrying the Drydock logo, light content column, system font stack, teal accent on
-headings. No decorative hero cards, no pill tags, no serif display type.
+Posts live in `docs/posts/` and render with `drydock publish --theme slate`. Rendered pages
+implement the Slate brand from `BRANDING_MAIN.md`: dark chrome header carrying the Drydock logo,
+light content column, system font stack, teal accent on headings. No decorative hero cards, no
+pill tags, no serif display type.
