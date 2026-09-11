@@ -1535,36 +1535,33 @@ def _quantitative_acceptance_progress(
     return improved
 
 
-def _attempt_acceptance_summary(
-    attempt: int,
-    acceptance: tuple[AcceptanceRunResult, ...],
-) -> str:
-    """Render one concise, operator-facing acceptance summary for an LLM attempt."""
+def _attempt_acceptance_summary(acceptance: tuple[AcceptanceRunResult, ...]) -> str:
+    """Render one concise, operator-facing ``key=value`` acceptance summary for an LLM call."""
     passed = sum(1 for result in acceptance if result.passed)
     skipped = tuple(result for result in acceptance if result.skipped)
     missed = tuple(result for result in acceptance if not result.passed and not result.skipped)
     failed = tuple(result for result in missed if result.binding)
     disputed = tuple(result for result in missed if not result.binding)
-    line = f"acceptance: call {attempt + 1} · {passed}/{len(acceptance)} AC passed"
+    line = f"    acceptance={passed}/{len(acceptance)}"
+    if failed:
+        line += "  failed=" + _acceptance_failure_details(failed)
     if skipped:
-        line += " · skipped: " + ", ".join(result.check_id for result in skipped)
+        line += "  skipped=" + ",".join(result.check_id for result in skipped)
     if disputed:
-        line += " · disputed: " + ", ".join(result.check_id for result in disputed)
-    if not failed:
-        return line
-    return line + " · failed: " + _acceptance_failure_details(failed)
+        line += "  disputed=" + ",".join(result.check_id for result in disputed)
+    return line
 
 
 def _acceptance_failure_details(
     failed: tuple[AcceptanceRunResult, ...],
 ) -> str:
-    """Render failed AC ids with quantitative case tallies when available."""
+    """Render failed AC ids with ``(passed/total)`` case tallies when available."""
     details: list[str] = []
     for result in failed:
         tally = _case_tally(result)
-        cases = f" ({tally[0]}/{tally[1]} cases)" if tally is not None else ""
+        cases = f"({tally[0]}/{tally[1]})" if tally is not None else ""
         details.append(f"{result.check_id}{cases}")
-    return ", ".join(details)
+    return ",".join(details)
 
 
 def _console_failure_lines(result: AcceptanceRunResult, max_lines: int = 5) -> list[str]:
@@ -2753,10 +2750,6 @@ def build_target(
                 attempt_model = base_model
                 if attempt == max_attempt and escalate_model:
                     attempt_model = escalate_model
-                    _emit(
-                        on_text,
-                        f"repair: escalation — final attempt using {attempt_model}",
-                    )
                 _emit(
                     on_text,
                     f"repair: attempt {attempt}/{max_attempt} · "
@@ -2774,35 +2767,32 @@ def build_target(
                     ),
                 )
             if attempt == 0:
-                call_kind = "resumed repair" if unit.resume else "initial build"
+                # The block header prints once; each call beneath it is one ``[call N/M]`` step.
+                _emit(
+                    on_text,
+                    f'BLOCK {unit.block_id}  name="{unit.name}"  calls_max={max_attempt + 1}',
+                )
+                for block in unit.steps:
+                    _emit(on_text, f'  story={block.block_id}  "{block.name}"')
+                if unit.already_verified:
+                    _emit(
+                        on_text,
+                        "  gates=" + ",".join(block.block_id for block in unit.already_verified),
+                    )
+                call_kind = "resume" if unit.resume else "initial"
             else:
-                call_kind = f"automatic repair {attempt} of {max_attempt}"
-            _emit(on_text, f"LLM BUILD: {unit.name} [{unit.block_id}]")
-            _emit(
-                on_text,
-                "  stories: "
-                + ", ".join(f"{block.name} [{block.block_id}]" for block in unit.steps),
+                call_kind = f"repair({attempt}/{max_attempt})"
+            call_line = (
+                f"  [call {attempt + 1}/{max_attempt + 1}]  kind={call_kind}  "
+                f"llm={llm_provider}/{attempt_model or '-'}"
             )
-            if unit.already_verified:
-                _emit(
-                    on_text,
-                    "  regression gates: "
-                    + ", ".join(
-                        f"{block.name} [{block.block_id}]" for block in unit.already_verified
-                    ),
-                )
-            _emit(
-                on_text,
-                f"  call: {attempt + 1} of up to {max_attempt + 1} · {call_kind} · "
-                f"{llm_provider}/{attempt_model or '-'}",
-            )
+            if attempt and attempt == max_attempt and escalate_model:
+                call_line += "  escalated=yes"
+            _emit(on_text, call_line)
             if feedback_checks:
-                _emit(
-                    on_text,
-                    "  failing: " + _acceptance_failure_details(feedback_checks),
-                )
+                _emit(on_text, "    fixing=" + _acceptance_failure_details(feedback_checks))
             elif agent_report is not None:
-                _emit(on_text, "  failing: agent-reported failure")
+                _emit(on_text, "    fixing=agent-reported")
             _emit(on_text, f"{_clock()}  calling {llm_provider}/{attempt_model or '-'} …")
             try:
                 result = run(
@@ -2822,6 +2812,7 @@ def build_target(
                     target=target,
                     on_text=None,
                     announce=False,
+                    announce_completion=False,
                     prompt_assembly=active_assembly,
                 )
             except Exception as exc:
@@ -2847,12 +2838,12 @@ def build_target(
             summary = str(getattr(result, "text", "") or "")
             execution_id = getattr(result, "execution_id", None)
             returncode = getattr(result, "returncode", None)
-            execution_bits = ["ok" if ok else "failed"]
+            execution_bits = [f"result={'ok' if ok else 'failed'}"]
             if returncode is not None:
                 execution_bits.append(f"rc={returncode}")
             if execution_id:
-                execution_bits.append(execution_id)
-            _emit(on_text, "returned: " + " · ".join(execution_bits))
+                execution_bits.append(f"execution={execution_id}")
+            _emit(on_text, "    " + "  ".join(execution_bits))
             # Token accounting is not build progress. The execution's own ``.llm.log`` already
             # carries it, and the receipt links that log beside the command's streams.
             token_line = format_token_summary(getattr(result, "stats", None), llm=llm_provider)
@@ -3234,7 +3225,7 @@ def build_target(
                         if checks:
                             _emit(
                                 on_text,
-                                _attempt_acceptance_summary(attempt, acceptance),
+                                _attempt_acceptance_summary(acceptance),
                             )
                             if disputed_checks:
                                 # Loud, because silence here would read as coverage the run does
@@ -3392,18 +3383,14 @@ def build_target(
             stop_reason = None
             if stop_on_kit_fault:
                 stop_reason = "every failing criterion is a kit fault, not a product defect"
-                _emit(
-                    on_text,
-                    "repair: stopped — no repair pass can move these criteria: "
-                    + ", ".join(terminal_ids),
-                )
+                _emit(on_text, "  STOP  reason=kit-fault  criteria=" + ",".join(terminal_ids))
             elif stop_on_stall:
                 # A single-pass stop keeps the original wording: naming a count of 1 would read
                 # as though a run of passes was measured when only one was.
                 stop_reason = "deterministic acceptance score did not improve"
                 if consecutive_stalls > 1:
                     stop_reason += f" on {consecutive_stalls} consecutive calls"
-                _emit(on_text, f"repair: stopped — {stop_reason}")
+                _emit(on_text, f"  STOP  reason=stall  flat_calls={consecutive_stalls}")
             elif stalled and attempt < max_attempt:
                 # No ``stop_reason``: the attempt record must not name a stop that never
                 # happened, or the build report reads as though the budget was cut short.

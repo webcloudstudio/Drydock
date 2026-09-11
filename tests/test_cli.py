@@ -221,40 +221,36 @@ class TestHelpAndVersion:
         )
 
     def test_stream_build_summary_shows_llm_scope_and_acceptance_only(self, capsys):
-        _stream_build_summary("returned: ok · exec-1")
-        _stream_build_summary("LLM BUILD: Markdown Parsing [feature-parsing]")
-        _stream_build_summary(
-            "  stories: Block Parsing [block-parsing], Inline Parsing [inline-parsing]"
-        )
-        _stream_build_summary("  call: 2 of up to 4 · automatic repair 1 of 3 · codex/gpt")
+        _stream_build_summary('BLOCK feature-parsing  name="Markdown Parsing"  calls_max=4')
+        _stream_build_summary('  story=block-parsing  "Block Parsing"')
+        _stream_build_summary('  story=inline-parsing  "Inline Parsing"')
+        _stream_build_summary("  [call 2/4]  kind=repair(1/3)  llm=codex/gpt")
         # Token accounting is written to the execution's .llm.log, never to build progress.
         _stream_build_summary("  tokens: in=1,000 · fresh 100 · cached 900 (90% hit) · out=50")
-        _stream_build_summary("  failing: block-conformance (240/260 cases)")
-        _stream_build_summary(
-            "acceptance: call 2 · 2/3 AC passed · failed: block-conformance (240/260 cases)"
-        )
+        _stream_build_summary("    fixing=block-conformance(240/260)")
+        _stream_build_summary("12:00:00  calling codex/gpt …")
+        _stream_build_summary("    result=ok  rc=0  execution=exec-1")
+        _stream_build_summary("    acceptance=2/3  failed=block-conformance(240/260)")
         _stream_build_summary("files: 1 changed — parser.py")
 
-        assert (
-            capsys.readouterr().out == "\nLLM BUILD: Markdown Parsing [feature-parsing]\n"
-            "  stories: Block Parsing [block-parsing], Inline Parsing [inline-parsing]\n"
-            "  call: 2 of up to 4 · automatic repair 1 of 3 · codex/gpt\n"
-            "  failing: block-conformance (240/260 cases)\n"
-            "acceptance: call 2 · 2/3 AC passed · "
-            "failed: block-conformance (240/260 cases)\n"
+        assert capsys.readouterr().out == (
+            '\nBLOCK feature-parsing  name="Markdown Parsing"  calls_max=4\n'
+            '  story=block-parsing  "Block Parsing"\n'
+            '  story=inline-parsing  "Inline Parsing"\n'
+            "\n  [call 2/4]  kind=repair(1/3)  llm=codex/gpt\n"
+            "    fixing=block-conformance(240/260)\n"
+            "    result=ok  rc=0  execution=exec-1\n"
+            "    acceptance=2/3  failed=block-conformance(240/260)\n"
         )
 
     def test_stream_build_summary_shows_why_the_repair_loop_stopped(self, capsys):
         # A loop that ends below its budget must account for the shortfall without --debug.
-        # The per-attempt counter stays hidden; the ``call:`` line already carries it.
+        # The per-attempt counter stays hidden; the ``[call N/M]`` line already carries it.
         _stream_build_summary("repair: attempt 1/3 · 1 failing check(s)")
-        _stream_build_summary("repair: stopped — deterministic acceptance score did not improve")
-        _stream_build_summary("repair: escalation — final attempt using opus")
+        _stream_build_summary("repair: no acceptance progress on call 2 (1 of 2) — continuing")
+        _stream_build_summary("  STOP  reason=stall  flat_calls=2")
 
-        assert capsys.readouterr().out == (
-            "repair: stopped — deterministic acceptance score did not improve\n"
-            "repair: escalation — final attempt using opus\n"
-        )
+        assert capsys.readouterr().out == "  STOP  reason=stall  flat_calls=2\n"
 
     def test_stream_status_only_drops_model_json_payload(self, capsys):
         """Scoring output omits parsed JSON and provider command evidence."""
@@ -1551,7 +1547,7 @@ state: pending
         assert "scope: entire project" in out
         assert "frontier: foundation" in out
         assert re.search(r"elapsed: ", out)
-        assert "built: foundation — closed/verified · execution exec-fake" in out
+        assert "  DONE  story=foundation  state=closed/verified  execution=exec-fake" in out
         assert "foundation" in out
         assert "Target - setup project workspace git store" in out
         assert "Target - committed project workspace git store" in out
@@ -1612,7 +1608,7 @@ state: pending
         rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
         assert rc == 1
-        assert "failed: foundation — closed/failed · execution exec-fake" in out
+        assert "  FAILED  story=foundation  state=closed/failed  execution=exec-fake" in out
         assert "result: 0 built, 1 failed" in out
         # The actionable failure block closes the run after the concise summary.
         assert out.index("BUILD FAILED: ExampleTarget") > out.index("result: 0 built, 1 failed")
@@ -1662,7 +1658,7 @@ state: pending
         # Both stories are accounted for, but the failure block renders once per execution.
         assert out.count("BUILD FAILED: ExampleTarget") == 1
         assert "(1 step)" in out
-        assert "failed: feature-catalog — closed/failed · execution exec-fake" in out
+        assert "  FAILED  feature=feature-catalog  state=closed/failed  execution=exec-fake" in out
         assert "The backend diverges from the spec." in out
         assert "Story recovery (dependency order)" in out
         assert "drydock build ExampleTarget --story foundation --repair-attempts 6" in out
@@ -1878,7 +1874,7 @@ state: pending
         assert rc == 0, err
         assert "scope: step foundation" in out
         assert "reset: foundation" in out
-        assert "built: foundation — closed/verified · execution exec-fake" in out
+        assert "  DONE  story=foundation  state=closed/verified  execution=exec-fake" in out
         assert "foundation" in out
         assert "result: 1 built, 0 failed" in out
 
@@ -1925,7 +1921,7 @@ state: pending
 
         assert rc == 0, err
         assert "reset: entire project (all blocks + build directory)" in out
-        assert "built: core — closed/verified · execution exec-fake" in out
+        assert "  DONE  feature=core  state=closed/verified  execution=exec-fake" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert "finding: failed" not in text
         assert "state: closed/failed" not in text
@@ -2001,7 +1997,7 @@ state: pending
             "build", "ExampleTarget", "--continue", "--build-dir", str(tmp_path / "out")
         )
         assert rc == 0, err
-        assert "built: foundation — closed/verified · execution exec-fake" in out
+        assert "  DONE  story=foundation  state=closed/verified  execution=exec-fake" in out
 
     def test_build_normalize_order_reorders_manifest_then_builds_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -2051,7 +2047,7 @@ state: pending
 
         assert rc == 0, out + err
         assert "optimize build blocks: updated MANIFEST.md" in out
-        assert "built: feature-core — closed/verified · execution exec-fake" in out
+        assert "  DONE  feature=feature-core  state=closed/verified  execution=exec-fake" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert text.index("id: feature-core") < text.index("id: screen-setup")
 

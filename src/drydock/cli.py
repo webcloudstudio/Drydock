@@ -101,25 +101,26 @@ def _stream_build(text: str) -> None:
 
 
 def _stream_build_summary(text: str) -> None:
-    """Show concise LLM scope and acceptance in normal output without debug chatter."""
-    if text.startswith("LLM BUILD:"):
+    """Show concise LLM scope and acceptance in normal output without debug chatter.
+
+    A block prints as one ``BLOCK`` header and a ``[call N/M]`` step per LLM call, each set off
+    by a blank line, with that call's ``key=value`` lines indented beneath it.
+    """
+    if text.startswith(("BLOCK ", "  [call ")):
         _stream_build("")
         _stream_build(text)
-    elif text.startswith((
-        "  stories:",
-        "  regression gates:",
-        "  call:",
-        "  failing:",
-    )):
-        _stream_build(text)
-    elif text.startswith("acceptance:"):
-        _stream_build(text)
-    elif text.startswith("WARNING:"):
-        _stream_build(text)
     # A repair loop that stops below its budget must say why here. Hiding the reason behind
-    # --debug leaves an operator reading "call 2 of up to 4" with no account of the shortfall.
-    # ``repair: attempt`` stays hidden — the ``call:`` line already carries that count.
-    elif text.startswith(("repair: stopped", "repair: escalation")):
+    # --debug leaves an operator reading "call 2/4" with no account of the shortfall.
+    # ``repair: attempt`` stays hidden — the ``[call N/M]`` line already carries that count.
+    elif text.startswith((
+        "  story=",
+        "  gates=",
+        "    fixing=",
+        "    result=",
+        "    acceptance=",
+        "  STOP ",
+        "WARNING:",
+    )):
         _stream_build(text)
 
 
@@ -2229,9 +2230,14 @@ def cmd_build(args: argparse.Namespace) -> int:
         unit_key = step.execution_id or step.block_id
         if unit_key not in _reported_units:
             _reported_units.add(unit_key)
-            reference = f" · execution {step.execution_id}" if step.execution_id else ""
+            reference = f"  execution={step.execution_id}" if step.execution_id else ""
             unit_id = _build_unit_ids.get(step.block_id, step.block_id)
-            print(f"{step.status}: {unit_id} — {step.state}{reference}")
+            kind = (
+                "story" if unit_id == step.block_id and step.block_type != "feature" else "feature"
+            )
+            outcome = {"built": "DONE", "failed": "FAILED"}.get(step.status, step.status.upper())
+            print()
+            print(f"  {outcome}  {kind}={unit_id}  state={step.state}{reference}")
         if step.status == "failed":
             # Stories in one block share a single execution: report it once.
             fatal_key = step.execution_id or f"{step.block_id}:{step.error}"

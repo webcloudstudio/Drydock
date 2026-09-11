@@ -23,6 +23,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-10: `drydock build` progress output is `key=value` and step-structured. Each block
+  prints one `BLOCK <id>  name="…"  calls_max=N` header with its `story=` and `gates=` lines, then
+  one `[call N/M]  kind=initial|resume|repair(i/n)  llm=<provider>/<model>` step per LLM call
+  (`escalated=yes` on an escalated final repair), with that call's `fixing=`, `result=  rc=
+  execution=`, and `acceptance=P/T  failed=  skipped=  disputed=` lines indented beneath it.
+  Failed criteria carry `(passed/total)` case tallies. The provider `Completed …` line is no
+  longer printed during a build; `result=` replaces it. Repair-loop stops print
+  `STOP  reason=kit-fault|stall`, and the per-block outcome line is
+  `DONE|FAILED  story=|feature=<id>  state=<state>  execution=<id>`.
+
 - 2026-09-10: `drydock diagnose` terminal output is restructured for reading and approval. A
   `DRYDOCK DIAGNOSE · <Target>` masthead carries the verdict; each section (Root Cause, Details,
   Commander Feedback Requested, Repair Proposal, Not Offered, Missing Evidence, Report, Outcome) is

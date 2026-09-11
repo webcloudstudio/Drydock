@@ -615,6 +615,7 @@ def _print_performance_summary(
     returncode: int,
     stats: LlmStats,
     requested_model: str | None = None,
+    console: bool = True,
 ) -> None:
     summary = _performance_summary(
         llm=llm,
@@ -627,7 +628,7 @@ def _print_performance_summary(
     # The headline states that the call finished and with what exit code — progress. The
     # detail line below it is token and cost accounting, which is written to the LLM log only.
     headline, _, accounting = summary.partition("\n")
-    _announce(artifacts, headline)
+    _announce(artifacts, headline, console=console)
     if accounting:
         _announce(artifacts, accounting, console=False)
 
@@ -1353,6 +1354,7 @@ def run_prompt(
     on_text: TextCallback | None = None,
     on_event: EventCallback | None = None,
     announce: bool = True,
+    announce_completion: bool = True,
     prompt_assembly: PromptAssembly | None = None,
     full_cli: str | None = None,
     sub_command: str | None = None,
@@ -1558,6 +1560,7 @@ def run_prompt(
             returncode=returncode,
             stats=stats,
             requested_model=model,
+            console=announce_completion,
         )
         return LlmResult(
             execution_id=artifacts.execution_id,

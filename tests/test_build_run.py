@@ -697,10 +697,10 @@ def test_build_emits_step_progress_lines(tmp_path):
     assert any(re.match(r"kind: story · 1 run / 0 verified · \d+ SP", line) for line in log)
     assert any(line == f"workdir: {build_dir}" for line in log)
     assert any(line == "run: Foundation (foundation)" for line in log)
-    assert "LLM BUILD: Foundation [foundation]" in log
-    assert "  stories: Foundation [foundation]" in log
-    assert any(line.startswith("  call: 1 of up to 7 · initial build · ") for line in log)
-    assert any(line == "returned: ok · exec-1" for line in log)
+    assert 'BLOCK foundation  name="Foundation"  calls_max=7' in log
+    assert '  story=foundation  "Foundation"' in log
+    assert any(line.startswith("  [call 1/7]  kind=initial  llm=") for line in log)
+    assert "    result=ok  execution=exec-1" in log
     assert not any(line.startswith("  tokens:") for line in log)
     assert any(line == "files: 1 changed — foundation.txt" for line in log)
     assert any(re.match(r"result: built · closed/verified · .+", line) for line in log)
@@ -1082,7 +1082,7 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     assert "RED: foundation-file" in evidence
     assert "## Post-build programmatic acceptance" in evidence
     assert "PASS: foundation-file" in evidence
-    assert "acceptance: call 1 · 1/1 AC passed" in messages
+    assert "    acceptance=1/1" in messages
     assert not any("Unit Tests" in message for message in messages)
 
 
@@ -2678,9 +2678,9 @@ assert score == 4
 
     assert result.steps[0].status == "built"
     assert calls == [0, 1, 2, 3]
-    assert "acceptance: call 1 · 0/1 AC passed · failed: conformance (1/4 cases)" in messages
-    assert "acceptance: call 3 · 0/1 AC passed · failed: conformance (3/4 cases)" in messages
-    assert "acceptance: call 4 · 1/1 AC passed" in messages
+    assert "    acceptance=0/1  failed=conformance(1/4)" in messages
+    assert "    acceptance=0/1  failed=conformance(3/4)" in messages
+    assert "    acceptance=1/1" in messages
 
 
 def test_repair_loop_counts_subcase_progress_a_silent_criterion_never_printed(tmp_path):
@@ -2732,9 +2732,9 @@ assert report["summary"]["fail"] == 0
 
     assert result.steps[0].status == "built"
     assert calls == [0, 1, 2, 3]
-    assert "acceptance: call 1 · 0/1 AC passed · failed: conformance (1/4 cases)" in messages
-    assert "acceptance: call 3 · 0/1 AC passed · failed: conformance (3/4 cases)" in messages
-    assert "acceptance: call 4 · 1/1 AC passed" in messages
+    assert "    acceptance=0/1  failed=conformance(1/4)" in messages
+    assert "    acceptance=0/1  failed=conformance(3/4)" in messages
+    assert "    acceptance=1/1" in messages
 
 
 def test_repair_loop_stops_when_one_conformance_ac_regresses(tmp_path):
@@ -2848,7 +2848,7 @@ def test_every_build_stops_on_the_second_consecutive_flat_pass(tmp_path):
     assert step.calls_used == 3
     assert step.calls_budget == 7
     assert "repair: no acceptance progress on call 2 (1 of 2) — continuing" in lines
-    assert any("repair: stopped" in line for line in lines)
+    assert "  STOP  reason=stall  flat_calls=2" in lines
 
 
 def test_every_build_recovers_after_one_flat_pass(tmp_path):
@@ -3026,8 +3026,8 @@ def test_console_shows_what_a_failed_check_was_doing(tmp_path):
     )
 
     console = "\n".join(messages)
-    assert "acceptance: call 1 · 0/1 AC passed" in console
-    assert "suite-conformance (365/368 cases)" in console
+    assert "    acceptance=0/1" in console
+    assert "suite-conformance(365/368)" in console
     assert "suite-conformance: The scoped conformance suite passes." in console
     # Both streams reach the screen: the tally that makes the defect legible, and the
     # runner's own note about what it was invoked against.
@@ -3474,9 +3474,9 @@ def test_resume_seeds_attempt_zero_with_live_failure(tmp_path):
     assert "# Repair Feedback" in prompt
     assert "## Repair pass" in prompt
     assert "foundation-file" in prompt
-    assert "LLM BUILD: Foundation [foundation]" in messages
-    assert any(line.startswith("  call: 1 of up to 7 · resumed repair · ") for line in messages)
-    assert "  failing: foundation-file" in messages
+    assert 'BLOCK foundation  name="Foundation"  calls_max=7' in messages
+    assert any(line.startswith("  [call 1/7]  kind=resume  llm=") for line in messages)
+    assert "    fixing=foundation-file" in messages
 
 
 def test_fresh_pending_step_is_not_seeded(tmp_path):
@@ -4283,7 +4283,7 @@ assert never_bound_anywhere == 1
     step = result.steps[0]
     # UNVERIFIED is not charged to the build, but it is never silent.
     assert any(
-        "skipped: broken-criterion" in line for line in lines if line.startswith("acceptance:")
+        "skipped=broken-criterion" in line for line in lines if line.startswith("    acceptance=")
     )
     assert any(check.skipped for check in step.acceptance)
     assert [check.check_id for check in step.acceptance if check.skipped] == ["broken-criterion"]
