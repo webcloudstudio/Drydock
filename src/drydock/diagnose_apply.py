@@ -6,7 +6,8 @@ decline the third.
 
 Nothing here is silent. An amendment that is applied changes a file the operator owns, and an
 amendment that is declined becomes a ``recommended`` decision in ``DECISIONS.json`` so it survives
-the session rather than scrolling away. Either way the outcome is on disk.
+the session rather than scrolling away. Either way the outcome is on disk. An amendment applied
+under ``--apply`` was never reviewed, so it is filed there too, for review after the fact.
 
 A non-interactive session declines everything. Guessing a human's answer to "may I edit your
 Compass" is not a default this command gets to have.
@@ -94,6 +95,8 @@ def resolve(
             target_dir,
             report_path=report_path,
         )
+    if mode == "apply":
+        record_unreviewed(applied, target_dir, report_path=report_path)
     return Outcome(applied=tuple(applied), declined=tuple(declined), failed=tuple(failed))
 
 
@@ -142,6 +145,46 @@ def record(
             write_decisions(path, (*existing, *fresh))
     except OSError:
         return
+
+
+def record_unreviewed(
+    amendments: Sequence[Amendment], target_dir: Path, *, report_path: Path | None = None
+) -> None:
+    """File amendments applied without review, replacing any earlier proposal of the same change.
+
+    The record carries no Commander answer: an unreviewed change is not a Commander decision, so
+    it must never reach a prompt as one.
+    """
+    if not amendments:
+        return
+    path = target_dir / "DECISIONS.json"
+    try:
+        fresh = {
+            _decision_id(amendment): _as_applied_decision(amendment, report_path)
+            for amendment in amendments
+        }
+        kept = tuple(decision for decision in load_decisions(path) if decision.id not in fresh)
+        write_decisions(path, (*kept, *fresh.values()))
+    except OSError:
+        return
+
+
+def _as_applied_decision(amendment: Amendment, report_path: Path | None) -> Decision:
+    report = f" Report: {report_path}" if report_path else ""
+    return Decision(
+        id=_decision_id(amendment),
+        type=DECISION_TYPE,
+        severity="low",
+        origin=DECISION_ORIGIN,
+        blueprint=amendment.file,
+        story=None,
+        status=DECISION_STATUS,
+        archived=False,
+        title=f"Applied without review: {amendment.summary}",
+        description=f"drydock diagnose --apply changed {amendment.file}. {amendment.why.strip()}{report}",
+        options=(),
+        system_choice="apply",
+    )
 
 
 def _as_decision(amendment: Amendment, report_path: Path | None) -> Decision:

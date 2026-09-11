@@ -162,7 +162,9 @@ def run(
         style=style,
     )
     rebuild = _rebuild_repaired_blueprints(outcome, target_dir)
-    command = _report_outcome(outcome, target, target_dir, report_path, out, rebuild, style)
+    command = _report_outcome(
+        outcome, target, target_dir, report_path, out, rebuild, style, unreviewed=mode == "apply"
+    )
     _commit_repairs(outcome, target_dir, out, style)
     if command:
         _next(out, style, command)
@@ -232,6 +234,8 @@ def _report_outcome(
     out: Callable[[str], None],
     rebuild: tuple[str, ...] = (),
     style: Style | None = None,
+    *,
+    unreviewed: bool = False,
 ) -> str:
     """Print what happened to each amendment; return the next command, or ``""`` for none."""
     style = style or Style()
@@ -242,6 +246,11 @@ def _report_outcome(
             f"{INDENT}{style.paint('✓', GREEN)} Applied {len(outcome.applied)} amendment(s) to "
             f"{', '.join(outcome.changed_files)}."
         )
+        if unreviewed:
+            out(
+                f"{INDENT}{style.paint('•', YELLOW)} Logged them for review in "
+                f"{target_dir / 'DECISIONS.json'}."
+            )
     if rebuild:
         out(
             f"{INDENT}{style.paint('✓', GREEN)} Reset {len(rebuild)} Manifest block(s) to pending "

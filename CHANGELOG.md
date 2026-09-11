@@ -23,6 +23,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-11: `drydock diagnose --apply` records each amendment it applies in `DECISIONS.json` as
+  a `low`, `recommended` decision titled `Applied without review: <summary>`, naming the changed
+  file, the reason, and the report. It replaces an earlier declined proposal of the same change
+  and carries no Commander answer, so it never reaches a Plan or Build prompt. Amendments
+  confirmed at the prompt are not recorded.
+
 - 2026-09-10: `drydock build` progress output is `key=value` and step-structured. Each block
   prints one `BLOCK <id>  name="…"  calls_max=N` header with its `story=` and `gates=` lines, then
   one `[call N/M]  kind=initial|resume|repair(i/n)  llm=<provider>/<model>` step per LLM call

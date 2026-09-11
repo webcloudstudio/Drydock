@@ -158,7 +158,7 @@ ai  drydock refit             MyApp            # Diff -> ticket -> dependency gr
 
 ```text
     drydock build status      MyApp            # Show build state
-ai  drydock diagnose          [MyApp] --apply  # Apply every verified amendment without asking
+ai  drydock diagnose          [MyApp] --apply  # Apply every verified amendment without asking; log each as a decision
 ai  drydock diagnose          [MyApp] --no-apply # Record amendments as decisions; change nothing
 ai  drydock uat               [Project]        # Scored UAT testing
     drydock uat status        <Project>        # Current run, failure, and recovery command

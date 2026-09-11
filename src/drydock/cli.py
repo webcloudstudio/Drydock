@@ -3486,7 +3486,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--apply",
         dest="apply_all",
         action="store_true",
-        help="Apply every verified amendment without prompting.",
+        help="Apply every verified amendment without prompting; log each in DECISIONS.json.",
     )
     p_diag.add_argument(
         "--no-apply",

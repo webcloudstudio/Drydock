@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from drydock.decisions import load_decisions, render_commander_guidance
 from drydock.diagnose_apply import resolve
-from drydock.diagnose_command import parse_mode
+from drydock.diagnose_command import _report_outcome, parse_mode
 from drydock.diagnose_console import Style
 from drydock.diagnose_evidence import collect
 from drydock.diagnose_report import assemble, render_report, verify, write_report
@@ -333,6 +334,60 @@ def test_apply_mode_asks_nothing(bundle, workspace):
 
     outcome = resolve(verify(GOOD_ANSWER, bundle).amendments, target, mode="apply", confirm=never)
     assert len(outcome.applied) == 1
+
+
+def _diagnose_records(target: Path) -> list[dict]:
+    path = target / "DECISIONS.json"
+    if not path.is_file():
+        return []
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    return [row for row in rows if row["origin"] == "diagnose"]
+
+
+def test_apply_mode_logs_each_unreviewed_change(bundle, workspace):
+    target = workspace / "targets" / "Demo"
+    resolve(verify(GOOD_ANSWER, bundle).amendments, target, mode="apply", report_path=Path("R.md"))
+
+    (row,) = _diagnose_records(target)
+    assert row["title"].startswith("Applied without review: ")
+    assert row["blueprint"] == "PLAN_COMPASS.md"
+    assert row["status"] == "recommended"
+    assert row["description"].startswith("drydock diagnose --apply changed PLAN_COMPASS.md. ")
+    assert row["description"].endswith("Report: R.md")
+
+
+def test_an_unreviewed_change_is_never_commander_guidance(bundle, workspace):
+    target = workspace / "targets" / "Demo"
+    resolve(verify(GOOD_ANSWER, bundle).amendments, target, mode="apply")
+
+    decisions = load_decisions(target / "DECISIONS.json")
+    assert not any(decision.is_human_authored for decision in decisions)
+    assert render_commander_guidance(decisions) == ""
+
+
+def test_an_applied_change_replaces_its_declined_proposal(bundle, workspace):
+    target = workspace / "targets" / "Demo"
+    amendments = verify(GOOD_ANSWER, bundle).amendments
+    resolve(amendments, target, mode="none")
+    resolve(amendments, target, mode="apply")
+
+    (row,) = _diagnose_records(target)
+    assert row["title"].startswith("Applied without review: ")
+
+
+def test_a_confirmed_change_is_not_logged(bundle, workspace):
+    target = workspace / "targets" / "Demo"
+    resolve(verify(GOOD_ANSWER, bundle).amendments, target, mode="confirm", confirm=lambda _: True)
+    assert _diagnose_records(target) == []
+
+
+def test_outcome_names_the_review_log_only_for_unreviewed_changes(bundle, workspace):
+    target = workspace / "targets" / "Demo"
+    outcome = resolve(verify(GOOD_ANSWER, bundle).amendments, target, mode="apply")
+    for unreviewed in (True, False):
+        lines: list[str] = []
+        _report_outcome(outcome, "Demo", target, Path("R.md"), lines.append, unreviewed=unreviewed)
+        assert any("Logged them for review" in line for line in lines) is unreviewed
 
 
 def test_no_apply_mode_changes_nothing_and_records_everything(bundle, workspace):
