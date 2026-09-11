@@ -182,6 +182,7 @@ positional arguments:
     config    Show or set Drydock configuration.
     init      Initialize a target workspace.
     status    Show project status and orientation.
+    diagnose  Diagnose the last run, identify the root cause, and propose repairs.
     validate  Validate a Blueprint's Typed Specification.
     document  Generate project documentation from Blueprints
     publish   Render frontmatter Markdown into publishable HTML.
@@ -222,7 +223,8 @@ drydock run quarterdeck MyApp                 # Review and edit the Manifest, de
 
 # ── I ── IMPLEMENT ───────────────────────────────────────────────────────
 while drydock status MyApp --ready; do
-  drydock build MyApp                         # Build every ready block until the frontier is empty.
+  drydock build MyApp ||                      # Build every ready block until the frontier is empty.
+    drydock diagnose MyApp --apply            # On failure, apply the diagnosed repairs.
 done
 drydock status MyApp --check                  # Confirm that the Manifest is complete.
 
@@ -236,7 +238,8 @@ drydock score release MyApp                   # Apply the release gate.
 drydock import MyApp --update                 # Load the changed specification material.
 drydock refit MyApp --sources                 # Map the change into new Blueprint and Manifest work.
 while drydock status MyApp --ready; do
-  drydock build MyApp                         # Build the change until the frontier is empty.
+  drydock build MyApp ||                      # Build the change until the frontier is empty.
+    drydock diagnose MyApp --apply            # On failure, apply the diagnosed repairs.
 done
 ```
 
@@ -330,7 +333,7 @@ pipeline gates read from the Manifest alone. Neither calls an LLM or writes file
 `--check` reports the terminal state; `--ready` is the build-loop guard:
 
 ```bash
-while drydock status <Target> --ready; do drydock build <Target>; done
+while drydock status <Target> --ready; do drydock build <Target> || drydock diagnose <Target> --apply; done
 drydock status <Target> --check   # 0 complete, 2 blocked
 ```
 
@@ -874,6 +877,7 @@ A Refit lets the Commander update the application while keeping the Blueprint an
 drydock diagnose <Target>
 drydock diagnose <Target> --apply
 drydock diagnose <Target> --no-apply
+drydock diagnose <Target> --run <stamp>
 
 drydock refit <Target>
 drydock refit <Target> --sources
@@ -901,9 +905,9 @@ flowchart LR
 
 The diagnosis separates a real defect from the failures that follow one. A stage that exhausted its retries, a stage a later stage already answered, and a command that exits non-zero as a state signal are each named as such, so the Commander does not repair work that is not broken.
 
-It writes `DIAGNOSE_<stamp>.md` and `DIAGNOSE_<stamp>.html` to the Target directory. Both carry the break point, the reason, the failures that are not defects, open blockers and decisions, the evidence the conclusions rest on, and the local log files with their checksums. The report is self-contained: a reader who did not see the run can repair the defect from it.
+It writes `DIAGNOSE_<stamp>.md` and `DIAGNOSE_<stamp>.html` to the Target directory. Both carry Root Cause, Details, Commander Feedback Requested, and Repair Proposal, followed by the local log files with their checksums. Commander Feedback Requested lists the next steps and the open items from `BLOCKERS.md` and `DECISIONS.json`. The report is self-contained: a reader who did not see the run can repair the defect from it.
 
-The diagnosis proposes amendments as unified diffs against `COMPASS.md`, `PLAN_COMPASS.md`, `ANALYZE_COMPASS.md`, and `MANIFEST.md`. Each is verified to apply before it is offered and is confirmed one at a time. A declined amendment is recorded in `DECISIONS.json`. `--apply` applies every verified amendment without prompting; `--no-apply` records them all and changes nothing. Blueprint files are described in prose and never patched.
+The diagnosis proposes amendments as unified diffs against the failing blocks' Blueprints, `COMPASS.md`, `PLAN_COMPASS.md`, `ANALYZE_COMPASS.md`, and `MANIFEST.md`. Each is verified to apply before it is offered and is confirmed one at a time. A declined or failed amendment is recorded in `DECISIONS.json`. `--apply` applies every verified amendment without prompting; `--no-apply` records them all and changes nothing. A Blueprint amendment resets the Manifest blocks that consume it to pending. Applied amendments are committed to the Target repository. Imported sources and change tickets are never patched.
 
 `drydock diagnose` makes one LLM call and never edits Drydock's own source.
 
