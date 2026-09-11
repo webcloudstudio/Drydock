@@ -222,10 +222,13 @@ drydock plan verify MyApp                     # Confirm that acceptance criteria
 drydock run quarterdeck MyApp                 # Review and edit the Manifest, decisions, and Blueprints.
 
 # ── I ── IMPLEMENT ───────────────────────────────────────────────────────
-for attempt in {1..5}; do
-  drydock status MyApp --ready || break
-  drydock build MyApp ||                      # Build every ready block until the frontier is empty.
-    drydock diagnose MyApp --apply            # On failure, apply the diagnosed repairs.
+n=1; max=5
+while drydock status "$PROJECT" --ready; do
+  echo "************************"
+  echo "* RUNNING BUILD ATTEMPT $n"
+  echo "************************"
+  drydock build "$PROJECT" $OPTS || drydock diagnose "$PROJECT" --apply || true
+  n=$((n+1)); [ "$n" -ge "$max" ] && { echo "hit $max build iterations — aborting"; exit 1; }
 done
 drydock status MyApp --check                  # Confirm that the Manifest is complete.
 
@@ -238,10 +241,13 @@ drydock score release MyApp                   # Apply the release gate.
 # After a source change, UAT imports the update, refits the plan, and repeats the build loop.
 drydock import MyApp --update                 # Load the changed specification material.
 drydock refit MyApp --sources                 # Map the change into new Blueprint and Manifest work.
-for attempt in {1..5}; do
-  drydock status MyApp --ready || break
-  drydock build MyApp ||                      # Build the change until the frontier is empty.
-    drydock diagnose MyApp --apply            # On failure, apply the diagnosed repairs.
+n=1; max=5
+while drydock status "$PROJECT" --ready; do
+  echo "************************"
+  echo "* RUNNING BUILD ATTEMPT $n"
+  echo "************************"
+  drydock build "$PROJECT" $OPTS || drydock diagnose "$PROJECT" --apply || true
+  n=$((n+1)); [ "$n" -ge "$max" ] && { echo "hit $max build iterations — aborting"; exit 1; }
 done
 ```
 
@@ -335,7 +341,7 @@ pipeline gates read from the Manifest alone. Neither calls an LLM or writes file
 `--check` reports the terminal state; `--ready` is the build-loop guard:
 
 ```bash
-while drydock status <Target> --ready; do drydock build <Target> || drydock diagnose <Target> --apply; done
+while drydock status <Target> --ready; do drydock build <Target>; done
 drydock status <Target> --check   # 0 complete, 2 blocked
 ```
 
