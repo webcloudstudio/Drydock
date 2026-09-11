@@ -222,7 +222,8 @@ drydock plan verify MyApp                     # Confirm that acceptance criteria
 drydock run quarterdeck MyApp                 # Review and edit the Manifest, decisions, and Blueprints.
 
 # ── I ── IMPLEMENT ───────────────────────────────────────────────────────
-while drydock status MyApp --ready; do
+for attempt in {1..5}; do
+  drydock status MyApp --ready || break
   drydock build MyApp ||                      # Build every ready block until the frontier is empty.
     drydock diagnose MyApp --apply            # On failure, apply the diagnosed repairs.
 done
@@ -237,7 +238,8 @@ drydock score release MyApp                   # Apply the release gate.
 # After a source change, UAT imports the update, refits the plan, and repeats the build loop.
 drydock import MyApp --update                 # Load the changed specification material.
 drydock refit MyApp --sources                 # Map the change into new Blueprint and Manifest work.
-while drydock status MyApp --ready; do
+for attempt in {1..5}; do
+  drydock status MyApp --ready || break
   drydock build MyApp ||                      # Build the change until the frontier is empty.
     drydock diagnose MyApp --apply            # On failure, apply the diagnosed repairs.
 done
