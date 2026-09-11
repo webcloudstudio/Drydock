@@ -16,6 +16,7 @@ from drydock.build_run import BuildStepResult
 from drydock.cli import (
     _build_parser,
     _build_running_command,
+    _compact_elapsed,
     _render_build_failures,
     _stream_build,
     _stream_build_summary,
@@ -242,6 +243,12 @@ class TestHelpAndVersion:
             "    result=ok  rc=0  execution=exec-1\n"
             "    acceptance=2/3  failed=block-conformance(240/260)\n"
         )
+
+    def test_compact_elapsed_is_one_space_free_token(self):
+        assert _compact_elapsed(0.04) == "0.0s"
+        assert _compact_elapsed(12.34) == "12.3s"
+        assert _compact_elapsed(252) == "4m12s"
+        assert _compact_elapsed(3723) == "1h02m03s"
 
     def test_stream_build_summary_shows_why_the_repair_loop_stopped(self, capsys):
         # A loop that ends below its budget must account for the shortfall without --debug.
@@ -1547,7 +1554,12 @@ state: pending
         assert "scope: entire project" in out
         assert "frontier: foundation" in out
         assert re.search(r"elapsed: ", out)
-        assert "  DONE  story=foundation  state=closed/verified  execution=exec-fake" in out
+        assert re.search(
+            r"^  DONE  story=foundation  state=closed/verified  execution=exec-fake"
+            r"  elapsed=\d+\.\ds$",
+            out,
+            re.MULTILINE,
+        )
         assert "foundation" in out
         assert "Target - setup project workspace git store" in out
         assert "Target - committed project workspace git store" in out

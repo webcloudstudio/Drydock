@@ -306,6 +306,8 @@ class BuildStepResult:
     stop_reason: str = ""
     calls_used: int = 0
     calls_budget: int = 0
+    # Wall time of the whole build unit (every call and acceptance run); ``None`` in dry runs.
+    elapsed_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -3786,7 +3788,8 @@ def build_target(
             if changed:
                 set_applied_specs(manifest_path, applied_specs)
 
-        block_elapsed = _elapsed_text(time.monotonic() - block_started)
+        block_seconds = time.monotonic() - block_started
+        block_elapsed = _elapsed_text(block_seconds)
         graded = acceptance or pre_acceptance
         if graded:
             prepassed_ids = {
@@ -3865,6 +3868,7 @@ def build_target(
                 stop_reason=step_stop_reason,
                 calls_used=len(attempt_records),
                 calls_budget=max_attempt + 1,
+                elapsed_seconds=block_seconds,
             )
             steps.append(step_result)
             if on_step is not None:

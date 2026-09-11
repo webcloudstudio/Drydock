@@ -31,7 +31,8 @@ command surface and Typed Specification contract are unstable and may change bet
   Failed criteria carry `(passed/total)` case tallies. The provider `Completed …` line is no
   longer printed during a build; `result=` replaces it. Repair-loop stops print
   `STOP  reason=kit-fault|stall`, and the per-block outcome line is
-  `DONE|FAILED  story=|feature=<id>  state=<state>  execution=<id>`.
+  `DONE|FAILED  story=|feature=<id>  state=<state>  execution=<id>  elapsed=<wall time>`, where
+  `elapsed=` is the build unit's total wall time (`12.3s`, `4m12s`, `1h02m03s`).
 
 - 2026-09-10: `drydock diagnose` terminal output is restructured for reading and approval. A
   `DRYDOCK DIAGNOSE · <Target>` masthead carries the verdict; each section (Root Cause, Details,

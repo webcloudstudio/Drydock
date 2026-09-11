@@ -145,6 +145,18 @@ def _wall_time() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
+def _compact_elapsed(seconds: float) -> str:
+    """Render a duration as one space-free token: ``12.3s``, ``4m12s``, ``1h02m03s``."""
+    seconds = max(0.0, seconds)
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    hours, rem = divmod(int(seconds), 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    return f"{minutes}m{secs:02d}s"
+
+
 def _elapsed_text(seconds: float) -> str:
     seconds = max(0.0, seconds)
     if seconds < 1:
@@ -2236,8 +2248,13 @@ def cmd_build(args: argparse.Namespace) -> int:
                 "story" if unit_id == step.block_id and step.block_type != "feature" else "feature"
             )
             outcome = {"built": "DONE", "failed": "FAILED"}.get(step.status, step.status.upper())
+            elapsed = (
+                f"  elapsed={_compact_elapsed(step.elapsed_seconds)}"
+                if step.elapsed_seconds is not None
+                else ""
+            )
             print()
-            print(f"  {outcome}  {kind}={unit_id}  state={step.state}{reference}")
+            print(f"  {outcome}  {kind}={unit_id}  state={step.state}{reference}{elapsed}")
         if step.status == "failed":
             # Stories in one block share a single execution: report it once.
             fatal_key = step.execution_id or f"{step.block_id}:{step.error}"
