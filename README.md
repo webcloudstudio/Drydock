@@ -110,6 +110,18 @@ Bounds on a build's acceptance runs are configurable, and each is also a `drydoc
 drydock config set repair_attempts 12           # a target that converges slowly
 drydock build MyApp --capture-output-limit 64   # a legitimately loud conformance suite
 ```
+
+Claude output limits are configurable. Drydock passes them to the Claude CLI on every run and
+replaces any value inherited from the shell.
+
+| Key | Default | Effect |
+|---|---|---|
+| `max_output_tokens` | 128000 | Output tokens per response (`CLAUDE_CODE_MAX_OUTPUT_TOKENS`); the CLI caps it at the model maximum (Haiku 64000) |
+| `haiku_thinking_tokens` | 16000 | Haiku thinking budget (`MAX_THINKING_TOKENS`), drawn from the output limit; 0 disables it. Other models size thinking from `--effort` |
+
+A text-only command whose response reaches the output limit fails with exit 1 and a
+`FATAL ERROR - LLM OUTPUT TRUNCATED` block naming the limit, the thinking spent, the artifact
+that was cut, and the setting to change. Nothing from the response is written.
 ## Build workflow
 
 `init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`

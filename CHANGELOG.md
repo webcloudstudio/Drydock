@@ -10,6 +10,20 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-12: Claude runs now set their own output limits. `max_output_tokens` (default 128000)
+  is passed as `CLAUDE_CODE_MAX_OUTPUT_TOKENS`, which the Claude CLI caps at each model's
+  maximum: Haiku rises from the CLI default of 32000 to 64000, and Sonnet and Opus reach 128000.
+  `haiku_thinking_tokens` (default 16000) is passed as `MAX_THINKING_TOKENS` for Haiku only,
+  so thinking can no longer consume the whole output limit; other models size thinking from
+  `--effort` and never receive it. A text-only LLM command (analyze, plan, and the others that
+  consume the response as artifacts) whose response stops on `max_tokens` now fails with exit 1
+  and a `FATAL ERROR - LLM OUTPUT TRUNCATED` block. The block names the limit, the thinking
+  tokens spent, and the artifact that was cut, and gives the setting to change: the Haiku
+  thinking budget, or `--effort` for other models. Previously the CLI's automatic continuation
+  was joined to the cut-off text, and a model that restarted the artifact produced a
+  duplicated `SEA_TRIALS.md` that surfaced as a spurious Commander blocker. Tool-using runs
+  (`drydock build`) record the truncation in `logs/llm.jsonl` but are not failed by it.
+
 - 2026-09-10: `DATABASE.md` now has a parsed, feature-owned persistence contract. Its named
   `FEATURE-<DOMAIN>-<NNN>` access patterns declare owner, read/write access, repository call,
   typed DTO input/output fields, and compatibility. Feature and screen Blueprints may cite only

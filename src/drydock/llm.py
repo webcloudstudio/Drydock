@@ -17,7 +17,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from drydock.config import get_codex_sandbox, get_effort, get_llm_provider
+from drydock.artifact_blocks import pair_artifact_delimiters
+from drydock.config import (
+    get_codex_sandbox,
+    get_effort,
+    get_haiku_thinking_tokens,
+    get_llm_provider,
+    get_max_output_tokens,
+)
 from drydock.config import normalize_effort as config_normalize_effort
 from drydock.errors import ConfigurationError, LlmConfigurationError, LlmError
 from drydock.execution import (
@@ -73,10 +80,12 @@ class LlmResult:
     stats: LlmStats
     artifacts: ExecutionArtifacts
     record: Mapping[str, Any] = field(repr=False)
+    # Set when the provider exited cleanly but Drydock judged the response unusable.
+    failure: str | None = None
 
     @property
     def ok(self) -> bool:
-        return self.returncode == 0
+        return self.returncode == 0 and self.failure is None
 
 
 TextCallback = Callable[[str], None]
@@ -260,6 +269,26 @@ def _isolate_claude_env(process_env: dict[str, str]) -> None:
     process_env["CLAUDE_CONFIG_DIR"] = str(build_home)
 
 
+def _is_haiku(model: str | None) -> bool:
+    return bool(model) and "haiku" in str(model).lower()
+
+
+def _apply_claude_token_limits(process_env: dict[str, str], model: str | None) -> None:
+    """Set the Claude CLI's output ceiling and, for Haiku only, its thinking budget.
+
+    Drydock owns both, so a value inherited from the caller's shell is replaced. The CLI caps
+    ``CLAUDE_CODE_MAX_OUTPUT_TOKENS`` at the model's maximum. A fixed thinking budget never
+    reaches any other model: they size thinking from effort, and later models reject a budget.
+
+    Mutates ``process_env`` in place.
+    """
+    process_env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(get_max_output_tokens())
+    if _is_haiku(model):
+        process_env["MAX_THINKING_TOKENS"] = str(get_haiku_thinking_tokens())
+    else:
+        process_env.pop("MAX_THINKING_TOKENS", None)
+
+
 def _preflight_codex_sandbox(sandbox: str) -> None:
     """Fail fast when a selected codex OS sandbox cannot be enforced on this host.
 
@@ -391,6 +420,106 @@ def _stream_text(llm: str, events: list[dict[str, Any]]) -> str:
         if text:
             parts.append(text)
     return "".join(parts)
+
+
+@dataclass(frozen=True)
+class OutputTruncation:
+    """A Claude response cut off at its output-token ceiling.
+
+    ``output_tokens`` is the ceiling as the provider reports it, which is the effective limit
+    after the CLI capped the requested one at the model's maximum. ``open_artifact`` names the
+    artifact block the cut landed inside, when the response was emitting one.
+    """
+
+    output_tokens: int | None
+    thinking_tokens: int | None
+    open_artifact: str | None
+
+
+def _token_count(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _claude_truncation(raw: str) -> OutputTruncation | None:
+    """The first response in a Claude stream that stopped on ``max_tokens``, or ``None``.
+
+    The CLI answers a cut-off response by asking the model to resume in a new message, so the
+    joined text can look complete. Only the provider's stop reason shows that it is not.
+    """
+    parts: list[str] = []
+    for event in _events(raw):
+        text = _text_from_event("claude", event)
+        if text:
+            parts.append(text)
+            continue
+        nested = event.get("event")
+        if not isinstance(nested, Mapping) or nested.get("type") != "message_delta":
+            continue
+        delta = nested.get("delta")
+        if not isinstance(delta, Mapping) or delta.get("stop_reason") != "max_tokens":
+            continue
+        usage = nested.get("usage")
+        usage = usage if isinstance(usage, Mapping) else {}
+        details = usage.get("output_tokens_details")
+        details = details if isinstance(details, Mapping) else {}
+        unclosed = pair_artifact_delimiters("".join(parts)).unclosed
+        return OutputTruncation(
+            output_tokens=_token_count(usage.get("output_tokens")),
+            thinking_tokens=_token_count(details.get("thinking_tokens")),
+            open_artifact=unclosed[-1] if unclosed else None,
+        )
+    return None
+
+
+def _truncation_detail(truncation: OutputTruncation) -> str:
+    size = f" of {truncation.output_tokens} tokens" if truncation.output_tokens else ""
+    thinking = (
+        f" ({truncation.thinking_tokens} spent on thinking)" if truncation.thinking_tokens else ""
+    )
+    where = f" inside {truncation.open_artifact}" if truncation.open_artifact else ""
+    return (
+        f"The model reached its output-token limit{size}{thinking} and its response was cut "
+        f"off{where}. The response is incomplete, so nothing it produced was used."
+    )
+
+
+def _truncation_actions(truncation: OutputTruncation, model: str | None) -> tuple[str, ...]:
+    lines: list[str] = []
+    if _is_haiku(model):
+        budget = get_haiku_thinking_tokens()
+        if budget > 0:
+            lines.append(f"Lower the Haiku thinking budget (now {budget}), then rerun:")
+            lines.append(f"  drydock config set haiku_thinking_tokens {budget // 2}")
+    else:
+        lines.append("Reduce thinking: rerun with --effort low (or --effort medium).")
+    requested = get_max_output_tokens()
+    reached = truncation.output_tokens
+    if reached is not None and reached < requested:
+        lines.append(
+            f"{reached} tokens is this model's output maximum; a larger model allows more."
+        )
+    else:
+        lines.append(f"Or raise the output limit (now {requested}); the CLI caps it at the")
+        lines.append("model's maximum:  drydock config set max_output_tokens <tokens>")
+    return tuple(lines)
+
+
+def _print_truncation_block(
+    *,
+    llm: str,
+    command_name: str,
+    execution_id: str,
+    truncation: OutputTruncation,
+    model: str | None,
+) -> None:
+    _print_fatal_provider_error(
+        llm=llm,
+        command_name=command_name,
+        execution_id=execution_id,
+        error=_truncation_detail(truncation),
+        title="FATAL ERROR - LLM OUTPUT TRUNCATED",
+        action_lines=_truncation_actions(truncation, model),
+    )
 
 
 def _first(mapping: Mapping[str, Any], *keys: str) -> Any:
@@ -978,11 +1107,13 @@ def _record(
     prompt_assembly: PromptAssembly,
     full_cli: str | None = None,
     sub_command: str | None = None,
+    truncation: Mapping[str, Any] | None = None,
+    failed: bool = False,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "execution_id": artifacts.execution_id,
-        "status": "succeeded" if returncode == 0 else "failed",
+        "status": "succeeded" if returncode == 0 and not failed else "failed",
         "started_at": isoformat(started_at),
         "completed_at": isoformat(completed_at),
         "job": {
@@ -1017,6 +1148,7 @@ def _record(
             ),
             "error": error,
             "timed_out": timed_out,
+            "truncation": dict(truncation) if truncation is not None else None,
         },
     }
 
@@ -1462,6 +1594,7 @@ def run_prompt(
     process_env.pop("OPENAI_BASE_URL", None)
     if selected == "claude":
         _isolate_claude_env(process_env)
+        _apply_claude_token_limits(process_env, model)
     elif selected == "codex":
         _isolate_codex_env(process_env)
 
@@ -1484,6 +1617,16 @@ def run_prompt(
         provider_error = _provider_error(selected, raw_output)
         if selected == "claude":
             artifacts.output_file.write_text(text, encoding="utf-8", newline="\n")
+        truncation = _claude_truncation(raw_output) if selected == "claude" else None
+        # A text-only command consumes the response as its artifact, so a cut-off response is
+        # unusable even when the CLI continued it: the continuation is the model's guess at
+        # where it stopped. A tool-using run keeps its work in files, where the CLI's
+        # continuation is ordinary, so there the truncation is recorded and not fatal.
+        failure = (
+            _truncation_detail(truncation)
+            if truncation is not None and not allow_tools and returncode == 0
+            else None
+        )
         completed_at = utc_now()
         elapsed_ms = _elapsed_ms(started_at, completed_at)
         stats = LlmStats(**{**asdict(stats), "elapsed_ms": elapsed_ms})
@@ -1494,7 +1637,7 @@ def run_prompt(
                 or (provider_error if returncode else None)
             )
             if returncode
-            else None
+            else failure
         )
         if returncode and error:
             _print_llm_failure_block(
@@ -1504,6 +1647,22 @@ def run_prompt(
                 error=error,
                 provider_error=provider_error,
                 raw_output=raw_output,
+            )
+        if truncation is not None:
+            logger.warning(
+                "output truncated output_tokens=%s thinking_tokens=%s open_artifact=%s fatal=%s",
+                truncation.output_tokens,
+                truncation.thinking_tokens,
+                truncation.open_artifact,
+                failure is not None,
+            )
+        if failure is not None and truncation is not None:
+            _print_truncation_block(
+                llm=selected,
+                command_name=command_name,
+                execution_id=artifacts.execution_id,
+                truncation=truncation,
+                model=model or stats.model,
             )
         record = _record(
             artifacts=artifacts,
@@ -1523,6 +1682,8 @@ def run_prompt(
             prompt_assembly=assembly,
             full_cli=full_cli,
             sub_command=sub_command,
+            truncation=asdict(truncation) if truncation is not None else None,
+            failed=failure is not None,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(
@@ -1569,10 +1730,11 @@ def run_prompt(
             working_directory=working_directory,
             returncode=returncode,
             text=text,
-            stderr=stderr or provider_error or "",
+            stderr=failure or stderr or provider_error or "",
             stats=stats,
             artifacts=artifacts,
             record=record,
+            failure=failure,
         )
     except OSError as exc:
         completed_at = utc_now()

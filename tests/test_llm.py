@@ -1506,3 +1506,134 @@ def test_new_record_fields_are_optional(monkeypatch, tmp_path):
     # Fields should be present but None
     assert job.get("full_cli") is None
     assert job.get("sub_command") is None
+
+
+def _claude_stream(*events: dict) -> str:
+    return "\n".join(json.dumps(event) for event in events) + "\n"
+
+
+def _text(text: str) -> dict:
+    return {
+        "type": "stream_event",
+        "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": text}},
+    }
+
+
+def _stop(reason: str, output_tokens: int, thinking_tokens: int) -> dict:
+    return {
+        "type": "stream_event",
+        "event": {
+            "type": "message_delta",
+            "delta": {"stop_reason": reason},
+            "usage": {
+                "output_tokens": output_tokens,
+                "output_tokens_details": {"thinking_tokens": thinking_tokens},
+            },
+        },
+    }
+
+
+def _truncated_analyze_stream() -> str:
+    """The observed Haiku failure: cut inside SEA_TRIALS.md, then the artifact restarted."""
+    return _claude_stream(
+        _text("=== BEGIN ARTIFACT ANALYSIS.md ===\n# Analysis\n=== END ARTIFACT ===\n"),
+        _text("=== BEGIN ARTIFACT SEA_TRIALS.md ===\n## st-001: Setup\nARCHITECTURE.md states"),
+        _stop("max_tokens", 32000, 15845),
+        _text("=== BEGIN ARTIFACT SEA_TRIALS.md ===\n## st-001: Setup\n=== END ARTIFACT ===\n"),
+        _stop("end_turn", 2224, 121),
+        {"type": "result", "result": "", "model": "claude-haiku-4-5", "usage": {}},
+    )
+
+
+def _capture_env(monkeypatch, raw: str) -> dict:
+    captured: dict = {}
+
+    def fake_popen(command, **kwargs):
+        captured["env"] = kwargs["env"]
+        return FakePopen(command, stdout_text=raw, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    return captured
+
+
+def test_run_claude_haiku_gets_the_output_ceiling_and_a_fixed_thinking_budget(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.delenv("DRYDOCK_MAX_OUTPUT_TOKENS", raising=False)
+    monkeypatch.delenv("DRYDOCK_HAIKU_THINKING_TOKENS", raising=False)
+    # Drydock owns both settings; values inherited from the caller's shell are replaced.
+    monkeypatch.setenv("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "1")
+    monkeypatch.setenv("MAX_THINKING_TOKENS", "999")
+    captured = _capture_env(monkeypatch, _claude_stream(_text("READY")))
+
+    result = run_prompt("Reply READY", tmp_path, llm="claude", model="haiku", announce=False)
+
+    assert result.ok
+    assert captured["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "128000"
+    assert captured["env"]["MAX_THINKING_TOKENS"] == "16000"
+
+
+def test_run_claude_sonnet_gets_the_output_ceiling_and_never_a_thinking_budget(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DRYDOCK_MAX_OUTPUT_TOKENS", "64000")
+    monkeypatch.setenv("MAX_THINKING_TOKENS", "999")
+    captured = _capture_env(monkeypatch, _claude_stream(_text("READY")))
+
+    result = run_prompt("Reply READY", tmp_path, llm="claude", model="sonnet", announce=False)
+
+    assert result.ok
+    assert captured["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "64000"
+    assert "MAX_THINKING_TOKENS" not in captured["env"]
+
+
+def test_run_claude_fails_a_text_response_cut_at_the_output_limit(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("DRYDOCK_MAX_OUTPUT_TOKENS", "128000")
+    monkeypatch.setenv("DRYDOCK_HAIKU_THINKING_TOKENS", "16000")
+    _capture_env(monkeypatch, _truncated_analyze_stream())
+
+    result = run_prompt("Analyze", tmp_path, llm="claude", model="haiku", command_name="analyze")
+
+    # The CLI continued the response, so the process succeeded; the response is still unusable.
+    assert result.returncode == 0
+    assert not result.ok
+    assert "32000 tokens (15845 spent on thinking)" in result.failure
+    assert "inside SEA_TRIALS.md" in result.failure
+    record = _records(tmp_path)[-1]
+    assert record["status"] == "failed"
+    assert record["result"]["truncation"] == {
+        "output_tokens": 32000,
+        "thinking_tokens": 15845,
+        "open_artifact": "SEA_TRIALS.md",
+    }
+    banner = capsys.readouterr().err
+    assert "FATAL ERROR - LLM OUTPUT TRUNCATED" in banner
+    assert "drydock config set haiku_thinking_tokens 8000" in banner
+    assert "32000 tokens is this model's output maximum" in banner
+
+
+def test_truncation_advice_for_an_effort_model_names_effort_and_the_output_limit(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("DRYDOCK_MAX_OUTPUT_TOKENS", "32000")
+    _capture_env(monkeypatch, _truncated_analyze_stream())
+
+    result = run_prompt("Analyze", tmp_path, llm="claude", model="sonnet", command_name="analyze")
+
+    assert not result.ok
+    banner = capsys.readouterr().err
+    assert "--effort low" in banner
+    assert "haiku_thinking_tokens" not in banner
+    assert "drydock config set max_output_tokens <tokens>" in banner
+
+
+def test_run_claude_records_but_does_not_fail_truncation_in_a_tool_run(tmp_path, monkeypatch):
+    _capture_env(monkeypatch, _truncated_analyze_stream())
+
+    result = run_prompt("Build", tmp_path, llm="claude", model="haiku", allow_tools=True)
+
+    assert result.ok
+    record = _records(tmp_path)[-1]
+    assert record["status"] == "succeeded"
+    assert record["result"]["truncation"]["output_tokens"] == 32000

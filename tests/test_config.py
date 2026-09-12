@@ -553,12 +553,36 @@ class TestExecutionBounds:
         with pytest.raises(ConfigurationError, match="repair_stall_limit"):
             max_consecutive_stalls()
 
+    def test_output_token_limits_default_to_every_models_ceiling(self, monkeypatch, tmp_path):
+        from drydock.config import get_haiku_thinking_tokens, get_max_output_tokens
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.delenv("DRYDOCK_MAX_OUTPUT_TOKENS", raising=False)
+        monkeypatch.delenv("DRYDOCK_HAIKU_THINKING_TOKENS", raising=False)
+        assert get_max_output_tokens() == 128_000
+        assert get_haiku_thinking_tokens() == 16_000
+
+    def test_zero_disables_haiku_thinking_but_not_the_output_limit(self, monkeypatch):
+        from drydock.config import get_haiku_thinking_tokens, get_max_output_tokens
+
+        monkeypatch.setenv("DRYDOCK_HAIKU_THINKING_TOKENS", "0")
+        assert get_haiku_thinking_tokens() == 0
+        monkeypatch.setenv("DRYDOCK_MAX_OUTPUT_TOKENS", "0")
+        with pytest.raises(ConfigurationError, match="max_output_tokens"):
+            get_max_output_tokens()
+
     @pytest.mark.parametrize(
         ("env_var", "getter_name", "key"),
         [
             ("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "get_capture_output_limit_mb", "capture_output_limit"),
             ("DRYDOCK_REPAIR_ATTEMPTS", "get_repair_attempts", "repair_attempts"),
             ("DRYDOCK_SANDBOX_MEM_LIMIT", "get_sandbox_mem_limit_mb", "sandbox_mem_limit"),
+            ("DRYDOCK_MAX_OUTPUT_TOKENS", "get_max_output_tokens", "max_output_tokens"),
+            (
+                "DRYDOCK_HAIKU_THINKING_TOKENS",
+                "get_haiku_thinking_tokens",
+                "haiku_thinking_tokens",
+            ),
         ],
     )
     def test_a_malformed_value_names_the_key_the_operator_typed(
@@ -604,6 +628,8 @@ class TestSettingExecutionBounds:
             ("repair_attempts", "12"),
             ("repair_stall_limit", "3"),
             ("sandbox_mem_limit", "8192"),
+            ("max_output_tokens", "64000"),
+            ("haiku_thinking_tokens", "8000"),
         ],
     )
     def test_a_bound_round_trips_through_the_config_file(self, isolated_config, key, value):

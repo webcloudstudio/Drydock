@@ -29,6 +29,8 @@ _KEY_MAP = {
     "capture_output_limit": "DRYDOCK_CAPTURE_OUTPUT_LIMIT",
     "repair_attempts": "DRYDOCK_REPAIR_ATTEMPTS",
     "repair_stall_limit": "DRYDOCK_REPAIR_STALL_LIMIT",
+    "max_output_tokens": "DRYDOCK_MAX_OUTPUT_TOKENS",
+    "haiku_thinking_tokens": "DRYDOCK_HAIKU_THINKING_TOKENS",
 }
 
 #: Keys whose value is a plain count, with the smallest value each accepts and the wording used
@@ -50,6 +52,14 @@ _NUMERIC_BOUND_KEYS = {
     "DRYDOCK_REPAIR_STALL_LIMIT": (
         1,
         "a positive integer count of consecutive flat repair passes",
+    ),
+    "DRYDOCK_MAX_OUTPUT_TOKENS": (
+        1,
+        "a positive integer count of output tokens per model response",
+    ),
+    "DRYDOCK_HAIKU_THINKING_TOKENS": (
+        0,
+        "a non-negative integer count of thinking tokens (0 disables Haiku thinking)",
     ),
 }
 
@@ -79,6 +89,13 @@ DEFAULT_SANDBOX_MEM_LIMIT_MB = 4096
 # runs legitimately emits more than a few megabytes; past that the child is not reporting, it is
 # allocating on Drydock's behalf. Set to 0 to lift the bound.
 DEFAULT_CAPTURE_OUTPUT_LIMIT_MB = 8
+# Output-token ceiling requested for every Claude response. The Claude CLI caps a request above a
+# model's own maximum at that maximum, so one high value raises every model to its ceiling: Haiku
+# from the CLI default of 32000 to 64000, Sonnet and Opus to 128000.
+DEFAULT_MAX_OUTPUT_TOKENS = 128_000
+# Haiku's thinking is a fixed budget drawn from the same output ceiling, and the CLI otherwise
+# lets it consume all but one token. Pinning it guarantees the response text the rest.
+DEFAULT_HAIKU_THINKING_TOKENS = 16_000
 
 
 def _config_path() -> Path:
@@ -436,6 +453,36 @@ def get_capture_output_limit_mb() -> int:
     )
 
 
+def get_max_output_tokens() -> int:
+    """Output-token ceiling requested for each Claude response.
+
+    Passed to the Claude CLI as ``CLAUDE_CODE_MAX_OUTPUT_TOKENS``; the CLI caps it at the
+    selected model's maximum, so the default reaches every model's ceiling.
+    """
+    return _bounded_int(
+        "max_output_tokens",
+        "DRYDOCK_MAX_OUTPUT_TOKENS",
+        DEFAULT_MAX_OUTPUT_TOKENS,
+        minimum=1,
+        units="a positive integer count of output tokens per model response",
+    )
+
+
+def get_haiku_thinking_tokens() -> int:
+    """Thinking budget for Haiku runs; ``0`` disables Haiku thinking.
+
+    Haiku is the only Claude model with a fixed thinking budget. Every other model sizes its
+    thinking from the requested effort, so this setting never reaches them.
+    """
+    return _bounded_int(
+        "haiku_thinking_tokens",
+        "DRYDOCK_HAIKU_THINKING_TOKENS",
+        DEFAULT_HAIKU_THINKING_TOKENS,
+        minimum=0,
+        units="a non-negative integer count of thinking tokens (0 disables Haiku thinking)",
+    )
+
+
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
     ws_value, ws_source = _get("DRYDOCK_WORKSPACE")
@@ -477,6 +524,12 @@ def config_show() -> list[tuple[str, str, str]]:
             "repair_stall_limit",
             "DRYDOCK_REPAIR_STALL_LIMIT",
             str(MAX_CONSECUTIVE_REPAIR_STALLS),
+        ),
+        ("max_output_tokens", "DRYDOCK_MAX_OUTPUT_TOKENS", str(DEFAULT_MAX_OUTPUT_TOKENS)),
+        (
+            "haiku_thinking_tokens",
+            "DRYDOCK_HAIKU_THINKING_TOKENS",
+            str(DEFAULT_HAIKU_THINKING_TOKENS),
         ),
     ):
         value, source = _get(key_upper, default)
