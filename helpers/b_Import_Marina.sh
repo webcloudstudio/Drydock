@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 
-export PROJECT=Marina
-export PROJECT_DIR=/mnt/c/Users/barlo/projects
+if [ -z "$PROJECT" -o -z "$PROJECT_DIR" ]
+then
+	echo need to set $PROJECT and $PROJECT_DIR
+	exit 2
+fi
+
+echo importing $PROJECT
+# export PROJECT=Marina
+# export PROJECT_DIR=/mnt/c/Users/barlo/projects
 export SOURCE=$PROJECT_DIR/Specifications/Marina
 
 import_source() {

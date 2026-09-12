@@ -11,34 +11,34 @@ set -x
 
 # On WSL/DrvFs, a directory can enter a zombie state where stat returns ENOENT
 # but mkdir returns EEXIST.  cmd.exe rmdir resolves it when plain rm cannot.
-if [ -d "$PROJECT_DIR/drydock/targets/$PROJECT" ]
+
+if [ -z "NO_REBUILD" ]
 then
-	echo "Remove the $PROJECT_DIR/drydock/targets/$PROJECT"
-	rm -rf $PROJECT_DIR/drydock/targets/$PROJECT 2>/dev/null || cmd.exe /c "rmdir /s /q targets" 2>/dev/null || true
+	echo "REBUILDING"
+	read
+	if [ -d "$PROJECT_DIR/drydock/targets/$PROJECT" ]
+	then
+		echo "Remove the $PROJECT_DIR/drydock/targets/$PROJECT"
+		rm -rf $PROJECT_DIR/drydock/targets/$PROJECT 2>/dev/null || cmd.exe /c "rmdir /s /q targets" 2>/dev/null || true
+	fi
+
+	if [ -d $PROJECT_DIR/$PROJECT ]
+	then
+		echo "Remove $PROJECT_DIR/$PROJECT"
+		rm -rf $PROJECT_DIR/$PROJECT 2>/dev/null
+	fi
+	read
+
+	drydock init $PROJECT $OPTS
+	drydock status $PROJECT $OPTS
+	./b_Import_Marina.sh
+	drydock status $PROJECT $OPTS
+	drydock analyze $PROJECT $OPTS
+	drydock status $PROJECT $OPTS
+	echo "REBUILDING COMPLETED"
 fi
 
-if [ -d $PROJECT_DIR/$PROJECT ]
-then
-	echo "Remove $PROJECT_DIR/$PROJECT"
-	rm -rf $PROJECT_DIR/$PROJECT 2>/dev/null
-fi
-read
-
-set -x
-
-drydock init $PROJECT $OPTS
-
-drydock status $PROJECT $OPTS
-
-./b_Import_Marina.sh
-
-drydock status $PROJECT $OPTS
-drydock analyze $PROJECT $OPTS
-read
-
-drydock status $PROJECT $OPTS
 drydock plan $PROJECT $OPTS
-read
 
 # drydock config show
 # drydock validate $PROJECT $OPTS
@@ -49,6 +49,6 @@ while drydock status "$PROJECT" --ready; do
   echo "************************"
   echo "* RUNNING BUILD ATTEMPT $n"
   echo "************************"
-  drydock build $PROJECT $OPTS
+  drydock build $PROJECT $OPTS || drydock diagnose "$PROJECT" --apply || true
   n=$((n+1)); [ "$n" -ge "$max" ] && { echo "hit $max build iterations — aborting"; exit 1; }
 done
