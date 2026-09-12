@@ -15,8 +15,9 @@ from drydock.errors import SpecificationError
 
 BLOCK_TYPES = ("feature", "story", "spike", "ac")
 
-# Sealed foundational Blueprint specifications: once applied, a direct edit blocks the
-# build and the change must arrive as a change ticket processed by ``drydock refit``.
+# Foundational Blueprint specifications are reported as contract roots. Direct edits reconcile
+# through ``drydock refit`` just like every other Blueprint; the classification does not seal
+# them or require a change ticket.
 FOUNDATIONAL_SPECS = frozenset({"ARCHITECTURE.md", "DATABASE.md", "UI-GENERAL.md"})
 STATES = (
     "pending",

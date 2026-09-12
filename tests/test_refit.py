@@ -573,22 +573,28 @@ class TestDriftReconciliation:
         assert "SCREEN-A.md" not in plan.applied_specs
         assert "DATABASE.md" in plan.applied_specs
 
-    def test_foundational_drift_without_ticket_is_blocked(self, tmp_path, monkeypatch):
+    def test_foundational_drift_without_ticket_resets_its_consumers(self, tmp_path, monkeypatch):
         from drydock.build_plan import parse_build_plan
 
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
         target = _make_drift_target(tmp_path, db_content="db changed\n")
 
         result = refit_target(target, runner=_fake_runner(""))
-        assert result.exit_code() == 1
-        assert result.resets == []
-        assert len(result.drift_errors) == 1
-        assert "Amends: DATABASE.md" in result.drift_errors[0]
-        assert "change ticket" in result.drift_errors[0]
+        assert result.exit_code() == 0
+        assert result.drift_errors == []
+        assert len(result.resets) == 1
+        reset = result.resets[0]
+        assert reset.path == "DATABASE.md"
+        assert reset.foundational
+        assert set(reset.reset_ids) == {"foundation", "screen-a"}
 
         plan = parse_build_plan(target / "MANIFEST.md")
-        assert all(b.state == "closed/verified" for b in plan.blocks)
-        assert "DATABASE.md" in plan.applied_specs
+        states = {b.block_id: b.state for b in plan.blocks}
+        assert states["foundation"] == "pending"
+        assert states["screen-a"] == "pending"
+        assert states["unrelated"] == "closed/verified"
+        assert "DATABASE.md" not in plan.applied_specs
+        assert "SCREEN-A.md" not in plan.applied_specs
 
     def test_foundational_drift_with_ticket_cascades_reset(self, tmp_path, monkeypatch):
         from drydock.build_plan import parse_build_plan
@@ -631,7 +637,7 @@ class TestDriftReconciliation:
         assert "SCREEN-A.md" not in plan.applied_specs
 
 
-def test_database_drift_resets_only_consumers_of_unbuilt_rebuild_operation(tmp_path):
+def test_database_drift_resets_only_consumers_of_unbuilt_rebuild_operation(tmp_path, monkeypatch):
     from drydock.build_plan import parse_build_plan
 
     blueprint = tmp_path / "blueprint"
@@ -736,6 +742,17 @@ state: closed/verified
         "orders",
         "order-view",
     )
+
+    # A direct edit with a target Git baseline does not need a change ticket or a pre-authored
+    # migration record to identify the operation-level rebuild closure.
+    (ledger / "MIGRATION-FEATURE-ORDER-001.md").unlink()
+    monkeypatch.setattr(
+        "drydock.refit.changed_operation_ids_since",
+        lambda *_args, **_kwargs: ("FEATURE-ORDER-001",),
+    )
+    assert _database_reset_ids(
+        parse_build_plan(manifest), blueprint, applied_commit="applied-commit"
+    ) == ("database", "orders", "order-view")
 
 
 class TestRefitVoidsVerifications:

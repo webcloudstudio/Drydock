@@ -37,6 +37,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-12: `drydock refit <Target>` now treats direct Blueprint edits as the authoritative
+  input for incremental rebuilding. It reconciles changed `ARCHITECTURE.md`, `DATABASE.md`, and
+  `UI-GENERAL.md` files without requiring `blueprint/changes/TICKET-*.md` files, resets their
+  affected Manifest closure to `pending`, and removes stale applied-spec provenance. Change
+  tickets remain an optional additive-work path. `DATABASE.md` retains operation-level
+  invalidation: the owner rebuilds, while only consumers of changed `rebuild` operations reset;
+  a Git-backed applied revision identifies direct operation changes without a change ticket or a
+  pre-authored migration record.
+
 - 2026-09-11: `drydock diagnose --apply` records each amendment it applies in `DECISIONS.json` as
   a `low`, `recommended` decision titled `Applied without review: <summary>`, naming the changed
   file, the reason, and the report. It replaces an earlier declined proposal of the same change
@@ -91,6 +100,13 @@ command surface and Typed Specification contract are unstable and may change bet
   policy is introduced.
 
 ### Fixed
+
+- 2026-09-12: `drydock diagnose` now reads the Target's recorded `ERRORS.md` before calling an
+  LLM. A deterministic failure classification — including provider rate, session, or usage limits;
+  provider, context/token, execution-environment, and execution-security failures — prints its
+  recorded required action and exits 1 without a second model call. The Marina Haiku build helper
+  now aborts on its first failed `drydock build`; it no longer runs `diagnose --apply`, suppresses
+  failure with `true`, or retries an unavailable provider.
 
 - 2026-09-10: `drydock build` and `drydock plan` now treat test-scoped Python acceptance
   dependencies as automatically authorized hermetic test-environment inputs, not Commander

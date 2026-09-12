@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from drydock.diagnose import should_diagnose
 from drydock.diagnose_apply import Outcome, resolve
 from drydock.diagnose_console import (
     BOLD,
@@ -32,7 +33,7 @@ from drydock.diagnose_console import (
 )
 from drydock.diagnose_evidence import BLUEPRINT_PREFIX, collect
 from drydock.diagnose_report import diagnose_run, write_report
-from drydock.errors import UsageError
+from drydock.errors import UsageError, read_error_record
 
 #: Printed when the operator has to do something before this command can work.
 NEXT_STEP = "Next: {command}"
@@ -95,6 +96,11 @@ def run(
         out(f"Target '{target}' has recorded no commands, so there is nothing to diagnose.")
         out(NEXT_STEP.format(command=f"drydock analyze {target}"))
         return Result(exit_code=2)
+
+    record = read_error_record(target_dir)
+    if bundle.stop is not None and record is not None and not should_diagnose(record=record):
+        _recorded_failure(out, style, target, record)
+        return Result(exit_code=1)
 
     reason = _provider_unavailable(llm)
     if reason:
@@ -277,6 +283,24 @@ def _next(out: Callable[[str], None], style: Style, command: str) -> None:
     """The closing line of every exit that leaves work to do."""
     out("")
     out(INDENT + style.paint(NEXT_STEP.format(command=command), BOLD))
+
+
+def _recorded_failure(out: Callable[[str], None], style: Style, target: str, record) -> None:
+    """Print a recorded deterministic failure without spending another model call."""
+    out(style.rule("Diagnosis Not Run"))
+    out(INDENT + "Drydock already recorded a deterministic failure:")
+    out(INDENT + style.paint(record.classification or "recorded failure", RED, BOLD))
+    if record.detail:
+        out(INDENT + record.detail)
+    out(INDENT + "No LLM call was made.")
+    if record.recovery:
+        out("")
+        out(INDENT + "Required action")
+        for line in record.recovery.splitlines():
+            out(INDENT * 2 + line)
+    command = record.command.strip()
+    retry = f"drydock {command} {target}" if command else f"drydock status {target}"
+    _next(out, style, f"after completing the required action, run: {retry}")
 
 
 def _unapplicable_line(diagnosis) -> str:

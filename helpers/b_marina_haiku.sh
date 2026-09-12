@@ -1,7 +1,9 @@
+set -Eeuo pipefail
 set -x
-export PROJECT=Marina_Haiku
-export PROJECT_DIR=/mnt/c/Users/barlo/projects
-export OPTS="--llm-provider claude --model haiku"
+
+PROJECT=Marina_Haiku
+PROJECT_DIR=/mnt/c/Users/barlo/projects
+OPTS=(--llm-provider claude --model haiku)
 
 if [ -d "$PROJECT_DIR/drydock/targets/$PROJECT" ]
 then
@@ -15,19 +17,28 @@ then
 	rm -rf $PROJECT_DIR/$PROJECT 2>/dev/null
 fi
 
-drydock init $PROJECT $OPTS
-drydock status $PROJECT $OPTS
+drydock init "$PROJECT" "${OPTS[@]}"
+drydock status "$PROJECT" "${OPTS[@]}"
 ./b_Import_Marina.sh
-drydock analyze $PROJECT $OPTS
-drydock status $PROJECT $OPTS
+drydock analyze "$PROJECT" "${OPTS[@]}"
+drydock status "$PROJECT" "${OPTS[@]}"
 echo "REBUILDING COMPLETED"
 
-drydock plan $PROJECT $OPTS
+drydock plan "$PROJECT" "${OPTS[@]}"
 n=1; max=5
 while drydock status "$PROJECT" --ready; do
   echo "************************"
   echo "* RUNNING BUILD ATTEMPT $n"
   echo "************************"
-  drydock build $PROJECT $OPTS || drydock diagnose $PROJECT $OPTS --apply || true
-  n=$((n+1)); [ "$n" -ge "$max" ] && { echo "hit $max build iterations — aborting"; exit 1; }
+  if drydock build "$PROJECT" "${OPTS[@]}"; then
+    n=$((n + 1))
+  else
+    rc=$?
+    echo "Build failed (rc=$rc); aborting without automatic diagnose or retry."
+    exit "$rc"
+  fi
+  if [ "$n" -gt "$max" ]; then
+    echo "hit $max build iterations — aborting"
+    exit 1
+  fi
 done

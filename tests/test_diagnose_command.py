@@ -17,7 +17,7 @@ from drydock.diagnose_command import _report_outcome, parse_mode
 from drydock.diagnose_console import Style
 from drydock.diagnose_evidence import collect
 from drydock.diagnose_report import assemble, render_report, verify, write_report
-from drydock.errors import UsageError
+from drydock.errors import UsageError, write_error_record
 from drydock.patch import parse_amendments
 from drydock.prompts import load_prompt
 
@@ -505,6 +505,37 @@ def test_a_provider_failure_still_names_a_next_step(workspace, monkeypatch):
     )
     assert result.exit_code == 1
     assert "Next: drydock diagnose Demo" in output
+
+
+@pytest.mark.parametrize(
+    "classification",
+    [
+        "provider rate limit",
+        "provider error",
+        "context/token limit",
+        "execution environment unavailable",
+        "execution security policy blocked",
+    ],
+)
+def test_recorded_deterministic_failure_skips_the_llm(workspace, monkeypatch, classification):
+    target = workspace / "targets" / "Demo"
+    write_error_record(
+        target,
+        command="build",
+        phase="BUILD",
+        classification=classification,
+        detail="The prior build already established the failure.",
+        recovery="Correct the condition before rerunning the build.",
+    )
+    runner = fake_runner()
+    result, output = _run(workspace, monkeypatch, target="Demo", mode="apply", runner=runner)
+    assert result.exit_code == 1
+    assert runner.seen == []
+    assert "Diagnosis Not Run" in output
+    assert classification in output
+    assert "No LLM call was made." in output
+    assert "Correct the condition before rerunning the build." in output
+    assert "after completing the required action, run: drydock build Demo" in output
 
 
 def test_a_missing_provider_is_reported_as_setup_not_diagnosis(workspace, monkeypatch):

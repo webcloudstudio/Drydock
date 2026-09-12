@@ -1,14 +1,13 @@
-"""``drydock refit`` — conform change tickets in blueprint/changes/ to the build process.
+"""``drydock refit`` — reconcile Blueprint edits and optional change tickets into a build.
 
 Each ``TICKET-NNN-{Name}.md`` file is read, its typed spec header is normalized (``Amends:``,
 ``Depends On:``, ``Version:``), stories and ACs are generated or refined, and MANIFEST.md is
-patched with new story rows for those tickets. After the ticket pass, a deterministic drift
-reconciliation compares every ``applied_specs`` record against the current Blueprint content:
-each drifted file resets its consumer blocks and their transitive dependents to ``pending``
-and drops the stale provenance records, so the next ``drydock build`` rebuilds them in
-dependency order. Sealed foundational specifications (``FOUNDATIONAL_SPECS``) may only drift
-under a change ticket that amends them; unticketed foundational drift is reported and left
-untouched. Tests inject a fake runner instead of spending API credits.
+patched with new story rows for those tickets. Independently, deterministic drift reconciliation
+compares every ``applied_specs`` record against the current Blueprint content. Every changed
+Blueprint resets its consumer blocks and their transitive dependents to ``pending`` and drops
+stale provenance, so direct Blueprint authoring continues with the appropriate build frontier.
+``DATABASE.md`` retains its operation-level invalidation policy. Tests inject a fake runner
+instead of spending API credits.
 """
 
 from __future__ import annotations
@@ -24,7 +23,6 @@ from drydock.artifact_blocks import RESERVED_BLOCK_NAMESPACE
 from drydock.build_plan import (
     cascade_reset_from_ids,
     cascade_reset_ids,
-    compact_source,
     foundational_source,
     parse_build_plan,
     set_applied_specs,
@@ -321,13 +319,17 @@ def _database_reset_ids(
             "Blueprint migration references unknown access pattern(s): "
             + ", ".join(sorted(unknown))
         )
-    # The published contract implements rebuild sensitivity for all Blueprint types. ``data``
-    # and ``unchanged`` therefore preserve consumers until a later sensitivity policy is added.
+    # A direct Blueprint edit must be sufficient to reconcile the build. Git-backed Targets
+    # identify its changed public operations from the applied revision; a planned migration is
+    # also independently rebuildable when no baseline is available. ``data`` and ``unchanged``
+    # operations preserve their consumers.
     active = set(staged)
     if changed is not None:
-        active &= set(changed)
+        active |= set(changed)
     rebuilding = {
-        identifier for identifier in active if patterns[identifier].compatibility == "rebuild"
+        identifier
+        for identifier in active
+        if identifier in patterns and patterns[identifier].compatibility == "rebuild"
     }
     consumer_seeds = {
         block.block_id
@@ -354,14 +356,13 @@ def _database_reset_ids(
 def _reconcile_drift(
     manifest_path: Path,
     blueprint_dir: Path,
-    amended_sources: set[str],
 ) -> tuple[list[RefitReset], list[str]]:
-    """Reset consumer blocks for drifted applied specs; gate foundational drift on tickets.
+    """Reset consumer blocks for every drifted applied specification.
 
-    ``amended_sources`` are the source filenames named by this run's ticket ``Amends:``
-    fields. A drifted foundational file not covered by one is reported as a drift error
-    and left untouched. Every other drifted file resets its cascade to ``pending`` and
-    its ``applied_specs`` records (and those stamped by reset blocks) are removed.
+    Blueprints are the source of truth. A direct edit is reconciled without a change ticket:
+    its consumers and dependency closure return to ``pending`` and their stale provenance is
+    removed. Tickets remain an optional additive workflow for work that does not edit a parent
+    Blueprint.
     """
     if not manifest_path.is_file():
         return [], []
@@ -371,29 +372,13 @@ def _reconcile_drift(
     if not stale:
         return [], []
 
-    errors: list[str] = []
-    resettable = []
-    for spec in stale:
-        sealed = foundational_source(spec.rel_path)
-        if sealed is not None and sealed not in amended_sources:
-            errors.append(
-                f"{spec.rel_path}: sealed foundational specification changed without a "
-                f"change ticket. Create blueprint/changes/TICKET-NNN-<Name>.md with "
-                f"'Amends: {sealed}' and rerun 'drydock refit'."
-            )
-            continue
-        resettable.append(spec)
-
-    if not resettable:
-        return [], errors
-
     resets = reset_blueprint_consumers(
         manifest_path,
         blueprint_dir,
-        [spec.rel_path for spec in resettable],
-        applied_commits={spec.rel_path: spec.record.commit for spec in resettable},
+        [spec.rel_path for spec in stale],
+        applied_commits={spec.rel_path: spec.record.commit for spec in stale},
     )
-    return resets, errors
+    return resets, []
 
 
 def reset_blueprint_consumers(
@@ -484,7 +469,6 @@ def refit_target(
     prompt = load_prompt(PROMPT_NAME) if tickets else None
     today = date.today().isoformat()
     items: list[RefitItem] = []
-    amended_sources: set[str] = set()
     database_ticket_texts: list[str] = []
 
     for ticket_path in tickets:
@@ -505,7 +489,6 @@ def refit_target(
         # Scope and declared story ids come from the ticket's own header when it has one. A
         # hand-authored ticket predating those fields parses to defaults rather than failing.
         header = parse_ticket_header(ticket_text)
-        amended_sources.add(Path(compact_source(amends)).name)
         resolved_deps = _resolve_ticket_deps(amends, blueprint_dir)
         parent_path = blueprint_dir / amends
         parent_text = parent_path.read_text(encoding="utf-8") if parent_path.is_file() else ""
@@ -580,6 +563,6 @@ def refit_target(
             database_ticket_texts.append(ticket_text)
 
     create_ticket_migration_records(blueprint_dir, database_ticket_texts)
-    resets, drift_errors = _reconcile_drift(manifest_path, blueprint_dir, amended_sources)
+    resets, drift_errors = _reconcile_drift(manifest_path, blueprint_dir)
 
     return RefitResult(target_dir=target_dir, items=items, resets=resets, drift_errors=drift_errors)
