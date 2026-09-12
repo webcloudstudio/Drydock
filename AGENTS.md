@@ -27,6 +27,18 @@ Rules below apply only to that document.
 Commit all files at the completion of any operation, including files you did not touch — other
 processes may be writing concurrently. Notify and stop on any merge issue.
 
+## UAT Evidence
+
+`uat/` is published benchmark evidence. Every `uat/<Kit>/` is a separate git history whose commits
+and `SHA256SUMS` attest to completed builds. Any write under it invalidates that evidence.
+
+- No LLM runs `drydock uat` in any form: no run, resume, `--run`, `--stage`, `--from-step`,
+  `--report`, or diagnostic invocation. Ed alone runs UAT.
+- No LLM writes, stages, commits, deletes, or runs git commands under `uat/`, including clearing
+  lock files. Read-only inspection occurs only when Ed requests it.
+- A test, script, or command that reaches `uat/` is a defect. Report it and stop; do not run it
+  to find out.
+
 ## Project Layout
 
 ```text
@@ -39,7 +51,7 @@ Drydock/
   docs/              Authoritative specification and documentation
   logs/              Drydock logs, prompts, and full run history
   notes/             Refit-skill working notes; injected by that skill only, not read by code
-  uat/               UAT runs; used only by `drydock uat`
+  uat/               Published UAT evidence; written only by Ed's `drydock uat` runs (see UAT Evidence)
   dist/              Build artifacts; not committed
   targets/<PROJECT>  Generated Target workspace; see Data Locations
 ```
