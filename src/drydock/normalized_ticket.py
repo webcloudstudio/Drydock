@@ -182,6 +182,7 @@ def render_normalized_ticket(
     compatibility: str | None = None,
     now: datetime | None = None,
     source_ref: str | None = None,
+    source_kind: str = "ticket-file",
 ) -> str:
     """Render one normalized ticket while retaining all non-Drydock source fields verbatim."""
     timestamp = now or datetime.now(UTC)
@@ -207,7 +208,7 @@ def render_normalized_ticket(
     if parent := _source_parent(front_matter):
         fields.append(f"drydock_parent: {parent}")
     fields.extend([
-        "drydock_source: ticket-file",
+        f"drydock_source: {source_kind}",
         f"drydock_source_ref: {source_ref or source_path.name}",
         f"drydock_amends: {amends}",
         f"drydock_kind: {kind}",

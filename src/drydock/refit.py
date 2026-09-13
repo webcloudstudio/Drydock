@@ -186,6 +186,41 @@ def _normalize_source_tickets(
     return items, errors
 
 
+def _normalize_blueprint_drift(
+    manifest_path: Path, blueprint_dir: Path, changes_dir: Path
+) -> list[RefitItem]:
+    """Represent each directly changed applied Blueprint as a normalized ticket."""
+    if not manifest_path.is_file():
+        return []
+    plan = parse_build_plan(manifest_path)
+    items: list[RefitItem] = []
+    for stale in stale_applied_specs(plan, blueprint_dir):
+        source_path = blueprint_dir / stale.rel_path
+        if not source_path.is_file():
+            continue
+        ticket_id = next_ticket_id(changes_dir)
+        destination = changes_dir / f"{ticket_id}-{ticket_slug(stale.rel_path)}.md"
+        source_text = (
+            f"# Blueprint change: {stale.rel_path}\n\n"
+            "The current Blueprint content differs from the previously applied Blueprint state.\n\n"
+            f"{source_path.read_text(encoding='utf-8')}"
+        )
+        destination.write_text(
+            render_normalized_ticket(
+                source_path,
+                source_text,
+                ticket_id=ticket_id,
+                amends=stale.rel_path,
+                source_ref=stale.rel_path,
+                source_kind="blueprint-diff",
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        items.append(RefitItem(ticket=destination, status="conformed"))
+    return items
+
+
 def _parse_parent_depends(parent_text: str) -> list[str]:
     """Read the Depends On field from a parent spec header table."""
     m = _DEPENDS_ON_RE.search(parent_text)
@@ -525,12 +560,16 @@ def _refit_target(
 
     changes_dir.mkdir(parents=True, exist_ok=True)
     normalized_items, normalization_errors = _normalize_source_tickets(changes_dir, blueprint_dir)
+    normalized_items.extend(_normalize_blueprint_drift(manifest_path, blueprint_dir, changes_dir))
 
-    tickets = [
-        path
-        for path in sorted(p for p in changes_dir.glob("*.md") if p.is_file())
-        if _parse_amends(path.read_text(encoding="utf-8")) is not None
-    ]
+    tickets = []
+    for path in sorted(p for p in changes_dir.glob("*.md") if p.is_file()):
+        text = path.read_text(encoding="utf-8")
+        normalized = parse_normalized_ticket(path)
+        if normalized and normalized.drydock_fields["drydock_source"] == "blueprint-diff":
+            continue
+        if _parse_amends(text) is not None:
+            tickets.append(path)
 
     prompt = load_prompt(PROMPT_NAME) if tickets else None
     today = date.today().isoformat()
