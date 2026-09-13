@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+protected_branches="$(git config --get-all drydock.privateBranch || true)"
+
+while read -r local_ref _local_sha _remote_ref _remote_sha; do
+  while read -r branch; do
+    if [[ -n "$branch" && "$local_ref" == "refs/heads/$branch" ]]; then
+      echo "Push blocked: $branch is registered as a private local branch." >&2
+      echo "Remove drydock.privateBranch=$branch locally only when publication is approved." >&2
+      exit 1
+    fi
+  done <<< "$protected_branches"
+done

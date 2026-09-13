@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v pre-commit >/dev/null 2>&1; then
+  exec pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit --hook-dir "$(dirname "$0")" -- "$@"
+fi
+
+echo 'pre-commit is not installed; skipping local pre-commit hooks.' >&2
