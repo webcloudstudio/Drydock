@@ -353,6 +353,7 @@ drydock status <Target> --check   # 0 complete, 2 blocked
 |---|---|
 | `drydock_build_directory` | Build root. Drydock builds `$DRYDOCK_BUILD_DIRECTORY/<Target>` and defaults this location under the workspace when unset. |
 | `drydock_workspace` | Drydock workspace root. Commands require a resolved workspace. |
+| `change_ticket_directory` | Target-relative directory from which Refit reads ticket input and to which it writes normalized change tickets. Defaults to `blueprint/changes`. |
 | `drydock_model` | Default model name passed to the configured subscription-authenticated CLI. |
 | `llm_provider` | Subscription CLI provider: `claude` or `codex`. |
 | `prompt_warn_tokens` | Prompt-size warning threshold in tokens. |
@@ -924,7 +925,9 @@ The diagnosis proposes amendments as unified diffs against the failing blocks' B
 
 The change inputs are Jira or other ticket material, raw English ticket files, direct Blueprint edits, and Blueprint comments associated with Feature tickets. Refit compares direct Blueprint edits with the prior applied Blueprint snapshot recorded in the Manifest. Git history may provide provenance but is not required for change detection.
 
-Refit writes normalized change tickets to `targets/<Target>/blueprint/changes/`. A source ticket or direct Blueprint edit may produce multiple normalized tickets. Each normalized ticket has one best Blueprint home and amends exactly one Blueprint, section, story, or named database Access Pattern. A Feature-ticket Blueprint comment produces one normalized ticket. Refit links inputs that describe the same change and fails without writing when inputs request incompatible outcomes or cannot be assigned a home.
+Refit reads ticket input from the Target-relative `change_ticket_directory` configuration value and writes normalized change tickets to the same directory. The default directory is `targets/<Target>/blueprint/changes/`. A source ticket or direct Blueprint edit may produce multiple normalized tickets. A Feature-ticket Blueprint comment produces one normalized ticket.
+
+Before normalization, Refit matches each source ticket to the current Blueprint state or a detected direct Blueprint change. It uses an explicit target when supplied, applicable Jira metadata, the ticket text, and the current Blueprint content. Refit links inputs that describe the same change. Each normalized ticket has one best Blueprint home and amends exactly one Blueprint, section, story, or named database Access Pattern. A source ticket that cannot be matched, normalized, and incorporated into the resulting build is recorded under `Unincorporated Change Tickets` in `BLOCKERS.md`, reported to the Commander, and causes Refit to exit with code `1`.
 
 Each normalized change ticket uses typed front matter followed by these Markdown sections:
 
@@ -964,9 +967,11 @@ compatibility: rebuild
 
 Refit leaves unbuilt work available for its first build using the current requirement. It resets only built work affected by a normalized ticket. The build receives the current Blueprint and the normalized tickets associated with the work it builds.
 
+Refit applies Manifest and normalized-ticket updates atomically. Its finalization always attempts a Target Git commit for every artifact it writes, including `BLOCKERS.md` notifications written after an error. A failed reconciliation does not apply partial Manifest or normalized-ticket updates. A failure to commit is reported as an operational error.
+
 For `DATABASE.md`, changes to Persistence Interfaces, Schemas, or Migrations create `database-private` or `database-data` tickets and affect database implementation or migration work only. A change to a named Access Pattern affects only its owner, Features that cite that operation, and their dependent work when `compatibility: rebuild`. `compatibility: data` affects database migration and implementation work only. `compatibility: unchanged` records the change without resetting work. Each database change has a distinct normalized ticket and migration-change record.
 
-**Exit codes.** `0` success or no-op; `1` an ambiguous, conflicting, or unassignable change; `2` usage error.
+**Exit codes.** `0` success or no-op; `1` an ambiguous, conflicting, unassignable, or unincorporated change, or a commit failure; `2` usage error.
 
 ## Artifact I/O Matrix 
 
