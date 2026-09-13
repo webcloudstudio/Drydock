@@ -16,6 +16,7 @@ from drydock.errors import ConfigurationError
 _KEY_MAP = {
     "drydock_build_directory": "DRYDOCK_BUILD_DIRECTORY",
     "drydock_workspace": "DRYDOCK_WORKSPACE",
+    "change_ticket_directory": "DRYDOCK_CHANGE_TICKET_DIRECTORY",
     "drydock_model": "DRYDOCK_MODEL",
     "drydock_effort": "DRYDOCK_EFFORT",
     "drydock_build_escalate_model": "DRYDOCK_BUILD_ESCALATE_MODEL",
@@ -96,6 +97,7 @@ DEFAULT_MAX_OUTPUT_TOKENS = 128_000
 # Haiku's thinking is a fixed budget drawn from the same output ceiling, and the CLI otherwise
 # lets it consume all but one token. Pinning it guarantees the response text the rest.
 DEFAULT_HAIKU_THINKING_TOKENS = 16_000
+DEFAULT_CHANGE_TICKET_DIRECTORY = Path("blueprint") / "changes"
 
 
 def _config_path() -> Path:
@@ -207,6 +209,19 @@ def require_target_dir(target: str) -> Path:
 def blueprint_dir_for(target_dir: Path) -> Path:
     """The Blueprint subtree of a Target: ``targets/<Target>/blueprint``."""
     return target_dir / "blueprint"
+
+
+def change_ticket_directory_for(target_dir: Path) -> Path:
+    """Resolve the Target-relative directory used for ticket intake and normalization."""
+    value, _source = _get("DRYDOCK_CHANGE_TICKET_DIRECTORY", str(DEFAULT_CHANGE_TICKET_DIRECTORY))
+    raw = (value or "").strip()
+    candidate = Path(raw)
+    if not raw or candidate.is_absolute() or ".." in candidate.parts:
+        raise ConfigurationError(
+            "change_ticket_directory must be a non-empty path relative to the Target "
+            "and must not contain '..'."
+        )
+    return target_dir / candidate
 
 
 def get_model(cli_override: str | None = None) -> str:
@@ -500,6 +515,11 @@ def config_show() -> list[tuple[str, str, str]]:
     rows.append(("drydock_build_directory", build_value or "(not set)", build_source))
     rows.append(("drydock_workspace", ws_value, ws_source))
     for display_key, key_upper, default in (
+        (
+            "change_ticket_directory",
+            "DRYDOCK_CHANGE_TICKET_DIRECTORY",
+            str(DEFAULT_CHANGE_TICKET_DIRECTORY),
+        ),
         ("drydock_model", "DRYDOCK_MODEL", DEFAULT_MODEL),
         ("drydock_effort", "DRYDOCK_EFFORT", "(provider default)"),
         ("drydock_build_escalate_model", "DRYDOCK_BUILD_ESCALATE_MODEL", "(not set)"),
@@ -586,6 +606,14 @@ def config_set(key: str, value: str) -> Path:
     elif upper == "DRYDOCK_BUILD_ESCALATE_MODEL":
         # Empty clears the setting: no escalation. A non-empty value is a model name.
         stored_value = value.strip()
+    elif upper == "DRYDOCK_CHANGE_TICKET_DIRECTORY":
+        candidate = Path(value.strip())
+        if not value.strip() or candidate.is_absolute() or ".." in candidate.parts:
+            raise ConfigurationError(
+                "change_ticket_directory must be a non-empty path relative to the Target "
+                "and must not contain '..'."
+            )
+        stored_value = candidate.as_posix()
     elif upper == "LLM_PROVIDER":
         stored_value = value.lower()
         if stored_value not in {"claude", "codex"}:

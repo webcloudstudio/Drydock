@@ -654,3 +654,37 @@ class TestSettingExecutionBounds:
 
         with pytest.raises(ConfigurationError, match=key):
             config_set(key, value)
+
+
+class TestChangeTicketDirectory:
+    def test_defaults_under_the_target(self, monkeypatch, tmp_path):
+        from drydock.config import change_ticket_directory_for
+
+        monkeypatch.delenv("DRYDOCK_CHANGE_TICKET_DIRECTORY", raising=False)
+        assert (
+            change_ticket_directory_for(tmp_path / "target")
+            == tmp_path / "target/blueprint/changes"
+        )
+
+    def test_environment_value_is_target_relative(self, monkeypatch, tmp_path):
+        from drydock.config import change_ticket_directory_for
+
+        monkeypatch.setenv("DRYDOCK_CHANGE_TICKET_DIRECTORY", "incoming/tickets")
+        assert (
+            change_ticket_directory_for(tmp_path / "target") == tmp_path / "target/incoming/tickets"
+        )
+
+    @pytest.mark.parametrize("value", ("", "../tickets", "/tmp/tickets"))
+    def test_refuses_escaping_or_absolute_paths(self, monkeypatch, tmp_path, value):
+        from drydock.config import change_ticket_directory_for
+
+        monkeypatch.setenv("DRYDOCK_CHANGE_TICKET_DIRECTORY", value)
+        with pytest.raises(ConfigurationError, match="change_ticket_directory"):
+            change_ticket_directory_for(tmp_path / "target")
+
+    def test_config_set_stores_a_relative_path(self, isolated_config):
+        from drydock.config import config_set
+
+        config_set("change_ticket_directory", "incoming/tickets")
+        rows = {row[0]: (row[1], row[2]) for row in config_show()}
+        assert rows["change_ticket_directory"] == ("incoming/tickets", "config file")
