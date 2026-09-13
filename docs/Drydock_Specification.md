@@ -238,9 +238,8 @@ drydock score build MyApp                     # Score the build evidence.
 drydock score release MyApp                   # Apply the release gate.
 
 # ── L ── LOOP ────────────────────────────────────────────────────────────
-# After a source change, UAT imports the update, refits the plan, and repeats the build loop.
-drydock import MyApp --update                 # Load the changed specification material.
-drydock refit MyApp --sources                 # Map the change into new Blueprint and Manifest work.
+# After a Blueprint edit, ticket, or Feature-ticket comment, refit and repeat the build loop.
+drydock refit MyApp                           # Reconcile Blueprint changes and change tickets.
 n=1; max=5
 while drydock status "$PROJECT" --ready; do
   echo "************************"
@@ -661,8 +660,7 @@ restored; `drydock score` reports a modified staged asset as a release blocker.
 
 `--ungate` marks prior programmatic acceptance failures as UNVERIFIED, closes their owning build steps as verified, and continues with the next buildable step; execution and dependency failures remain gated.
 
-Before executing work, `drydock build` checks previously applied Blueprint files for drift. If they have changed, the build stops and directs the Commander to run `drydock refit`. Foundational specifications such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require explicit 
-change tickets to modify.
+Before executing work, `drydock build` checks previously applied Blueprint files for drift. If they have changed, the build stops and directs the Commander to run `drydock refit`.
 
 Build status can be viewed on the Manifest page in the quarterdeck or with `drydock build status`.
 
@@ -888,8 +886,6 @@ drydock diagnose <Target> --no-apply
 drydock diagnose <Target> --run <stamp>
 
 drydock refit <Target>
-drydock refit <Target> --sources
-drydock refit <Target> --relineage
 ```
 
 ```mermaid
@@ -904,8 +900,9 @@ flowchart LR
 
   CHANGE(["Changed Blueprints"]):::dir --> REFIT["refit"]:::script
   Ticket(["Change Ticket"]):::dir --> REFIT
-  REFIT --> SPECOUT(["Updated Blueprint"]):::dir
-  REFIT --> SOFTWARE(["Working Software"]):::output
+  Comment(["Feature-ticket Blueprint Comment"]):::md --> REFIT
+  REFIT --> SPECOUT(["Normalized Change Tickets"]):::md
+  REFIT --> SOFTWARE(["Updated Manifest"]):::output
 ```
 ### drydock diagnose
 
@@ -923,32 +920,53 @@ The diagnosis proposes amendments as unified diffs against the failing blocks' B
 
 ### drydock refit
 
-The `drydock refit` processes change tickets in `blueprint/changes/`, updates the Manifest, and resets impacted work so it can be 
-rebuilt in dependency order.  It also modifies MANIFEST.md.
+`drydock refit <Target>` reconciles the previously applied Blueprint state with all current change inputs, writes normalized Drydock change tickets, updates `MANIFEST.md`, and marks affected built work for rebuild. It does not modify Blueprint content.
 
-The Refit modifies change tickets with an `Amends:` header that names the Blueprint file it changes. **A change ticket may only
-modify a single blueprint so change tickets must be created based on features or screens.  
+The change inputs are Jira or other ticket material, raw English ticket files, direct Blueprint edits, and Blueprint comments associated with Feature tickets. Refit compares direct Blueprint edits with the prior applied Blueprint snapshot recorded in the Manifest. Git history may provide provenance but is not required for change detection.
 
-Change tickets must be placed into `blueprint/changes/*.md`.
+Refit writes normalized change tickets to `targets/<Target>/blueprint/changes/`. A source ticket or direct Blueprint edit may produce multiple normalized tickets. Each normalized ticket has one best Blueprint home and amends exactly one Blueprint, section, story, or named database Access Pattern. A Feature-ticket Blueprint comment produces one normalized ticket. Refit links inputs that describe the same change and fails without writing when inputs request incompatible outcomes or cannot be assigned a home.
 
-Refit also detects changed Blueprint files. It compares the cksum and git commit hashes to detect the changes.  If a specification has changed, Refit marks the affected Manifest work so the next `drydock build` will rebuild it. 
+Each normalized change ticket uses typed front matter followed by these Markdown sections:
 
-Foundational files such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require explicit change tickets.
+```markdown
+---
+id: TICKET-...
+subject: Create-order response includes order status
+description: FEATURE-ORDER-001 returns status to its Feature caller.
+create_dtm: 2026-09-12T14:32:18-04:00
+source_dtm: 2026-09-12T14:30:00-04:00
+parent: JIRA-123
+source: jira
+source_ref: JIRA-123
+amends: FEATURE-ORDER.md#Database-Interface
+kind: database-access-pattern
+operation: change
+status: pending
+compatibility: rebuild
+---
 
-`drydock refit <Target> --sources` routes imported source changes. It reads the difference between
-the last consumed source version and the current one, decomposes it into Manifest stories seated on
-existing Blueprints, and writes one change ticket per affected Blueprint. Refit never creates a
-Blueprint; a requirement that fits none fails the command and requires a replan. A change that
-removes a service other stories consume fails before any file is written. A change to a foundational
-contract is reported with its downstream consumers and does not block the command.
+## Change
 
-`drydock refit <Target> --relineage` rebuilds `LINEAGE.json` from the Target's git history and
-attributes existing Manifest stories to the source requirements they implement. It requires a Target
-git repository.
+## Contract Delta
 
-`--sources` and `--relineage` are mutually exclusive.
+## Source Evidence
 
-**Exit codes.** `0` success or no-op; `1` operational failure or unticketed foundational drift; `2` usage error.
+## Acceptance Conditions
+
+## Impact
+```
+
+`create_dtm` is the time Refit created the normalized ticket. `source_dtm` preserves the source ticket, file, comment, or Blueprint-change time. `parent` is optional and identifies the upstream ticket or related change group.
+
+`kind` is one of `blueprint`, `contract`, `database-private`, `database-access-pattern`, `database-data`, or `documentation`. `operation` is one of `add`, `change`, or `remove`. `compatibility` is required for `database-access-pattern` tickets and is one of `unchanged`, `data`, or `rebuild`.
+
+`## Change` states the required end state. `## Contract Delta` states the exact added, changed, or removed behavior, field, interface, Access Pattern, schema element, or migration requirement. `## Source Evidence` contains the relevant source text or concise before-and-after Blueprint fragment. `## Acceptance Conditions` states the observable conditions the rebuilt work must satisfy. `## Impact` identifies the owner, directly impacted work, downstream impact, and explicitly unaffected work.
+
+Refit leaves unbuilt work available for its first build using the current requirement. It resets only built work affected by a normalized ticket. The build receives the current Blueprint and the normalized tickets associated with the work it builds.
+
+For `DATABASE.md`, changes to Persistence Interfaces, Schemas, or Migrations create `database-private` or `database-data` tickets and affect database implementation or migration work only. A change to a named Access Pattern affects only its owner, Features that cite that operation, and their dependent work when `compatibility: rebuild`. `compatibility: data` affects database migration and implementation work only. `compatibility: unchanged` records the change without resetting work. Each database change has a distinct normalized ticket and migration-change record.
+
+**Exit codes.** `0` success or no-op; `1` an ambiguous, conflicting, or unassignable change; `2` usage error.
 
 ## Artifact I/O Matrix 
 
@@ -964,7 +982,7 @@ What drydock operations read/write
 | COMPASS.md | Target root | O*/I | I | I | I | I |
 | DATABASE.md | blueprint/ | · | O | I | I | I |
 | FEATURE-{Name}.md | blueprint/ | · | O | I | I | I |
-| LINEAGE.json | Target root | · | I/O | · | · | I/O |
+| LINEAGE.json | Target root | · | I/O | · | · | · |
 | MANIFEST.md | Target root | · | O | I | I | I |
 | PLAN_COMPASS.md | Target root | · | C/I | · | · | · |
 | questionnaires/*.json | QuarterDeck/questionnaires/ | O/I | I | I | · | · |
@@ -973,7 +991,7 @@ What drydock operations read/write
 | SEA_TRIALS.md | Target root | O | · | · | · | · |
 | SOUNDINGS.md | Target root | · | · | · | O | · |
 | changes/TICKET-{NNN}-{Name}.md | blueprint/changes/ | · | I | I | · | O |
-| sources/* | blueprint/sources/ | I | I | I | I | I |
+| sources/* | blueprint/sources/ | I | I | I | I | · |
 | UI-GENERAL.md | blueprint/ | · | O | I | I | I |
 
 **Legend:** `O` the command produces the artifact · `I` the command consumes the artifact ·
