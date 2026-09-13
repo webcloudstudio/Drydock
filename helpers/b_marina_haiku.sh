@@ -1,8 +1,8 @@
 set -Eeuo pipefail
 set -x
 
-PROJECT=Marina_Haiku
-PROJECT_DIR=/mnt/c/Users/barlo/projects
+export PROJECT=Marina_Haiku
+export PROJECT_DIR=/mnt/c/Users/barlo/projects
 OPTS=(--llm-provider claude --model haiku)
 
 if [ -d "$PROJECT_DIR/drydock/targets/$PROJECT" ]
