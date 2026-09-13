@@ -911,6 +911,7 @@ def _load_prior_plan_state(
             applied_by=record.applied_by,
             applied_at=record.applied_at,
             build_sha256=build_digest,
+            database_operations=record.database_operations,
         )
     return applied_specs, block_states
 
@@ -4420,8 +4421,7 @@ def _record_plan_lineage(
 
     Planning is the only actor that reads the whole source and decides what it decomposes into, so
     the provenance link is captured here rather than reconstructed later. Failure is never fatal:
-    a Target with unlinked lineage is repairable with ``drydock refit <Target> --relineage``, but a
-    plan lost to a bookkeeping error is not.
+    a plan lost to a bookkeeping error is not a reason to reconstruct lineage during Refit.
     """
     from datetime import date as _date
 

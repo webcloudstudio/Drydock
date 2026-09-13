@@ -1,4 +1,4 @@
-"""``drydock refit --relineage`` — rebuild ``LINEAGE.json`` from a Target's git history.
+"""Internal lineage reconstruction from a Target's git history.
 
 A Target planned before lineage existed has no record of which source version produced which
 story, and the routing path cannot run without one. The reconstruction splits cleanly into a
@@ -58,7 +58,7 @@ def require_target_repo(target_dir: Path) -> None:
     if not target_git.is_repo(target_dir):
         raise SpecificationError(
             f"No git repository in {target_dir}.\n"
-            "  --relineage replays source history from the Target repository.\n"
+            "  Lineage reconstruction replays source history from the Target repository.\n"
             f"  Initialize one with: git -C {target_dir} init"
         )
 

@@ -12,6 +12,7 @@ instead of spending API credits.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -32,8 +33,10 @@ from drydock.change_ticket import parse_ticket_header
 from drydock.database_contract import (
     changed_operation_ids_since,
     create_ticket_migration_records,
+    database_operation_fingerprints,
     parse_database_contract,
     parse_database_interface,
+    parse_database_operation_fingerprints,
     staged_operation_ids,
     validate_database_interfaces,
 )
@@ -44,6 +47,7 @@ from drydock.normalized_ticket import (
     next_ticket_id,
     parse_normalized_ticket,
     render_normalized_ticket,
+    set_normalized_ticket_status,
     split_front_matter,
     ticket_slug,
 )
@@ -70,6 +74,7 @@ _AMENDS_TABLE_RE = re.compile(r"\|\s*Amends\s*\|\s*([^|]+)\|")
 _AMENDS_BARE_RE = re.compile(r"^Amends:\s*(\S+)", re.MULTILINE)
 _DRYDOCK_AMENDS_RE = re.compile(r"^drydock_amends:\s*(\S+)", re.MULTILINE)
 _DEPENDS_ON_RE = re.compile(r"\|\s*Depends On\s*\|\s*([^|]+)\|")
+_BLUEPRINT_COMMENT_RE = re.compile(r"<!--\s*(?P<text>.*?)\s*-->", re.DOTALL)
 
 
 class CompletedRun(Protocol):
@@ -142,13 +147,58 @@ def _match_source_ticket(ticket_path: Path, ticket_text: str, blueprint_dir: Pat
     explicit = front_matter.fields.get("amends") or _parse_amends(ticket_text)
     if explicit:
         return explicit if (blueprint_dir / explicit.split("#", 1)[0]).is_file() else None
-    haystack = " ".join((ticket_path.stem, front_matter.fields.get("summary", ""), ticket_text))
-    candidates = [
+    haystack = " ".join((ticket_path.stem, *front_matter.fields.values(), ticket_text))
+    named = [
         path.name
         for path in blueprint_dir.glob("*.md")
         if path.stem.casefold() in haystack.casefold()
     ]
-    return candidates[0] if len(candidates) == 1 else None
+    if len(named) == 1:
+        return named[0]
+    operation_ids = set(re.findall(r"\b[A-Z][A-Z0-9-]*-\d{3}\b", haystack))
+    database = blueprint_dir / "DATABASE.md"
+    if (
+        operation_ids
+        and database.is_file()
+        and "## Access Patterns" in database.read_text(encoding="utf-8")
+    ):
+        if operation_ids & set(
+            parse_database_contract(database.read_text(encoding="utf-8")).by_id()
+        ):
+            return "DATABASE.md#Access-Patterns"
+    # Textual matching is intentionally conservative: an exact title token match
+    # is useful for raw tickets, while a tie remains a Commander-visible blocker.
+    source_words = {
+        word.casefold()
+        for word in re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", haystack)
+        if word.casefold() not in {"change", "feature", "ticket", "blueprint", "please"}
+    }
+    scored = []
+    for path in blueprint_dir.glob("*.md"):
+        words = set(re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", path.read_text(encoding="utf-8")))
+        score = len(source_words & {word.casefold() for word in words})
+        if score:
+            scored.append((score, path.name))
+    if not scored:
+        return None
+    best = max(score for score, _ in scored)
+    candidates = [name for score, name in scored if score == best]
+    return candidates[0] if best >= 2 and len(candidates) == 1 else None
+
+
+def _database_ticket_fields(blueprint_dir: Path, amends: str, text: str) -> tuple[str, str | None]:
+    """Classify a DATABASE ticket without exposing private schema detail to Features."""
+    if amends.split("#", 1)[0] != "DATABASE.md":
+        return "blueprint", None
+    database = blueprint_dir / "DATABASE.md"
+    if not database.is_file() or "## Access Patterns" not in database.read_text(encoding="utf-8"):
+        return "database-private", None
+    contract = parse_database_contract(database.read_text(encoding="utf-8"))
+    matched = set(re.findall(r"\b[A-Z][A-Z0-9-]*-\d{3}\b", text)) & set(contract.by_id())
+    if len(matched) == 1:
+        pattern = contract.by_id()[next(iter(matched))]
+        return "database-access-pattern", pattern.compatibility
+    return "database-private", None
 
 
 def _normalize_source_tickets(
@@ -157,11 +207,19 @@ def _normalize_source_tickets(
     """Create normalized tickets for raw files and retain unmatched source diagnostics."""
     if not changes_dir.is_dir():
         return [], []
+    existing_refs = {
+        normalized.drydock_fields["drydock_source_ref"]
+        for path in changes_dir.glob("TICKET-*.md")
+        if (normalized := parse_normalized_ticket(path)) is not None
+    }
     items: list[RefitItem] = []
     errors: list[str] = []
     for path in sorted(p for p in changes_dir.glob("*.md") if p.is_file()):
         text = path.read_text(encoding="utf-8")
-        if parse_normalized_ticket(path) is not None or _parse_amends(text) is not None:
+        if parse_normalized_ticket(path) is not None:
+            continue
+        source_ref = f"{path.name}#{hashlib.sha256(text.encode()).hexdigest()[:12]}"
+        if source_ref in existing_refs:
             continue
         amends = _match_source_ticket(path, text, blueprint_dir)
         if not amends:
@@ -171,9 +229,18 @@ def _normalize_source_tickets(
             continue
         ticket_id = next_ticket_id(changes_dir)
         destination = changes_dir / f"{ticket_id}-{ticket_slug(path.stem)}.md"
+        kind, compatibility = _database_ticket_fields(blueprint_dir, amends, text)
         try:
             destination.write_text(
-                render_normalized_ticket(path, text, ticket_id=ticket_id, amends=amends),
+                render_normalized_ticket(
+                    path,
+                    text,
+                    ticket_id=ticket_id,
+                    amends=amends,
+                    kind=kind,
+                    compatibility=compatibility,
+                    source_ref=source_ref,
+                ),
                 encoding="utf-8",
                 newline="\n",
             )
@@ -186,32 +253,133 @@ def _normalize_source_tickets(
     return items, errors
 
 
+def _normalize_blueprint_comments(
+    blueprint_dir: Path, changes_dir: Path
+) -> tuple[list[RefitItem], set[str]]:
+    """Turn ordinary Feature Blueprint HTML comments into one ticket each."""
+    existing_refs = {
+        normalized.drydock_fields["drydock_source_ref"]
+        for path in changes_dir.glob("TICKET-*.md")
+        if (normalized := parse_normalized_ticket(path)) is not None
+    }
+    items: list[RefitItem] = []
+    commented: set[str] = set()
+    for path in sorted(blueprint_dir.glob("FEATURE-*.md")):
+        for match in _BLUEPRINT_COMMENT_RE.finditer(path.read_text(encoding="utf-8")):
+            comment = match.group("text").strip()
+            if not comment:
+                continue
+            source_ref = f"{path.name}#comment-{hashlib.sha256(comment.encode()).hexdigest()[:12]}"
+            commented.add(path.name)
+            if source_ref in existing_refs:
+                continue
+            ticket_id = next_ticket_id(changes_dir)
+            destination = changes_dir / f"{ticket_id}-{ticket_slug(comment)}.md"
+            source_text = f"# Blueprint comment: {path.name}\n\n{comment}\n"
+            destination.write_text(
+                render_normalized_ticket(
+                    path,
+                    source_text,
+                    ticket_id=ticket_id,
+                    amends=path.name,
+                    source_ref=source_ref,
+                    source_kind="blueprint-comment",
+                ),
+                encoding="utf-8",
+                newline="\n",
+            )
+            items.append(RefitItem(ticket=destination, status="conformed"))
+    return items, commented
+
+
 def _normalize_blueprint_drift(
-    manifest_path: Path, blueprint_dir: Path, changes_dir: Path
+    manifest_path: Path,
+    blueprint_dir: Path,
+    changes_dir: Path,
+    *,
+    commented_blueprints: set[str] | None = None,
 ) -> list[RefitItem]:
     """Represent each directly changed applied Blueprint as a normalized ticket."""
     if not manifest_path.is_file():
         return []
     plan = parse_build_plan(manifest_path)
     items: list[RefitItem] = []
+    existing_refs = {
+        normalized.drydock_fields["drydock_source_ref"]
+        for path in changes_dir.glob("TICKET-*.md")
+        if (normalized := parse_normalized_ticket(path)) is not None
+    }
     for stale in stale_applied_specs(plan, blueprint_dir):
         source_path = blueprint_dir / stale.rel_path
         if not source_path.is_file():
             continue
+        if stale.rel_path in (commented_blueprints or set()):
+            continue
+        source_text = source_path.read_text(encoding="utf-8")
+        if stale.rel_path == "DATABASE.md" and "## Access Patterns" in source_text:
+            record = plan.applied_specs.get("DATABASE.md")
+            prior = (
+                parse_database_operation_fingerprints(record.database_operations) if record else {}
+            )
+            current = parse_database_operation_fingerprints(
+                database_operation_fingerprints(source_text)
+            )
+            changed = sorted(
+                identifier
+                for identifier in set(prior) | set(current)
+                if prior.get(identifier) != current.get(identifier)
+            )
+            if changed:
+                contract = parse_database_contract(source_text).by_id()
+                for identifier in changed:
+                    source_ref = f"DATABASE.md#{identifier}:{stale.current_sha256[:12]}"
+                    if source_ref in existing_refs:
+                        continue
+                    ticket_id = next_ticket_id(changes_dir)
+                    destination = changes_dir / f"{ticket_id}-{ticket_slug(identifier)}.md"
+                    compatibility = (
+                        contract.get(identifier).compatibility
+                        if identifier in contract
+                        else "rebuild"
+                    )
+                    destination.write_text(
+                        render_normalized_ticket(
+                            source_path,
+                            f"# Database access pattern change: {identifier}\n\n{source_text}",
+                            ticket_id=ticket_id,
+                            amends=f"DATABASE.md#Access-Patterns/{identifier}",
+                            kind="database-access-pattern",
+                            compatibility=compatibility,
+                            source_ref=source_ref,
+                            source_kind="blueprint-diff",
+                        ),
+                        encoding="utf-8",
+                        newline="\n",
+                    )
+                    items.append(RefitItem(ticket=destination, status="conformed"))
+                continue
         ticket_id = next_ticket_id(changes_dir)
+        source_ref = f"{stale.rel_path}#{stale.current_sha256[:12]}"
+        if source_ref in existing_refs:
+            continue
         destination = changes_dir / f"{ticket_id}-{ticket_slug(stale.rel_path)}.md"
-        source_text = (
+        evidence = (
             f"# Blueprint change: {stale.rel_path}\n\n"
             "The current Blueprint content differs from the previously applied Blueprint state.\n\n"
-            f"{source_path.read_text(encoding='utf-8')}"
+            f"{source_text}"
         )
         destination.write_text(
             render_normalized_ticket(
                 source_path,
-                source_text,
+                evidence,
                 ticket_id=ticket_id,
                 amends=stale.rel_path,
-                source_ref=stale.rel_path,
+                kind=(
+                    "database-private"
+                    if stale.rel_path == "DATABASE.md" and "## Access Patterns" in source_text
+                    else "blueprint"
+                ),
+                source_ref=source_ref,
                 source_kind="blueprint-diff",
             ),
             encoding="utf-8",
@@ -221,33 +389,39 @@ def _normalize_blueprint_drift(
     return items
 
 
-def _attach_blueprint_diff_context(
+def _attach_change_context(
     manifest_path: Path, changes_dir: Path, resets: Sequence[RefitReset]
 ) -> None:
-    """Attach generated Blueprint-diff tickets to the rebuilt work's prompt context."""
+    """Attach generated direct-edit and Blueprint-comment tickets to build context."""
     if not manifest_path.is_file() or not resets:
         return
-    by_blueprint: dict[str, str] = {}
+    by_blueprint: dict[str, list[str]] = {}
     for path in changes_dir.glob("TICKET-*.md"):
         normalized = parse_normalized_ticket(path)
-        if normalized and normalized.drydock_fields["drydock_source"] == "blueprint-diff":
-            by_blueprint[normalized.amends.split("#", 1)[0]] = f"changes/{path.name}"
+        if normalized and normalized.drydock_fields["drydock_source"] in {
+            "blueprint-diff",
+            "blueprint-comment",
+        }:
+            by_blueprint.setdefault(normalized.amends.split("#", 1)[0], []).append(
+                f"changes/{path.name}"
+            )
     if not by_blueprint:
         return
     plan = parse_build_plan(manifest_path)
     by_id = plan.by_id()
     updates: dict[str, dict[str, str | None]] = {}
     for reset in resets:
-        ticket = by_blueprint.get(reset.path)
-        if not ticket:
+        tickets = by_blueprint.get(reset.path)
+        if not tickets:
             continue
         for block_id in reset.reset_ids:
             block = by_id.get(block_id)
             if block is None:
                 continue
             current = tuple(block.fields.get("context", ()))
-            if ticket not in current:
-                updates[block_id] = {"context": ", ".join((*current, ticket))}
+            additions = tuple(ticket for ticket in tickets if ticket not in current)
+            if additions:
+                updates[block_id] = {"context": ", ".join((*current, *additions))}
     if updates:
         batch_set_block_fields(manifest_path, updates)
 
@@ -266,7 +440,7 @@ def _resolve_ticket_deps(amends: str, blueprint_dir: Path) -> list[str]:
 
     If the parent spec is absent, returns [amends] only rather than failing.
     """
-    parent_path = blueprint_dir / amends
+    parent_path = blueprint_dir / amends.split("#", 1)[0]
     if not parent_path.is_file():
         return [amends]
     parent_text = parent_path.read_text(encoding="utf-8")
@@ -416,9 +590,7 @@ def _patch_manifest(manifest_path: Path, new_rows: str) -> None:
     graph.save()
 
 
-def _database_reset_ids(
-    plan, blueprint_dir: Path, *, applied_commit: str = ""
-) -> tuple[str, ...] | None:
+def _database_reset_ids(plan, blueprint_dir: Path) -> tuple[str, ...] | None:
     """Return the scoped reset closure for planned rebuilding database operations.
 
     ``None`` means a legacy DATABASE Blueprint without the encapsulation surface; the caller
@@ -439,20 +611,35 @@ def _database_reset_ids(
     validate_database_interfaces(contract, interfaces)
     patterns = contract.by_id()
     staged = staged_operation_ids(blueprint_dir)
-    changed = changed_operation_ids_since(blueprint_dir, applied_commit)
     unknown = set(staged) - set(patterns)
     if unknown:
         raise SpecificationError(
             "Blueprint migration references unknown access pattern(s): "
             + ", ".join(sorted(unknown))
         )
-    # A direct Blueprint edit must be sufficient to reconcile the build. Git-backed Targets
-    # identify its changed public operations from the applied revision; a planned migration is
-    # also independently rebuildable when no baseline is available. ``data`` and ``unchanged``
-    # operations preserve their consumers.
-    active = set(staged)
-    if changed is not None:
-        active |= set(changed)
+    record = plan.applied_specs.get("DATABASE.md")
+    prior = parse_database_operation_fingerprints(record.database_operations) if record else {}
+    current = parse_database_operation_fingerprints(database_operation_fingerprints(text))
+    # A Manifest snapshot, rather than Git history, determines the public contract
+    # delta.  Old targets with no snapshot use their planned migration records and
+    # otherwise contain the database-owner change only.
+    if prior:
+        changed = {
+            identifier
+            for identifier in set(prior) | set(current)
+            if prior.get(identifier) != current.get(identifier)
+        }
+    else:
+        # Targets built before the public snapshot existed may still have the
+        # applied file commit.  Git is a one-time migration aid, never the
+        # ongoing invalidation source; without either baseline Refit limits the
+        # change to the DATABASE owner rather than broadening its impact.
+        changed = (
+            set(changed_operation_ids_since(blueprint_dir, record.commit) or ())
+            if record
+            else set()
+        )
+    active = set(staged) | changed
     rebuilding = {
         identifier
         for identifier in active
@@ -465,14 +652,22 @@ def _database_reset_ids(
         if block.fields.get("implements", ()) == (blueprint,)
         and any(use.identifier in rebuilding for use in uses)
     }
-    # Rebuild the persistence owner without treating it as a broad dependency seed: legacy
-    # feature graphs commonly depend on DATABASE.md as a whole, which would defeat operation
-    # encapsulation by pulling every feature back into the reset closure.
-    database_seeds = {
-        block.block_id
-        for block in plan.blocks
-        if "DATABASE.md" in block.fields.get("implements", ())
-    }
+    # Rebuild the persistence owner for private edits, data changes, and rebuild
+    # changes without treating it as a broad dependency seed.  An ``unchanged``
+    # public-contract revision records no rebuild at all.
+    owner_required = not changed or any(
+        identifier not in patterns or patterns[identifier].compatibility != "unchanged"
+        for identifier in active
+    )
+    database_seeds = (
+        {
+            block.block_id
+            for block in plan.blocks
+            if "DATABASE.md" in block.fields.get("implements", ())
+        }
+        if owner_required
+        else set()
+    )
     return tuple(
         block.block_id
         for block in plan.blocks
@@ -527,14 +722,10 @@ def reset_blueprint_consumers(
     if not paths or not manifest_path.is_file():
         return []
     plan = parse_build_plan(manifest_path)
-    commits = applied_commits or {}
-
     resets_by_path: dict[str, tuple[str, ...]] = {}
     for rel_path in paths:
         if rel_path == "DATABASE.md":
-            record = plan.applied_specs.get(rel_path)
-            commit = commits.get(rel_path, record.commit if record else "")
-            scoped = _database_reset_ids(plan, blueprint_dir, applied_commit=commit)
+            scoped = _database_reset_ids(plan, blueprint_dir)
             resets_by_path[rel_path] = (
                 cascade_reset_ids(plan, [rel_path]) if scoped is None else scoped
             )
@@ -591,21 +782,44 @@ def _refit_target(
 
     changes_dir.mkdir(parents=True, exist_ok=True)
     normalized_items, normalization_errors = _normalize_source_tickets(changes_dir, blueprint_dir)
-    normalized_items.extend(_normalize_blueprint_drift(manifest_path, blueprint_dir, changes_dir))
+    comment_items, commented_blueprints = _normalize_blueprint_comments(blueprint_dir, changes_dir)
+    normalized_items.extend(comment_items)
+    normalized_items.extend(
+        _normalize_blueprint_drift(
+            manifest_path,
+            blueprint_dir,
+            changes_dir,
+            commented_blueprints=commented_blueprints,
+        )
+    )
 
     tickets = []
     for path in sorted(p for p in changes_dir.glob("*.md") if p.is_file()):
-        text = path.read_text(encoding="utf-8")
         normalized = parse_normalized_ticket(path)
-        if normalized and normalized.drydock_fields["drydock_source"] == "blueprint-diff":
+        if normalized is None:
             continue
-        if _parse_amends(text) is not None:
-            tickets.append(path)
+        if normalized.drydock_fields["drydock_source"] in {
+            "blueprint-diff",
+            "blueprint-comment",
+        }:
+            continue
+        if normalized.drydock_fields["drydock_status"] != "pending":
+            continue
+        tickets.append(path)
 
     prompt = load_prompt(PROMPT_NAME) if tickets else None
     today = date.today().isoformat()
-    items: list[RefitItem] = normalized_items
-    database_ticket_texts: list[str] = []
+    items: list[RefitItem] = [
+        item
+        for item in normalized_items
+        if item.status == "failed"
+        or (
+            (normalized := parse_normalized_ticket(item.ticket)) is not None
+            and normalized.drydock_fields["drydock_source"]
+            in {"blueprint-diff", "blueprint-comment"}
+        )
+    ]
+    database_tickets: list[Path] = []
 
     for ticket_path in tickets:
         assert prompt is not None
@@ -626,7 +840,7 @@ def _refit_target(
         # hand-authored ticket predating those fields parses to defaults rather than failing.
         header = parse_ticket_header(ticket_text)
         resolved_deps = _resolve_ticket_deps(amends, blueprint_dir)
-        parent_path = blueprint_dir / amends
+        parent_path = blueprint_dir / amends.split("#", 1)[0]
         parent_text = parent_path.read_text(encoding="utf-8") if parent_path.is_file() else ""
 
         prompt_assembly = _assemble_refit_prompt(
@@ -679,6 +893,16 @@ def _refit_target(
                 )
             )
             continue
+        if not manifest_rows:
+            items.append(
+                RefitItem(
+                    ticket=ticket_path,
+                    status="failed",
+                    execution_id=result.execution_id,
+                    error="LLM output did not incorporate the ticket into MANIFEST_ROWS",
+                )
+            )
+            continue
 
         if ticket_content and parse_normalized_ticket(ticket_path) is None:
             ticket_path.write_text(ticket_content.rstrip() + "\n", encoding="utf-8", newline="\n")
@@ -686,6 +910,7 @@ def _refit_target(
 
         if manifest_rows:
             _patch_manifest(manifest_path, manifest_rows)
+        set_normalized_ticket_status(ticket_path, "incorporated")
 
         items.append(
             RefitItem(
@@ -695,12 +920,18 @@ def _refit_target(
             )
         )
 
-        if amends == "DATABASE.md":
-            database_ticket_texts.append(ticket_text)
+        if amends.split("#", 1)[0] == "DATABASE.md":
+            database_tickets.append(ticket_path)
 
-    create_ticket_migration_records(blueprint_dir, database_ticket_texts)
+    database_tickets.extend(
+        path
+        for path in changes_dir.glob("TICKET-*.md")
+        if (normalized := parse_normalized_ticket(path)) is not None
+        and normalized.amends.split("#", 1)[0] == "DATABASE.md"
+    )
+    create_ticket_migration_records(blueprint_dir, dict.fromkeys(database_tickets))
     resets, drift_errors = _reconcile_drift(manifest_path, blueprint_dir)
-    _attach_blueprint_diff_context(manifest_path, changes_dir, resets)
+    _attach_change_context(manifest_path, changes_dir, resets)
 
     return RefitResult(
         target_dir=target_dir,
@@ -778,7 +1009,9 @@ def refit_target(
             model=model,
             llm_provider=llm_provider,
         )
-        errors = [item.error for item in result.failed() if item.error] + result.drift_errors
+        errors = [
+            f"{item.ticket.name}: {item.error}" for item in result.failed() if item.error
+        ] + result.drift_errors
         if errors:
             _restore_refit_files(snapshot, target_dir, changes_dir)
             _write_unincorporated_notification(target_dir, errors)

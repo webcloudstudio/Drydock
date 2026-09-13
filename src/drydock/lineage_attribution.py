@@ -6,7 +6,7 @@ open decomposition: every candidate story already exists and is named, and the m
 to say which requirement each one answers.
 
 Two callers share it. ``plan`` runs it immediately after saving the Manifest, so lineage is
-complete the moment planning finishes. ``refit --relineage`` runs it over a Target that predates
+complete the moment planning finishes. Internal lineage recovery handles Targets that predate
 lineage entirely. Both feed the same prompt and the same validation.
 
 A story that matches no requirement is recorded and left unattached rather than treated as an

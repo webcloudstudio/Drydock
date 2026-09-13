@@ -241,8 +241,8 @@ def render_lineage(lineage: Lineage) -> str:
 def load_lineage(target_dir: Path) -> Lineage:
     """Read ``LINEAGE.json``. A missing or corrupt file yields an empty record, never an error.
 
-    Lineage is bookkeeping: a damaged file must not block an import or a build. ``--relineage``
-    rebuilds it from git.
+    Lineage is bookkeeping: a damaged file must not block an import or a build. Planning records
+    it as source versions are consumed.
     """
     path = lineage_path(target_dir)
     if not path.is_file():
@@ -428,7 +428,7 @@ def consume_after_plan(
     Planning is the one command that reads the whole source and decomposes it, so it is the right
     place to capture the requirement-to-story link while the reasoning is still available. The
     attribution call is optional: without it the version is still recorded as consumed, just
-    without provenance, and ``refit --relineage`` can fill it in later.
+    without provenance.
     """
     lineage = load_or_migrate(target_dir, date=date)
     release = source_release(target_dir)

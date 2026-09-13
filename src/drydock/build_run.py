@@ -93,7 +93,7 @@ from drydock.config import (
     get_sandbox_mem_limit_mb,
     max_consecutive_stalls,
 )
-from drydock.database_contract import mark_migrations_built
+from drydock.database_contract import database_operation_fingerprints, mark_migrations_built
 from drydock.decisions import load_decisions, render_commander_guidance
 from drydock.dependency_gate import (
     DependencyGateResult,
@@ -3759,6 +3759,12 @@ def build_target(
                         applied_by=unit.block_id,
                         applied_at=applied_at,
                         build_sha256=build_relevant_sha256(source),
+                        database_operations=(
+                            database_operation_fingerprints(source.read_text(encoding="utf-8"))
+                            if rel_path == "DATABASE.md"
+                            and "## Access Patterns" in source.read_text(encoding="utf-8")
+                            else ""
+                        ),
                     )
                     changed = True
             if changed:

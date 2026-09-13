@@ -539,7 +539,7 @@ def test_run_uat_builds_initial_and_updated_sources_and_gates_on_the_release_ver
     assert result.build_passes == 2
     assert result.score_exit_codes == {"acceptance": 0, "build-report": 0, "release": 1}
     assert ("import", "ReadingList", "--update") in calls
-    assert ("refit", "ReadingList", "--sources") in calls
+    assert ("refit", "ReadingList") in calls
     assert ("build", "status", "ReadingList") in calls
     assert ("status", "ReadingList") in calls
     assert ("status",) in calls

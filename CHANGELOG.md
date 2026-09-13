@@ -37,6 +37,20 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-13: `drydock refit <Target>` now normalizes external or raw ticket files, direct
+  Blueprint edits, and Feature Blueprint HTML comments into typed `drydock_*` change tickets.
+  It preserves upstream front matter, records unmatched inputs in `BLOCKERS.md`, attaches direct
+  tickets to rebuilt work, and commits Target artifacts even when reconciliation fails. Source
+  ticket processing is idempotent after its Manifest work becomes `incorporated`; deprecated
+  `--sources` and `--relineage` routes are removed.
+
+- 2026-09-13: DATABASE refit impact now compares the current named Access Pattern contract with
+  the public contract snapshot stored in `MANIFEST.md`. A recorded applied Git commit is used only
+  once to bootstrap Targets that predate the snapshot. Private persistence, schema, and migration
+  changes rebuild the database owner only; a changed `rebuild` Access Pattern resets only its
+  citing Features and dependents. Each normalized database change records a separate ticket-scoped
+  migration ledger entry.
+
 - 2026-09-12: `drydock build <Target>` now exits before any build runner executes when an
   applied Blueprint changed or disappeared. The error lists every stale applied-spec record and
   directs the operator to `drydock refit <Target>`; `--reset` cannot bypass reconciliation.
@@ -47,8 +61,8 @@ command surface and Typed Specification contract are unstable and may change bet
   affected Manifest closure to `pending`, and removes stale applied-spec provenance. Change
   tickets remain an optional additive-work path. `DATABASE.md` retains operation-level
   invalidation: the owner rebuilds, while only consumers of changed `rebuild` operations reset;
-  a Git-backed applied revision identifies direct operation changes without a change ticket or a
-  pre-authored migration record.
+  Refit later records the applied public contract snapshot used to identify direct operation
+  changes without a change ticket or a pre-authored migration record.
 
 - 2026-09-11: `drydock diagnose --apply` records each amendment it applies in `DECISIONS.json` as
   a `low`, `recommended` decision titled `Applied without review: <summary>`, naming the changed

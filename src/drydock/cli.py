@@ -834,58 +834,6 @@ def cmd_refit(args: argparse.Namespace) -> int:
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
 
-    if getattr(args, "sources", False) and getattr(args, "relineage", False):
-        raise UsageError("drydock refit: --sources and --relineage are mutually exclusive")
-
-    if getattr(args, "relineage", False):
-        from drydock.lineage_backfill import relineage_target
-
-        result = relineage_target(
-            target_dir,
-            log_dir=log_dir,
-            model=model,
-            llm_provider=llm_provider,
-        )
-        for source in result.sources:
-            print(
-                f"  [source]          {source.path}  "
-                f"{source.versions} version(s), {source.attributed} story attribution(s)"
-            )
-        for warning in result.warnings:
-            print(f"  [warning]         {warning}")
-        if result.unattached:
-            print(f"  [unattached]      {', '.join(result.unattached)}  (origin: plan)")
-        _commit_and_stamp(target_dir, "Backfill source lineage")
-        print(
-            f"RESULT: {len(result.sources)} source(s) relineaged, "
-            f"{len(result.unattached)} story(ies) unattached"
-        )
-        return 0
-
-    if getattr(args, "sources", False):
-        from drydock.source_refit import source_refit_target
-
-        result = source_refit_target(
-            target_dir,
-            log_dir=log_dir,
-            model=model,
-            llm_provider=llm_provider,
-        )
-        if not result.items:
-            print("  No pending source versions.")
-            return 0
-        for item in result.items:
-            print(
-                f"  [ticket]          {item.ticket.relative_to(target_dir)}  "
-                f"({item.scope}, {item.blueprint})  {', '.join(item.stories)}"
-            )
-        # A contract change never gates the build; the Commander decides whether to rebuild the
-        # consumers now or defer them.
-        for consumer in result.downstream:
-            print(f"  [downstream]      {consumer}")
-        print(f"RESULT: {len(result.items)} change ticket(s) authored")
-        return 0
-
     def report(item: RefitItem) -> None:
         name = item.ticket.name
         if item.status == "conformed":
@@ -1481,7 +1429,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             if result.pending_versions:
                 print(
                     f"  {result.pending_versions} source version(s) pending; "
-                    f"run: drydock refit {args.Target} --sources"
+                    f"run: drydock refit {args.Target}"
                 )
             record_status(
                 target_dir,
@@ -3743,20 +3691,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── refit ─────────────────────────────────────────────────────────────────
     p_iter = sub.add_parser(
         "refit",
-        help="Conform change tickets in blueprint/changes/ to the build process and update the manifest.",
+        help="Reconcile Blueprint changes and change tickets into the build process.",
     )
     _add_llm_override_flags(p_iter)
     p_iter.add_argument("Target", metavar="<Target>")
-    p_iter.add_argument(
-        "--sources",
-        action="store_true",
-        help="Route imported source changes into change tickets and Manifest stories.",
-    )
-    p_iter.add_argument(
-        "--relineage",
-        action="store_true",
-        help="Rebuild LINEAGE.json from the Target's git history and attribute existing stories.",
-    )
 
     # ── analyze ───────────────────────────────────────────────────────────────
     p_analyze = sub.add_parser(

@@ -91,6 +91,10 @@ class AppliedSpecRecord:
     applied_by: str
     applied_at: str
     build_sha256: str = ""
+    # DATABASE.md only: stable ``operation-id:fingerprint`` entries.  This is the
+    # applied public persistence contract and deliberately does not include private
+    # schemas, repositories, or migrations.
+    database_operations: str = ""
 
 
 @dataclass(frozen=True)
@@ -307,6 +311,7 @@ def _parse_applied_specs(text: str) -> dict[str, AppliedSpecRecord]:
             applied_by=applied_by,
             applied_at=applied_at,
             build_sha256=values.get("build_sha256", ""),
+            database_operations=values.get("database_operations", ""),
         )
     return records
 
@@ -320,6 +325,11 @@ def _format_applied_specs(records: dict[str, AppliedSpecRecord]) -> str:
             f"{record.path} sha256={record.sha256} commit={record.commit or '-'} "
             f"applied_by={record.applied_by} applied_at={record.applied_at}"
             + (f" build_sha256={record.build_sha256}" if record.build_sha256 else "")
+            + (
+                f" database_operations={record.database_operations}"
+                if record.database_operations
+                else ""
+            )
         )
     return "\n".join(lines)
 

@@ -1638,7 +1638,7 @@ def run_fixture(
             for index, update in enumerate(fixture.updates, start=1):
                 shutil.copyfile(update, source_root / update.name)
                 execute(("import", fixture.target, "--update"), f"import-update-{index}")
-                execute(("refit", fixture.target, "--sources"), f"refit-update-{index}")
+                execute(("refit", fixture.target), f"refit-update-{index}")
                 capture_status(f"after-refit-{index}")
                 build_until_no_work_remains(f"refit-{index}")
                 capture_status(f"after-refit-{index}-build")

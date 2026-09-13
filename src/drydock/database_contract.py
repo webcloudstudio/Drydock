@@ -12,6 +12,7 @@ import re
 import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 
 from drydock.errors import SpecificationError
@@ -26,7 +27,9 @@ _INTERFACE_RE = re.compile(
     r"\s+-\s+returns:\s*(?P<output>.*?)\s*$",
     re.MULTILINE | re.IGNORECASE,
 )
-_MIGRATION_FILE_RE = re.compile(r"^MIGRATION-([A-Z][A-Z0-9-]*-\d{3})\.md$")
+_MIGRATION_FILE_RE = re.compile(
+    r"^MIGRATION-(?:(?P<ticket>TICKET-\d+)-)?(?P<scope>[A-Z][A-Z0-9-]*(?:-\d{3})?)\.md$"
+)
 _OPERATION_ID_RE = re.compile(r"\b([A-Z][A-Z0-9-]*-\d{3})\b")
 _COMPATIBILITY = frozenset({"unchanged", "data", "rebuild"})
 _MIGRATION_STATES = frozenset({"planned", "built", "applied"})
@@ -75,6 +78,48 @@ class MigrationRecord:
     revision: str
     compatibility: str
     state: str
+    ticket_id: str = ""
+
+
+def database_operation_fingerprints(text: str) -> str:
+    """Serialize the public persistence contract for the applied-spec registry.
+
+    The serialized value is deliberately token-safe because it lives inside the
+    Manifest's compact ``applied_specs`` registry.  It excludes every private
+    DATABASE section, so a repository/schema/migration edit cannot invalidate a
+    Feature merely by changing DATABASE.md's file digest.
+    """
+    contract = parse_database_contract(text)
+    entries: list[str] = []
+    for pattern in contract.patterns:
+        payload = "\x1f".join((
+            pattern.identifier,
+            pattern.owner,
+            pattern.access,
+            pattern.repository_operation,
+            pattern.compatibility,
+            pattern.input_name,
+            *(f"{field.name}:{field.type}:{int(field.required)}" for field in pattern.inputs),
+            pattern.output_name,
+            *(f"{field.name}:{field.type}" for field in pattern.outputs),
+        ))
+        entries.append(f"{pattern.identifier}:{sha256(payload.encode()).hexdigest()}")
+    return ";".join(entries)
+
+
+def parse_database_operation_fingerprints(value: str) -> dict[str, str]:
+    """Read the compact public-contract snapshot recorded in ``applied_specs``."""
+    result: dict[str, str] = {}
+    for item in value.split(";"):
+        identifier, separator, fingerprint = item.partition(":")
+        if (
+            not separator
+            or not _OPERATION_ID_RE.fullmatch(identifier)
+            or not re.fullmatch(r"[0-9a-f]{64}", fingerprint)
+        ):
+            continue
+        result[identifier] = fingerprint
+    return result
 
 
 def _section(text: str, heading: str) -> str:
@@ -265,18 +310,24 @@ def migration_records(blueprint_dir: Path) -> tuple[MigrationRecord, ...]:
             continue
         text = path.read_text(encoding="utf-8")
         rows = {key.casefold(): value for key, value in _rows(text)}
-        access_pattern = rows.get("access pattern", match.group(1)).strip()
+        scope = match.group("scope")
+        access_pattern = rows.get("access pattern", scope).strip()
         compatibility = rows.get("compatibility", "").casefold()
         state = rows.get("state", "planned").casefold()
-        if access_pattern != match.group(1):
-            raise SpecificationError(f"{path}: Access Pattern must match its filename")
+        if access_pattern != scope:
+            raise SpecificationError(f"{path}: Access Pattern must match its filename scope")
         if compatibility not in _COMPATIBILITY or state not in _MIGRATION_STATES:
             raise SpecificationError(f"{path}: invalid Compatibility or State")
         if not _section(text, "Upgrade").strip() or not _section(text, "Downgrade").strip():
             raise SpecificationError(f"{path}: requires ## Upgrade and ## Downgrade snippets")
         records.append(
             MigrationRecord(
-                path, access_pattern, rows.get("revision", "").strip(), compatibility, state
+                path,
+                access_pattern,
+                rows.get("revision", "").strip(),
+                compatibility,
+                state,
+                rows.get("Ticket", match.group("ticket") or "").strip(),
             )
         )
     return tuple(records)
@@ -307,7 +358,7 @@ def mark_migrations_built(blueprint_dir: Path) -> tuple[Path, ...]:
 
 
 def create_ticket_migration_records(
-    blueprint_dir: Path, ticket_texts: Iterable[str]
+    blueprint_dir: Path, ticket_texts: Iterable[str | Path]
 ) -> tuple[Path, ...]:
     """Create planned ledger records for DATABASE ticket operations not already recorded.
 
@@ -321,27 +372,64 @@ def create_ticket_migration_records(
         return ()
     contract = parse_database_contract(database_path.read_text(encoding="utf-8"))
     patterns = contract.by_id()
-    requested = {
-        identifier
-        for text in ticket_texts
-        for identifier in _OPERATION_ID_RE.findall(text)
-        if identifier in patterns
+    requested: list[tuple[str, str, str]] = []
+    for source in ticket_texts:
+        path = source if isinstance(source, Path) else None
+        text = path.read_text(encoding="utf-8") if path is not None else source
+        ticket_match = re.search(r"^drydock_id:\s*(TICKET-\d+)", text, re.MULTILINE)
+        ticket_id = ticket_match.group(1) if ticket_match else ""
+        kind_match = re.search(r"^drydock_kind:\s*(\S+)", text, re.MULTILINE)
+        kind = kind_match.group(1) if kind_match else "database-access-pattern"
+        compatibility_match = re.search(r"^drydock_compatibility:\s*(\S+)", text, re.MULTILINE)
+        compatibility = compatibility_match.group(1) if compatibility_match else ""
+        amends_match = re.search(r"^drydock_amends:\s*(\S+)", text, re.MULTILINE)
+        amended_ids = (
+            set(_OPERATION_ID_RE.findall(amends_match.group(1))) & set(patterns)
+            if amends_match
+            else set()
+        )
+        operation_ids = (
+            sorted(amended_ids)
+            if amended_ids
+            else sorted(set(_OPERATION_ID_RE.findall(text)) & set(patterns))
+        )
+        if kind == "database-access-pattern" and operation_ids:
+            for identifier in operation_ids:
+                requested.append((
+                    ticket_id,
+                    identifier,
+                    compatibility or patterns[identifier].compatibility,
+                ))
+        elif kind in {"database-private", "database-data"} and ticket_id:
+            requested.append((
+                ticket_id,
+                "DATABASE",
+                "data" if kind == "database-data" else "rebuild",
+            ))
+
+    existing = {
+        (record.ticket_id, record.access_pattern) for record in migration_records(blueprint_dir)
     }
-    existing = {record.access_pattern for record in migration_records(blueprint_dir)}
     directory = blueprint_dir / "migrations"
     created: list[Path] = []
-    for identifier in sorted(requested - existing):
-        pattern = patterns[identifier]
-        path = directory / f"MIGRATION-{identifier}.md"
+    for ticket_id, identifier, compatibility in requested:
+        identity = (ticket_id, identifier)
+        if identity in existing:
+            continue
+        path = directory / (
+            f"MIGRATION-{ticket_id}-{identifier}.md" if ticket_id else f"MIGRATION-{identifier}.md"
+        )
         directory.mkdir(parents=True, exist_ok=True)
-        revision = identifier.casefold().replace("-", "_")
+        revision = "_".join(part.casefold() for part in (ticket_id, identifier) if part).replace(
+            "-", "_"
+        )
+        ticket_row = f"| Ticket | {ticket_id} |\n" if ticket_id else ""
         path.write_text(
-            f"# Migration: {identifier}\n\n"
+            f"# Migration: {ticket_id + ' ' if ticket_id else ''}{identifier}\n\n"
             "| Field | Value |\n"
-            "|---|---|\n"
-            f"| Access Pattern | {identifier} |\n"
+            "|---|---|\n" + ticket_row + f"| Access Pattern | {identifier} |\n"
             f"| Revision | {revision} |\n"
-            f"| Compatibility | {pattern.compatibility} |\n"
+            f"| Compatibility | {compatibility} |\n"
             "| State | planned |\n\n"
             "## Upgrade\n\n"
             "```python\n"
@@ -355,6 +443,7 @@ def create_ticket_migration_records(
             newline="\n",
         )
         created.append(path)
+        existing.add(identity)
     return tuple(created)
 
 

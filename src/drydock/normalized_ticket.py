@@ -24,6 +24,7 @@ KINDS = frozenset({
 })
 OPERATIONS = frozenset({"add", "change", "remove"})
 COMPATIBILITIES = frozenset({"unchanged", "data", "rebuild"})
+STATUSES = frozenset({"pending", "incorporated"})
 REQUIRED_FIELDS = frozenset({
     "drydock_id",
     "drydock_subject",
@@ -108,6 +109,10 @@ def parse_normalized_ticket(path: Path) -> NormalizedTicket | None:
             f"Normalized ticket {path.name} has invalid drydock_operation: {operation}"
         )
     compatibility = fields.get("drydock_compatibility", "")
+    if fields["drydock_status"] not in STATUSES:
+        raise SpecificationError(
+            f"Normalized ticket {path.name} has invalid drydock_status: {fields['drydock_status']}"
+        )
     if kind == "database-access-pattern" and compatibility not in COMPATIBILITIES:
         raise SpecificationError(
             f"Normalized ticket {path.name} requires drydock_compatibility: "
@@ -118,6 +123,22 @@ def parse_normalized_ticket(path: Path) -> NormalizedTicket | None:
             f"Normalized ticket {path.name} has invalid drydock_compatibility: {compatibility}"
         )
     return NormalizedTicket(path=path, front_matter=front_matter, drydock_fields=fields)
+
+
+def set_normalized_ticket_status(path: Path, status: str) -> None:
+    """Advance a normalized ticket after its Manifest work is incorporated."""
+    if status not in STATUSES:
+        raise SpecificationError(f"Invalid normalized ticket status: {status}")
+    normalized = parse_normalized_ticket(path)
+    if normalized is None:
+        raise SpecificationError(f"Cannot set status on non-normalized ticket {path.name}")
+    text = path.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r"(?m)^drydock_status:\s*\S+\s*$", f"drydock_status: {status}", text, count=1
+    )
+    if count != 1:
+        raise SpecificationError(f"Normalized ticket {path.name} requires one drydock_status")
+    path.write_text(updated, encoding="utf-8", newline="\n")
 
 
 def _source_datetime(front_matter: FrontMatter, now: datetime) -> str:

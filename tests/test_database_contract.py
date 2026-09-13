@@ -5,6 +5,7 @@ import pytest
 from drydock.database_contract import (
     changed_operation_ids_since,
     create_ticket_migration_records,
+    database_operation_fingerprints,
     mark_migrations_built,
     migration_records,
     parse_database_contract,
@@ -160,6 +161,51 @@ def test_database_ticket_creates_a_planned_migration_ledger_record(tmp_path: Pat
     assert record.access_pattern == "FEATURE-ORDER-001"
     assert record.compatibility == "rebuild"
     assert record.state == "planned"
+
+
+def test_public_contract_fingerprint_excludes_private_database_sections():
+    private_edit = _DATABASE + "\n## Schemas\n\norders gains a private audit column.\n"
+    assert database_operation_fingerprints(_DATABASE) == database_operation_fingerprints(
+        private_edit
+    )
+    changed_contract = _DATABASE.replace("OrderRepository.create", "OrderRepository.create_v2")
+    assert database_operation_fingerprints(_DATABASE) != database_operation_fingerprints(
+        changed_contract
+    )
+
+
+def test_each_normalized_database_ticket_has_its_own_migration_record(tmp_path: Path):
+    (tmp_path / "DATABASE.md").write_text(_DATABASE, encoding="utf-8")
+    first = tmp_path / "TICKET-001.md"
+    second = tmp_path / "TICKET-002.md"
+    for path, ticket_id in ((first, "TICKET-001"), (second, "TICKET-002")):
+        path.write_text(
+            f"---\ndrydock_id: {ticket_id}\ndrydock_kind: database-access-pattern\n"
+            "drydock_compatibility: rebuild\n---\n\nFEATURE-ORDER-001\n",
+            encoding="utf-8",
+        )
+
+    created = create_ticket_migration_records(tmp_path, (first, second))
+
+    assert [path.name for path in created] == [
+        "MIGRATION-TICKET-001-FEATURE-ORDER-001.md",
+        "MIGRATION-TICKET-002-FEATURE-ORDER-001.md",
+    ]
+
+
+def test_database_ticket_amends_scope_prevents_unrelated_operation_migrations(tmp_path: Path):
+    (tmp_path / "DATABASE.md").write_text(_DATABASE, encoding="utf-8")
+    ticket = tmp_path / "TICKET-001.md"
+    ticket.write_text(
+        "---\ndrydock_id: TICKET-001\ndrydock_kind: database-access-pattern\n"
+        "drydock_compatibility: rebuild\n"
+        "drydock_amends: DATABASE.md#Access-Patterns/FEATURE-ORDER-001\n---\n\n" + _DATABASE,
+        encoding="utf-8",
+    )
+
+    created = create_ticket_migration_records(tmp_path, (ticket,))
+
+    assert [path.name for path in created] == ["MIGRATION-TICKET-001-FEATURE-ORDER-001.md"]
 
 
 def test_git_contract_diff_names_only_changed_operations(tmp_path: Path):
