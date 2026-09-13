@@ -404,8 +404,8 @@ class TestRefitTarget:
         result = refit_target(target, runner=_fake_runner(""))
         normalized = list((target / "blueprint/changes").glob("TICKET-*.md"))
         assert result.exit_code() == 1  # The generated ticket still requires a build-story pass.
-        assert len(normalized) == 1
-        assert "drydock_amends: FEATURE-Copy.md" in normalized[0].read_text(encoding="utf-8")
+        assert normalized == []  # Failed conformance restores the ticket transaction.
+        assert "empty output" in (target / "BLOCKERS.md").read_text(encoding="utf-8")
 
     def test_conforms_ticket_and_patches_manifest(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))

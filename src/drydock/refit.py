@@ -502,7 +502,7 @@ def reset_blueprint_consumers(
     ]
 
 
-def refit_target(
+def _refit_target(
     target_dir: Path,
     *,
     log_dir: Path | None = None,
@@ -637,3 +637,84 @@ def refit_target(
         resets=resets,
         drift_errors=[*normalization_errors, *drift_errors],
     )
+
+
+def _snapshot_refit_files(target_dir: Path, changes_dir: Path) -> dict[Path, str | None]:
+    """Capture every refit-owned file so an unsuccessful transaction can be restored."""
+    paths = [target_dir / "MANIFEST.md"]
+    for directory in (changes_dir, target_dir / "blueprint" / "migrations"):
+        if directory.is_dir():
+            paths.extend(path for path in directory.rglob("*") if path.is_file())
+    return {path: path.read_text(encoding="utf-8") if path.is_file() else None for path in paths}
+
+
+def _restore_refit_files(
+    snapshot: Mapping[Path, str | None], target_dir: Path, changes_dir: Path
+) -> None:
+    known = set(snapshot)
+    for directory in (changes_dir, target_dir / "blueprint" / "migrations"):
+        if directory.is_dir():
+            for path in directory.rglob("*"):
+                if path.is_file() and path not in known:
+                    path.unlink()
+    for path, content in snapshot.items():
+        if content is None:
+            if path.exists():
+                path.unlink()
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8", newline="\n")
+
+
+def _write_unincorporated_notification(target_dir: Path, errors: Sequence[str]) -> None:
+    if not errors:
+        return
+    blockers = target_dir / "BLOCKERS.md"
+    text = blockers.read_text(encoding="utf-8") if blockers.is_file() else "# BLOCKERS\n"
+    heading = "## Unincorporated Change Tickets"
+    section = "\n".join([heading, "", *[f"- {error}" for error in errors], ""])
+    start = text.find(heading)
+    if start >= 0:
+        next_heading = re.search(r"^## ", text[start + len(heading) :], re.MULTILINE)
+        end = start + len(heading) + (next_heading.start() if next_heading else len(text))
+        text = text[:start].rstrip() + "\n\n" + section + text[end:].lstrip()
+    else:
+        text = text.rstrip() + "\n\n" + section
+    blockers.write_text(text, encoding="utf-8", newline="\n")
+
+
+def refit_target(
+    target_dir: Path,
+    *,
+    log_dir: Path | None = None,
+    runner: RunnerFn | None = None,
+    on_text: TextCallback | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
+) -> RefitResult:
+    """Run Refit atomically and checkpoint every written Target artifact in ``finally``."""
+    from drydock.config import change_ticket_directory_for
+    from drydock.target_git import commit_target
+
+    changes_dir = change_ticket_directory_for(target_dir)
+    snapshot = _snapshot_refit_files(target_dir, changes_dir)
+    try:
+        result = _refit_target(
+            target_dir,
+            log_dir=log_dir,
+            runner=runner,
+            on_text=on_text,
+            model=model,
+            llm_provider=llm_provider,
+        )
+        errors = [item.error for item in result.failed() if item.error] + result.drift_errors
+        if errors:
+            _restore_refit_files(snapshot, target_dir, changes_dir)
+            _write_unincorporated_notification(target_dir, errors)
+        return result
+    except Exception as exc:
+        _restore_refit_files(snapshot, target_dir, changes_dir)
+        _write_unincorporated_notification(target_dir, [str(exc)])
+        raise
+    finally:
+        commit_target(target_dir, "Refit change tickets")
