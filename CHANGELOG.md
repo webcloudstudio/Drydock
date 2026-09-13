@@ -119,6 +119,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-13: `drydock plan` now enforces one file per `implements:` before Stage 2 starts. A
+  story listing several files (`implements: SCREEN-X.md, FEATURE-Y.md`) was frozen as a single
+  unauthorable filename, so every Stage 2 batch that reached it was rejected as `output changed
+  frozen or deferred work` and the plan stalled. `verify_graph` now reports a
+  `multi-specification` defect and counts each listed file toward `shared-specification`. The
+  Stage 1 declaration repair now covers every work-graph defect as well as coverage. For a
+  one-specification defect, its prompt tells the model to split the story, where it had
+  previously told the model to preserve the assignment. A graph defect the repair does not
+  correct fails the plan as `plan topology rejected` before any Stage 2 call. A rejected
+  Stage 2 pass no longer leaves earlier artifacts from the same response in the accumulator,
+  and the rejection now names the artifact and the reason (frozen, already accepted,
+  undeclared, or deferred). `plan_create` V35 states that `implements:` is never a list.
+
 - 2026-09-12: `drydock diagnose` now reads the Target's recorded `ERRORS.md` before calling an
   LLM. A deterministic failure classification — including provider rate, session, or usage limits;
   provider, context/token, execution-environment, and execution-security failures — prints its

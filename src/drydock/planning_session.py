@@ -3550,16 +3550,44 @@ def _conflict_challenge_assembly(
     return PromptAssembly(parts=(*prompt_assembly.parts, challenge))
 
 
+#: Defect text that breaks the one-story-per-specification rule (``plan_graph.verify_graph``).
+_ONE_SPECIFICATION_DEFECTS = (
+    "exactly one specification per story",
+    "exactly one owning story per specification",
+)
+
+#: Added to a topology repair only for those defects. The generic instruction preserves every
+#: implements assignment, and there the assignment is itself the defect: without these rules the
+#: repair has no legal move but to return the topology unchanged.
+_ONE_SPECIFICATION_REPAIR_RULES = (
+    "One story per specification:",
+    "- `implements:` names exactly one Blueprint file. A story that lists several files",
+    "  becomes one story per file.",
+    "- The original story keeps its ID, its `covers:`, and the first file it listed.",
+    "- Each other file gets one new story. Its ID is the filename lowercased without `.md`",
+    "  (`FEATURE-SCANNER.md` -> `feature-scanner`). It is a complete `## story` block: summary,",
+    "  type, kind, phase, implements, stack, depends, acceptance, instructions. Its phase is no",
+    "  later than the phase of any story that depends on it.",
+    "- A file listed by several stories gets exactly one new story, and every story that listed",
+    "  it adds that new story to its `depends:`.",
+    "- Do not rename, merge, or drop any other story.",
+)
+
+
 def _topology_repair_assembly(*, declaration: str, defect: str, pass_number: int) -> PromptAssembly:
-    """Build a small repair prompt for a valid artifact batch with an invalid work graph."""
+    """Build a small repair prompt for a topology declaration with an invalid work graph."""
+    split_rules: tuple[str, ...] = ()
+    if any(marker in defect for marker in _ONE_SPECIFICATION_DEFECTS):
+        split_rules = (*_ONE_SPECIFICATION_REPAIR_RULES, "")
     lines = [
         "# Plan Topology Repair",
         "",
-        "Drydock accepted the Blueprint artifact batch but rejected its transient work graph.",
-        "Repair only the deterministic defect reported below. Preserve every story ID,",
-        "implements assignment and story fields that do not need",
-        "to change. Dependencies must name exact story IDs declared in this topology.",
+        f"Drydock rejected this {TOPOLOGY_BLOCK} declaration. Repair only the deterministic",
+        "defects reported below. Preserve every story ID, implements assignment, and story field",
+        "the defects do not require you to change. Dependencies must name exact story IDs",
+        "declared in this topology.",
         "",
+        *split_rules,
         *emission_contract_lines((TOPOLOGY_BLOCK,)),
         "",
         f"Repair pass: {pass_number}",
@@ -3595,6 +3623,27 @@ def _declaration_coverage_defect(declaration: str, blueprint_dir: Path) -> str:
     return "\n  ".join(fatal)
 
 
+def _declaration_graph_defect(declaration: str) -> str:
+    """The fatal work-graph defects in a topology declaration, or an empty string when sound.
+
+    The graph is a function of the declaration alone, and Stage 2 never changes the frozen
+    declaration, so a defect found here is certain to refuse the plan at final validation.
+    """
+    from drydock.plan_graph import verify_graph
+
+    declared, _ = parse_topology(declaration)
+    return "\n  ".join(defect.rendered() for defect in verify_graph(declared) if defect.fatal)
+
+
+def _declaration_defect(declaration: str, blueprint_dir: Path) -> str:
+    """Every defect decidable from the declaration alone, or an empty string when it is sound."""
+    parts = (
+        _declaration_coverage_defect(declaration, blueprint_dir),
+        _declaration_graph_defect(declaration),
+    )
+    return "\n  ".join(part for part in parts if part)
+
+
 def _report_repair_discard(reason: str, on_text: Callable[[str], None] | None) -> None:
     """Name a repair reply Drydock could not use, so the discard is never silent."""
     if on_text is not None:
@@ -3604,17 +3653,18 @@ def _report_repair_discard(reason: str, on_text: Callable[[str], None] | None) -
 def _discarded_repair(declaration: str, reason: str, on_text: Callable[[str], None] | None) -> str:
     """Report a repair Drydock could not use, and stand on the uncorrected declaration.
 
-    Proceeding is deliberate — the same rule runs again at final validation, which owns the
-    refusal. Reporting is what was missing: a silently discarded repair let Stage 2 spend a
-    full batch pass on a topology already known to be defective, and the operator saw only
-    the eventual refusal, naming a defect the model had in fact corrected.
+    For coverage, proceeding is deliberate — the same rule runs again at final validation, which
+    owns the refusal. A work-graph defect is refused by the caller before Stage 2 instead.
+    Reporting is what was missing: a silently discarded repair let Stage 2 spend a full batch
+    pass on a topology already known to be defective, and the operator saw only the eventual
+    refusal, naming a defect the model had in fact corrected.
     """
     if on_text is not None:
-        on_text(f"[plan] topology coverage repair discarded · {reason}\n")
+        on_text(f"[plan] declaration repair discarded · {reason}\n")
     return declaration
 
 
-def _repair_declaration_coverage(
+def _repair_declaration(
     declaration: str,
     *,
     blueprint_dir: Path,
@@ -3628,18 +3678,18 @@ def _repair_declaration_coverage(
     attempts: int,
     initial_execution_id: str | None,
 ) -> str:
-    """Correct analyzed-story coverage in the declaration before Stage 2 spends a call.
+    """Correct coverage and work-graph defects in the declaration before Stage 2 spends a call.
 
-    Coverage is decidable the moment the topology exists, and a repair here costs one small
-    call against the declaration alone. Returning an uncorrected declaration is not a
-    failure path: the same rule runs again at final validation, which owns the refusal.
+    Both are decidable the moment the topology exists, and a repair here costs one small call
+    against the declaration alone. Returning an uncorrected declaration is not itself a failure;
+    the caller decides whether what remains is refused now or at final validation.
     """
     for repair_pass in range(1, attempts + 1):
-        defect = _declaration_coverage_defect(declaration, blueprint_dir)
+        defect = _declaration_defect(declaration, blueprint_dir)
         if not defect:
             return declaration
         if on_text is not None:
-            on_text(f"[plan] topology coverage repair pass {repair_pass}/{attempts} · {defect}\n")
+            on_text(f"[plan] declaration repair pass {repair_pass}/{attempts} · {defect}\n")
         assembly = _topology_repair_assembly(
             declaration=declaration, defect=defect, pass_number=repair_pass
         )
@@ -3654,7 +3704,7 @@ def _repair_declaration_coverage(
                     command_name="plan",
                     parameters={
                         "target": target,
-                        "coverage_repair_pass": repair_pass,
+                        "declaration_repair_pass": repair_pass,
                         "initial_execution_id": initial_execution_id or "",
                     },
                     log_dir=log_dir,
@@ -4122,42 +4172,50 @@ def _continue_short_plan(
 
         tranche = frozenset(_blueprint_tranche(score))
         accepted_now = frozenset(score.accepted)
-        conflicted = False
+        declared_names = frozenset(item.filename for item in score.declared)
+        # The pass is merged into a copy and adopted only whole, so a rejected pass leaves
+        # nothing behind — including artifacts it emitted before the one that rejected it.
+        candidate = dict(accumulated)
+        rejection = ""
         for name, body in pass_blocks.items():
             if name in {TOPOLOGY_BLOCK, DECISIONS_BLOCK}:
                 # Stage 1 artifacts are frozen. A byte-identical repeat is tolerated for provider
                 # compatibility but ignored; a revision invalidates the whole Stage 2 pass.
                 if accumulated.get(name) != body:
-                    conflicted = True
+                    rejection = f"{name} is frozen and this pass revised it"
                     break
-                continue
-            if name not in tranche:
-                conflicted = True
-                break
-            if name in pass_damaged:
                 continue
             if name in accepted_now:
                 # An accepted artifact is frozen. A byte-identical repeat costs nothing; a
                 # differing one means this pass disagrees with work already paid for, and the
                 # pass is dropped whole rather than resolved by guesswork.
                 if accumulated.get(name) != body:
-                    conflicted = True
+                    rejection = f"{name} is already accepted and this pass changed it"
                     break
                 continue
-            accumulated[name] = body
-        if conflicted:
+            if name not in declared_names:
+                rejection = f"{name} is not declared by the frozen topology"
+                break
+            if name not in tranche:
+                rejection = f"{name} is deferred to a later batch"
+                break
+            if name in pass_damaged:
+                continue
+            candidate[name] = body
+        if rejection:
             if on_text is not None:
                 on_text(
                     "[plan-score]"
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
-                        result="Rejected: output changed frozen or deferred work",
+                        result=f"Rejected: {rejection}",
                     )
                 )
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
             continue
+        accumulated = candidate
 
         advanced = score_plan(current, accumulated)
         if not advanced.improved_on(score):
@@ -4960,9 +5018,9 @@ def create_plan(
             # batches. Only a delimited response carries the evidence needed to distinguish a cut
             # artifact from a complete one, so write-call recovery keeps the original behavior.
         if continue_attempts > 0 and blocks_text is not None and TOPOLOGY_BLOCK in blocks:
-            # Coverage is checked here, against the frozen declaration, so an uncovered
-            # analyzed story costs one repair call rather than the whole Stage 2 spend.
-            blocks[TOPOLOGY_BLOCK] = _repair_declaration_coverage(
+            # Coverage and the work graph are checked here, against the declaration about to be
+            # frozen, so a defect costs one repair call rather than the whole Stage 2 spend.
+            blocks[TOPOLOGY_BLOCK] = _repair_declaration(
                 blocks[TOPOLOGY_BLOCK],
                 blueprint_dir=blueprint_dir,
                 target=target,
@@ -4975,6 +5033,23 @@ def create_plan(
                 attempts=continue_attempts,
                 initial_execution_id=exec_id,
             )
+            # An unrepaired graph defect is refused now: final validation would refuse the same
+            # frozen declaration after every Stage 2 batch had been paid for.
+            graph_defect = _declaration_graph_defect(blocks[TOPOLOGY_BLOCK])
+            if graph_defect:
+                raise _record_plan_error(
+                    target_dir,
+                    classification="plan topology rejected",
+                    detail=(
+                        f"{TOPOLOGY_BLOCK} declares an inconsistent work graph that repair did "
+                        "not correct; Stage 2 was not started.\n  "
+                        + graph_defect
+                        + "\n  No Blueprint or Manifest artifacts were written."
+                    ),
+                    execution_id=exec_id,
+                    log_dir=log_dir,
+                    recovery=f"Run again: drydock plan {target}",
+                )
             declared_stories, _ = parse_topology(blocks[TOPOLOGY_BLOCK])
             if declared_stories:
                 continuation = _continue_short_plan(

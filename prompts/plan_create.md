@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20260816 V34
+version: 20260913 V35
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -398,7 +398,8 @@ instructions: |
 
 Declare, per story:
 
-- `summary`, `implements` (exactly one governed specification), `instructions`
+- `summary`, `implements` (exactly one governed specification file — one filename, never a
+  list), `instructions`
 - `type` — `foundational`, `service`, or `feature`, per `MANIFEST_CONTRACT.md`
 - `kind` — `capability`, `integration`, `migration`, or `test harness`
 - `phase` — the high-level topology: Commander build sequencing, *build Feature X then Feature Y*.
@@ -809,6 +810,10 @@ Required action:
   authored spec file that already exists in the input Blueprint.
 - Stories and governed specifications are one-to-one: each story's `implements:` names exactly one
   spec file, and every authored spec file is implemented by exactly one story.
+- `implements:` never lists files. `implements: SCREEN-Orders.md, FEATURE-Pricing.md` is refused
+  before any Blueprint is authored: declare a `feature-pricing` story that implements
+  `FEATURE-Pricing.md`, and add `feature-pricing` to the screen story's `depends:`. A file that
+  two stories need is implemented by one story and depended on by the other.
 - Never emit `AGENTS.md`. AGENTS.md is not a Blueprint file and is distributed with rigging at build time.
 - Every emitted authored spec file except `METADATA.md` and `README.md` uses the exact typed header
   table and ends with `## Programmatic Acceptance`, `## User Acceptance`, and `## Guardrails`, with

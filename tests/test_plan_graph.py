@@ -78,6 +78,20 @@ def test_specification_has_exactly_one_owning_story():
     assert "shared-specification" in codes(defects)
 
 
+def test_story_listing_two_specifications_is_reported():
+    defects = verify_graph([story("orders", implements="SCREEN-ORDERS.md, FEATURE-PRICING.md")])
+    assert "multi-specification" in codes(defects)
+
+
+def test_a_specification_inside_two_lists_has_two_owners():
+    stories = [
+        story("orders", implements="SCREEN-ORDERS.md, FEATURE-PRICING.md"),
+        story("cart", implements="SCREEN-CART.md FEATURE-PRICING.md"),
+    ]
+    messages = [defect.message for defect in verify_graph(stories)]
+    assert any(m.startswith("FEATURE-PRICING.md is implemented by 2 stories") for m in messages)
+
+
 def test_duplicate_story_id_is_reported():
     defects = verify_graph([story("catalog"), story("catalog", implements="OTHER.md")])
     assert "duplicate-id" in codes(defects)

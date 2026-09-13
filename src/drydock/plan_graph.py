@@ -25,6 +25,7 @@ order it has not computed.
 from __future__ import annotations
 
 import heapq
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 
@@ -156,6 +157,15 @@ def find_cycle(stories: Sequence[PlannedStory]) -> tuple[str, ...]:
     return ()
 
 
+def specification_names(implements: str) -> tuple[str, ...]:
+    """Every file an ``implements:`` value names; more than one is a declaration defect.
+
+    The value is split, not trusted as one filename: a comma list read whole names a file that
+    can never be authored, and Stage 2 then rejects every batch that reaches it.
+    """
+    return tuple(part for part in re.split(r"[,\s]+", implements.strip()) if part)
+
+
 def verify_graph(stories: Sequence[PlannedStory]) -> tuple[GraphDefect, ...]:
     """Prove a declared plan is internally consistent.
 
@@ -210,7 +220,8 @@ def verify_graph(stories: Sequence[PlannedStory]) -> tuple[GraphDefect, ...]:
 
     owners: dict[str, list[str]] = {}
     for story in stories:
-        if not story.implements:
+        names = specification_names(story.implements)
+        if not names:
             defects.append(
                 GraphDefect(
                     "no-specification",
@@ -220,7 +231,17 @@ def verify_graph(stories: Sequence[PlannedStory]) -> tuple[GraphDefect, ...]:
                 )
             )
             continue
-        owners.setdefault(story.implements, []).append(story.story_id)
+        if len(names) > 1:
+            defects.append(
+                GraphDefect(
+                    "multi-specification",
+                    story.story_id,
+                    f"implements lists {len(names)} specifications ({', '.join(names)}); "
+                    "exactly one specification per story",
+                )
+            )
+        for name in names:
+            owners.setdefault(name, []).append(story.story_id)
     for spec, claimants in sorted(owners.items()):
         if len(claimants) > 1:
             defects.append(

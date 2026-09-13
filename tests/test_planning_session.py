@@ -3643,6 +3643,85 @@ def test_uncovered_analyzed_story_is_repaired_at_stage_1(tmp_path):
     assert result.plan.by_id()["story-foundation"].fields["covers"] == ("ARCH-001",)
 
 
+# Regression shape from Marina_Haiku 20260913.042433: one story lists two files, and the second
+# is also a file another story implements.
+_MULTI_FILE_DECLARATION = _TOPOLOGY_DECLARATION.replace(
+    "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md, FEATURE-Status.md"
+)
+
+
+def test_a_multi_file_implements_is_split_by_repair_before_stage_two(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(_topology_output(_MULTI_FILE_DECLARATION), _declaration_block())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 2
+    repair = runner.calls[1]
+    assert "Plan Topology Repair" in repair
+    assert "implements lists 2 specifications (ARCHITECTURE.md, FEATURE-Status.md)" in repair
+    assert "FEATURE-Status.md is implemented by 2 stories" in repair
+    assert "One story per specification:" in repair
+    assert (target_dir / "MANIFEST.md").is_file()
+
+
+def test_an_unrepaired_multi_file_implements_stops_before_stage_two(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(
+        _declaration_block(_MULTI_FILE_DECLARATION) + _arch_block(),
+        _declaration_block(_MULTI_FILE_DECLARATION),
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    # The Stage 1 call and one repair; no Stage 2 batch is spent on an unbuildable topology.
+    assert len(runner.calls) == 2
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan topology rejected",
+        detail="implements lists 2 specifications (ARCHITECTURE.md, FEATURE-Status.md)",
+    )
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
+def test_a_coverage_only_repair_carries_no_split_rules(tmp_path):
+    _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    uncovered = _TOPOLOGY_DECLARATION.replace(
+        "implements:   FEATURE-Status.md",
+        "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
+    )
+    repaired = uncovered.replace(
+        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
+    )
+    runner = _sequence_runner(_topology_output(uncovered), _declaration_block(repaired))
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert "One story per specification:" not in runner.calls[1]
+
+
+def test_a_rejected_stage_two_pass_leaves_none_of_its_artifacts_behind(tmp_path):
+    # The batch carries a valid FEATURE-Status.md, then an undeclared file. The pass is dropped
+    # whole, so a later pass that adds nothing cannot complete the plan with its leftovers.
+    target_dir = _make_target(tmp_path)
+    ghost = _SPEC_HEADER.format(ftype="FEATURE", name="Ghost", ac="Ghost exits successfully.")
+    runner = _sequence_runner(
+        _short_output(),
+        _feature_block() + f"=== FEATURE-Ghost.md ===\n{ghost}\n=== END FEATURE-Ghost.md ===\n",
+        _declaration_block(),
+    )
+    progress: list[str] = []
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner, on_text=progress.append)
+
+    assert "specs:     1 / 2  accepted" in excinfo.value.record.detail
+    assert "Rejected: FEATURE-Ghost.md is not declared by the frozen topology" in "".join(progress)
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
 def test_stage_1_coverage_repair_is_skipped_when_the_declaration_covers_every_story(tmp_path):
     _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
     covered = _TOPOLOGY_DECLARATION.replace(
