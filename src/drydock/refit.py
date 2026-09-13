@@ -40,6 +40,13 @@ from drydock.database_contract import (
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.manifest_edit import batch_set_block_fields
+from drydock.normalized_ticket import (
+    next_ticket_id,
+    parse_normalized_ticket,
+    render_normalized_ticket,
+    split_front_matter,
+    ticket_slug,
+)
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_markdown_parts,
@@ -61,6 +68,7 @@ _BLOCK_START_RE = re.compile(r"^## \w[^:]*:\s+.+", re.MULTILINE)
 _BLOCK_ID_RE = re.compile(r"^id:\s+(\S+)", re.MULTILINE)
 _AMENDS_TABLE_RE = re.compile(r"\|\s*Amends\s*\|\s*([^|]+)\|")
 _AMENDS_BARE_RE = re.compile(r"^Amends:\s*(\S+)", re.MULTILINE)
+_DRYDOCK_AMENDS_RE = re.compile(r"^drydock_amends:\s*(\S+)", re.MULTILINE)
 _DEPENDS_ON_RE = re.compile(r"\|\s*Depends On\s*\|\s*([^|]+)\|")
 
 
@@ -116,6 +124,9 @@ class RefitResult:
 
 def _parse_amends(ticket_text: str) -> str | None:
     """Extract Amends field value from a ticket. Checks header table then bare line."""
+    m = _DRYDOCK_AMENDS_RE.search(ticket_text)
+    if m:
+        return m.group(1).strip()
     m = _AMENDS_TABLE_RE.search(ticket_text)
     if m:
         return m.group(1).strip()
@@ -123,6 +134,56 @@ def _parse_amends(ticket_text: str) -> str | None:
     if m:
         return m.group(1).strip()
     return None
+
+
+def _match_source_ticket(ticket_path: Path, ticket_text: str, blueprint_dir: Path) -> str | None:
+    """Return the one Blueprint a raw ticket can deterministically amend."""
+    front_matter = split_front_matter(ticket_text)
+    explicit = front_matter.fields.get("amends") or _parse_amends(ticket_text)
+    if explicit:
+        return explicit if (blueprint_dir / explicit.split("#", 1)[0]).is_file() else None
+    haystack = " ".join((ticket_path.stem, front_matter.fields.get("summary", ""), ticket_text))
+    candidates = [
+        path.name
+        for path in blueprint_dir.glob("*.md")
+        if path.stem.casefold() in haystack.casefold()
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _normalize_source_tickets(
+    changes_dir: Path, blueprint_dir: Path
+) -> tuple[list[RefitItem], list[str]]:
+    """Create normalized tickets for raw files and retain unmatched source diagnostics."""
+    if not changes_dir.is_dir():
+        return [], []
+    items: list[RefitItem] = []
+    errors: list[str] = []
+    for path in sorted(p for p in changes_dir.glob("*.md") if p.is_file()):
+        text = path.read_text(encoding="utf-8")
+        if parse_normalized_ticket(path) is not None or _parse_amends(text) is not None:
+            continue
+        amends = _match_source_ticket(path, text, blueprint_dir)
+        if not amends:
+            error = f"{path.name}: cannot match ticket to one Blueprint"
+            errors.append(error)
+            items.append(RefitItem(ticket=path, status="failed", error=error))
+            continue
+        ticket_id = next_ticket_id(changes_dir)
+        destination = changes_dir / f"{ticket_id}-{ticket_slug(path.stem)}.md"
+        try:
+            destination.write_text(
+                render_normalized_ticket(path, text, ticket_id=ticket_id, amends=amends),
+                encoding="utf-8",
+                newline="\n",
+            )
+        except SpecificationError as exc:
+            error = f"{path.name}: {exc}"
+            errors.append(error)
+            items.append(RefitItem(ticket=path, status="failed", error=error))
+            continue
+        items.append(RefitItem(ticket=destination, status="conformed"))
+    return items, errors
 
 
 def _parse_parent_depends(parent_text: str) -> list[str]:
@@ -451,7 +512,7 @@ def refit_target(
     llm_provider: str | None = None,
 ) -> RefitResult:
     """Conform change tickets in blueprint/changes/ to the build process and patch MANIFEST.md."""
-    from drydock.config import blueprint_dir_for
+    from drydock.config import blueprint_dir_for, change_ticket_directory_for
 
     run = runner if runner is not None else run_prompt
 
@@ -459,16 +520,21 @@ def refit_target(
         raise SpecificationError(f"Target directory not found: {target_dir}")
 
     blueprint_dir = blueprint_dir_for(target_dir)
-    changes_dir = blueprint_dir / "changes"
+    changes_dir = change_ticket_directory_for(target_dir)
     manifest_path = target_dir / "MANIFEST.md"
 
-    tickets = (
-        sorted(p for p in changes_dir.glob("*.md") if p.is_file()) if changes_dir.is_dir() else []
-    )
+    changes_dir.mkdir(parents=True, exist_ok=True)
+    normalized_items, normalization_errors = _normalize_source_tickets(changes_dir, blueprint_dir)
+
+    tickets = [
+        path
+        for path in sorted(p for p in changes_dir.glob("*.md") if p.is_file())
+        if _parse_amends(path.read_text(encoding="utf-8")) is not None
+    ]
 
     prompt = load_prompt(PROMPT_NAME) if tickets else None
     today = date.today().isoformat()
-    items: list[RefitItem] = []
+    items: list[RefitItem] = normalized_items
     database_ticket_texts: list[str] = []
 
     for ticket_path in tickets:
@@ -544,7 +610,7 @@ def refit_target(
             )
             continue
 
-        if ticket_content:
+        if ticket_content and parse_normalized_ticket(ticket_path) is None:
             ticket_path.write_text(ticket_content.rstrip() + "\n", encoding="utf-8", newline="\n")
             ticket_text = ticket_content
 
@@ -565,4 +631,9 @@ def refit_target(
     create_ticket_migration_records(blueprint_dir, database_ticket_texts)
     resets, drift_errors = _reconcile_drift(manifest_path, blueprint_dir)
 
-    return RefitResult(target_dir=target_dir, items=items, resets=resets, drift_errors=drift_errors)
+    return RefitResult(
+        target_dir=target_dir,
+        items=items,
+        resets=resets,
+        drift_errors=[*normalization_errors, *drift_errors],
+    )

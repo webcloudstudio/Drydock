@@ -380,7 +380,7 @@ class TestRefitTarget:
         assert result.items == []
         assert result.exit_code() == 0
 
-    def test_ticket_without_amends_is_skipped(self, tmp_path, monkeypatch):
+    def test_unmatched_ticket_is_reported_as_failed(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
         target = _make_target(
             tmp_path,
@@ -389,8 +389,23 @@ class TestRefitTarget:
         )
         result = refit_target(target, runner=_fake_runner(""))
         assert len(result.items) == 1
-        assert result.items[0].status == "skipped-no-amends"
-        assert result.exit_code() == 0
+        assert result.items[0].status == "failed"
+        assert result.exit_code() == 1
+
+    def test_raw_ticket_with_explicit_target_is_normalized(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        target = _make_target(
+            tmp_path,
+            tickets={
+                "incoming.md": "---\nsummary: Add copy\namends: FEATURE-Copy.md\n---\n\nAdd copy.\n"
+            },
+            parent_specs={"FEATURE-Copy.md": "# FEATURE: Copy\n"},
+        )
+        result = refit_target(target, runner=_fake_runner(""))
+        normalized = list((target / "blueprint/changes").glob("TICKET-*.md"))
+        assert result.exit_code() == 1  # The generated ticket still requires a build-story pass.
+        assert len(normalized) == 1
+        assert "drydock_amends: FEATURE-Copy.md" in normalized[0].read_text(encoding="utf-8")
 
     def test_conforms_ticket_and_patches_manifest(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
