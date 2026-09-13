@@ -132,7 +132,7 @@ that was cut, and the setting to change. Nothing from the response is written.
 | **import** | `drydock import <Target>` | import source material<br>**Creates:** `targets/<Target>/sources` |
 | **analyze** | `drydock analyze <Target>` | Decompose into stories, acceptance criteria, questions, and blockers.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, questionnaires. |
 | **plan** | `drydock plan <Target>` | Create story blueprints and a graph datbase.<br>**Creates:** `blueprints/` and `MANIFEST.md`.<br>`drydock plan verify <Target>` reports acceptance criteria that cannot run; `drydock plan repair <Target>` makes them runnable in one pass. |
-| **build** | `drydock build <Target>` | Executes context-aware builds gated by deterministic acceptance criteria. Test-scoped Python acceptance dependencies are automatically authorized; runtime dependencies and external executables remain governed.<br>**Creates:** `\$drydock_build_directory/<Target>` with working software. |
+| **build** | `drydock build <Target>` | Executes the refit-reconciled Manifest frontier, gated by deterministic acceptance criteria. It exits with an error when any applied Blueprint changed or disappeared; run `drydock refit <Target>` first. Test-scoped Python acceptance dependencies are automatically authorized; runtime dependencies and external executables remain governed.<br>**Creates:** `\$drydock_build_directory/<Target>` with working software. |
 | **refit** | `drydock refit <Target>` | Reconcile edited Blueprints to the Manifest dependency graph; reset only their affected build frontier. Change tickets remain available for additive work.<br>**Updates:** `MANIFEST.md`; continue with a `build`. |
 
 ## The Drydock CLI

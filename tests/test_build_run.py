@@ -2315,7 +2315,9 @@ state: pending
         assert "ARCHITECTURE.md" in plan.applied_specs
         assert "README.md" not in plan.applied_specs
 
-    def test_changed_previously_applied_spec_warns_and_builds(self, tmp_path):
+    def test_changed_previously_applied_spec_blocks_before_runner(self, tmp_path):
+        from drydock.errors import SpecificationError
+
         target_dir, build_dir = _setup(tmp_path)
         runner = make_runner()
         build_target("Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation")
@@ -2324,12 +2326,14 @@ state: pending
         )
 
         second_runner = make_runner()
-        result = build_target("Demo", target_dir, build_dir=build_dir, runner=second_runner)
+        with pytest.raises(SpecificationError, match=r"drydock refit Demo"):
+            build_target("Demo", target_dir, build_dir=build_dir, runner=second_runner)
 
-        assert result.exit_code() == 0
-        assert len(second_runner.calls) == 1
+        assert second_runner.calls == []
 
-    def test_full_reset_clears_applied_specs_and_rebuilds(self, tmp_path):
+    def test_reset_cannot_bypass_unreconciled_blueprint_drift(self, tmp_path):
+        from drydock.errors import SpecificationError
+
         target_dir, build_dir = _setup(tmp_path)
         build_target(
             "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
@@ -2339,14 +2343,12 @@ state: pending
         )
 
         runner = make_runner()
-        result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner, reset=True)
+        with pytest.raises(SpecificationError, match=r"drydock refit Demo"):
+            build_target("Demo", target_dir, build_dir=build_dir, runner=runner, reset=True)
 
-        assert result.exit_code() == 0
-        assert len(runner.calls) > 0
-        # Stale records were cleared by the reset and re-stamped against the current
-        # Blueprint, so an immediate follow-up build is not blocked.
+        assert runner.calls == []
         plan = parse_build_plan(target_dir / "MANIFEST.md")
-        assert stale_applied_specs(plan, target_dir / "blueprint") == ()
+        assert stale_applied_specs(plan, target_dir / "blueprint")
 
     def test_deleted_previously_applied_spec_blocks_before_runner(self, tmp_path):
         from drydock.errors import SpecificationError
@@ -2363,7 +2365,7 @@ state: pending
 
         assert len(runner.calls) == 0
 
-    def test_drift_warning_distinguishes_foundational_and_ordinary(self, tmp_path):
+    def test_drift_error_lists_every_unreconciled_spec_and_refit_command(self, tmp_path):
         import hashlib
 
         from drydock.build_run import _ensure_applied_specs_current
@@ -2389,14 +2391,14 @@ state: pending
             encoding="utf-8",
         )
 
-        warnings = _ensure_applied_specs_current(manifest, blueprint)
+        with pytest.raises(SpecificationError) as error:
+            _ensure_applied_specs_current(manifest, blueprint)
 
-        message = "\n".join(warnings)
-        assert "build continues" in message
-        assert "DATABASE.md changed" in message
-        assert "Existing compact derivatives are not regenerated" in message
-        assert "existing compact derivatives are used" in message
+        message = str(error.value)
+        assert "Build blocked" in message
+        assert "DATABASE.md" in message
         assert "SCREEN-A.md" in message
+        assert "drydock refit Demo" in message
 
 
 _CONTEXT_STORY = """# MANIFEST: Demo

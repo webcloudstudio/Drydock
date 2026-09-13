@@ -37,6 +37,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-12: `drydock build <Target>` now exits before any build runner executes when an
+  applied Blueprint changed or disappeared. The error lists every stale applied-spec record and
+  directs the operator to `drydock refit <Target>`; `--reset` cannot bypass reconciliation.
+
 - 2026-09-12: `drydock refit <Target>` now treats direct Blueprint edits as the authoritative
   input for incremental rebuilding. It reconciles changed `ARCHITECTURE.md`, `DATABASE.md`, and
   `UI-GENERAL.md` files without requiring `blueprint/changes/TICKET-*.md` files, resets their

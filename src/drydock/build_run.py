@@ -81,7 +81,6 @@ from drydock.build_plan import (
     BuildPlan,
     PlanBlock,
     build_relevant_sha256,
-    foundational_source,
     parse_build_plan,
     set_applied_registry,
     set_applied_specs,
@@ -893,44 +892,20 @@ def _stale_applied_specs(plan_path: Path, blueprint_dir: Path) -> tuple[str, ...
     return tuple(details)
 
 
-def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> tuple[str, ...]:
-    """Report changed applied specs without blocking; reject specs that disappeared.
+def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> None:
+    """Block a build until ``drydock refit`` reconciles every applied Blueprint change.
 
-    A Blueprint edit is an authoring event, not a request for Drydock to rewrite its
-    compact derivative or silently run ``refit``.  The build therefore continues against
-    the current full source and leaves any existing compact derivative untouched.  A
-    missing applied source remains fatal because the build no longer has the declared input.
+    Build must never choose an invalidation scope or execute against an unapplied source. Refit
+    owns that decision: it resets the affected Manifest frontier and removes stale provenance.
     """
     plan = parse_build_plan(plan_path)
     stale = stale_applied_specs(plan, blueprint_dir)
     if not stale:
-        return ()
-    missing = [spec for spec in stale if spec.reason == "missing"]
-    if missing:
-        lines = ["Build blocked: previously applied Blueprint specifications are missing."]
-        lines.extend(
-            f"  - {spec.rel_path}: missing (applied_by={spec.record.applied_by}, "
-            f"recorded_commit={spec.record.commit})"
-            for spec in missing
-        )
-        raise SpecificationError("\n".join(lines))
-
-    foundational = sorted({
-        name for spec in stale if (name := foundational_source(spec.rel_path)) is not None
-    })
-    lines = ["WARNING: Previously applied Blueprint specifications changed; build continues."]
-    for name in foundational:
-        lines.append(
-            f"WARNING: {name} changed. Existing compact derivatives are not regenerated; "
-            "existing compact derivatives are used."
-        )
-    if any(foundational_source(spec.rel_path) is None for spec in stale):
-        lines.append(
-            "WARNING: non-foundational Blueprint specifications changed. Existing compact "
-            "derivatives are not regenerated; existing compact derivatives are used."
-        )
+        return
+    lines = ["Build blocked: previously applied Blueprint specifications changed or are missing."]
     lines.extend(f"  - {detail}" for detail in _stale_applied_specs(plan_path, blueprint_dir))
-    return tuple(lines)
+    lines.extend(("Run:", f"  drydock refit {plan.project}"))
+    raise SpecificationError("\n".join(lines))
 
 
 _RESULT_RE = re.compile(r"RESULT:\s*(SUCCESS|FAILURE|FAIL|ERROR)", re.IGNORECASE)
@@ -2177,6 +2152,11 @@ def build_target(
             f"MANIFEST.md not found: {manifest_path}\n  Run: drydock plan {target}"
         )
 
+    # This guard precedes every state, error-record, asset, and reset mutation. Refit is the
+    # exclusive reconciliation point for Blueprint drift; no build option may erase its evidence.
+    blueprint_dir = blueprint_dir_for(target_dir)
+    _ensure_applied_specs_current(manifest_path, blueprint_dir)
+
     # A build owns the current Target error record. Remove the prior run's recovery signal before
     # any new run is observed; a new terminal failure writes a fresh record below.
     if not dry_run:
@@ -2214,7 +2194,6 @@ def build_target(
         evidence_dir = target_dir / "evidence"
 
     stack_dir = get_stack_dir()
-    blueprint_dir = blueprint_dir_for(target_dir)
     from drydock.question_gates import synchronize_manifest_question_gates
 
     synchronized_plan = synchronize_manifest_question_gates(
@@ -2280,9 +2259,6 @@ def build_target(
             )
     if dry_run:
         _emit(on_text, "dry run: no reusable compacts are written")
-    for warning in _ensure_applied_specs_current(manifest_path, blueprint_dir):
-        _emit(on_text, warning)
-
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
     if not dry_run:
