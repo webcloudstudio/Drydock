@@ -589,6 +589,8 @@ class TestDriftReconciliation:
         assert "DATABASE.md" in plan.applied_specs
 
     def test_direct_blueprint_drift_creates_a_normalized_ticket(self, tmp_path, monkeypatch):
+        from drydock.build_plan import parse_build_plan
+
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
         target = _make_drift_target(tmp_path, screen_content="screen changed\n")
         result = refit_target(target, runner=_fake_runner(""))
@@ -596,6 +598,8 @@ class TestDriftReconciliation:
         tickets = list((target / "blueprint/changes").glob("TICKET-*.md"))
         assert len(tickets) == 1
         assert "drydock_source: blueprint-diff" in tickets[0].read_text(encoding="utf-8")
+        plan = parse_build_plan(target / "MANIFEST.md")
+        assert f"changes/{tickets[0].name}" in plan.by_id()["screen-a"].fields["context"]
 
     def test_foundational_drift_without_ticket_resets_its_consumers(self, tmp_path, monkeypatch):
         from drydock.build_plan import parse_build_plan

@@ -221,6 +221,37 @@ def _normalize_blueprint_drift(
     return items
 
 
+def _attach_blueprint_diff_context(
+    manifest_path: Path, changes_dir: Path, resets: Sequence[RefitReset]
+) -> None:
+    """Attach generated Blueprint-diff tickets to the rebuilt work's prompt context."""
+    if not manifest_path.is_file() or not resets:
+        return
+    by_blueprint: dict[str, str] = {}
+    for path in changes_dir.glob("TICKET-*.md"):
+        normalized = parse_normalized_ticket(path)
+        if normalized and normalized.drydock_fields["drydock_source"] == "blueprint-diff":
+            by_blueprint[normalized.amends.split("#", 1)[0]] = f"changes/{path.name}"
+    if not by_blueprint:
+        return
+    plan = parse_build_plan(manifest_path)
+    by_id = plan.by_id()
+    updates: dict[str, dict[str, str | None]] = {}
+    for reset in resets:
+        ticket = by_blueprint.get(reset.path)
+        if not ticket:
+            continue
+        for block_id in reset.reset_ids:
+            block = by_id.get(block_id)
+            if block is None:
+                continue
+            current = tuple(block.fields.get("context", ()))
+            if ticket not in current:
+                updates[block_id] = {"context": ", ".join((*current, ticket))}
+    if updates:
+        batch_set_block_fields(manifest_path, updates)
+
+
 def _parse_parent_depends(parent_text: str) -> list[str]:
     """Read the Depends On field from a parent spec header table."""
     m = _DEPENDS_ON_RE.search(parent_text)
@@ -669,6 +700,7 @@ def _refit_target(
 
     create_ticket_migration_records(blueprint_dir, database_ticket_texts)
     resets, drift_errors = _reconcile_drift(manifest_path, blueprint_dir)
+    _attach_blueprint_diff_context(manifest_path, changes_dir, resets)
 
     return RefitResult(
         target_dir=target_dir,
