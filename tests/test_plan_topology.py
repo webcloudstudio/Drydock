@@ -18,6 +18,8 @@ from drydock.plan_topology import (
 )
 
 DECLARATION = """
+## Declarations
+
 ## story foundation
 summary:    Stand up the application factory.
 type:       foundational

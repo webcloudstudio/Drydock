@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20260913 V36
+version: 20260913 V37
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -376,11 +376,14 @@ that is convenient; Drydock verifies the graph, orders it, packs it into blocks,
 `MANIFEST.md` itself. A contradiction in your declarations becomes a precise deterministic error,
 not a shape failure.
 
-`TOPOLOGY.md` is a flat declaration. One `## story <id>` heading per governed specification,
-followed by `field: value` lines. There is no `id:` line — the heading carries the id. There is no
-`block:`, no `stack_mode:`, no `state:`, no numbering, and no ordering of any kind:
+`TOPOLOGY.md` is a flat declaration. Begin it with the display-only heading `## Declarations`,
+then declare one `## story <id>` heading per governed specification, followed by `field: value`
+lines. There is no `id:` line — the heading carries the id. There is no `block:`, no
+`stack_mode:`, no `state:`, no numbering, and no ordering of any kind:
 
 ```text
+## Declarations
+
 ## story catalog-service
 summary:      Serve the catalog read API.
 type:         service
