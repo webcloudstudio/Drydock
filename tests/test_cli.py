@@ -76,6 +76,57 @@ def test_build_running_command_echoes_an_explicit_repair_budget():
     assert _build_running_command(args) == "drydock build Marina --repair-attempts 12"
 
 
+def test_score_llm_dispatches_target_and_history_filter(monkeypatch):
+    from drydock import cli
+
+    seen: dict[str, object] = {}
+
+    def fake(target, *, all_history, include_incomplete):
+        seen.update(
+            target=target,
+            all_history=all_history,
+            include_incomplete=include_incomplete,
+        )
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_score_llm", fake)
+
+    rc, _out, err = run_cli("score", "llm", "Widget", "--all")
+
+    assert rc == 0, err
+    assert seen == {"target": "Widget", "all_history": True, "include_incomplete": False}
+
+
+def test_diagnose_records_the_resolved_provider_and_model(monkeypatch):
+    from types import SimpleNamespace
+
+    from drydock import cli
+
+    seen: dict[str, object] = {}
+    monkeypatch.setattr("drydock.config.get_llm_provider", lambda override: "codex")
+    monkeypatch.setattr("drydock.config.get_model", lambda override: "gpt-5.6-luna")
+    monkeypatch.setattr(
+        "drydock.diagnose_command.run",
+        lambda *args, **kwargs: seen.update(kwargs) or SimpleNamespace(exit_code=0),
+    )
+
+    assert (
+        cli.cmd_diagnose(
+            SimpleNamespace(
+                Target="Widget",
+                run_stamp="",
+                apply_all=False,
+                no_apply=False,
+                llm_provider=None,
+                model=None,
+            )
+        )
+        == 0
+    )
+    assert seen["llm"] == "codex"
+    assert seen["model"] == "gpt-5.6-luna"
+
+
 def run_cli(*args: str) -> tuple[int, str, str]:
     """Run main() in-process, capturing stdout/stderr and exit code."""
     import io
@@ -454,7 +505,7 @@ class TestHelpAndVersion:
     def test_score_bad_subverb_is_usage_error(self):
         rc, _, err = run_cli("score", "bogus", "Demo")
         assert rc == 2
-        assert "ac|build|release" in err
+        assert "ac|build|llm|release" in err
 
     def test_score_help_shows_report(self):
         rc, out, _ = run_cli("score", "--help")

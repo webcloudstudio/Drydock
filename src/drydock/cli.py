@@ -714,6 +714,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_diagnose(args: argparse.Namespace) -> int:
     """Diagnose a Target's latest run and offer the amendments the diagnosis proposes."""
+    from drydock.config import get_llm_provider, get_model
     from drydock.diagnose_command import parse_mode, run
 
     mode = parse_mode(apply_all=args.apply_all, no_apply=args.no_apply)
@@ -721,8 +722,8 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         args.Target or "",
         run_stamp=args.run_stamp,
         mode=mode,
-        llm=getattr(args, "llm_provider", None),
-        model=getattr(args, "model", None),
+        llm=get_llm_provider(getattr(args, "llm_provider", None)),
+        model=get_model(getattr(args, "model", None)),
     )
     return result.exit_code
 
@@ -2781,6 +2782,107 @@ def cmd_score_build(target: str) -> int:
     return 0
 
 
+def _render_llm_score(report) -> list[str]:
+    """Render the compact, lifecycle-scoped LLM accounting table."""
+    headers = (
+        "Verb",
+        "Subclass",
+        "Model",
+        "Calls",
+        "Input",
+        "Cached input",
+        "Fresh input",
+        "Output",
+        "Total",
+    )
+    values = [
+        (
+            row.verb,
+            row.subclass,
+            row.model,
+            f"{row.calls:,}",
+            f"{row.total_input_tokens:,}",
+            f"{row.cached_input_tokens:,}",
+            f"{row.fresh_input_tokens:,}",
+            f"{row.output_tokens:,}",
+            f"{row.total_tokens:,}",
+        )
+        for row in report.rows
+    ]
+    total = (
+        "All selected activity",
+        "",
+        "",
+        f"{report.calls:,}",
+        f"{report.total_input_tokens:,}",
+        f"{report.cached_input_tokens:,}",
+        f"{report.fresh_input_tokens:,}",
+        f"{report.output_tokens:,}",
+        f"{report.total_tokens:,}",
+    )
+    widths = [
+        max(len(headers[index]), *(len(row[index]) for row in [*values, total]))
+        for index in range(len(headers))
+    ]
+    numeric = frozenset(range(3, len(headers)))
+
+    def render(row: tuple[str, ...]) -> str:
+        return "  " + "  ".join(
+            value.rjust(widths[index]) if index in numeric else value.ljust(widths[index])
+            for index, value in enumerate(row)
+        )
+
+    lines = [f"LLM usage: {report.target}"]
+    if report.since_init:
+        lines.append(f"Scope: successful LLM executions since init {report.init_stamp}")
+    else:
+        lines.append("Scope: all recorded LLM executions")
+    if report.excluded_before_init or report.excluded_incomplete:
+        excluded: list[str] = []
+        if report.excluded_before_init:
+            excluded.append(f"{report.excluded_before_init:,} before init")
+        if report.excluded_incomplete:
+            excluded.append(f"{report.excluded_incomplete:,} incomplete")
+        lines.append("Excluded: " + " · ".join(excluded))
+    lines.extend(["", render(headers), "  " + "  ".join("━" * width for width in widths)])
+    lines.extend(render(row) for row in values)
+    lines.extend(["  " + "  ".join("─" * width for width in widths), render(total)])
+    if report.invalid_records:
+        lines.append(f"Note: {report.invalid_records:,} invalid LLM log record(s) were ignored.")
+    lines.append("Input includes cached input; Total is input plus output.")
+    return lines
+
+
+def cmd_score_llm(
+    target: str | None,
+    *,
+    all_history: bool = False,
+    include_incomplete: bool = False,
+) -> int:
+    """Print one Target's read-only lifecycle-scoped LLM usage report."""
+    from drydock.config import get_target_directory, get_workspace, require_target_dir
+    from drydock.llm_report import LlmReportError, build_llm_score_report
+
+    target_dir = (
+        require_target_dir(target) if target else _resolve_latest_target(get_target_directory())
+    )
+    selected_target = target or target_dir.name
+    try:
+        report = build_llm_score_report(
+            get_workspace(),
+            target_dir,
+            selected_target,
+            all_history=all_history,
+            include_incomplete=include_incomplete,
+        )
+    except LlmReportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    for line in _render_llm_score(report):
+        print(line)
+    return 0
+
+
 def cmd_score_summary(target: str) -> int:
     """Summarize what every other score command last reported. Reads journals only."""
     from drydock.config import get_workspace, require_target_dir
@@ -3690,6 +3792,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock score build <Target>             — informational post-build report: acceptance,\n"
             "                                            repairs, tokens, cache hit rate. Deterministic;\n"
             "                                            reads logs only.\n"
+            "drydock score llm [<Target>] [--all|--include-incomplete]\n"
+            "                                          — lifecycle-scoped LLM usage by stage, subtype,\n"
+            "                                            and model. Defaults to the latest Target's\n"
+            "                                            successful executions since its latest init.\n"
             "drydock score release <Target>           — LLM release gate over Sea Trials; also runs the\n"
             "                                            project's governed acceptance gate. Writes\n"
             "                                            SCORECARD.md\n"
@@ -4001,6 +4107,26 @@ def _parse_score_ac_args(rest: list[str]) -> tuple[str, str | None, bool]:
     return positional[0], step, full
 
 
+def _parse_score_llm_args(rest: list[str]) -> tuple[str | None, bool, bool]:
+    """Parse ``[<Target>] [--all|--include-incomplete]`` for ``score llm``."""
+    target: str | None = None
+    all_history = False
+    include_incomplete = False
+    for token in rest:
+        if token == "--all":
+            all_history = True
+            continue
+        if token == "--include-incomplete":
+            include_incomplete = True
+            continue
+        if token.startswith("-") or target is not None:
+            raise UsageError("Usage: drydock score llm [<Target>] [--all|--include-incomplete]")
+        target = token
+    if all_history and include_incomplete:
+        raise UsageError("--all already includes incomplete executions.")
+    return target, all_history, include_incomplete
+
+
 def _reject_score_drydock_operands(rest: list[str]) -> None:
     """``drydock score drydock`` takes no operands; the LLM overrides are invocation-wide."""
     if not rest:
@@ -4016,7 +4142,7 @@ def _reject_score_drydock_operands(rest: list[str]) -> None:
 
 #: The sub-verbs of ``drydock score``. A first token outside this set is a Target, which
 #: selects the summary rather than a score.
-_SCORE_SUB_VERBS = frozenset({"spec", "ac", "build", "release", "report", "drydock"})
+_SCORE_SUB_VERBS = frozenset({"spec", "ac", "build", "llm", "release", "report", "drydock"})
 
 
 def _dispatch_score(args: argparse.Namespace) -> int:
@@ -4059,6 +4185,13 @@ def _dispatch_score(args: argparse.Namespace) -> int:
 
         record_activity("score build", tokens[1], tokens[1])
         return rc
+    if first == "llm":
+        target, all_history, include_incomplete = _parse_score_llm_args(tokens[1:])
+        return cmd_score_llm(
+            target,
+            all_history=all_history,
+            include_incomplete=include_incomplete,
+        )
     if first == "release" and len(tokens) == 2:
         rc = cmd_score_release(tokens[1])
         from drydock.config import record_activity
@@ -4072,7 +4205,7 @@ def _dispatch_score(args: argparse.Namespace) -> int:
     if len(tokens) == 1 and first not in _SCORE_SUB_VERBS:
         return cmd_score_summary(first)
     raise UsageError(
-        "Usage: drydock score [<spec|ac|build|release|report>] <Target> | drydock score drydock"
+        "Usage: drydock score [<spec|ac|build|llm|release|report>] <Target> | drydock score drydock"
     )
 
 
@@ -4238,8 +4371,8 @@ def _log_command_history(
         return  # pure report
     if command == "config" and getattr(args, "config_command", None) in {"show", "env"}:
         return  # pure report
-    if _is_score_summary(args):
-        return  # `drydock score <Target>` summarizes the other scores and runs none of them
+    if _is_score_query(args):
+        return  # Read-only score queries do not belong in the lifecycle command journal.
 
     from drydock.config import append_command_history, get_workspace
 
@@ -4841,6 +4974,7 @@ _LOG_TARGET_SUBVERBS = frozenset({
     "score",
     "ac",
     "build",
+    "llm",
     "release",
     "report",
     "generate",
@@ -4986,6 +5120,16 @@ def _command_log_name(args: argparse.Namespace) -> str:
 _READ_ONLY_COMMANDS = frozenset({"status"})
 
 
+def _is_score_query(args: argparse.Namespace) -> bool:
+    """Whether this invocation is a Target-observing score query."""
+    if getattr(args, "command", None) != "score":
+        return False
+    tokens = [str(token) for token in (getattr(args, "args", None) or [])]
+    return (len(tokens) == 1 and tokens[0] not in _SCORE_SUB_VERBS) or (
+        bool(tokens) and tokens[0] == "llm"
+    )
+
+
 def _is_score_summary(args: argparse.Namespace) -> bool:
     """Whether this invocation is ``drydock score <Target>``, which only reads the Target."""
     if getattr(args, "command", None) != "score":
@@ -4996,7 +5140,7 @@ def _is_score_summary(args: argparse.Namespace) -> bool:
 
 def _target_repository(args: argparse.Namespace) -> Path | None:
     """Resolve an existing Target workspace for invocation-level Git checkpoints."""
-    if getattr(args, "command", None) in _READ_ONLY_COMMANDS or _is_score_summary(args):
+    if getattr(args, "command", None) in _READ_ONLY_COMMANDS or _is_score_query(args):
         return None
     target = _log_target(args)
     if not target:

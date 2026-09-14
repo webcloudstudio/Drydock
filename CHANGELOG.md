@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-14: `drydock score llm [<Target>]` reports successful LLM executions since the
+  Target's latest successful `init`, grouped by lifecycle stage, subtype, and provider/model.
+  It merges workspace and Target-local execution journals by execution ID. `--include-incomplete`
+  retains incomplete runs in that lifecycle; `--all` reports all history and failures.
+
 - 2026-09-14: `drydock plan <Target>` accepts `--lineage-model <model>` for its post-plan,
   non-blocking source-to-story attribution pass. Plan synthesis, Blueprint authoring, and repairs
   continue to use `--model`; lineage inherits that model unless explicitly overridden.

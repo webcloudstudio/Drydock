@@ -71,6 +71,8 @@ class RunUsage:
     completed_at: str
     command: str
     detail: str
+    verb: str
+    subclass: str
     provider: str
     model: str
     status: str
@@ -419,6 +421,36 @@ def _detail(command: str, parameters: Mapping[str, Any]) -> str:
     return command
 
 
+def _classification(command: str, parameters: Mapping[str, Any]) -> tuple[str, str]:
+    """Return the stable report stage and subclass for one LLM execution.
+
+    The command name remains the low-level execution contract.  The classification is the
+    operator-facing lifecycle view: lineage is a planning pass, for example, rather than a
+    separate top-level stage.
+    """
+    if command == "lineage_attribute":
+        return "plan", "lineage"
+    if command == "import_compass":
+        return "import", "compass"
+    if command == "analyze":
+        return "analyze", "decomposition"
+    if command == "plan":
+        if _int(parameters.get("coverage_repair_pass")):
+            return "plan", "coverage repair"
+        if _int(parameters.get("continuation_pass")):
+            return "plan", "continuation"
+        if _int(parameters.get("artifact_repair_pass")):
+            return "plan", "artifact repair"
+        if parameters.get("conflict_challenge"):
+            return "plan", "conflict challenge"
+        return "plan", "synthesis"
+    if command == "build":
+        return "build", "repair" if _int(parameters.get("attempt")) else "block"
+    if command == "diagnose":
+        return "diagnose", "repair"
+    return command or "unknown", "default"
+
+
 def normalize_tokens(provider: str, stats: Mapping[str, Any]) -> tuple[int, int, int]:
     """Return ``(total_input, cached_input, output)`` on the shared accounting contract."""
     reported_input = _int(stats.get("input_tokens"))
@@ -441,6 +473,7 @@ def _run_from_record(record: Mapping[str, Any], target: str) -> RunUsage:
 
     provider = _text(job.get("llm"))
     command = _text(job.get("command_name"))
+    verb, subclass = _classification(command, parameters)
     total_input, cached, output = normalize_tokens(provider, stats)
     returncode = result.get("returncode")
 
@@ -451,6 +484,8 @@ def _run_from_record(record: Mapping[str, Any], target: str) -> RunUsage:
         completed_at=_text(record.get("completed_at")),
         command=command,
         detail=_detail(command, parameters),
+        verb=verb,
+        subclass=subclass,
         provider=provider,
         model=_text(job.get("model")),
         status=_text(record.get("status")) or "unknown",
