@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-14: `drydock plan <Target>` accepts `--lineage-model <model>` for its post-plan,
+  non-blocking source-to-story attribution pass. Plan synthesis, Blueprint authoring, and repairs
+  continue to use `--model`; lineage inherits that model unless explicitly overridden.
+
 - 2026-09-12: Claude runs now set their own output limits. `max_output_tokens` (default 128000)
   is passed as `CLAUDE_CODE_MAX_OUTPUT_TOKENS`, which the Claude CLI caps at each model's
   maximum: Haiku rises from the CLI default of 32000 to 64000, and Sonnet and Opus reach 128000.

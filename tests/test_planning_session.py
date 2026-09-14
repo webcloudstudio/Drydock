@@ -726,6 +726,37 @@ def test_authors_specs_compass_and_manifest(tmp_path):
     assert "Approve the complete plan" not in planning
 
 
+def test_plan_uses_the_lineage_model_only_for_source_attribution(tmp_path):
+    target_dir = _make_target(tmp_path)
+    from drydock.lineage import record_initial_snapshot
+
+    record_initial_snapshot(target_dir, target_dir / "blueprint" / "sources", date="2026-09-14")
+    calls: list[dict[str, object]] = []
+
+    def runner(*_args, **kwargs):
+        calls.append(kwargs)
+        if kwargs["command_name"] == "lineage_attribute":
+            return FakeRun(text='<unattached story="story-status"/>')
+        return FakeRun(text=_llm_output())
+
+    create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        model="sonnet",
+        lineage_model="haiku",
+        llm_provider="claude",
+    )
+
+    plan_calls = [call for call in calls if call["command_name"] == "plan"]
+    lineage_calls = [call for call in calls if call["command_name"] == "lineage_attribute"]
+    assert plan_calls and lineage_calls
+    assert {call["model"] for call in plan_calls} == {"sonnet"}
+    assert {call["model"] for call in lineage_calls} == {"haiku"}
+    assert {call["llm"] for call in calls} == {"claude"}
+
+
 _DECISION_BLOCK = json.dumps([
     {
         "id": "Q-001",

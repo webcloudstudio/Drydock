@@ -1059,6 +1059,7 @@ def _parse_plan_args(args: argparse.Namespace) -> tuple[str, str]:
     operands = [item for item in (getattr(args, "args", None) or []) if item != "--"]
     trailing = argparse.ArgumentParser(prog="drydock plan", add_help=False)
     _add_llm_override_flags(trailing)
+    trailing.add_argument("--lineage-model", dest="lineage_model", default=None, metavar="<model>")
     trailing.add_argument("--overwrite", action="store_true", default=None)
     trailing.add_argument("--no-conform", action="store_true", default=None)
     trailing.add_argument("--override", action="store_true", default=None)
@@ -1187,8 +1188,12 @@ def cmd_plan(args: argparse.Namespace) -> int:
     args.Target = target
     args.plan_sub_verb = sub_verb
     if sub_verb == "verify":
+        if getattr(args, "lineage_model", None) is not None:
+            raise UsageError("--lineage-model is supported only by drydock plan <Target>.")
         return cmd_plan_verify(target)
     if sub_verb == "repair":
+        if getattr(args, "lineage_model", None) is not None:
+            raise UsageError("--lineage-model is supported only by drydock plan <Target>.")
         return cmd_plan_repair(args, target)
 
     def _progress(text: str) -> None:
@@ -1200,7 +1205,16 @@ def cmd_plan(args: argparse.Namespace) -> int:
             print(text, end="")
 
     model = get_model(getattr(args, "model", None))
+    lineage_model = (
+        get_model(getattr(args, "lineage_model", None))
+        if getattr(args, "lineage_model", None) is not None
+        else model
+    )
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    from drydock.llm import provider_model_conflict
+
+    if conflict := provider_model_conflict(llm_provider, lineage_model):
+        raise UsageError(conflict)
     log_dir = get_workspace() / "logs"
     target_directory = get_target_directory()
     target_dir = require_target_dir(args.Target)
@@ -1216,6 +1230,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
             overwrite=getattr(args, "overwrite", False),
             conform=not getattr(args, "no_conform", False),
             model=model,
+            lineage_model=lineage_model,
             llm_provider=llm_provider,
             log_dir=log_dir,
             on_text=_progress,
@@ -1244,6 +1259,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
     }.get(result.plan_mode, result.plan_mode or "unknown")
     print(f"Mode: {mode_label}")
     print(f"Provider: {llm_provider} / {model}")
+    if lineage_model != model:
+        print(f"Lineage provider: {llm_provider} / {lineage_model}")
     counts = Counter(block.block_type for block in result.plan.blocks)
     print(
         "Graph: "
@@ -3606,6 +3623,12 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_llm_override_flags(p_plan)
+    p_plan.add_argument(
+        "--lineage-model",
+        default=None,
+        metavar="<model>",
+        help="Model for post-plan source lineage attribution (default: --model).",
+    )
     p_plan.add_argument(
         "--overwrite",
         action="store_true",

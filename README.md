@@ -153,7 +153,8 @@ ai  drydock analyze           MyApp            # Epic decomposition into stories
     drydock validate          MyApp            # Validate Build Plan
 ai  drydock score spec        MyApp            # Audit imported raw specifications
     drydock run quarterdeck   MyApp            # Web interface
-ai  drydock plan              MyApp            # Grooming and dependency graph
+ai  drydock plan              MyApp --model sonnet --lineage-model haiku
+                                                # Grooming and dependency graph; optional lower-cost lineage pass
     drydock plan verify       MyApp            # Report acceptance criteria that cannot run
 ai  drydock plan repair       MyApp            # One pass making those criteria runnable
 

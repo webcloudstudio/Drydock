@@ -1366,11 +1366,14 @@ class TestLlmOverrideFlags:
             "codex",
             "--model",
             "gpt-5.4",
+            "--lineage-model",
+            "gpt-5.6-luna",
         )
 
         assert rc == 0, err
         assert seen["kwargs"]["llm_provider"] == "codex"
         assert seen["kwargs"]["model"] == "gpt-5.4"
+        assert seen["kwargs"]["lineage_model"] == "gpt-5.6-luna"
         assert callable(seen["kwargs"]["on_text"])
         assert seen["kwargs"]["on_text"] is not print
         assert "Topology Created:  True" in out
@@ -1381,6 +1384,19 @@ class TestLlmOverrideFlags:
         rc, out, err = run_cli("plan", "Proj", "--no-conform")
         assert rc == 0, err
         assert seen["kwargs"]["conform"] is False
+
+    def test_plan_rejects_a_cross_provider_lineage_model(self):
+        rc, _out, err = run_cli(
+            "plan",
+            "Proj",
+            "--llm-provider",
+            "claude",
+            "--lineage-model",
+            "gpt-5.6-luna",
+        )
+
+        assert rc == 2
+        assert "Model/provider mismatch" in err
 
     def test_plan_conflict_returns_deferred_banner(
         self, tmp_target_root, isolated_config, monkeypatch
