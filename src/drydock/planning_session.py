@@ -64,6 +64,7 @@ from drydock.build_plan import (
 )
 from drydock.compass_sources import normative_compass_sections
 from drydock.config import build_dir_for
+from drydock.database_contract import validate_sqlite_schema
 from drydock.decisions import (
     ARCHITECTURE_BLUEPRINT,
     DECISIONS_BLOCK,
@@ -1940,6 +1941,34 @@ def _acceptance_status(text: str) -> tuple[int, bool]:
     return count, justified_none
 
 
+_DATABASE_INVARIANT_ACCEPTANCE = (
+    "## Programmatic Acceptance\n\n"
+    "- None. Drydock validates declared SQLite schema construction and connectivity invariants "
+    "deterministically.\n"
+)
+
+
+def _normalize_database_acceptance(blocks: dict[str, str]) -> None:
+    """Reserve ``DATABASE.md`` acceptance for deterministic persistence invariants.
+
+    A database declaration can be rendered and exercised by Drydock without an LLM.  Model-made
+    snippets that open an unrelated temporary database are not application acceptance: they are
+    guaranteed to observe an empty store and can never be repaired by generated code.  Keep the
+    standard terminal section, but make its ownership and scope explicit.
+    """
+    text = blocks.get("DATABASE.md")
+    if text is None:
+        return
+    section = _extract_terminal_section(text, "Programmatic Acceptance")
+    if section is None:
+        return
+    blocks["DATABASE.md"] = _TERMINAL_SECTION_RE.sub(
+        _DATABASE_INVARIANT_ACCEPTANCE,
+        text,
+        count=1,
+    )
+
+
 # Story acceptance carried a minimum-assertion gate: a story declaring a programmatic surface
 # had to author at least two ``=== AC ===`` criteria or be exempted for driving an imported
 # suite. It is deleted, and nothing replaces it. Quantity is not a gate — counting criteria
@@ -2040,7 +2069,9 @@ def conform_specs(
     pending = [
         spec
         for spec in specs
-        if spec.reusable and not _spec_is_conformant(spec.path.read_text(encoding="utf-8"))
+        if spec.filename != "DATABASE.md"
+        and spec.reusable
+        and not _spec_is_conformant(spec.path.read_text(encoding="utf-8"))
     ]
     if not pending:
         return [], []
@@ -2145,6 +2176,19 @@ def _integrity_check(
             return emitted_files[name]
         path = blueprint_dir / name
         return path.read_text(encoding="utf-8") if path.is_file() else None
+
+    database_text = spec_text("DATABASE.md")
+    if database_text is not None:
+        try:
+            schema_tables = validate_sqlite_schema(database_text)
+        except SpecificationError as exc:
+            fatal.append(str(exc))
+        else:
+            if schema_tables:
+                warnings.append(
+                    "DATABASE.md: Drydock verified SQLite construction and connectivity for "
+                    f"{len(schema_tables)} declared table(s)"
+                )
 
     executable_with_empty_depends = False
     spec_owners: dict[str, list[str]] = {}
@@ -2951,6 +2995,7 @@ def _validate_plan_output(
     which Drydock verifies, orders, blocks, and serializes into ``MANIFEST.md`` here, and a
     ``MANIFEST.md`` the model wrote directly, which the reuse and Spec Kit prompts still emit.
     """
+    _normalize_database_acceptance(blocks)
     # Branch on which plan artifact the response carries, before anything else reads it.
     carrier = TOPOLOGY_BLOCK if TOPOLOGY_BLOCK in blocks else "MANIFEST.md"
     mode_blocks = {carrier, "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"} & set(blocks)

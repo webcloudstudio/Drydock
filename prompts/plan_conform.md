@@ -1,7 +1,7 @@
 ---
 name: plan_conform
 description: Conform one imported or legacy typed Blueprint spec into Drydock format — preserve its substance, restructure into the standard header plus four terminal sections, and author test-driven Programmatic Acceptance assertions.
-version: 20260722 V3
+version: 20260913 V4
 intent: Act as an Agile Development Team conforming a single imported specification into Drydock format. Keep the spec's substance intact, restructure it into the standard typed header and the four terminal sections, and author several concrete Python-testable Programmatic Acceptance assertions from the spec body and any imported test material.
 command: drydock plan create
 inputs: SPEC_FILE
@@ -58,7 +58,10 @@ Emit the conformed spec as a single artifact block. The conformed spec:
 
 ## Authoring Programmatic Acceptance (test-driven)
 
-This is the point of the conform pass. Treat it as writing the failing tests first.
+This is the point of the conform pass. Treat it as writing the failing tests first. If the
+`SPEC_FILE` is `DATABASE.md`, do not author executable acceptance: retain the standard section
+with an inline `- None.` statement that Drydock validates SQLite construction and connectivity
+invariants deterministically.
 
 - `Programmatic Acceptance` defines Python assertions Drydock runs from the build directory after
   the implementing story completes. It is **mandatory**: a spec with any programmatic surface (a

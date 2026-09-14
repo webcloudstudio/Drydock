@@ -119,6 +119,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-13: `DATABASE.md` no longer accepts model-authored programmatic assertions. Drydock
+  now parses its Markdown SQLite table declarations, renders idempotent DDL, and verifies a fresh
+  store creates every declared table and column and accepts a connection before Plan succeeds.
+  This removes unattainable assertions that opened an unrelated temporary database without
+  invoking the built application's migrations. Runtime package authorization now requires a
+  Target environment or dependency manifest; only test-scoped packages may use Drydock's active
+  interpreter as an execution fallback.
+
 - 2026-09-13: `drydock plan` now enforces one file per `implements:` before Stage 2 starts. A
   story listing several files (`implements: SCREEN-X.md, FEATURE-Y.md`) was frozen as a single
   unauthorable filename, so every Stage 2 batch that reached it was rejected as `output changed

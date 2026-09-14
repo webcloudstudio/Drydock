@@ -64,6 +64,101 @@ class DatabaseContract:
 
 
 @dataclass(frozen=True)
+class SQLiteTable:
+    """One table declared by the SQLite-facing portion of ``DATABASE.md``."""
+
+    name: str
+    fields: tuple[Field, ...]
+
+
+_SQLITE_TABLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_SQLITE_TYPES = frozenset({"BLOB", "INTEGER", "NUMERIC", "REAL", "TEXT"})
+
+
+def sqlite_schema_tables(text: str, *, source: str = "DATABASE.md") -> tuple[SQLiteTable, ...]:
+    """Read Markdown ``## `table_name``` declarations into a safe SQLite schema.
+
+    ``DATABASE.md`` is a persistence declaration, not a Python test fixture.  This narrow,
+    deterministic reader recognizes its table-heading/field-table form and leaves operation-only
+    database contracts alone.  The result is used to prove the declaration can create and open a
+    SQLite store before any model is asked to implement an application adapter.
+    """
+    tables: list[SQLiteTable] = []
+    for match in _SECTION_RE.finditer(text):
+        name = match.group(1).strip().strip("`")
+        if not _SQLITE_TABLE_NAME_RE.fullmatch(name):
+            continue
+        fields = _field_table(text, match.end())
+        if not fields:
+            continue
+        names: set[str] = set()
+        for field in fields:
+            if not _SQLITE_TABLE_NAME_RE.fullmatch(field.name):
+                raise SpecificationError(f"{source}: {name} has invalid field name {field.name!r}")
+            if field.name in names:
+                raise SpecificationError(f"{source}: {name} declares {field.name!r} more than once")
+            names.add(field.name)
+            sql_type = field.type.upper().split(maxsplit=1)[0]
+            if sql_type not in _SQLITE_TYPES:
+                raise SpecificationError(
+                    f"{source}: {name}.{field.name} has unsupported SQLite type {field.type!r}"
+                )
+        tables.append(SQLiteTable(name, fields))
+    names = [table.name for table in tables]
+    if len(names) != len(set(names)):
+        raise SpecificationError(f"{source}: duplicate SQLite table declaration")
+    return tuple(tables)
+
+
+def sqlite_schema_sql(tables: Iterable[SQLiteTable]) -> str:
+    """Render idempotent SQLite DDL from :func:`sqlite_schema_tables` output."""
+    statements: list[str] = []
+    for table in tables:
+        columns = []
+        for field in table.fields:
+            tokens = field.type.upper().split()
+            sql_type = tokens[0]
+            suffix = " PRIMARY KEY" if "PK" in tokens else ""
+            columns.append(f'"{field.name}" {sql_type}{suffix}')
+        statements.append(f'CREATE TABLE IF NOT EXISTS "{table.name}" ({", ".join(columns)});')
+    return "\n".join(statements)
+
+
+def validate_sqlite_schema(text: str, *, source: str = "DATABASE.md") -> tuple[SQLiteTable, ...]:
+    """Prove a declared SQLite schema creates, connects, and exposes every declared column.
+
+    An empty tuple means the document uses a non-SQLite or operation-only contract, for which
+    this invariant is inapplicable.  Any returned declaration was exercised against a fresh,
+    in-memory SQLite database using DDL rendered exclusively by Drydock.
+    """
+    tables = sqlite_schema_tables(text, source=source)
+    if not tables:
+        return ()
+    import sqlite3
+
+    with sqlite3.connect(":memory:") as connection:
+        connection.executescript(sqlite_schema_sql(tables))
+        connection.execute("SELECT 1").fetchone()
+        existing = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        for table in tables:
+            if table.name not in existing:
+                raise SpecificationError(
+                    f"{source}: generated SQLite table {table.name!r} is absent"
+                )
+            columns = {row[1] for row in connection.execute(f'PRAGMA table_info("{table.name}")')}
+            missing = {field.name for field in table.fields} - columns
+            if missing:
+                raise SpecificationError(
+                    f"{source}: generated SQLite table {table.name!r} misses column(s) "
+                    f"{', '.join(sorted(missing))}"
+                )
+    return tables
+
+
+@dataclass(frozen=True)
 class DatabaseUse:
     identifier: str
     access: str

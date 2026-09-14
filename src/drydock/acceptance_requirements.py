@@ -205,19 +205,29 @@ def _target_python_packages(build_dir: str) -> frozenset[str]:
             name = distribution.metadata.get("Name", "")
             if name:
                 names.append(canonicalize_package_name(name))
+    # The active Drydock interpreter is only an execution fallback.  Its installed packages
+    # never authorize a Target runtime dependency: without a Target .venv or dependency
+    # manifest, treating the host inventory as delivery evidence makes a fresh build depend on
+    # whatever happens to be installed for Drydock itself.
     if not found_target_environment:
-        environment = resolve_target_environment(Path(build_dir))
-        if environment.interpreter is not None:
-            for distribution in importlib.metadata.distributions():
-                name = distribution.metadata.get("Name", "")
-                if name:
-                    names.append(canonicalize_package_name(name))
+        return frozenset()
     return frozenset(names)
+
+
+@cache
+def _active_python_packages() -> frozenset[str]:
+    """Return packages available to Drydock's test-only execution fallback."""
+    return frozenset(
+        canonicalize_package_name(name)
+        for distribution in importlib.metadata.distributions()
+        if (name := distribution.metadata.get("Name", ""))
+    )
 
 
 def invalidate_target_environment_inventory() -> None:
     """Discard Target package inventories after environment provisioning."""
     _target_python_packages.cache_clear()
+    _active_python_packages.cache_clear()
 
 
 def requirement_available(requirement: AcceptanceRequirement, build_dir: Path) -> bool:
@@ -227,7 +237,11 @@ def requirement_available(requirement: AcceptanceRequirement, build_dir: Path) -
     if environment.interpreter is None:
         return False
     wanted = canonicalize_package_name(requirement.name)
-    return wanted in _target_python_packages(str(build_dir.resolve()))
+    if wanted in _target_python_packages(str(build_dir.resolve())):
+        return True
+    if environment.detail == "Target .venv selected":
+        return False
+    return requirement.scope == "test" and wanted in _active_python_packages()
 
 
 @cache

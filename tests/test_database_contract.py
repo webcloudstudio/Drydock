@@ -10,8 +10,11 @@ from drydock.database_contract import (
     migration_records,
     parse_database_contract,
     parse_database_interface,
+    sqlite_schema_sql,
+    sqlite_schema_tables,
     staged_operation_ids,
     validate_database_interfaces,
+    validate_sqlite_schema,
 )
 from drydock.errors import SpecificationError
 
@@ -74,6 +77,25 @@ _INTERFACE = """# FEATURE: Order
 """
 
 
+_SQLITE_SCHEMA = """# DATABASE: Registry
+
+## `settings`
+
+| Field | Type | Notes |
+|---|---|---|
+| key | TEXT PK | Setting name |
+| value | TEXT | Serialized value |
+
+## `projects`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| name | TEXT | Display name |
+| archived | INTEGER | Boolean |
+"""
+
+
 def test_parses_typed_feature_owned_access_pattern():
     contract = parse_database_contract(_DATABASE)
 
@@ -82,6 +104,22 @@ def test_parses_typed_feature_owned_access_pattern():
     assert pattern.access == "write"
     assert {field.name for field in pattern.inputs if field.required} == {"customer_id", "items"}
     assert [field.name for field in pattern.outputs] == ["id", "status"]
+
+
+def test_sqlite_schema_invariant_creates_and_connects_declared_tables():
+    tables = validate_sqlite_schema(_SQLITE_SCHEMA)
+
+    assert [table.name for table in tables] == ["settings", "projects"]
+    assert 'CREATE TABLE IF NOT EXISTS "settings"' in sqlite_schema_sql(tables)
+
+
+def test_sqlite_schema_rejects_duplicate_columns():
+    duplicate = _SQLITE_SCHEMA.replace(
+        "| value | TEXT | Serialized value |", "| key | TEXT | Again |"
+    )
+
+    with pytest.raises(SpecificationError, match="more than once"):
+        sqlite_schema_tables(duplicate)
 
 
 def test_interface_validates_owner_access_and_fields():

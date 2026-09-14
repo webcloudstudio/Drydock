@@ -74,6 +74,41 @@ def test_default_feedback_heading_is_plan_compass(tmp_path):
     assert ensure_feedback_file(tmp_path) == "# Plan Compass\n"
 
 
+def test_database_acceptance_is_replaced_by_drydock_invariants():
+    blocks = {
+        "DATABASE.md": """# DATABASE: Example
+
+## `settings`
+
+| Field | Type |
+|---|---|
+| key | TEXT PK |
+
+## Programmatic Acceptance
+
+=== AC impossible-fresh-db ===
+import sqlite3
+conn = sqlite3.connect(\":memory:\")
+assert conn.execute(\"SELECT name FROM sqlite_master\").fetchall()
+=== END AC impossible-fresh-db ===
+
+## User Acceptance
+
+- None.
+
+## Guardrails
+
+- None.
+"""
+    }
+
+    ps._normalize_database_acceptance(blocks)
+
+    assert "impossible-fresh-db" not in blocks["DATABASE.md"]
+    assert "Drydock validates declared SQLite schema construction" in blocks["DATABASE.md"]
+    assert "## User Acceptance" in blocks["DATABASE.md"]
+
+
 def test_plan_prompt_declares_strict_artifact_contract():
     prompt = (Path(__file__).parents[1] / "prompts" / "plan_create.md").read_text(encoding="utf-8")
 

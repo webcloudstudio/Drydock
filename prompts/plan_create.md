@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20260913 V35
+version: 20260913 V36
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -281,6 +281,10 @@ source material genuinely leaves an item open; then put it under `## Questions`.
 
 Rules:
 
+- `DATABASE.md` does not contain model-authored executable acceptance. Its `## Programmatic
+  Acceptance` section is the inline `- None.` statement that Drydock owns SQLite schema
+  construction and connectivity invariants deterministically. Do not create temporary SQLite
+  databases or inspect an application database without first invoking its migration entry point.
 - Every `=== AC <id> ===` block is a standalone Python script. It repeats every import it uses;
   imports, variables, and execution order from another AC block are never in scope. Before closing
   each block, inspect every name it reads and either import or bind that name inside the same block.
