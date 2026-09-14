@@ -3977,8 +3977,12 @@ def _read_repair_blocks(result: object) -> tuple[dict[str, str], str]:
     text = str(getattr(result, "text", "") or "")
     try:
         blocks = _parse_strict_blocks(text, result)
-    except OutsideArtifactTextError:
-        blocks = _parse_repair_artifact_envelopes(text)
+    except OutsideArtifactTextError as exc:
+        # A repair that emitted intact, correctly named artifact blocks is still usable when
+        # model narration surrounds them.  The caller verifies the exact artifact set and then
+        # revalidates the repaired content, so retaining those blocks cannot bypass either
+        # contract.  XML remains a fallback only when no ordinary artifact survived.
+        blocks = exc.blocks or _parse_repair_artifact_envelopes(text)
         if not blocks:
             return {}, "the reply used no recognised artifact delimiters"
     except Exception as exc:

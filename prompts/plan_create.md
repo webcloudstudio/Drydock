@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20260913 V37
+version: 20260913 V38
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -418,6 +418,10 @@ Declare, per story:
 - `stack` — the Rigging stack files this story builds with
 - `acceptance` — `yes` when the story has real acceptance to honor
 - `covers`, `accepts`, `context`, `rules`, `copy`, `scope`, `feedback` when applicable
+
+A `feature` assembly story remains a story: it implements exactly one governed Blueprint file
+that Stage 2 authors. Do not emit phase, terminal, integration, or acceptance assembly stories
+with an empty `implements:` field.
 
 `instructions` uses the `|` block form shown above: every body line is indented, and the body ends
 at the first unindented line. Every other field is one line.

@@ -4909,6 +4909,25 @@ def test_a_coverage_repair_wrapped_in_an_xml_envelope_is_still_read(tmp_path):
     assert result.plan.by_id()["story-foundation"].fields["covers"] == ("ARCH-001",)
 
 
+def test_a_coverage_repair_prefaced_by_prose_is_still_read(tmp_path):
+    """A valid delimited repair is not discarded for harmless model narration."""
+    target_dir = _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    uncovered = _TOPOLOGY_DECLARATION.replace(
+        "implements:   FEATURE-Status.md",
+        "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
+    )
+    repaired = uncovered.replace(
+        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
+    )
+    reply = "I corrected the missing coverage.\n\n" + _declaration_block(repaired)
+    runner = _sequence_runner(_topology_output(uncovered), reply)
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert (target_dir / "MANIFEST.md").is_file()
+    assert result.plan.by_id()["story-foundation"].fields["covers"] == ("ARCH-001",)
+
+
 def test_the_repair_prompt_states_the_grammar_and_demonstrates_no_other(tmp_path):
     """A prompt must never show a boundary syntax it does not want back."""
     assembly = ps._topology_repair_assembly(

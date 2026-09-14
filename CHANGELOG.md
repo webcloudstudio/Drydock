@@ -119,6 +119,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-13: `drydock plan` now retains a topology repair whose otherwise valid delimited
+  artifact is surrounded by model narration, then verifies its exact artifact set and complete
+  declaration before continuing. Previously the repair was discarded and Plan reported the
+  original topology defect even when the model had corrected it. `plan_create` V38 also states
+  that feature assembly stories implement one Stage 2 Blueprint and may not leave `implements:`
+  empty.
+
 - 2026-09-13: `DATABASE.md` no longer accepts model-authored programmatic assertions. Drydock
   now parses its Markdown SQLite table declarations, renders idempotent DDL, and verifies a fresh
   store creates every declared table and column and accepts a connection before Plan succeeds.
