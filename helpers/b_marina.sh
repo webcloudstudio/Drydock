@@ -1,6 +1,12 @@
 export PROJECT=Marina
 export PROJECT_DIR=/mnt/c/Users/barlo/projects
-export OPTS="--llm-provider codex --model gpt-5.6-luna"
+export LLM_PROVIDER=codex
+export MODEL=gpt-5.6-luna
+export OPTS="--llm-provider $LLM_PROVIDER --model $MODEL"
+export PLAN_OPTS="$OPTS"
+if [ "$MODEL" = "haiku" ]; then
+	export PLAN_OPTS="--llm-provider $LLM_PROVIDER --model sonnet --lineage-model $MODEL"
+fi
 
 set -x
 
@@ -38,7 +44,7 @@ then
 	echo "REBUILDING COMPLETED"
 fi
 
-drydock plan $PROJECT $OPTS
+drydock plan $PROJECT $PLAN_OPTS
 
 # drydock config show
 # drydock validate $PROJECT $OPTS

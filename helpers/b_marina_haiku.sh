@@ -3,7 +3,13 @@ set -x
 
 export PROJECT=Marina_Haiku
 export PROJECT_DIR=/mnt/c/Users/barlo/projects
-OPTS=(--llm-provider claude --model haiku)
+LLM_PROVIDER=claude
+MODEL=haiku
+OPTS=(--llm-provider "$LLM_PROVIDER" --model "$MODEL")
+PLAN_OPTS=("${OPTS[@]}")
+if [ "$MODEL" = "haiku" ]; then
+  PLAN_OPTS=(--llm-provider "$LLM_PROVIDER" --model sonnet --lineage-model "$MODEL")
+fi
 
 if [ -d "$PROJECT_DIR/drydock/targets/$PROJECT" ]
 then
@@ -24,7 +30,7 @@ drydock analyze "$PROJECT" "${OPTS[@]}"
 drydock status "$PROJECT" "${OPTS[@]}"
 echo "REBUILDING COMPLETED"
 
-drydock plan "$PROJECT" "${OPTS[@]}"
+drydock plan "$PROJECT" "${PLAN_OPTS[@]}"
 n=1; max=5
 while drydock status "$PROJECT" --ready; do
   echo "************************"
