@@ -4,7 +4,9 @@ export LLM_PROVIDER=codex
 export MODEL=gpt-5.6-luna
 export OPTS="--llm-provider $LLM_PROVIDER --model $MODEL"
 export PLAN_OPTS="$OPTS"
+export ANALYZE_OPTS="$OPTS"
 if [ "$MODEL" = "haiku" ]; then
+	export ANALYZE_OPTS="--llm-provider $LLM_PROVIDER --model sonnet"
 	export PLAN_OPTS="--llm-provider $LLM_PROVIDER --model sonnet --lineage-model $MODEL"
 fi
 
@@ -39,7 +41,7 @@ then
 	drydock status $PROJECT $OPTS
 	./b_Import_Marina.sh
 	drydock status $PROJECT $OPTS
-	drydock analyze $PROJECT $OPTS
+	drydock analyze $PROJECT $ANALYZE_OPTS
 	drydock status $PROJECT $OPTS
 	echo "REBUILDING COMPLETED"
 fi
