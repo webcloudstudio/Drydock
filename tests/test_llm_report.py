@@ -17,9 +17,14 @@ def _record(
     *,
     target: str = "Widget",
     model: str = "gpt-5.6-luna",
+    llm: str = "codex",
     status: str = "succeeded",
     returncode: int = 0,
     parameters: dict | None = None,
+    input_tokens: int = 100,
+    cached_input_tokens: int = 80,
+    cache_creation_input_tokens: int = 0,
+    output_tokens: int = 5,
 ) -> dict:
     return {
         "execution_id": execution_id,
@@ -29,7 +34,7 @@ def _record(
         "job": {
             "target": target,
             "command_name": command,
-            "llm": "codex",
+            "llm": llm,
             "model": model,
             "parameters": parameters or {"target": target},
         },
@@ -37,7 +42,12 @@ def _record(
             "returncode": returncode,
             "timed_out": False,
             "error": None,
-            "stats": {"input_tokens": 100, "cached_input_tokens": 80, "output_tokens": 5},
+            "stats": {
+                "input_tokens": input_tokens,
+                "cached_input_tokens": cached_input_tokens,
+                "cache_creation_input_tokens": cache_creation_input_tokens,
+                "output_tokens": output_tokens,
+            },
         },
         "prompt": {},
         "artifacts": {},
@@ -128,3 +138,44 @@ def test_default_scope_requires_a_successful_init_record(tmp_path):
 
     with pytest.raises(LlmReportError, match="No successful drydock init"):
         build_llm_score_report(workspace, target_dir, "Widget")
+
+
+def test_report_counts_claude_cache_writes_as_input(tmp_path):
+    workspace = tmp_path
+    target_dir = workspace / "targets" / "Widget"
+    _write_jsonl(
+        workspace / "logs" / "llm.jsonl",
+        [
+            _record(
+                "sonnet",
+                "2026-09-10T10:01:00.000Z",
+                "plan",
+                llm="claude",
+                model="sonnet",
+                input_tokens=2,
+                cached_input_tokens=4_000,
+                cache_creation_input_tokens=120_000,
+                output_tokens=45_000,
+            )
+        ],
+    )
+    _write_history(
+        workspace,
+        [
+            {
+                "target": "Widget",
+                "argv": ["init", "Widget"],
+                "return_code": 0,
+                "stamp": "20260910.100000.000Z",
+            }
+        ],
+    )
+
+    report = build_llm_score_report(workspace, target_dir, "Widget")
+
+    assert report.total_input_tokens == 124_002
+    assert report.cached_input_tokens == 4_000
+    assert report.cache_write_input_tokens == 120_000
+    assert report.fresh_input_tokens == 2
+    assert report.total_tokens == 169_002
+    assert report.rows[0].cache_write_input_tokens == 120_000

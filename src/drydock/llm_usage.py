@@ -10,8 +10,13 @@ Token accounting differs by provider and is normalized here:
 * Codex reports ``input_tokens`` inclusive of ``cached_input_tokens``.
 * Claude reports ``input_tokens`` exclusive of ``cache_read_input_tokens``.
 
-Both are converted to a single contract: ``total_input`` is everything sent to the model,
-``cached_input`` is the cache-read portion of it, and ``fresh_input`` is the remainder.
+Claude additionally reports ``cache_creation_input_tokens``.  That is a distinct
+provider-metered input category, retained separately so consumers can show it
+without confusing cache writes with cache reads.
+
+Both are converted to a shared base-input contract: ``total_input`` is ordinary input plus
+cache reads, ``cached_input`` is the cache-read portion, and ``fresh_input`` is the remainder.
+Consumers that report all provider-metered input add ``cache_write_input_tokens`` explicitly.
 """
 
 from __future__ import annotations
@@ -81,6 +86,7 @@ class RunUsage:
     error: str
     total_input_tokens: int
     cached_input_tokens: int
+    cache_write_input_tokens: int
     output_tokens: int
     elapsed_ms: int
     prompt_tokens_estimate: int
@@ -475,6 +481,7 @@ def _run_from_record(record: Mapping[str, Any], target: str) -> RunUsage:
     command = _text(job.get("command_name"))
     verb, subclass = _classification(command, parameters)
     total_input, cached, output = normalize_tokens(provider, stats)
+    cache_write = _int(stats.get("cache_creation_input_tokens"))
     returncode = result.get("returncode")
 
     return RunUsage(
@@ -494,6 +501,7 @@ def _run_from_record(record: Mapping[str, Any], target: str) -> RunUsage:
         error=_text(result.get("error")),
         total_input_tokens=total_input,
         cached_input_tokens=cached,
+        cache_write_input_tokens=cache_write,
         output_tokens=output,
         elapsed_ms=_int(stats.get("elapsed_ms")),
         prompt_tokens_estimate=_int(prompt.get("total_tokens_estimate")),

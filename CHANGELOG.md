@@ -128,6 +128,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-14: `drydock score llm` now reports provider cache-write input tokens separately and
+  includes them in `Input` and `Total`. Claude's `cache_creation_input_tokens` previously appeared
+  in durable execution evidence but was omitted from the score, materially understating
+  lifecycle usage for cache-miss-heavy runs.
+
 - 2026-09-13: `drydock plan` now retains a topology repair whose otherwise valid delimited
   artifact is surrounded by model narration, then verifies its exact artifact set and complete
   declaration before continuing. Previously the repair was discarded and Plan reported the

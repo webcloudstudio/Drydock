@@ -27,6 +27,7 @@ def _record(
     status: str = "succeeded",
     input_tokens: int | None = 1000,
     cached_input_tokens: int | None = 900,
+    cache_creation_input_tokens: int | None = None,
     output_tokens: int | None = 50,
     elapsed_ms: int | None = 12_000,
     prompt_estimate: int = 400,
@@ -63,6 +64,7 @@ def _record(
             "stats": {
                 "input_tokens": input_tokens,
                 "cached_input_tokens": cached_input_tokens,
+                "cache_creation_input_tokens": cache_creation_input_tokens,
                 "output_tokens": output_tokens,
                 "elapsed_ms": elapsed_ms,
             },
@@ -147,6 +149,25 @@ def test_claude_cache_tokens_are_added_to_reported_input() -> None:
 
     assert run.total_input_tokens == 904
     assert run.cached_input_tokens == 900
+    assert run.fresh_input_tokens == 4
+
+
+def test_claude_cache_write_tokens_are_preserved_separately() -> None:
+    records = [
+        _record(
+            llm="claude",
+            model="sonnet",
+            input_tokens=4,
+            cached_input_tokens=900,
+            cache_creation_input_tokens=1_200,
+        )
+    ]
+
+    run = build_report(records, "Alpha", include_activity=False).runs[0]
+
+    assert run.total_input_tokens == 904
+    assert run.cached_input_tokens == 900
+    assert run.cache_write_input_tokens == 1_200
     assert run.fresh_input_tokens == 4
 
 

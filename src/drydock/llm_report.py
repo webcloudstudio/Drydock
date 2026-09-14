@@ -35,12 +35,16 @@ class LlmUsageRow:
     calls: int
     total_input_tokens: int
     cached_input_tokens: int
+    cache_write_input_tokens: int
     output_tokens: int
     first_started_at: str
 
     @property
     def fresh_input_tokens(self) -> int:
-        return max(self.total_input_tokens - self.cached_input_tokens, 0)
+        return max(
+            self.total_input_tokens - self.cached_input_tokens - self.cache_write_input_tokens,
+            0,
+        )
 
     @property
     def total_tokens(self) -> int:
@@ -67,15 +71,19 @@ class LlmScoreReport:
 
     @property
     def total_input_tokens(self) -> int:
-        return sum(run.total_input_tokens for run in self.runs)
+        return sum(run.total_input_tokens + run.cache_write_input_tokens for run in self.runs)
 
     @property
     def cached_input_tokens(self) -> int:
         return sum(run.cached_input_tokens for run in self.runs)
 
     @property
+    def cache_write_input_tokens(self) -> int:
+        return sum(run.cache_write_input_tokens for run in self.runs)
+
+    @property
     def fresh_input_tokens(self) -> int:
-        return max(self.total_input_tokens - self.cached_input_tokens, 0)
+        return sum(run.fresh_input_tokens for run in self.runs)
 
     @property
     def output_tokens(self) -> int:
@@ -212,13 +220,19 @@ def _rows(runs: tuple[RunUsage, ...]) -> tuple[LlmUsageRow, ...]:
                 "calls": 0,
                 "total_input_tokens": 0,
                 "cached_input_tokens": 0,
+                "cache_write_input_tokens": 0,
                 "output_tokens": 0,
                 "first_started_at": run.started_at,
             },
         )
         bucket["calls"] = int(bucket["calls"]) + 1
-        bucket["total_input_tokens"] = int(bucket["total_input_tokens"]) + run.total_input_tokens
+        bucket["total_input_tokens"] = int(bucket["total_input_tokens"]) + (
+            run.total_input_tokens + run.cache_write_input_tokens
+        )
         bucket["cached_input_tokens"] = int(bucket["cached_input_tokens"]) + run.cached_input_tokens
+        bucket["cache_write_input_tokens"] = (
+            int(bucket["cache_write_input_tokens"]) + run.cache_write_input_tokens
+        )
         bucket["output_tokens"] = int(bucket["output_tokens"]) + run.output_tokens
         bucket["first_started_at"] = min(str(bucket["first_started_at"]), run.started_at)
     rows = [
@@ -229,6 +243,7 @@ def _rows(runs: tuple[RunUsage, ...]) -> tuple[LlmUsageRow, ...]:
             calls=int(values["calls"]),
             total_input_tokens=int(values["total_input_tokens"]),
             cached_input_tokens=int(values["cached_input_tokens"]),
+            cache_write_input_tokens=int(values["cache_write_input_tokens"]),
             output_tokens=int(values["output_tokens"]),
             first_started_at=str(values["first_started_at"]),
         )

@@ -2790,7 +2790,8 @@ def _render_llm_score(report) -> list[str]:
         "Model",
         "Calls",
         "Input",
-        "Cached input",
+        "Cache read",
+        "Cache write",
         "Fresh input",
         "Output",
         "Total",
@@ -2803,6 +2804,7 @@ def _render_llm_score(report) -> list[str]:
             f"{row.calls:,}",
             f"{row.total_input_tokens:,}",
             f"{row.cached_input_tokens:,}",
+            f"{row.cache_write_input_tokens:,}",
             f"{row.fresh_input_tokens:,}",
             f"{row.output_tokens:,}",
             f"{row.total_tokens:,}",
@@ -2816,6 +2818,7 @@ def _render_llm_score(report) -> list[str]:
         f"{report.calls:,}",
         f"{report.total_input_tokens:,}",
         f"{report.cached_input_tokens:,}",
+        f"{report.cache_write_input_tokens:,}",
         f"{report.fresh_input_tokens:,}",
         f"{report.output_tokens:,}",
         f"{report.total_tokens:,}",
@@ -2849,7 +2852,7 @@ def _render_llm_score(report) -> list[str]:
     lines.extend(["  " + "  ".join("─" * width for width in widths), render(total)])
     if report.invalid_records:
         lines.append(f"Note: {report.invalid_records:,} invalid LLM log record(s) were ignored.")
-    lines.append("Input includes cached input; Total is input plus output.")
+    lines.append("Input includes cache reads and writes; Total is input plus output.")
     return lines
 
 

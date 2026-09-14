@@ -28,7 +28,12 @@ def test_score_llm_renders_lifecycle_usage_without_mutating_target(tmp_path, mon
             "returncode": 0,
             "timed_out": False,
             "error": None,
-            "stats": {"input_tokens": 100, "cached_input_tokens": 80, "output_tokens": 5},
+            "stats": {
+                "input_tokens": 100,
+                "cached_input_tokens": 80,
+                "cache_creation_input_tokens": 20,
+                "output_tokens": 5,
+            },
         },
         "prompt": {},
         "artifacts": {},
@@ -53,5 +58,7 @@ def test_score_llm_renders_lifecycle_usage_without_mutating_target(tmp_path, mon
     assert "plan" in output
     assert "lineage" in output
     assert "codex / gpt-5.6-luna" in output
+    assert "Cache write" in output
+    assert "120" in output
     assert "All selected activity" in output
     assert not (target_dir / "PROJECT_STATUS.jsonl").exists()
