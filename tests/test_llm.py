@@ -1361,6 +1361,27 @@ def test_claude_command_supports_explicit_session_start_and_resume(tmp_path):
     assert "--session-id" not in resumed
 
 
+def test_claude_session_is_queryable_in_execution_evidence(tmp_path, monkeypatch):
+    """The record and operator log distinguish a session start from a resume."""
+    from drydock import llm as llm_module
+
+    monkeypatch.setattr(llm_module, "_command", lambda *_args, **_kwargs: ("true",))
+
+    result = llm_module.run_prompt(
+        "continue",
+        tmp_path,
+        llm="claude",
+        model="sonnet",
+        command_name="plan",
+        claude_resume_session_id="session-123",
+        announce=False,
+    )
+
+    record = _records(tmp_path)[0]
+    assert record["job"]["claude_session"] == {"mode": "resume", "id": "session-123"}
+    assert "Claude session: resume id=session-123" in result.artifacts.llm_log_file.read_text()
+
+
 def test_codex_command_maps_effort_to_its_config_key(tmp_path):
     """codex has no --effort flag; the level rides in as a config override."""
     command = _effort_command("codex", "high", tmp_path)

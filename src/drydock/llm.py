@@ -563,6 +563,17 @@ def _print_run_header(
     )
 
 
+def _claude_session_metadata(
+    *, claude_session_id: str | None, claude_resume_session_id: str | None
+) -> dict[str, str] | None:
+    """Describe an explicit Claude Code session without deriving it from argv."""
+    if claude_session_id:
+        return {"mode": "start", "id": claude_session_id}
+    if claude_resume_session_id:
+        return {"mode": "resume", "id": claude_resume_session_id}
+    return None
+
+
 def _elapsed_ms(started_at: datetime, completed_at: datetime) -> int:
     return max(0, int((completed_at - started_at).total_seconds() * 1000))
 
@@ -1115,6 +1126,8 @@ def _record(
     sub_command: str | None = None,
     truncation: Mapping[str, Any] | None = None,
     failed: bool = False,
+    claude_session_id: str | None = None,
+    claude_resume_session_id: str | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -1132,6 +1145,10 @@ def _record(
             "parameters": dict(parameters),
             "full_cli": full_cli,
             "sub_command": sub_command,
+            "claude_session": _claude_session_metadata(
+                claude_session_id=claude_session_id,
+                claude_resume_session_id=claude_resume_session_id,
+            ),
         },
         "prompt": {
             "path": str(artifacts.prompt_file),
@@ -1562,18 +1579,30 @@ def run_prompt(
         claude_resume_session_id=claude_resume_session_id,
     )
     job_parameters = dict(parameters or {})
+    claude_session = _claude_session_metadata(
+        claude_session_id=claude_session_id,
+        claude_resume_session_id=claude_resume_session_id,
+    )
     logger = create_execution_logger(artifacts.execution_id, debug=debug)
     started_at = utc_now()
     if announce:
         _print_run_header(artifacts, llm=selected, command_name=command_name, model=model)
+    if claude_session is not None:
+        _announce(
+            artifacts,
+            f"  Claude session: {claude_session['mode']} id={claude_session['id']}",
+            console=announce,
+        )
     logger.info(
-        "execution started id=%s command=%s llm=%s cwd=%s prompt_sha256=%s prompt_bytes=%d",
+        "execution started id=%s command=%s llm=%s cwd=%s prompt_sha256=%s prompt_bytes=%d "
+        "claude_session=%s",
         artifacts.execution_id,
         command_name,
         selected,
         working_directory,
         sha256_bytes(prompt_bytes),
         len(prompt_bytes),
+        claude_session,
     )
     logger.debug("argv=%r parameters=%r artifacts=%r", command, job_parameters, artifacts.paths())
     for line in _prompt_breakdown_summary(command_name, assembly):
@@ -1597,6 +1626,7 @@ def run_prompt(
                 "prompt_sha256": sha256_bytes(prompt_bytes),
                 "prompt_bytes": len(prompt_bytes),
                 "prompt_total_tokens_estimate": assembly.total_tokens_estimate,
+                "claude_session": claude_session,
             },
         ),
         on_event,
@@ -1698,6 +1728,8 @@ def run_prompt(
             sub_command=sub_command,
             truncation=asdict(truncation) if truncation is not None else None,
             failed=failure is not None,
+            claude_session_id=claude_session_id,
+            claude_resume_session_id=claude_resume_session_id,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(
@@ -1772,6 +1804,8 @@ def run_prompt(
             prompt_assembly=assembly,
             full_cli=full_cli,
             sub_command=sub_command,
+            claude_session_id=claude_session_id,
+            claude_resume_session_id=claude_resume_session_id,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(
@@ -1809,6 +1843,8 @@ def run_prompt(
             prompt_assembly=assembly,
             full_cli=full_cli,
             sub_command=sub_command,
+            claude_session_id=claude_session_id,
+            claude_resume_session_id=claude_resume_session_id,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(

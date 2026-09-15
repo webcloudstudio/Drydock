@@ -15,6 +15,10 @@ command surface and Typed Specification contract are unstable and may change bet
   cache reuse across batches while retaining the existing self-contained continuation path for
   other providers.
 
+- 2026-09-15: LLM execution evidence now records `job.claude_session` as `start` or `resume` with
+  its session ID, and the per-call `.llm.log` records the same session mode and ID. This makes
+  Claude session reuse directly auditable without parsing provider CLI arguments.
+
 ### Added
 
 - 2026-09-14: `drydock score llm [<Target>]` reports successful LLM executions since the
