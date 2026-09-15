@@ -36,6 +36,7 @@ class LlmUsageRow:
     total_input_tokens: int
     cached_input_tokens: int
     cache_write_input_tokens: int
+    cache_write_reported: bool
     output_tokens: int
     first_started_at: str
 
@@ -78,7 +79,9 @@ class LlmScoreReport:
         return sum(run.cached_input_tokens for run in self.runs)
 
     @property
-    def cache_write_input_tokens(self) -> int:
+    def cache_write_input_tokens(self) -> int | None:
+        if any(not run.cache_write_reported for run in self.runs):
+            return None
         return sum(run.cache_write_input_tokens for run in self.runs)
 
     @property
@@ -211,7 +214,7 @@ def _model_label(run: RunUsage) -> str:
 
 
 def _rows(runs: tuple[RunUsage, ...]) -> tuple[LlmUsageRow, ...]:
-    buckets: dict[tuple[str, str, str], dict[str, int | str]] = {}
+    buckets: dict[tuple[str, str, str], dict[str, int | str | bool]] = {}
     for run in runs:
         key = (run.verb, run.subclass, _model_label(run))
         bucket = buckets.setdefault(
@@ -221,6 +224,7 @@ def _rows(runs: tuple[RunUsage, ...]) -> tuple[LlmUsageRow, ...]:
                 "total_input_tokens": 0,
                 "cached_input_tokens": 0,
                 "cache_write_input_tokens": 0,
+                "cache_write_reported": True,
                 "output_tokens": 0,
                 "first_started_at": run.started_at,
             },
@@ -233,6 +237,9 @@ def _rows(runs: tuple[RunUsage, ...]) -> tuple[LlmUsageRow, ...]:
         bucket["cache_write_input_tokens"] = (
             int(bucket["cache_write_input_tokens"]) + run.cache_write_input_tokens
         )
+        bucket["cache_write_reported"] = bool(bucket["cache_write_reported"]) and (
+            run.cache_write_reported
+        )
         bucket["output_tokens"] = int(bucket["output_tokens"]) + run.output_tokens
         bucket["first_started_at"] = min(str(bucket["first_started_at"]), run.started_at)
     rows = [
@@ -244,6 +251,7 @@ def _rows(runs: tuple[RunUsage, ...]) -> tuple[LlmUsageRow, ...]:
             total_input_tokens=int(values["total_input_tokens"]),
             cached_input_tokens=int(values["cached_input_tokens"]),
             cache_write_input_tokens=int(values["cache_write_input_tokens"]),
+            cache_write_reported=bool(values["cache_write_reported"]),
             output_tokens=int(values["output_tokens"]),
             first_started_at=str(values["first_started_at"]),
         )

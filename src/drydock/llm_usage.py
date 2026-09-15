@@ -7,7 +7,8 @@ the result up for reporting. It performs no rendering and no filesystem writes.
 
 Token accounting differs by provider and is normalized here:
 
-* Codex reports ``input_tokens`` inclusive of ``cached_input_tokens``.
+* Codex reports ``input_tokens`` inclusive of ``cached_input_tokens`` but does not expose a
+  cache-write category.
 * Claude reports ``input_tokens`` exclusive of ``cache_read_input_tokens``.
 
 Claude additionally reports ``cache_creation_input_tokens``.  That is a distinct
@@ -87,6 +88,7 @@ class RunUsage:
     total_input_tokens: int
     cached_input_tokens: int
     cache_write_input_tokens: int
+    cache_write_reported: bool
     output_tokens: int
     elapsed_ms: int
     prompt_tokens_estimate: int
@@ -481,7 +483,8 @@ def _run_from_record(record: Mapping[str, Any], target: str) -> RunUsage:
     command = _text(job.get("command_name"))
     verb, subclass = _classification(command, parameters)
     total_input, cached, output = normalize_tokens(provider, stats)
-    cache_write = _int(stats.get("cache_creation_input_tokens"))
+    raw_cache_write = stats.get("cache_creation_input_tokens")
+    cache_write = _int(raw_cache_write)
     returncode = result.get("returncode")
 
     return RunUsage(
@@ -502,6 +505,7 @@ def _run_from_record(record: Mapping[str, Any], target: str) -> RunUsage:
         total_input_tokens=total_input,
         cached_input_tokens=cached,
         cache_write_input_tokens=cache_write,
+        cache_write_reported=raw_cache_write is not None,
         output_tokens=output,
         elapsed_ms=_int(stats.get("elapsed_ms")),
         prompt_tokens_estimate=_int(prompt.get("total_tokens_estimate")),

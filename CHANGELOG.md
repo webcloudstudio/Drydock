@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- `drydock score llm` now renders cache writes as `—` when a provider does not report that token
+  category. The score no longer represents unreported Codex cache writes as zero; recorded Claude
+  cache-creation tokens remain separately included in Input and Total.
+
 - `drydock plan` keeps Claude Blueprint continuation passes in one explicit Claude Code session
   and sends only the changing ledger after the initial planning context. This preserves provider
   cache reuse across batches while retaining the existing self-contained continuation path for

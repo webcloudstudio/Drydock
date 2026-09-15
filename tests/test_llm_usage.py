@@ -140,6 +140,7 @@ def test_codex_cache_tokens_are_a_subset_of_reported_input() -> None:
     assert run.total_input_tokens == 1000
     assert run.cached_input_tokens == 900
     assert run.fresh_input_tokens == 100
+    assert not run.cache_write_reported
 
 
 def test_claude_cache_tokens_are_added_to_reported_input() -> None:
@@ -168,6 +169,7 @@ def test_claude_cache_write_tokens_are_preserved_separately() -> None:
     assert run.total_input_tokens == 904
     assert run.cached_input_tokens == 900
     assert run.cache_write_input_tokens == 1_200
+    assert run.cache_write_reported
     assert run.fresh_input_tokens == 4
 
 

@@ -179,3 +179,36 @@ def test_report_counts_claude_cache_writes_as_input(tmp_path):
     assert report.fresh_input_tokens == 2
     assert report.total_tokens == 169_002
     assert report.rows[0].cache_write_input_tokens == 120_000
+    assert report.rows[0].cache_write_reported
+
+
+def test_report_marks_unreported_cache_writes_without_converting_them_to_zero(tmp_path):
+    workspace = tmp_path
+    target_dir = workspace / "targets" / "Widget"
+    _write_jsonl(
+        workspace / "logs" / "llm.jsonl",
+        [
+            _record(
+                "luna",
+                "2026-09-10T10:01:00.000Z",
+                "plan",
+                cache_creation_input_tokens=None,
+            )
+        ],
+    )
+    _write_history(
+        workspace,
+        [
+            {
+                "target": "Widget",
+                "argv": ["init", "Widget"],
+                "return_code": 0,
+                "stamp": "20260910.100000.000Z",
+            }
+        ],
+    )
+
+    report = build_llm_score_report(workspace, target_dir, "Widget")
+
+    assert report.cache_write_input_tokens is None
+    assert not report.rows[0].cache_write_reported
