@@ -169,9 +169,30 @@ ai  drydock refit             MyApp            # Blueprint drift -> affected bui
 
 ### Additional Commands
 
+`drydock diagnose <Target> --apply` exercises delegated Commander authority to repair
+specification and acceptance defects. It reads complete decision records once, prints proposed
+diffs, validates acceptance syntax without executing generated code, and resets affected
+consumers for rebuild. Repaired malformed-criterion blockers are retired; the next build still
+verifies behavior. Routine corrections are annotated in the diagnosis report. Consequential
+choices are recorded in `DECISIONS.json` for QuarterDeck review without blocking execution.
+Commander answers remain binding. An unresolved stall or failed repair returns exit 1.
+
+Use the recovery loop for unfinished Targets, including those already stalled before build:
+
+```bash
+bash helpers/build_loop.sh "$PROJECT" --llm-provider codex --model gpt-5.6-luna
+```
+
+The loop builds available work and invokes diagnosis after a failed build or an unfinished
+Target with no buildable frontier. It stops if diagnosis fails or leaves the Target stalled.
+`DRYDOCK_RUNNER_MAX_BUILDS` bounds iterations (default 5). Provider/model flags reach both
+commands. `helpers/drydock_runner.sh` uses this loop after preparing the Target.
+The loop ends at verified build completion; scoring is separate. `status --ready` retains its
+boolean buildability contract, and `status --check` supplies the separate completion check.
+
 ```text
     drydock build status      MyApp            # Show build state
-ai  drydock diagnose          [MyApp] --apply  # Apply every verified amendment without asking; log each as a decision
+ai  drydock diagnose          [MyApp] --apply  # Delegated repair; important decisions enter QuarterDeck review
 ai  drydock diagnose          [MyApp] --no-apply # Record amendments as decisions; change nothing
 ai  drydock uat               [Project]        # Scored UAT testing
     drydock uat status        <Project>        # Current run, failure, and recovery command

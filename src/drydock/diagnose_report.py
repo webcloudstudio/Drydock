@@ -13,6 +13,7 @@ is shown anything, and one that will not apply is reported as unapplicable inste
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -74,6 +75,17 @@ def assemble(bundle: Bundle, body: str) -> PromptAssembly:
     parts = [system_preamble_part(), part("Task", body, kind="prompt")]
 
     parts.append(section_heading_part("Established Facts"))
+    state, reason = bundle.execution
+    parts.append(
+        lines_part(
+            "Current execution state",
+            [
+                f"{state}: {reason}",
+                "Milestone successes are historical; they do not resolve current impediments.",
+            ],
+            role="deterministic",
+        )
+    )
     parts.append(
         lines_part(
             "Run",
@@ -139,10 +151,9 @@ def assemble(bundle: Bundle, body: str) -> PromptAssembly:
     if bundle.blockers is not None:
         parts.append(_excerpt_part(bundle.blockers, "markdown", "evidence"))
     parts.append(
-        lines_part(
-            "Open decisions",
-            [f"- [{row['severity']}] {row['id']}: {row['title']}" for row in bundle.decisions]
-            or ["None open."],
+        fenced_text_part(
+            "DECISIONS.json",
+            json.dumps(list(bundle.decisions), indent=2),
             role="evidence",
         )
     )
@@ -217,6 +228,9 @@ def verify(text: str, bundle: Bundle) -> Diagnosis:
     problems = [f"Missing section: {name}" for name in REQUIRED_SECTIONS if name not in sections]
 
     amendments = parse_amendments(sections.get("Repair Proposal", ""))
+    proposal = sections.get("Repair Proposal", "").strip()
+    if proposal and not amendments and not proposal.lower().startswith("none"):
+        problems.append("Repair Proposal contains no parseable repair diffs.")
     current = {excerpt.name: excerpt for excerpt in (*bundle.governed, *bundle.blueprints)}
     applicable: list[Amendment] = []
     unapplicable: list[Amendment] = []
@@ -238,6 +252,16 @@ def verify(text: str, bundle: Bundle) -> Diagnosis:
         if applied is None:
             unapplicable.append(amendment.rejected("the diff does not apply to the current file"))
             continue
+        if applied == excerpt.text:
+            unapplicable.append(amendment.rejected("the proposed repair makes no change"))
+            continue
+        if amendment.file.startswith(BLUEPRINT_PREFIX):
+            from drydock.diagnose_repair import validate_acceptance_repair
+
+            error = validate_acceptance_repair(excerpt.text, applied, Path(amendment.file).name)
+            if error:
+                unapplicable.append(amendment.rejected(error))
+                continue
         applicable.append(amendment)
 
     return Diagnosis(

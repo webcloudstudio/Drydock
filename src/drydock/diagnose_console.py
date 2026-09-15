@@ -163,6 +163,7 @@ def render_findings(bundle: Bundle, diagnosis, style: Style) -> str:
                 + " " * len(number)
                 + style.paint(f"{amendment.file}  {_diff_size(amendment)}", DIM)
             )
+            lines += render_diff(amendment.diff, style)
         blocks.append(_section(style, "Repair Proposal", lines))
     if diagnosis.unapplicable:
         lines = [INDENT + style.paint("Proposed but not verified against the current files:", DIM)]

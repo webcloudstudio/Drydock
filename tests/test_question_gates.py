@@ -27,7 +27,7 @@ def _decision(*, story: str = "foundation", answer: str = "") -> Decision:
         origin="plan",
         blueprint="DATABASE.md",
         story=story,
-        status="recommended",
+        status="open",
         archived=False,
         title="Which database engine?",
         description="Pick one.",

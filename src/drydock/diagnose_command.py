@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from drydock.diagnose import should_diagnose
@@ -92,13 +92,22 @@ def run(
     out(render_ladder_lines(bundle.ladder, style))
     out("")
 
-    if not bundle.commands and not any(row.state != "not run" for row in bundle.ladder):
+    if (
+        not bundle.commands
+        and not any(row.state != "not run" for row in bundle.ladder)
+        and not (target_dir / "MANIFEST.md").is_file()
+    ):
         out(f"Target '{target}' has recorded no commands, so there is nothing to diagnose.")
         out(NEXT_STEP.format(command=f"drydock analyze {target}"))
         return Result(exit_code=2)
 
     record = read_error_record(target_dir)
-    if bundle.stop is not None and record is not None and not should_diagnose(record=record):
+    if (
+        bundle.stop is not None
+        and record is not None
+        and not record.classification.startswith("programmatic acceptance failed")
+        and not should_diagnose(record=record)
+    ):
         _recorded_failure(out, style, target, record)
         return Result(exit_code=1)
 
@@ -147,6 +156,10 @@ def run(
                 DIM,
             )
         )
+        from drydock.status import execution_state
+
+        state, reason = execution_state(target_dir)
+        out(f"{INDENT}Repair outcome: no repair applied; {state} — {reason}.")
         return Result(exit_code=_verdict(bundle), report_path=report_path)
 
     if mode == "confirm" and not _interactive(confirm):
@@ -159,6 +172,9 @@ def run(
         outcome = resolve(diagnosis.amendments, target_dir, mode="none", report_path=report_path)
         return Result(exit_code=1, report_path=report_path, outcome=outcome)
 
+    originals = {
+        excerpt.name.removeprefix(BLUEPRINT_PREFIX): excerpt.text for excerpt in bundle.blueprints
+    }
     outcome = resolve(
         diagnosis.amendments,
         target_dir,
@@ -168,13 +184,57 @@ def run(
         style=style,
     )
     rebuild = _rebuild_repaired_blueprints(outcome, target_dir)
+    from drydock.diagnose_repair import retire_repaired_decisions
+
+    applied_sources = {
+        item.file.removeprefix(BLUEPRINT_PREFIX)
+        for item in outcome.applied
+        if item.file.startswith(BLUEPRINT_PREFIX)
+    }
+    retired = retire_repaired_decisions(
+        target_dir, {name: body for name, body in originals.items() if name in applied_sources}
+    )
+    if retired:
+        out(
+            f"{INDENT}Retired {len(retired)} repaired acceptance blocker(s); rebuild verifies checks."
+        )
     command = _report_outcome(
         outcome, target, target_dir, report_path, out, rebuild, style, unreviewed=mode == "apply"
+    )
+    from drydock.status import execution_state
+
+    state, reason = execution_state(target_dir)
+    out(f"{INDENT}Repair outcome: {state} — {reason}.")
+    code = 1 if outcome.failed or outcome.declined or outcome.review_error else 0
+    if state == "stalled" or not outcome.applied:
+        code = 1
+    details = (
+        diagnosis.sections.get("Details", "")
+        + "\n\n"
+        + "\n".join(
+            [
+                f"- Applied ({item.importance}): {item.file} — {item.summary}."
+                for item in outcome.applied
+            ]
+            + [f"- Repair outcome: {state} — {reason}."]
+            + [f"- Retired repaired authoring blocker: {item}." for item in retired]
+            + [f"- Failed repair: {item.file} — {error}." for item, error in outcome.failed]
+            + (
+                [f"- Important decision recording failed: {outcome.review_error}."]
+                if outcome.review_error
+                else []
+            )
+        )
+    )
+    write_report(
+        bundle,
+        replace(diagnosis, sections={**diagnosis.sections, "Details": details}),
+        stamp=written.stamp,
     )
     _commit_repairs(outcome, target_dir, out, style)
     if command:
         _next(out, style, command)
-    return Result(exit_code=_verdict(bundle), report_path=report_path, outcome=outcome)
+    return Result(exit_code=code, report_path=report_path, outcome=outcome)
 
 
 def parse_mode(*, apply_all: bool, no_apply: bool) -> str:
@@ -189,8 +249,11 @@ def parse_mode(*, apply_all: bool, no_apply: bool) -> str:
 
 
 def _verdict(bundle) -> int:
-    """``0`` when the run has no live failure, ``1`` when it does."""
-    return 1 if bundle.stop is not None else 0
+    """A historical success cannot hide current unfinished, stalled work."""
+    from drydock.status import execution_state
+
+    state, _ = execution_state(bundle.target_dir)
+    return 1 if bundle.stop is not None or state != "complete" else 0
 
 
 def _rebuild_repaired_blueprints(outcome: Outcome, target_dir: Path) -> tuple[str, ...]:
@@ -252,10 +315,18 @@ def _report_outcome(
             f"{INDENT}{style.paint('✓', GREEN)} Applied {len(outcome.applied)} amendment(s) to "
             f"{', '.join(outcome.changed_files)}."
         )
-        if unreviewed:
+        if unreviewed and any(item.importance == "important" for item in outcome.applied):
+            if outcome.review_error:
+                out(f"{INDENT}Important decision recording failed: {outcome.review_error}")
+            else:
+                out(
+                    f"{INDENT}{style.paint('•', YELLOW)} Logged them for review in "
+                    f"{target_dir / 'DECISIONS.json'}."
+                )
+        routine = sum(item.importance == "routine" for item in outcome.applied)
+        if routine:
             out(
-                f"{INDENT}{style.paint('•', YELLOW)} Logged them for review in "
-                f"{target_dir / 'DECISIONS.json'}."
+                f"{INDENT}{routine} routine repair(s) annotated in {report_path}; no review needed."
             )
     if rebuild:
         out(

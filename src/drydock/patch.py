@@ -23,6 +23,7 @@ from dataclasses import dataclass, replace
 _HEADING_RE = re.compile(r"(?m)^####\s+(?P<index>\d+)\.\s*(?P<summary>.+?)\s*$")
 _FILE_RE = re.compile(r"(?mi)^\s*(?:\*\*)?File:(?:\*\*)?\s*`?(?P<file>[^`\n]+?)`?\s*$")
 _WHY_RE = re.compile(r"(?mi)^\s*(?:\*\*)?Why:(?:\*\*)?\s*(?P<why>.+?)\s*$")
+_IMPORTANCE_RE = re.compile(r"(?mi)^Importance:\s*(routine|important)\s*$")
 _DIFF_FENCE_RE = re.compile(r"(?ms)^```(?:diff|patch)?\s*\n(?P<body>.*?)^```\s*$")
 _HUNK_RE = re.compile(
     r"(?m)^@@\s+-(?P<old_start>\d+)(?:,(?P<old_count>\d+))?\s+\+(?P<new_start>\d+)(?:,(?P<new_count>\d+))?\s*@@"
@@ -56,6 +57,7 @@ class Amendment:
     hunks: tuple[Hunk, ...] = ()
     #: Why this amendment was not offered, when it was not. Empty on an applicable one.
     rejection: str = ""
+    importance: str = "important"
 
     def rejected(self, reason: str) -> Amendment:
         """This amendment, marked unapplicable, so the report can say so rather than drop it."""
@@ -108,6 +110,11 @@ def parse_amendments(section: str) -> tuple[Amendment, ...]:
                 why=why_match.group("why").strip() if why_match else "",
                 diff=diff,
                 hunks=parse_hunks(diff),
+                importance=(
+                    match.group(1).lower()
+                    if (match := _IMPORTANCE_RE.search(block))
+                    else "important"
+                ),
             )
         )
     return tuple(found)

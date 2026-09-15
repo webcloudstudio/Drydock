@@ -4,10 +4,9 @@ Approval is per amendment. A diagnosis that proposes three corrections is three 
 one, because an operator who agrees with two of them should not have to refuse all three to
 decline the third.
 
-Nothing here is silent. An amendment that is applied changes a file the operator owns, and an
-amendment that is declined becomes a ``recommended`` decision in ``DECISIONS.json`` so it survives
-the session rather than scrolling away. Either way the outcome is on disk. An amendment applied
-under ``--apply`` was never reviewed, so it is filed there too, for review after the fact.
+Declined amendments become recommended decisions. Important amendments applied under delegated
+``--apply`` authority are disclosed for later review; routine repairs remain report annotations.
+Neither kind of applied repair requires a Commander response before execution continues.
 
 A non-interactive session declines everything. Guessing a human's answer to "may I edit your
 Compass" is not a default this command gets to have.
@@ -40,6 +39,7 @@ class Outcome:
     applied: tuple[Amendment, ...] = ()
     declined: tuple[Amendment, ...] = ()
     failed: tuple[tuple[Amendment, str], ...] = ()
+    review_error: str = ""
 
     @property
     def changed_files(self) -> tuple[str, ...]:
@@ -95,9 +95,19 @@ def resolve(
             target_dir,
             report_path=report_path,
         )
+    review_error = ""
     if mode == "apply":
-        record_unreviewed(applied, target_dir, report_path=report_path)
-    return Outcome(applied=tuple(applied), declined=tuple(declined), failed=tuple(failed))
+        review_error = record_unreviewed(
+            [item for item in applied if item.importance == "important"],
+            target_dir,
+            report_path=report_path,
+        )
+    return Outcome(
+        applied=tuple(applied),
+        declined=tuple(declined),
+        failed=tuple(failed),
+        review_error=review_error,
+    )
 
 
 def apply_one(amendment: Amendment, target_dir: Path) -> str:
@@ -115,6 +125,12 @@ def apply_one(amendment: Amendment, target_dir: Path) -> str:
     updated = amendment.apply_to(current)
     if updated is None:
         return f"the diff no longer applies to {amendment.file}"
+    if amendment.file.startswith("blueprint/"):
+        from drydock.diagnose_repair import validate_acceptance_repair
+
+        error = validate_acceptance_repair(current, updated, path.name)
+        if error:
+            return f"acceptance repair did not validate: {error}"
     try:
         path.write_text(updated, encoding="utf-8", newline="\n")
     except OSError as error:
@@ -149,14 +165,14 @@ def record(
 
 def record_unreviewed(
     amendments: Sequence[Amendment], target_dir: Path, *, report_path: Path | None = None
-) -> None:
+) -> str:
     """File amendments applied without review, replacing any earlier proposal of the same change.
 
     The record carries no Commander answer: an unreviewed change is not a Commander decision, so
     it must never reach a prompt as one.
     """
     if not amendments:
-        return
+        return ""
     path = target_dir / "DECISIONS.json"
     try:
         fresh = {
@@ -165,8 +181,9 @@ def record_unreviewed(
         }
         kept = tuple(decision for decision in load_decisions(path) if decision.id not in fresh)
         write_decisions(path, (*kept, *fresh.values()))
-    except OSError:
-        return
+    except OSError as error:
+        return str(error)
+    return ""
 
 
 def _as_applied_decision(amendment: Amendment, report_path: Path | None) -> Decision:
@@ -174,7 +191,7 @@ def _as_applied_decision(amendment: Amendment, report_path: Path | None) -> Deci
     return Decision(
         id=_decision_id(amendment),
         type=DECISION_TYPE,
-        severity="low",
+        severity="material",
         origin=DECISION_ORIGIN,
         blueprint=amendment.file,
         story=None,

@@ -66,6 +66,16 @@ class Decision:
         """Return the Commander response, regardless of response form."""
         return (self.override_text or self.commander_direction or "").strip()
 
+    @property
+    def blocks_execution(self) -> bool:
+        """Only an explicitly open blocker gates execution; review disclosures do not."""
+        return (
+            not self.archived
+            and self.status == "open"
+            and self.severity == "blocking"
+            and not self.answer
+        )
+
 
 def _options_from_raw(raw: object) -> tuple[DecisionOption, ...]:
     if not isinstance(raw, list):

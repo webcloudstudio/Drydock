@@ -39,11 +39,11 @@ MAX_BLOCKERS_LINES = 60
 MAX_GOVERNED_LINES = 400
 MAX_BLUEPRINT_LINES = 600
 
-#: Blueprint repairs are offered for the Blueprints the blocked and failed Manifest blocks
-#: implement, and only those; a Blueprint the prompt did not carry in full cannot be verified.
+#: Repairs include decision-linked and unfinished consumers' Blueprints. A Blueprint the prompt
+#: did not carry in full cannot be verified.
 MAX_BLUEPRINTS = 6
 BLUEPRINT_PREFIX = "blueprint/"
-REPAIR_STATES = frozenset({"blocked/questions", "closed/failed"})
+REPAIR_STATES = frozenset({"blocked/questions", "closed/failed", "closed/implemented", "pending"})
 
 #: The files an amendment may target. ``MANIFEST.md`` is included: an acceptance criterion that
 #: cannot pass, or a stage that must be rerun, is a Manifest-level correction.
@@ -100,6 +100,7 @@ class Bundle:
     missing: tuple[str, ...] = field(default_factory=tuple)
     #: Repairable Blueprints, named ``blueprint/<file>``.
     blueprints: tuple[Excerpt, ...] = field(default_factory=tuple)
+    execution: tuple[str, str] = ("unknown", "not collected")
 
     @property
     def failed_commands(self) -> tuple[Mapping[str, object], ...]:
@@ -148,6 +149,9 @@ def collect(target: str, workspace: Path, target_dir: Path, *, run: str = "") ->
         if not (target_dir / name).is_file():
             missing.append(name)
 
+    from drydock.status import execution_state
+
+    decisions = open_decisions(target_dir)
     return Bundle(
         target=target,
         target_dir=target_dir,
@@ -160,15 +164,20 @@ def collect(target: str, workspace: Path, target_dir: Path, *, run: str = "") ->
         transcripts=transcripts,
         scorecard=scorecard,
         blockers=blockers,
-        decisions=open_decisions(target_dir),
+        decisions=decisions,
         governed=governed,
         missing=tuple(missing),
-        blueprints=failing_blueprints(target_dir),
+        blueprints=failing_blueprints(target_dir, decisions=decisions),
+        execution=execution_state(target_dir),
     )
 
 
-def failing_blueprints(target_dir: Path) -> tuple[Excerpt, ...]:
-    """The Blueprints the blocked and failed Manifest blocks implement, in Manifest order.
+def failing_blueprints(
+    target_dir: Path,
+    *,
+    decisions: Sequence[Mapping[str, object]] | None = None,
+) -> tuple[Excerpt, ...]:
+    """Decision-linked Blueprints, then failed, blocked, and unfinished consumers' inputs.
 
     These are what a repair can specify more precisely. Imported sources and change tickets are
     never candidates, and a compact derivative resolves to its source, which is what a repair edits.
@@ -176,20 +185,38 @@ def failing_blueprints(target_dir: Path) -> tuple[Excerpt, ...]:
     from drydock.build_plan import compact_source, parse_build_plan
     from drydock.config import blueprint_dir_for
 
-    try:
-        plan = parse_build_plan(target_dir / "MANIFEST.md")
-    except Exception:  # noqa: BLE001 — an unreadable Manifest leaves nothing to repair against
-        return ()
     blueprint_dir = blueprint_dir_for(target_dir)
     names: list[str] = []
-    for block in plan.blocks:
+    candidates = [
+        str(row["blueprint"])
+        for row in (open_decisions(target_dir) if decisions is None else decisions)
+        if not row.get("archived")
+        and (
+            row.get("severity") == "blocking"
+            or str(row.get("id", "")).startswith(("build-skip-", "build-env-unresolved-"))
+        )
+    ]
+    try:
+        plan = parse_build_plan(target_dir / "MANIFEST.md")
+    except Exception:  # noqa: BLE001 — decision-linked files remain repairable
+        plan = None
+    priority = {"closed/failed": 0, "blocked/questions": 1, "closed/implemented": 2, "pending": 3}
+    for block in sorted(plan.blocks if plan else (), key=lambda item: priority.get(item.state, 4)):
         if block.state not in REPAIR_STATES:
             continue
-        for name in block.fields.get("implements", ()):
-            source = compact_source(str(name))
-            if "/" in source or source in names or not (blueprint_dir / source).is_file():
-                continue
-            names.append(source)
+        candidates.extend(str(name) for name in block.fields.get("implements", ()))
+    for name in candidates:
+        source = compact_source(name.removeprefix(BLUEPRINT_PREFIX))
+        if (
+            "/" in source
+            or "\\" in source
+            or source in names
+            or not source.endswith(".md")
+            or not (blueprint_dir / source).is_file()
+            or (blueprint_dir / source).resolve().parent != blueprint_dir.resolve()
+        ):
+            continue
+        names.append(source)
     return tuple(
         excerpt
         for name in names[:MAX_BLUEPRINTS]
@@ -214,30 +241,18 @@ def ladder_notes(target_dir: Path) -> dict[str, str]:
 
 
 def open_decisions(target_dir: Path) -> tuple[Mapping[str, object], ...]:
-    """Open, unarchived decisions, blocking ones first.
+    """Complete decision records, including Commander answers and system disclosures.
 
     A blocking decision is frequently the actual reason a stage stopped, and is invisible in a
     transcript. A malformed file loads as no decisions rather than failing the diagnosis.
     """
     try:
-        from drydock.decisions import load_decisions
+        from drydock.decisions import load_decisions, render_decisions
 
         decisions = load_decisions(target_dir / "DECISIONS.json")
     except Exception:
         return ()
-    live = [
-        {
-            "id": decision.id,
-            "severity": decision.severity,
-            "status": decision.status,
-            "origin": decision.origin,
-            "title": decision.title,
-            "blueprint": decision.blueprint,
-        }
-        for decision in decisions
-        if decision.status == "open" and not decision.archived
-    ]
-    return tuple(sorted(live, key=lambda row: row["severity"] != "blocking"))
+    return tuple(json.loads(render_decisions(decisions)))
 
 
 def _log_files(

@@ -126,9 +126,10 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
         f"`drydock score specification {target}` to refresh this artifact."
     )
     decisions_help = (
-        "Significant design decisions Plan made where the Blueprint, guardrails, or stack "
-        "declaration were silent. Plan never hard-blocks on these; review and redirect any of "
-        "them here."
+        "Review important choices made by Plan, Build, and delegated Diagnose repairs, or give "
+        "Commander direction for subsequent work. Pending review does not block execution. "
+        "Only explicitly open blockers require resolution. Routine Diagnose repairs appear "
+        "in the diagnosis report rather than this review queue."
     )
     return f"""console:
   name: {target} QuarterDeck

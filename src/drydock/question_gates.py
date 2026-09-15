@@ -28,11 +28,7 @@ def synchronize_manifest_question_gates(
     manifest = DrydockManifest.load(manifest_path, compatibility=True)
     retire_automatic_test_tooling_decisions(manifest_path.parent)
     decisions = load_decisions(manifest_path.parent / "DECISIONS.json")
-    blocking = {
-        item
-        for item in decisions
-        if not item.archived and item.severity == "blocking" and not item.answer
-    }
+    blocking = {item for item in decisions if item.blocks_execution}
     changed = False
     for node in manifest.blocks:
         if node.block_type != "story":

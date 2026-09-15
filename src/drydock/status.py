@@ -226,9 +226,7 @@ def _count_decision_blockers(target_dir: Path) -> int:
     from drydock.decisions import load_decisions
 
     return sum(
-        1
-        for decision in load_decisions(target_dir / "DECISIONS.json")
-        if decision.severity == "blocking" and decision.status == "open" and not decision.archived
+        1 for decision in load_decisions(target_dir / "DECISIONS.json") if decision.blocks_execution
     )
 
 
@@ -551,16 +549,55 @@ def build_loop_stop_reason(target_dir: Path) -> str | None:
     return None
 
 
+def execution_state(target_dir: Path) -> tuple[str, str]:
+    """Read-only completion/frontier verdict for diagnosis and recovery loops."""
+    from drydock.build_plan import parse_build_plan
+    from drydock.build_status import build_status
+    from drydock.decisions import load_decisions
+
+    check = completion_check(target_dir.name, target_dir)
+    if check.blocked:
+        return "stalled", check.reason
+    decisions = load_decisions(target_dir / "DECISIONS.json")
+    blockers = [item for item in decisions if item.blocks_execution]
+    if check.complete and not blockers:
+        return "complete", check.reason
+    stop = build_loop_stop_reason(target_dir)
+    if stop:
+        return "stalled", f"stopped: {stop}"
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    # Project live decision gates in memory, including Targets with stale Manifest states.
+    from dataclasses import replace
+
+    gated = {item.story for item in blockers}
+    plan = replace(
+        plan,
+        blocks=tuple(
+            replace(block, state="blocked/questions")
+            if block.block_id in gated
+            else replace(block, state="pending")
+            if block.state == "blocked/questions"
+            else block
+            for block in plan.blocks
+        ),
+    )
+    frontier = build_status(plan).buildable_ids
+    if frontier:
+        return "buildable", f"frontier: {', '.join(frontier)}"
+    return "stalled", "no buildable frontier"
+
+
 def completion_check(target: str, target_dir: Path) -> CompletionCheck:
-    """Return the completion gate for *target* from MANIFEST.md alone.
+    """Return the completion gate from the Manifest and active blocking decisions.
 
     Three outcomes report completion:
 
-    * ``COMPLETE`` (exit 0) — every executable block (story or spike) is ``closed/verified``.
+    * ``COMPLETE`` (exit 0) — every executable block is ``closed/verified`` and no open
+      blocking decision remains.
     * ``RETRYABLE`` (exit 1) — the Manifest is approved and executable work remains pending,
       implemented, or failed. This says nothing about whether another build can advance it.
     * ``BLOCKED`` (exit 2) — no Manifest, an unparsable or draft Manifest, or a Manifest with no
-      executable work.
+      executable work, or a verified Manifest with outstanding blocking decisions.
 
     ``drydock status <Target> --ready`` independently checks the actual build frontier. Completion
     and buildability are separate observations: ``closed/implemented`` is terminal to scheduling
@@ -608,6 +645,21 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
             detail += f"; failed: {', '.join(failures)}"
         return CompletionCheck(
             target, RETRYABLE, detail, total, verified, len(remaining), state_counts
+        )
+    from drydock.decisions import load_decisions
+
+    blockers = [
+        item.id for item in load_decisions(target_dir / "DECISIONS.json") if item.blocks_execution
+    ]
+    if blockers:
+        return CompletionCheck(
+            target,
+            BLOCKED,
+            f"open blocking decisions: {', '.join(blockers)}",
+            total,
+            verified,
+            0,
+            state_counts,
         )
     return CompletionCheck(
         target, COMPLETE, "all blocks closed/verified", total, verified, 0, state_counts

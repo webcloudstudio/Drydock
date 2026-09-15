@@ -67,18 +67,6 @@ if [ "$MAX_BUILDS" -eq 0 ]; then
   exit 2
 fi
 
-attempt=1
-while drydock status "$TARGET" --ready; do
-  echo "Running build attempt $attempt/$MAX_BUILDS"
-  if ! drydock build "$TARGET" "${OPTS[@]}"; then
-    echo "Build failed; state is preserved. Rerun this command to resume." >&2
-    exit 1
-  fi
-  attempt=$((attempt + 1))
-  if [ "$attempt" -gt "$MAX_BUILDS" ]; then
-    echo "Reached DRYDOCK_RUNNER_MAX_BUILDS=$MAX_BUILDS; state is preserved." >&2
-    exit 1
-  fi
-done
+bash "$(dirname -- "${BASH_SOURCE[0]}")/build_loop.sh" "$TARGET" "${OPTS[@]}"
 
 drydock status "$TARGET"

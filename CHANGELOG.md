@@ -144,6 +144,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-15: `drydock diagnose --apply` receives complete decision evidence and current
+  execution state, repairs acceptance defects under delegated Commander authority, prints
+  repair diffs, and reports unresolved stalls as failure. Acceptance repairs preserve check
+  identities and must parse and compile before application; corrected malformed-check gates
+  retire before affected consumers rebuild. Routine repairs remain report annotations;
+  consequential decisions enter non-blocking QuarterDeck review. Pending review no longer
+  gates stories. `helpers/build_loop.sh` and `helpers/drydock_runner.sh` recover unfinished
+  Targets stalled before build and stop when diagnosis fails to restore progress.
+
 - 2026-09-14: `drydock score llm` now reports provider cache-write input tokens separately and
   includes them in `Input` and `Total`. Claude's `cache_creation_input_tokens` previously appeared
   in durable execution evidence but was omitted from the score, materially understating
