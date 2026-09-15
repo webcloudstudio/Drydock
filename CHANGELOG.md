@@ -19,6 +19,11 @@ command surface and Typed Specification contract are unstable and may change bet
   its session ID, and the per-call `.llm.log` records the same session mode and ID. This makes
   Claude session reuse directly auditable without parsing provider CLI arguments.
 
+- 2026-09-15: Claude session selection is now prompt-aware for Plan and Build. A logical sequence
+  resumes only when the next prompt byte-extends its previous context (or deliberately sends only
+  its delta); changed prompts and model changes start a new session. Build repair feedback is
+  cumulative, so same-model repair passes resume the block session.
+
 ### Added
 
 - 2026-09-14: `drydock score llm [<Target>]` reports successful LLM executions since the

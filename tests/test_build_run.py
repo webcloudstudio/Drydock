@@ -2576,6 +2576,7 @@ def test_repair_loop_fixes_failed_acceptance_on_second_pass(tmp_path):
         runner=runner,
         step_id="foundation",
         repair_attempts=1,
+        llm_provider="claude",
     )
 
     assert result.steps[0].status == "built"
@@ -2584,6 +2585,9 @@ def test_repair_loop_fixes_failed_acceptance_on_second_pass(tmp_path):
     # The repair pass carries the failure feedback as the recency anchor; the first does not.
     assert "# Repair Feedback" not in runner.calls[0]["prompt"]
     assert "# Repair Feedback" in runner.calls[1]["prompt"]
+    assert runner.calls[1]["prompt"].startswith(runner.calls[0]["prompt"])
+    session_id = runner.calls[0]["claude_session_id"]
+    assert runner.calls[1]["claude_resume_session_id"] == session_id
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
     assert "## Repair attempts" in evidence
     assert "attempt 1 (repair 1)" in evidence

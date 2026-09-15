@@ -90,6 +90,7 @@ from drydock.config import (
     DEFAULT_REPAIR_ATTEMPTS,
     blueprint_dir_for,
     build_dir_for,
+    get_llm_provider,
     get_sandbox_mem_limit_mb,
     max_consecutive_stalls,
 )
@@ -102,7 +103,12 @@ from drydock.dependency_gate import (
     check_python_dependency_manifests,
 )
 from drydock.errors import SpecificationError, clear_error_record, write_error_record
-from drydock.llm import format_token_summary, render_rate_limit_error_block, run_prompt
+from drydock.llm import (
+    ClaudePromptSession,
+    format_token_summary,
+    render_rate_limit_error_block,
+    run_prompt,
+)
 from drydock.manifest_edit import batch_set_block_fields, reset_all_states
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.override import (
@@ -2649,6 +2655,11 @@ def build_target(
         before_files = _snapshot_files(resolved_build_dir)
 
         base_model = model or prompt.model
+        claude_session = (
+            ClaudePromptSession()
+            if (llm_provider or get_llm_provider()).lower() == "claude"
+            else None
+        )
         max_attempt = max(0, repair_attempts)
         attempt_records: list[AttemptRecord] = []
         gate_results: dict[str, GateResult] = {}
@@ -2733,8 +2744,11 @@ def build_target(
                     f"repair: attempt {attempt}/{max_attempt} · "
                     f"{len(feedback_checks) or 'agent-reported'} failing check(s)",
                 )
+                # Keep every prior repair instruction in the conversation prefix.  That makes
+                # this pass a strict append, so Claude can resume the block session rather than
+                # starting over from the base prompt and rediscovering the failed work.
                 active_assembly = _repair_prompt_assembly(
-                    prompt_assembly,
+                    active_assembly,
                     _render_repair_feedback(
                         unit,
                         feedback_checks,
@@ -2773,25 +2787,35 @@ def build_target(
                 _emit(on_text, "    fixing=agent-reported")
             _emit(on_text, f"{_clock()}  calling {llm_provider}/{attempt_model or '-'} …")
             try:
-                result = run(
-                    active_assembly.rendered_text,
-                    resolved_build_dir,
-                    llm=llm_provider,
-                    model=attempt_model,
-                    command_name="build",
-                    parameters={
+                runner_kwargs: dict[str, object] = {
+                    "llm": llm_provider,
+                    "model": attempt_model,
+                    "command_name": "build",
+                    "parameters": {
                         "step": unit.block_id,
                         "step_type": unit.block_type,
                         "steps": tuple(block.block_id for block in unit.steps),
                         "attempt": attempt,
                     },
-                    allow_tools=True,
-                    log_dir=log_dir,
-                    target=target,
-                    on_text=None,
-                    announce=False,
-                    announce_completion=False,
-                    prompt_assembly=active_assembly,
+                    "allow_tools": True,
+                    "log_dir": log_dir,
+                    "target": target,
+                    "on_text": None,
+                    "announce": False,
+                    "announce_completion": False,
+                    "prompt_assembly": active_assembly,
+                }
+                if claude_session is not None:
+                    runner_kwargs.update(
+                        claude_session.invocation(
+                            active_assembly.rendered_text,
+                            attempt_model,
+                        )
+                    )
+                result = run(
+                    active_assembly.rendered_text,
+                    resolved_build_dir,
+                    **runner_kwargs,
                 )
             except Exception as exc:
                 evidence_path = evidence_dir / f"{unit.block_id}.md"

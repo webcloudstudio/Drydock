@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -86,6 +87,34 @@ class LlmResult:
     @property
     def ok(self) -> bool:
         return self.returncode == 0 and self.failure is None
+
+
+@dataclass
+class ClaudePromptSession:
+    """Choose Claude Code session arguments for one logical, in-process prompt sequence.
+
+    A session resumes only when the next complete prompt byte-prefixes the previous one.  A
+    different prompt or model deliberately starts a new session, preventing unrelated work from
+    inheriting stale conversation context.  ``context_reused`` covers a deliberate delta prompt:
+    the caller has retained the prior context in Claude and sends only its appended instruction.
+    """
+
+    session_id: str | None = None
+    _prompt: str | None = field(default=None, init=False, repr=False)
+    _model: str | None = field(default=None, init=False, repr=False)
+
+    def invocation(
+        self, prompt: str, model: str | None, *, context_reused: bool = False
+    ) -> dict[str, str]:
+        same_model = self._model == model
+        extends_prior = self._prompt is not None and prompt.startswith(self._prompt)
+        if self.session_id and same_model and (context_reused or extends_prior):
+            self._prompt = prompt
+            return {"claude_resume_session_id": self.session_id}
+        self.session_id = str(uuid.uuid4())
+        self._prompt = prompt
+        self._model = model
+        return {"claude_session_id": self.session_id}
 
 
 TextCallback = Callable[[str], None]

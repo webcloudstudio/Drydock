@@ -28,7 +28,6 @@ from fnmatch import fnmatch
 from hashlib import sha256 as _sha256
 from pathlib import Path
 from typing import Protocol, cast
-from uuid import uuid4
 
 from drydock import technology_stack
 from drydock.acceptance import (
@@ -89,7 +88,7 @@ from drydock.errors import (
     write_error_record,
 )
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
-from drydock.llm import run_prompt
+from drydock.llm import ClaudePromptSession, run_prompt
 from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.override import PLAN_DECISION, WaivedGate, dedupe_waivers, stamp_override
@@ -3723,6 +3722,7 @@ def _repair_declaration(
     on_text: Callable[[str], None] | None,
     attempts: int,
     initial_execution_id: str | None,
+    claude_session: ClaudePromptSession | None = None,
 ) -> str:
     """Correct coverage and work-graph defects in the declaration before Stage 2 spends a call.
 
@@ -3739,25 +3739,26 @@ def _repair_declaration(
         assembly = _topology_repair_assembly(
             declaration=declaration, defect=defect, pass_number=repair_pass
         )
+        runner_kwargs: dict[str, object] = {
+            "llm": llm_provider,
+            "model": model,
+            "command_name": "plan",
+            "parameters": {
+                "target": target,
+                "declaration_repair_pass": repair_pass,
+                "initial_execution_id": initial_execution_id or "",
+            },
+            "log_dir": log_dir,
+            "target": target,
+            "on_text": on_text,
+            "prompt_assembly": assembly,
+        }
+        if claude_session is not None:
+            runner_kwargs.update(claude_session.invocation(assembly.rendered_text, model))
         try:
             result = cast(
                 CompletedRun,
-                runner(
-                    assembly.rendered_text,
-                    target_dir,
-                    llm=llm_provider,
-                    model=model,
-                    command_name="plan",
-                    parameters={
-                        "target": target,
-                        "declaration_repair_pass": repair_pass,
-                        "initial_execution_id": initial_execution_id or "",
-                    },
-                    log_dir=log_dir,
-                    target=target,
-                    on_text=on_text,
-                    prompt_assembly=assembly,
-                ),
+                runner(assembly.rendered_text, target_dir, **runner_kwargs),
             )
         except Exception:
             return declaration
@@ -4131,7 +4132,7 @@ def _continue_short_plan(
     on_text: Callable[[str], None] | None,
     attempts: int,
     initial_execution_id: str | None,
-    claude_session_id: str | None = None,
+    claude_session: ClaudePromptSession | None = None,
 ) -> _Continuation:
     """Resume a response that stopped short of its own declaration.
 
@@ -4166,7 +4167,7 @@ def _continue_short_plan(
         ledger = _render_ledger(score)
         assembly = (
             _resumed_continuation_assembly(ledger=ledger)
-            if claude_session_id
+            if claude_session is not None
             else _continuation_assembly(
                 prompt_assembly,
                 topology=accumulated[TOPOLOGY_BLOCK],
@@ -4188,8 +4189,14 @@ def _continue_short_plan(
             "on_text": on_text,
             "prompt_assembly": assembly,
         }
-        if claude_session_id:
-            runner_kwargs["claude_resume_session_id"] = claude_session_id
+        if claude_session is not None:
+            runner_kwargs.update(
+                claude_session.invocation(
+                    assembly.rendered_text,
+                    model,
+                    context_reused=True,
+                )
+            )
         try:
             result = cast(
                 CompletedRun,
@@ -4843,7 +4850,7 @@ def create_plan(
     )
 
     selected_provider = (llm_provider or get_llm_provider()).lower()
-    claude_session_id = str(uuid4()) if selected_provider == "claude" else None
+    claude_session = ClaudePromptSession() if selected_provider == "claude" else None
     initial_runner_kwargs: dict[str, object] = {
         "llm": llm_provider,
         "model": model or prompt.model,
@@ -4854,8 +4861,10 @@ def create_plan(
         "on_text": on_text,
         "prompt_assembly": prompt_assembly,
     }
-    if claude_session_id:
-        initial_runner_kwargs["claude_session_id"] = claude_session_id
+    if claude_session is not None:
+        initial_runner_kwargs.update(
+            claude_session.invocation(prompt_assembly.rendered_text, model or prompt.model)
+        )
     try:
         result = cast(
             CompletedRun,
@@ -4990,26 +4999,32 @@ def create_plan(
                     declaration=initial_declaration,
                     initial_execution_id=exec_id,
                 )
+                challenge_kwargs: dict[str, object] = {
+                    "llm": llm_provider,
+                    "model": model or prompt.model,
+                    "command_name": "plan",
+                    "parameters": {
+                        "target": target,
+                        "blueprint": str(blueprint_dir),
+                        "conflict_challenge": True,
+                        "initial_execution_id": exec_id or "",
+                    },
+                    "log_dir": log_dir,
+                    "target": target,
+                    "on_text": on_text,
+                    "prompt_assembly": challenge_assembly,
+                }
+                if claude_session is not None:
+                    challenge_kwargs.update(
+                        claude_session.invocation(
+                            challenge_assembly.rendered_text,
+                            model or prompt.model,
+                        )
+                    )
                 try:
                     challenge_result = cast(
                         CompletedRun,
-                        run(
-                            challenge_assembly.rendered_text,
-                            target_dir,
-                            llm=llm_provider,
-                            model=model or prompt.model,
-                            command_name="plan",
-                            parameters={
-                                "target": target,
-                                "blueprint": str(blueprint_dir),
-                                "conflict_challenge": True,
-                                "initial_execution_id": exec_id or "",
-                            },
-                            log_dir=log_dir,
-                            target=target,
-                            on_text=on_text,
-                            prompt_assembly=challenge_assembly,
-                        ),
+                        run(challenge_assembly.rendered_text, target_dir, **challenge_kwargs),
                     )
                 except Exception as challenge_exc:
                     raise _record_conflict_challenge_failure(
@@ -5114,6 +5129,7 @@ def create_plan(
                 on_text=on_text,
                 attempts=continue_attempts,
                 initial_execution_id=exec_id,
+                claude_session=(ClaudePromptSession() if claude_session is not None else None),
             )
             # An unrepaired graph defect is refused now: final validation would refuse the same
             # frozen declaration after every Stage 2 batch had been paid for.
@@ -5148,7 +5164,7 @@ def create_plan(
                     on_text=on_text,
                     attempts=continue_attempts,
                     initial_execution_id=exec_id,
-                    claude_session_id=claude_session_id,
+                    claude_session=claude_session,
                 )
                 latest_plan_score = continuation.score
                 if continuation.passes:
@@ -5204,25 +5220,31 @@ def create_plan(
                         defect=str(repair_exc),
                         pass_number=repair_pass,
                     )
+                    repair_kwargs: dict[str, object] = {
+                        "llm": llm_provider,
+                        "model": model or prompt.model,
+                        "command_name": "plan",
+                        "parameters": {
+                            "target": target,
+                            "topology_repair_pass": repair_pass,
+                            "initial_execution_id": exec_id or "",
+                        },
+                        "log_dir": log_dir,
+                        "target": target,
+                        "on_text": on_text,
+                        "prompt_assembly": repair_assembly,
+                    }
+                    if claude_session is not None:
+                        repair_kwargs.update(
+                            claude_session.invocation(
+                                repair_assembly.rendered_text,
+                                model or prompt.model,
+                            )
+                        )
                     try:
                         repair_result = cast(
                             CompletedRun,
-                            run(
-                                repair_assembly.rendered_text,
-                                target_dir,
-                                llm=llm_provider,
-                                model=model or prompt.model,
-                                command_name="plan",
-                                parameters={
-                                    "target": target,
-                                    "topology_repair_pass": repair_pass,
-                                    "initial_execution_id": exec_id or "",
-                                },
-                                log_dir=log_dir,
-                                target=target,
-                                on_text=on_text,
-                                prompt_assembly=repair_assembly,
-                            ),
+                            run(repair_assembly.rendered_text, target_dir, **repair_kwargs),
                         )
                         if not repair_result.ok or not repair_result.text.strip():
                             _report_repair_discard("the reply was empty", on_text)
@@ -5307,26 +5329,34 @@ def create_plan(
                         pass_number=repair_pass,
                         target_dir=target_dir,
                     )
+                    artifact_repair_kwargs: dict[str, object] = {
+                        "llm": llm_provider,
+                        "model": model or prompt.model,
+                        "command_name": "plan",
+                        "parameters": {
+                            "target": target,
+                            "artifact_repair_pass": repair_pass,
+                            "artifact_repair_kind": kind,
+                            "initial_execution_id": exec_id or "",
+                            "artifacts": ",".join(names),
+                        },
+                        "log_dir": log_dir,
+                        "target": target,
+                        "on_text": on_text,
+                        "prompt_assembly": repair_assembly,
+                    }
+                    if claude_session is not None:
+                        artifact_repair_kwargs.update(
+                            claude_session.invocation(
+                                repair_assembly.rendered_text,
+                                model or prompt.model,
+                            )
+                        )
                     try:
                         repair_result = cast(
                             CompletedRun,
                             run(
-                                repair_assembly.rendered_text,
-                                target_dir,
-                                llm=llm_provider,
-                                model=model or prompt.model,
-                                command_name="plan",
-                                parameters={
-                                    "target": target,
-                                    "artifact_repair_pass": repair_pass,
-                                    "artifact_repair_kind": kind,
-                                    "initial_execution_id": exec_id or "",
-                                    "artifacts": ",".join(names),
-                                },
-                                log_dir=log_dir,
-                                target=target,
-                                on_text=on_text,
-                                prompt_assembly=repair_assembly,
+                                repair_assembly.rendered_text, target_dir, **artifact_repair_kwargs
                             ),
                         )
                         if not repair_result.ok or not repair_result.text.strip():

@@ -1361,6 +1361,25 @@ def test_claude_command_supports_explicit_session_start_and_resume(tmp_path):
     assert "--session-id" not in resumed
 
 
+def test_claude_prompt_session_resumes_only_an_extended_or_explicitly_reused_context():
+    from drydock.llm import ClaudePromptSession
+
+    session = ClaudePromptSession()
+    started = session.invocation("base", "sonnet")
+    resumed = session.invocation("base\nrepair", "sonnet")
+    restarted = session.invocation("different", "sonnet")
+    delta_resumed = session.invocation("only the appended ledger", "sonnet", context_reused=True)
+    model_restarted = session.invocation("only the appended ledger\nnext", "haiku")
+
+    assert started.keys() == {"claude_session_id"}
+    assert resumed == {"claude_resume_session_id": started["claude_session_id"]}
+    assert restarted.keys() == {"claude_session_id"}
+    assert restarted["claude_session_id"] != started["claude_session_id"]
+    assert delta_resumed == {"claude_resume_session_id": restarted["claude_session_id"]}
+    assert model_restarted.keys() == {"claude_session_id"}
+    assert model_restarted["claude_session_id"] != restarted["claude_session_id"]
+
+
 def test_claude_session_is_queryable_in_execution_evidence(tmp_path, monkeypatch):
     """The record and operator log distinguish a session start from a resume."""
     from drydock import llm as llm_module
