@@ -4145,12 +4145,12 @@ def test_a_redundant_final_end_delimiter_preserves_completed_continuation_artifa
     assert "Status command exits successfully." in feature
 
 
-def test_the_continuation_prompt_reuses_the_original_prefix_and_carries_the_ledger(tmp_path):
+def test_nonclaude_continuation_reuses_the_original_prefix_and_carries_the_ledger(tmp_path):
     """Byte-identical prefix or the cached input is re-billed; the appended block is the gap."""
     _make_target(tmp_path)
     runner = _sequence_runner(_short_output(), _feature_block())
 
-    create_plan("Example", "Example", tmp_path, runner=runner)
+    create_plan("Example", "Example", tmp_path, runner=runner, llm_provider="codex")
 
     first, second = runner.calls
     assert second.startswith(first)
@@ -4160,6 +4160,28 @@ def test_the_continuation_prompt_reuses_the_original_prefix_and_carries_the_ledg
     assert "do not re-emit" in appended
     assert "# Frozen Stage 1 Output" in appended
     assert "## story story-status" in appended
+
+
+def test_claude_continuation_resumes_the_initial_session_with_only_the_ledger(tmp_path):
+    _make_target(tmp_path)
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def runner(prompt_text, *_args, **kwargs):
+        calls.append((prompt_text, kwargs))
+        text = _short_output() if len(calls) == 1 else _feature_block()
+        return FakeRun(text=text, execution_id=f"exec-{len(calls)}")
+
+    create_plan("Example", "Example", tmp_path, runner=runner, llm_provider="claude")
+
+    initial_prompt, initial_kwargs = calls[0]
+    continuation_prompt, continuation_kwargs = calls[1]
+    session_id = initial_kwargs["claude_session_id"]
+    assert isinstance(session_id, str)
+    assert continuation_kwargs["claude_resume_session_id"] == session_id
+    assert "# Input Context" in initial_prompt
+    assert "# Input Context" not in continuation_prompt
+    assert "# Frozen Stage 1 Output" not in continuation_prompt
+    assert "story-status -> FEATURE-Status.md" in continuation_prompt
 
 
 def test_continuation_stops_when_no_progress_and_reports_the_score(tmp_path):

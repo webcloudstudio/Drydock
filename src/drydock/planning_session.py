@@ -28,6 +28,7 @@ from fnmatch import fnmatch
 from hashlib import sha256 as _sha256
 from pathlib import Path
 from typing import Protocol, cast
+from uuid import uuid4
 
 from drydock import technology_stack
 from drydock.acceptance import (
@@ -63,7 +64,7 @@ from drydock.build_plan import (
     set_applied_specs,
 )
 from drydock.compass_sources import normative_compass_sections
-from drydock.config import build_dir_for
+from drydock.config import build_dir_for, get_llm_provider
 from drydock.database_contract import validate_sqlite_schema
 from drydock.decisions import (
     ARCHITECTURE_BLUEPRINT,
@@ -4085,6 +4086,26 @@ def _continuation_assembly(
     return PromptAssembly(parts=(*prompt_assembly.parts, frozen, instruction))
 
 
+def _resumed_continuation_assembly(*, ledger: str) -> PromptAssembly:
+    """Render only the mutable work queue for a resumed Claude planning session.
+
+    Claude Code caches the complete text submitted through ``-p``.  A continuation ledger changes
+    every batch, so resending the original planning context turns each pass into a cache write.
+    The initial session already holds that context and its accepted topology; a resumed turn needs
+    only the bounded ledger.
+    """
+    body = load_prompt("plan_continue").body.strip()
+    return PromptAssembly(
+        parts=(
+            lines_part(
+                "Plan continuation",
+                [body, "", "## Ledger", "", ledger],
+                kind="continuation",
+            ),
+        )
+    )
+
+
 @dataclass(frozen=True)
 class _Continuation:
     """What the continuation loop accumulated, and how it ended."""
@@ -4110,6 +4131,7 @@ def _continue_short_plan(
     on_text: Callable[[str], None] | None,
     attempts: int,
     initial_execution_id: str | None,
+    claude_session_id: str | None = None,
 ) -> _Continuation:
     """Resume a response that stopped short of its own declaration.
 
@@ -4141,31 +4163,37 @@ def _continue_short_plan(
         passes += 1
         if on_text is not None:
             on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
-        assembly = _continuation_assembly(
-            prompt_assembly,
-            topology=accumulated[TOPOLOGY_BLOCK],
-            decisions=accumulated.get(DECISIONS_BLOCK, "[]"),
-            ledger=_render_ledger(score),
+        ledger = _render_ledger(score)
+        assembly = (
+            _resumed_continuation_assembly(ledger=ledger)
+            if claude_session_id
+            else _continuation_assembly(
+                prompt_assembly,
+                topology=accumulated[TOPOLOGY_BLOCK],
+                decisions=accumulated.get(DECISIONS_BLOCK, "[]"),
+                ledger=ledger,
+            )
         )
+        runner_kwargs: dict[str, object] = {
+            "llm": llm_provider,
+            "model": model,
+            "command_name": "plan",
+            "parameters": {
+                "target": target,
+                "continuation_pass": passes,
+                "initial_execution_id": initial_execution_id or "",
+            },
+            "log_dir": log_dir,
+            "target": target,
+            "on_text": on_text,
+            "prompt_assembly": assembly,
+        }
+        if claude_session_id:
+            runner_kwargs["claude_resume_session_id"] = claude_session_id
         try:
             result = cast(
                 CompletedRun,
-                runner(
-                    assembly.rendered_text,
-                    target_dir,
-                    llm=llm_provider,
-                    model=model,
-                    command_name="plan",
-                    parameters={
-                        "target": target,
-                        "continuation_pass": passes,
-                        "initial_execution_id": initial_execution_id or "",
-                    },
-                    log_dir=log_dir,
-                    target=target,
-                    on_text=on_text,
-                    prompt_assembly=assembly,
-                ),
+                runner(assembly.rendered_text, target_dir, **runner_kwargs),
             )
         except Exception:
             break
@@ -4814,21 +4842,24 @@ def create_plan(
         unattended=unattended,
     )
 
+    selected_provider = (llm_provider or get_llm_provider()).lower()
+    claude_session_id = str(uuid4()) if selected_provider == "claude" else None
+    initial_runner_kwargs: dict[str, object] = {
+        "llm": llm_provider,
+        "model": model or prompt.model,
+        "command_name": "plan",
+        "parameters": {"target": target, "blueprint": str(blueprint_dir)},
+        "log_dir": log_dir,
+        "target": target,
+        "on_text": on_text,
+        "prompt_assembly": prompt_assembly,
+    }
+    if claude_session_id:
+        initial_runner_kwargs["claude_session_id"] = claude_session_id
     try:
         result = cast(
             CompletedRun,
-            run(
-                prompt_assembly.rendered_text,
-                target_dir,
-                llm=llm_provider,
-                model=model or prompt.model,
-                command_name="plan",
-                parameters={"target": target, "blueprint": str(blueprint_dir)},
-                log_dir=log_dir,
-                target=target,
-                on_text=on_text,
-                prompt_assembly=prompt_assembly,
-            ),
+            run(prompt_assembly.rendered_text, target_dir, **initial_runner_kwargs),
         )
     except Exception as exc:
         record = write_error_record(
@@ -5117,6 +5148,7 @@ def create_plan(
                     on_text=on_text,
                     attempts=continue_attempts,
                     initial_execution_id=exec_id,
+                    claude_session_id=claude_session_id,
                 )
                 latest_plan_score = continuation.score
                 if continuation.passes:

@@ -1344,6 +1344,23 @@ def test_claude_command_passes_effort_through(tmp_path):
     assert command[command.index("--effort") + 1] == "max"
 
 
+def test_claude_command_supports_explicit_session_start_and_resume(tmp_path):
+    from types import SimpleNamespace
+
+    from drydock.llm import _command
+
+    artifacts = SimpleNamespace(output_file=tmp_path / "out.txt")
+    started = _command("claude", tmp_path, artifacts, "sonnet", claude_session_id="start-session")
+    resumed = _command(
+        "claude", tmp_path, artifacts, "sonnet", claude_resume_session_id="resume-session"
+    )
+
+    assert started[started.index("--session-id") + 1] == "start-session"
+    assert "--resume" not in started
+    assert resumed[resumed.index("--resume") + 1] == "resume-session"
+    assert "--session-id" not in resumed
+
+
 def test_codex_command_maps_effort_to_its_config_key(tmp_path):
     """codex has no --effort flag; the level rides in as a config override."""
     command = _effort_command("codex", "high", tmp_path)

@@ -8,6 +8,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- `drydock plan` keeps Claude Blueprint continuation passes in one explicit Claude Code session
+  and sends only the changing ledger after the initial planning context. This preserves provider
+  cache reuse across batches while retaining the existing self-contained continuation path for
+  other providers.
+
 ### Added
 
 - 2026-09-14: `drydock score llm [<Target>]` reports successful LLM executions since the

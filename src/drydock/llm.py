@@ -180,6 +180,8 @@ def _command(
     allow_tools: bool = False,
     codex_sandbox: str = "danger-full-access",
     effort: str | None = None,
+    claude_session_id: str | None = None,
+    claude_resume_session_id: str | None = None,
 ) -> tuple[str, ...]:
     if llm == "claude":
         command = [
@@ -206,6 +208,10 @@ def _command(
             # --strict-mcp-config with no --mcp-config suppresses MCP tool descriptions
             # from the system prompt; without it, Claude emits tool-call XML as text.
             command.extend(("--tools", "", "--strict-mcp-config"))
+        if claude_session_id:
+            command.extend(("--session-id", claude_session_id))
+        if claude_resume_session_id:
+            command.extend(("--resume", claude_resume_session_id))
         if model:
             command.extend(("--model", model))
         if effort:
@@ -1490,6 +1496,8 @@ def run_prompt(
     prompt_assembly: PromptAssembly | None = None,
     full_cli: str | None = None,
     sub_command: str | None = None,
+    claude_session_id: str | None = None,
+    claude_resume_session_id: str | None = None,
 ) -> LlmResult:
     """Run a fully assembled prompt and persist reproducible execution evidence.
 
@@ -1508,6 +1516,10 @@ def run_prompt(
         "on",
     }
     selected = (llm or get_llm_provider()).lower()
+    if claude_session_id and claude_resume_session_id:
+        raise LlmConfigurationError("Claude session start and resume cannot be used together.")
+    if (claude_session_id or claude_resume_session_id) and selected != "claude":
+        raise LlmConfigurationError("Claude session options require the claude provider.")
     conflict = provider_model_conflict(selected, model)
     if conflict is not None:
         raise LlmConfigurationError(conflict)
@@ -1546,6 +1558,8 @@ def run_prompt(
         allow_tools,
         codex_sandbox=sandbox,
         effort=effort,
+        claude_session_id=claude_session_id,
+        claude_resume_session_id=claude_resume_session_id,
     )
     job_parameters = dict(parameters or {})
     logger = create_execution_logger(artifacts.execution_id, debug=debug)
