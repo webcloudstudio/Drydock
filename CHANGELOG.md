@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-15: `drydock_runner.sh` takes an optional third argument naming an import script, so a
+  Target goes from nothing to built in one command instead of stopping twice for a manual
+  `drydock import`. The runner owns the import mechanism and defines `import_compass`,
+  `import_spec`, `import_directory`, and `import_code`; the script is an ordinary bash script that
+  sets `SOURCE_DIR` and calls them. It is sourced from its own directory, so both `SOURCE_DIR` and
+  the paths given to the helpers may be relative to the script, and it can sit beside the project
+  it describes. The runner sources it only when the Target has no imported sources, so a rerun or
+  resume never re-imports; a missing script, an unset `SOURCE_DIR`, or a script that imports
+  nothing each fail with a naming diagnostic. Each helper prints the exact `drydock import`
+  command before running it. `Import_Marina.sh` is the worked example and the template to copy.
+
 - 2026-09-15: The two runner scripts move to the repository root as `drydock_runner.sh` and
   `drydock_build_loop.sh` (previously `helpers/drydock_runner.sh` and `helpers/build_loop.sh`).
   `drydock_runner.sh` now accepts only an enumerated list of models rather than inferring a
