@@ -7,7 +7,10 @@ LLM_PROVIDER=claude
 MODEL=haiku
 OPTS=(--llm-provider "$LLM_PROVIDER" --model "$MODEL")
 PLAN_OPTS=("${OPTS[@]}")
+ANALYZE_OPTS=("${OPTS[@]}")
 if [ "$MODEL" = "haiku" ]; then
+  # I dont trust haiku
+  ANALYZE_OPTS=(--llm-provider "$LLM_PROVIDER" --model sonnet )
   PLAN_OPTS=(--llm-provider "$LLM_PROVIDER" --model sonnet --lineage-model "$MODEL")
 fi
 
@@ -25,8 +28,8 @@ fi
 
 drydock init "$PROJECT" "${OPTS[@]}"
 drydock status "$PROJECT" "${OPTS[@]}"
-./b_Import_Marina.sh
-drydock analyze "$PROJECT" "${OPTS[@]}"
+$PROJECT_DIR/drydock/helpers/b_Import_Marina.sh
+drydock analyze "$PROJECT" "${ANALYZE_OPTS[@]}"
 drydock status "$PROJECT" "${OPTS[@]}"
 echo "REBUILDING COMPLETED"
 

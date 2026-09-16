@@ -39,7 +39,7 @@ then
 
 	drydock init $PROJECT $OPTS
 	drydock status $PROJECT $OPTS
-	./b_Import_Marina.sh
+	$PROJECT_DIR/drydock/helpers/b_Import_Marina.sh
 	drydock status $PROJECT $OPTS
 	drydock analyze $PROJECT $ANALYZE_OPTS
 	drydock status $PROJECT $OPTS

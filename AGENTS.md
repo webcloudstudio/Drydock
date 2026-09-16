@@ -68,7 +68,7 @@ resolution must work; the packaged copies are build-generated, not editable sour
 | `src/drydock/<capability>.py` | Importable application behavior; no argument parsing |
 | `src/drydock/config.py` | User-scoped configuration and configured root resolution |
 | `src/drydock/paths.py` | Source-tree and installed-resource resolution |
-| `src/drydock/llm.py` | Single adapter for subscription-authenticated CLI agent execution |
+| `src/drydock/llm.py` | Single adapter for CLI agent execution across all supported providers |
 | `bin/` | Locate the environment and invoke the package entry point; nothing else |
 | `Rigging/` | Drydock's own shared governed inputs |
 | `prompts/` | Versioned task prompts used by LLM-assisted commands |
@@ -105,9 +105,13 @@ by patching generated Target data.
 - Exit codes: `0` success, `1` operational failure, `2` usage error or deferred command.
 - Target Python `>=3.11`. Do not add Typer, Click, Rich, Pydantic, databases, or application
   frameworks without approval.
-- Never call an API-key-backed LLM provider. Use a subscription-authenticated CLI agent. Agent and
-  model are configuration, not policy — `--llm-provider` / `--model`, or `LLM_PROVIDER` /
-  `DRYDOCK_MODEL`. No vendor is required.
+- Provider and model are configuration, not policy — `--llm-provider` / `--model`, or
+  `LLM_PROVIDER` / `DRYDOCK_MODEL`. No vendor is required. Execution runs through a CLI agent
+  invoked as a subprocess, never through an in-process provider SDK.
+- Prefer subscription-authenticated providers. A metered, API-key-authenticated provider is
+  permitted only where this document names it: `gemini`. Adding another requires Ed's explicit
+  authorization and an amendment here. A provider that bills per token declares that cost in
+  `drydock config`, and its key is read from the environment, never stored in the repository.
 - When constructing an agent prompt, include only the relevant specification sections. Inject the
   full specification only for cross-cutting tasks.
 - Multiple contributors edit this directory concurrently. Inspect the current diff before
