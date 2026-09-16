@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-15: The two runner scripts move to the repository root as `drydock_runner.sh` and
+  `drydock_build_loop.sh` (previously `helpers/drydock_runner.sh` and `helpers/build_loop.sh`).
+  `drydock_runner.sh` now accepts only an enumerated list of models rather than inferring a
+  provider from any name that looked plausible, and rejects anything else by printing the list
+  with each model's cost, so a metered Gemini run is always a deliberate choice. It no longer
+  passes `--llm-provider`, since the model selects the provider.
+
 - 2026-09-15: `--llm-provider` is now optional. A recognized model name states which provider
   serves it, so `--model gemini-3.5-flash` runs on gemini, `--model gpt-5.6-luna` on codex, and
   `--model claude-opus-5` on claude, with no second flag. An inferred provider overrides the

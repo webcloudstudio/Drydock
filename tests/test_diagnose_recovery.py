@@ -261,7 +261,7 @@ if args[0] == "build":
 """
     )
     executable.chmod(0o755)
-    script = Path(__file__).resolve().parents[1] / "helpers" / "build_loop.sh"
+    script = Path(__file__).resolve().parents[1] / "drydock_build_loop.sh"
     env = dict(
         os.environ,
         PATH=f"{tmp_path}:{os.environ['PATH']}",

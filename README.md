@@ -182,13 +182,14 @@ Commander answers remain binding. An unresolved stall or failed repair returns e
 Use the recovery loop for unfinished Targets, including those already stalled before build:
 
 ```bash
-bash helpers/build_loop.sh "$PROJECT" --model gpt-5.6-luna
+bash drydock_build_loop.sh "$PROJECT" --model gpt-5.6-luna
 ```
 
 The loop builds available work and invokes diagnosis after a failed build or an unfinished
 Target with no buildable frontier. It stops if diagnosis fails or leaves the Target stalled.
 `DRYDOCK_RUNNER_MAX_BUILDS` bounds iterations (default 5). Provider/model flags reach both
-commands. `helpers/drydock_runner.sh` uses this loop after preparing the Target.
+commands. `drydock_runner.sh` uses this loop after preparing the Target, and accepts only a
+fixed list of models, printing that list with each model's cost when given anything else.
 The loop ends at verified build completion; scoring is separate. `status --ready` retains its
 boolean buildability contract, and `status --check` supplies the separate completion check.
 

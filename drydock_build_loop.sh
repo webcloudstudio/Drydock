@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 if [ "$#" -lt 1 ]; then
-  echo "Usage: build_loop.sh <Target> [build/diagnose provider and model flags]" >&2
+  echo "Usage: drydock_build_loop.sh <Target> [build/diagnose provider and model flags]" >&2
   exit 2
 fi
 target=$1
