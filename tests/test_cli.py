@@ -651,6 +651,19 @@ class TestHelpAndVersion:
         assert "init" in err
         assert "error: argument <command>: invalid choice: 'configure'" in err
 
+    def test_llm_provider_accepts_gemini(self, isolated_config):
+        rc, out, err = run_cli("--llm-provider", "gemini", "config", "show")
+
+        assert rc == 0, err
+        assert "llm_provider" in out
+
+    def test_llm_provider_rejects_an_unsupported_provider(self, isolated_config):
+        rc, _out, err = run_cli("--llm-provider", "bard", "config", "show")
+
+        assert rc == 2
+        assert "invalid choice: 'bard'" in err
+        assert "'gemini'" in err
+
     def test_command_prints_copyright_to_stdout(self, isolated_config):
         out, err = run_cli("config", "show")[1:]
         assert __copyright__ in out

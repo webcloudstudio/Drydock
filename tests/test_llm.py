@@ -1694,3 +1694,218 @@ def test_run_claude_records_but_does_not_fail_truncation_in_a_tool_run(tmp_path,
     record = _records(tmp_path)[-1]
     assert record["status"] == "succeeded"
     assert record["result"]["truncation"]["output_tokens"] == 32000
+
+
+def _gemini_payload(
+    *, response: str = "OK", error: dict | None = None, indent: int | None = 2
+) -> str:
+    """One ``gemini --output-format json`` transcript, shaped as the CLI really emits it.
+
+    The two-model split is not synthetic: a router model classifies the request before the
+    main model answers, and both are billed.
+    """
+    payload: dict = {"session_id": "decdcc88-dc5a-4f93-bb79-39e0f9ba044f"}
+    if error is not None:
+        payload["error"] = error
+        return json.dumps(payload, indent=indent)
+    payload["response"] = response
+    payload["stats"] = {
+        "models": {
+            "gemini-3.1-flash-lite": {
+                "api": {"totalRequests": 1, "totalErrors": 0, "totalLatencyMs": 4364},
+                "tokens": {
+                    "input": 2706,
+                    "prompt": 2706,
+                    "candidates": 34,
+                    "total": 3206,
+                    "cached": 0,
+                    "thoughts": 466,
+                    "tool": 0,
+                },
+                "roles": {"utility_router": {"totalRequests": 1}},
+            },
+            "gemini-3.5-flash": {
+                "api": {"totalRequests": 1, "totalErrors": 0, "totalLatencyMs": 1782},
+                "tokens": {
+                    "input": 9718,
+                    "prompt": 9718,
+                    "candidates": 1,
+                    "total": 9959,
+                    "cached": 512,
+                    "thoughts": 240,
+                    "tool": 0,
+                },
+                "roles": {"main": {"totalRequests": 1}},
+            },
+        },
+        "tools": {"totalCalls": 3, "totalSuccess": 3, "totalFail": 0},
+        "files": {"totalLinesAdded": 0, "totalLinesRemoved": 0},
+    }
+    return json.dumps(payload, indent=indent)
+
+
+def test_gemini_command_is_headless_and_read_only_without_tools(tmp_path):
+    artifacts = drydock.llm.ExecutionArtifacts.create(tmp_path, "analyze", "gemini")
+
+    command = drydock.llm._command(
+        "gemini", tmp_path, artifacts, model="gemini-3.5-flash", allow_tools=False
+    )
+
+    assert command[0] == "gemini"
+    # Headless gemini refuses an untrusted directory outright.
+    assert "--skip-trust" in command
+    assert ("--output-format", "json") == command[command.index("--output-format") :][:2]
+    assert command[command.index("--approval-mode") + 1] == "plan"
+    assert command[command.index("--model") + 1] == "gemini-3.5-flash"
+    # ``--prompt`` selects headless mode; the prompt text itself arrives on stdin.
+    assert command[-2:] == ("--prompt", "")
+
+
+def test_gemini_command_allows_writes_for_build(tmp_path):
+    artifacts = drydock.llm.ExecutionArtifacts.create(tmp_path, "build", "gemini")
+
+    command = drydock.llm._command("gemini", tmp_path, artifacts, model=None, allow_tools=True)
+
+    assert command[command.index("--approval-mode") + 1] == "yolo"
+    assert "--model" not in command
+
+
+def test_gemini_effort_is_not_passed_through(tmp_path):
+    """gemini exposes no reasoning-effort control; Drydock's ladder has nothing to map onto."""
+    artifacts = drydock.llm.ExecutionArtifacts.create(tmp_path, "analyze", "gemini")
+
+    command = drydock.llm._command(
+        "gemini", tmp_path, artifacts, model=None, allow_tools=False, effort="xhigh"
+    )
+
+    assert "xhigh" not in command
+
+
+def test_run_gemini_returns_response_and_sums_tokens_across_billed_models(tmp_path, monkeypatch):
+    raw = _gemini_payload()
+    captured = {}
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        return FakePopen(command, stdout_text=raw, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    result = run_prompt("Say OK.", tmp_path, llm="gemini", command_name="analyze")
+
+    assert result.ok
+    assert result.text == "OK"
+    # The model that served the ``main`` role, not the router that preceded it.
+    assert result.stats.model == "gemini-3.5-flash"
+    assert result.stats.input_tokens == 2706 + 9718
+    assert result.stats.cached_input_tokens == 512
+    # ``thoughts`` are generated and billed, so they count as output alongside ``candidates``.
+    assert result.stats.output_tokens == 34 + 466 + 1 + 240
+    assert result.stats.turns == 2
+    assert result.stats.duration_ms == 4364 + 1782
+    # gemini reports no per-call cost.
+    assert result.stats.cost_usd is None
+
+
+def test_gemini_transcript_survives_console_preamble_before_the_json(tmp_path, monkeypatch):
+    """The CLI prints unstructured notices before its payload; parsing starts at the brace."""
+    raw = "Warning: True color (24-bit) support not detected.\nRipgrep is not available.\n"
+    raw += _gemini_payload(response="Parsed anyway")
+
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda command, **kwargs: FakePopen(command, stdout_text=raw, **kwargs)
+    )
+
+    result = run_prompt("Say OK.", tmp_path, llm="gemini", command_name="analyze")
+
+    assert result.text == "Parsed anyway"
+    assert result.stats.input_tokens == 2706 + 9718
+
+
+def test_run_gemini_reports_error_payload_as_the_failure(tmp_path, monkeypatch):
+    raw = _gemini_payload(
+        error={
+            "type": "Error",
+            "message": "Resource has been exhausted (e.g. check quota).",
+            "code": 429,
+        }
+    )
+
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(command, stdout_text=raw, returncode=41, **kwargs),
+    )
+
+    result = run_prompt("Say OK.", tmp_path, llm="gemini", command_name="analyze")
+
+    assert not result.ok
+    assert result.returncode == 41
+    # The cause is only in the payload: a failed gemini run writes no stderr.
+    assert "rate limit" in _records(tmp_path)[-1]["result"]["error"].lower()
+
+
+def test_gemini_missing_key_is_reported_as_an_authentication_failure(tmp_path, monkeypatch, capsys):
+    raw = _gemini_payload(
+        error={
+            "type": "Error",
+            "message": (
+                "Please set an Auth method in your settings.json or specify one of the "
+                "following environment variables before running: GEMINI_API_KEY"
+            ),
+            "code": 41,
+        }
+    )
+
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(command, stdout_text=raw, returncode=41, **kwargs),
+    )
+
+    result = run_prompt("Say OK.", tmp_path, llm="gemini", command_name="analyze")
+
+    assert not result.ok
+    # gemini has no login subcommand: the remedy is an environment variable.
+    assert "export GEMINI_API_KEY=..." in capsys.readouterr().err
+
+
+def test_gemini_isolates_its_config_home(tmp_path, monkeypatch):
+    fake_home = tmp_path / "home"
+    real_gemini = fake_home / ".gemini"
+    real_gemini.mkdir(parents=True)
+    (real_gemini / "settings.json").write_text('{"theme": "user"}')
+    (real_gemini / "GEMINI.md").write_text("# ambient instructions\n")
+
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.setenv("GEMINI_API_KEY", "from-the-environment")
+    captured = {}
+
+    def fake_popen(command, **kwargs):
+        captured["env"] = kwargs["env"]
+        return FakePopen(command, stdout_text=_gemini_payload(), **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    run_prompt("Say OK.", tmp_path, llm="gemini", command_name="analyze")
+
+    isolated_home = Path(captured["env"]["HOME"])
+    assert isolated_home == fake_home / ".drydock" / "gemini-home"
+    assert isolated_home.is_dir()
+    # Nothing of the user's own gemini configuration follows the subprocess in.
+    assert not (isolated_home / "settings.json").exists()
+    assert not (isolated_home / "GEMINI.md").exists()
+    # Authentication is an environment variable, so isolating HOME must not break it.
+    assert captured["env"]["GEMINI_API_KEY"] == "from-the-environment"
+
+
+def test_provider_model_conflict_flags_gemini_with_claude_model():
+    conflict = drydock.llm.provider_model_conflict("gemini", "claude-opus-5")
+
+    assert conflict is not None
+    assert "--llm-provider claude" in conflict
+
+
+def test_provider_model_conflict_allows_gemini_models():
+    assert drydock.llm.provider_model_conflict("gemini", "gemini-3.5-flash") is None
+    assert drydock.llm.provider_model_conflict("gemini", "gemma-3") is None

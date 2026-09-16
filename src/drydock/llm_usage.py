@@ -10,6 +10,8 @@ Token accounting differs by provider and is normalized here:
 * Codex reports ``input_tokens`` inclusive of ``cached_input_tokens`` but does not expose a
   cache-write category.
 * Claude reports ``input_tokens`` exclusive of ``cache_read_input_tokens``.
+* Gemini reports ``input`` inclusive of ``cached``, summed across every model one call
+  bills, and exposes no cache-write category.
 
 Claude additionally reports ``cache_creation_input_tokens``.  That is a distinct
 provider-metered input category, retained separately so consumers can show it
@@ -46,7 +48,7 @@ __all__ = [
 
 # Providers whose reported ``input_tokens`` already contains the cache-read tokens.
 # Unknown providers are treated the same way, which never double-counts.
-_CACHE_INCLUDED_IN_INPUT = {"codex": True, "claude": False}
+_CACHE_INCLUDED_IN_INPUT = {"codex": True, "claude": False, "gemini": True}
 
 # Raw transcripts above this size are not scanned for activity counts; the summary stays
 # useful and a runaway transcript cannot stall a page render.
@@ -325,6 +327,9 @@ def scan_activity(path: Path, provider: str) -> RunActivity:
     except OSError:
         return RunActivity()
 
+    if provider.lower() == "gemini":
+        return _gemini_activity(path)
+
     tool_calls = 0
     file_changes = 0
     events = 0
@@ -369,6 +374,32 @@ def scan_activity(path: Path, provider: str) -> RunActivity:
         events=events,
         messages=messages,
         rate_limit_utilization=utilization,
+        scanned=True,
+    )
+
+
+def _gemini_activity(path: Path) -> RunActivity:
+    """Recover activity counts from gemini's single terminal JSON object.
+
+    Gemini reports no per-tool-call event, so the loop cannot be counted record by record.
+    Its ``stats`` block carries the same totals directly, and its line-change tallies stand
+    in for a file-change count it never itemizes.
+    """
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return RunActivity()
+    if not isinstance(payload, Mapping):
+        return RunActivity()
+    stats = payload.get("stats") if isinstance(payload.get("stats"), Mapping) else {}
+    tools = stats.get("tools") if isinstance(stats.get("tools"), Mapping) else {}
+    files = stats.get("files") if isinstance(stats.get("files"), Mapping) else {}
+    changed_lines = _int(files.get("totalLinesAdded")) + _int(files.get("totalLinesRemoved"))
+    return RunActivity(
+        tool_calls=_int(tools.get("totalCalls")),
+        file_changes=1 if changed_lines else 0,
+        events=1,
+        messages=1 if payload.get("response") else 0,
         scanned=True,
     )
 

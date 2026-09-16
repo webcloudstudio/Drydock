@@ -1,4 +1,4 @@
-"""Subscription-authenticated Claude and Codex CLI execution."""
+"""Claude, Codex, and Gemini CLI execution behind one adapter."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from typing import Any
 
 from drydock.artifact_blocks import pair_artifact_delimiters
 from drydock.config import (
+    LLM_PROVIDERS,
     get_codex_sandbox,
     get_effort,
     get_haiku_thinking_tokens,
@@ -121,7 +122,7 @@ TextCallback = Callable[[str], None]
 EventCallback = Callable[[Mapping[str, Any]], None]
 
 
-SUPPORTED_PROVIDERS = ("claude", "codex")
+SUPPORTED_PROVIDERS = LLM_PROVIDERS
 
 # Substrings that unambiguously identify which provider a model name belongs to.
 # Used only to catch a clear cross-provider mismatch (e.g. codex + opus) up front;
@@ -130,6 +131,7 @@ SUPPORTED_PROVIDERS = ("claude", "codex")
 _MODEL_FAMILY_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("claude", ("claude", "opus", "sonnet", "haiku", "fable")),
     ("codex", ("gpt-", "gpt5", "codex", "luna", "o3-", "o4-")),
+    ("gemini", ("gemini", "gemma")),
 )
 
 
@@ -271,6 +273,26 @@ def _command(
             command.extend(("-c", f"model_reasoning_effort={codex_effort(effort, model)}"))
         command.append("-")
         return tuple(command)
+    if llm == "gemini":
+        command = [
+            "gemini",
+            # Headless gemini refuses an untrusted workspace. Drydock supplies the working
+            # root itself, so the refusal only blocks a run Drydock already authorized.
+            "--skip-trust",
+            "--output-format",
+            "json",
+        ]
+        # ``plan`` is read-only: the model may inspect the working directory but cannot
+        # write it. That is the gemini equivalent of claude's empty tool list — text-only
+        # commands write their own artifacts and a writable agent would bypass them.
+        command.extend(("--approval-mode", "yolo" if allow_tools else "plan"))
+        if model:
+            command.extend(("--model", model))
+        # ``-p`` is what selects headless mode; the prompt itself arrives on stdin, which
+        # gemini prepends to the (empty) flag value. Passing a megabyte prompt as an argv
+        # entry would risk the argument-length limit.
+        command.extend(("--prompt", ""))
+        return tuple(command)
     raise LlmConfigurationError(f"Unsupported LLM: {llm!r}")
 
 
@@ -302,6 +324,26 @@ def _isolate_claude_env(process_env: dict[str, str]) -> None:
 
     process_env["HOME"] = str(build_home)
     process_env["CLAUDE_CONFIG_DIR"] = str(build_home)
+
+
+def _isolate_gemini_env(process_env: dict[str, str]) -> None:
+    """Point the ``gemini`` subprocess at a dedicated config home.
+
+    ``gemini`` reads ``~/.gemini`` for settings, extensions, skills, hooks, MCP servers, and
+    ``GEMINI.md`` context. None of it belongs in a Drydock run, whose prompt is assembled
+    deterministically. Overriding ``HOME`` leaves the CLI a clean tree it populates itself.
+
+    Authentication is unaffected: gemini reads ``GEMINI_API_KEY`` from the environment, which
+    is inherited rather than stored under the isolated home.
+
+    Mutates ``process_env`` in place.
+    """
+    build_home = (Path.home() / ".drydock" / "gemini-home").expanduser()
+    try:
+        build_home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except OSError:
+        return
+    process_env["HOME"] = str(build_home)
 
 
 def _is_haiku(model: str | None) -> bool:
@@ -815,7 +857,94 @@ def _print_prompt_breakdown(
         _announce(artifacts, line)
 
 
+def _gemini_payload(raw: str) -> dict[str, Any]:
+    """Return the single JSON object ``gemini --output-format json`` writes, or ``{}``.
+
+    Unlike claude and codex, gemini emits one pretty-printed object at the end of the run
+    rather than a stream of records, so the whole transcript is parsed at once. The CLI may
+    precede it with unstructured console notices, so parsing starts at the first brace.
+    """
+    text = raw.strip()
+    if not text:
+        return {}
+    start = text.find("{")
+    if start < 0:
+        return {}
+    decoder = json.JSONDecoder()
+    try:
+        payload, _end = decoder.raw_decode(text[start:])
+    except ValueError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _gemini_model_stats(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Reduce gemini's per-model accounting to one call's totals.
+
+    A single invocation bills more than one model: a small router model classifies the
+    request before the main model answers it. Every model's tokens are charged, so the
+    totals sum across all of them, while the reported model name is the one that served
+    the ``main`` role — naming the router would misreport what produced the response.
+    """
+    stats = payload.get("stats")
+    models = stats.get("models") if isinstance(stats, Mapping) else None
+    if not isinstance(models, Mapping):
+        return {}
+
+    total_input = cached = output = requests = latency = 0
+    main_model: str | None = None
+    busiest: tuple[int, str | None] = (-1, None)
+    for name, entry in models.items():
+        if not isinstance(entry, Mapping):
+            continue
+        tokens = entry.get("tokens") if isinstance(entry.get("tokens"), Mapping) else {}
+        api = entry.get("api") if isinstance(entry.get("api"), Mapping) else {}
+        # ``input`` already contains the cached prefix; ``candidates`` and ``thoughts`` are
+        # both generated and both billed as output.
+        model_input = _int_or_zero(tokens.get("input"))
+        total_input += model_input
+        cached += _int_or_zero(tokens.get("cached"))
+        output += _int_or_zero(tokens.get("candidates")) + _int_or_zero(tokens.get("thoughts"))
+        requests += _int_or_zero(api.get("totalRequests"))
+        latency += _int_or_zero(api.get("totalLatencyMs"))
+        roles = entry.get("roles")
+        if isinstance(roles, Mapping) and "main" in roles:
+            main_model = str(name)
+        if model_input > busiest[0]:
+            busiest = (model_input, str(name))
+
+    return {
+        "model": main_model or busiest[1],
+        "input_tokens": total_input,
+        "cached_input_tokens": cached,
+        "output_tokens": output,
+        "turns": requests or None,
+        "duration_ms": latency or None,
+    }
+
+
+def _int_or_zero(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _parse_gemini_result(raw: str) -> tuple[str, LlmStats]:
+    payload = _gemini_payload(raw)
+    totals = _gemini_model_stats(payload)
+    return str(payload.get("response") or ""), LlmStats(
+        model=totals.get("model"),
+        duration_ms=totals.get("duration_ms"),
+        turns=totals.get("turns"),
+        input_tokens=totals.get("input_tokens"),
+        cached_input_tokens=totals.get("cached_input_tokens"),
+        output_tokens=totals.get("output_tokens"),
+        # gemini reports no per-call cost and no separate cache-write category.
+        cost_usd=None,
+    )
+
+
 def _parse_result(llm: str, raw: str, artifacts: ExecutionArtifacts) -> tuple[str, LlmStats]:
+    if llm == "gemini":
+        return _parse_gemini_result(raw)
     events = _events(raw)
     final = next((event for event in reversed(events) if event.get("type") == "result"), {})
     usage: dict[str, Any] = {}
@@ -855,8 +984,28 @@ def _parse_result(llm: str, raw: str, artifacts: ExecutionArtifacts) -> tuple[st
     return text, stats
 
 
+def _gemini_error(raw: str) -> str | None:
+    """Return the failure gemini reported in its JSON payload, when it reported one.
+
+    A failed gemini run replaces ``response`` with an ``error`` object carrying the message
+    and the CLI's exit code, so the payload is the only place the cause appears.
+    """
+    error = _gemini_payload(raw).get("error")
+    if isinstance(error, Mapping):
+        message = str(error.get("message") or error.get("type") or "").strip()
+    else:
+        message = str(error or "").strip()
+    if not message:
+        return None
+    if _is_rate_limit_error(message):
+        return f"provider rate limit: {message}"
+    return f"provider error: {message}"
+
+
 def _provider_error(llm: str, raw: str) -> str | None:
     """Return a concise provider error from the raw stream when one is present."""
+    if llm == "gemini":
+        return _gemini_error(raw)
     events = _events(raw)
     final = next((event for event in reversed(events) if event.get("type") == "result"), {})
     if final.get("is_error") or final.get("api_error_status"):
@@ -919,6 +1068,8 @@ def _stream_error_message(events: list[dict[str, Any]]) -> str | None:
 
 _AUTHENTICATION_ERROR_MARKERS = (
     "authentication_failed",
+    # gemini, which has no login subcommand and fails this way when its key is unset.
+    "please set an auth method",
     "failed to authenticate",
     "oauth session expired",
     "could not be refreshed",
@@ -936,6 +1087,9 @@ def _login_command(llm: str) -> str:
         return "claude"
     if llm == "codex":
         return "codex login"
+    if llm == "gemini":
+        # gemini has no login subcommand: headless authentication is an environment variable.
+        return "export GEMINI_API_KEY=..."
     return f"{llm} login"
 
 
@@ -949,6 +1103,8 @@ _RATE_LIMIT_MARKERS = (
     "spend limit",
     "limit reached",
     "quota",
+    # gemini's wording for an exhausted per-minute or per-day allowance.
+    "resource has been exhausted",
 )
 
 
@@ -1670,6 +1826,8 @@ def run_prompt(
         _apply_claude_token_limits(process_env, model)
     elif selected == "codex":
         _isolate_codex_env(process_env)
+    elif selected == "gemini":
+        _isolate_gemini_env(process_env)
 
     try:
         returncode, raw_output, stderr, timed_out = _run_streaming_process(

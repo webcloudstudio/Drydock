@@ -7,7 +7,7 @@
 Specification driven. Agile. Test driven. Dependency-aware builds. Dedicated web console.
 Enterprise guardrails.
 
-**No API keys — Drydock runs on your existing Claude or Codex subscription.**
+**Runs on your existing Claude or Codex subscription; Gemini is supported as a metered alternative.**
 
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
@@ -74,7 +74,9 @@ All four built with gpt-5.6-luna on a Codex subscription. No API keys.  All buil
   - `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS/Linux),
   - `brew install uv`
   - `winget install --id=astral-sh.uv -e` (Windows)
-- [ ] `claude` or `codex` CLI, authenticated, in your `PATH` (claude --version, codex --version)
+- [ ] `claude`, `codex`, or `gemini` CLI, authenticated, in your `PATH`
+      (`claude --version`, `codex --version`, `gemini --version`). `gemini` authenticates
+      with `GEMINI_API_KEY` in the environment and bills per token.
 
 **Install Drydock**
 
@@ -89,7 +91,7 @@ drydock --version
 export PROJECTS="$HOME/projects" # main directory you keep your code/projects/git
 mkdir -p "$PROJECTS/drydock"     # the drydock workspace
 
-drydock config set llm_provider claude          # or codex
+drydock config set llm_provider claude          # or codex, or gemini
 drydock config set drydock_model sonnet         # or gpt-5.4 or other models
 drydock config set drydock_workspace "$PROJECTS/drydock"
 drydock config set drydock_build_directory "$PROJECTS"

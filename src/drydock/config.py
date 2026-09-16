@@ -287,6 +287,11 @@ def get_escalate_model(cli_override: str | None = None) -> str | None:
     return (value or "").strip() or None
 
 
+#: Every provider Drydock can execute. ``claude`` and ``codex`` authenticate against a
+#: subscription; ``gemini`` is metered and reads ``GEMINI_API_KEY`` from the environment.
+LLM_PROVIDERS = ("claude", "codex", "gemini")
+
+
 def get_llm_provider(cli_override: str | None = None) -> str:
     """Resolve the LLM provider for this invocation.
 
@@ -298,8 +303,10 @@ def get_llm_provider(cli_override: str | None = None) -> str:
     else:
         value, _source = _get("LLM_PROVIDER", "claude")
     provider = (value or "").lower().strip()
-    if provider not in {"claude", "codex"}:
-        raise ConfigurationError(f"Invalid LLM_PROVIDER: {value!r}\n  Valid values: claude, codex")
+    if provider not in LLM_PROVIDERS:
+        raise ConfigurationError(
+            f"Invalid LLM_PROVIDER: {value!r}\n  Valid values: {', '.join(LLM_PROVIDERS)}"
+        )
     return provider
 
 
@@ -616,9 +623,9 @@ def config_set(key: str, value: str) -> Path:
         stored_value = candidate.as_posix()
     elif upper == "LLM_PROVIDER":
         stored_value = value.lower()
-        if stored_value not in {"claude", "codex"}:
+        if stored_value not in LLM_PROVIDERS:
             raise ConfigurationError(
-                f"Invalid llm_provider: {value!r}\n  Valid values: claude, codex"
+                f"Invalid llm_provider: {value!r}\n  Valid values: {', '.join(LLM_PROVIDERS)}"
             )
     elif upper == "DRYDOCK_CODEX_SANDBOX":
         stored_value = value.lower()

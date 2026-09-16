@@ -22,7 +22,8 @@ _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 # Relative skills directory per agent: Claude Code reads .claude/skills; Codex CLI reads
 # .agents/skills (its predecessor ~/.codex/prompts mechanism is deprecated in favor of this
-# shared SKILL.md format).
+# shared SKILL.md format). Gemini CLI reads .agents/skills as well as its own .gemini/skills,
+# so it needs no entry of its own: the tree synced for codex already serves it.
 AGENT_SKILLS_DIRS: dict[str, str] = {
     "claude": ".claude/skills",
     "codex": ".agents/skills",
@@ -117,6 +118,7 @@ def sync_skills(
 
     Returns one :class:`SkillSyncResult` per agent key in :data:`AGENT_SKILLS_DIRS`
     (currently ``"claude"`` and ``"codex"``), each pointed at that agent's skills directory.
+    Gemini is served by the ``codex`` entry, whose ``.agents/skills`` tree it also reads.
     """
     source = source_root if source_root is not None else get_rigging_root() / "skills"
     return {

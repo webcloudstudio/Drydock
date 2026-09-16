@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 
 from drydock.llm_usage import (
+    RunActivity,
     build_report,
     iter_targets,
+    normalize_tokens,
     read_records,
     record_target,
     scan_activity,
@@ -335,3 +337,42 @@ def test_iter_targets_lists_each_target_once_in_first_seen_order() -> None:
     records = [_record(target="Alpha"), _record(target="Beta"), _record(target="Alpha")]
 
     assert list(iter_targets(records)) == ["Alpha", "Beta"]
+
+
+def test_gemini_input_is_treated_as_cache_inclusive():
+    """gemini's ``input`` already contains the cached prefix; adding it would double-count."""
+    total_input, cached, output = normalize_tokens(
+        "gemini",
+        {"input_tokens": 12424, "cached_input_tokens": 512, "output_tokens": 741},
+    )
+
+    assert (total_input, cached, output) == (12424, 512, 741)
+
+
+def test_gemini_activity_is_recovered_from_its_terminal_json_object(tmp_path):
+    """gemini emits no per-tool-call event, so the counts come from its ``stats`` block."""
+    raw = tmp_path / "run.raw.jsonl"
+    raw.write_text(
+        json.dumps({
+            "response": "done",
+            "stats": {
+                "tools": {"totalCalls": 4, "totalSuccess": 4, "totalFail": 0},
+                "files": {"totalLinesAdded": 12, "totalLinesRemoved": 3},
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    activity = scan_activity(raw, "gemini")
+
+    assert activity.scanned is True
+    assert activity.tool_calls == 4
+    assert activity.file_changes == 1
+    assert activity.messages == 1
+
+
+def test_gemini_activity_tolerates_an_unparsable_transcript(tmp_path):
+    raw = tmp_path / "run.raw.jsonl"
+    raw.write_text("Warning: no JSON here\n", encoding="utf-8")
+
+    assert scan_activity(raw, "gemini") == RunActivity()

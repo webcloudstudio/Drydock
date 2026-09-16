@@ -68,6 +68,10 @@ class TestConfigSet:
         config_set("llm_provider", "codex")
         assert get_llm_provider() == "codex"
 
+    def test_set_gemini_llm_provider(self, isolated_config):
+        config_set("llm_provider", "gemini")
+        assert get_llm_provider() == "gemini"
+
     def test_set_invalid_llm_provider_raises(self, isolated_config):
         with pytest.raises(ConfigurationError, match="Valid values"):
             config_set("llm_provider", "other")
@@ -333,6 +337,10 @@ class TestGetters:
 
     def test_llm_provider_cli_override_wins(self, isolated_config):
         assert get_llm_provider("codex") == "codex"
+
+    def test_llm_provider_accepts_gemini_from_the_environment(self, isolated_config, monkeypatch):
+        monkeypatch.setenv("LLM_PROVIDER", "gemini")
+        assert get_llm_provider() == "gemini"
 
     def test_llm_provider_environment_overrides_file(self, isolated_config, monkeypatch):
         config_set("llm_provider", "claude")

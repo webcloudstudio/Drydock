@@ -8,6 +8,21 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-09-15: `gemini` joins `claude` and `codex` as a selectable LLM provider, available through
+  `--llm-provider gemini`, `LLM_PROVIDER`, and `drydock config set llm_provider gemini`. It is the
+  first metered provider: it authenticates with `GEMINI_API_KEY` from the environment rather than a
+  subscription, so a run bills per token. Drydock invokes the `gemini` CLI headlessly with
+  `--approval-mode plan` for text-only commands and `--approval-mode yolo` for `drydock build`,
+  mirroring the read-only/writable split already applied to the other providers, and isolates the
+  subprocess under `~/.drydock/gemini-home` so no user setting, extension, MCP server, or
+  `GEMINI.md` reaches an assembled prompt. Gemini reports one terminal JSON object instead of an
+  event stream, and bills more than one model per call — a router model precedes the answering
+  model — so execution evidence sums tokens across every model billed and reports the model that
+  served the `main` role. Gemini exposes no reasoning-effort control, so `drydock_effort` does not
+  apply to it, and it reports no per-call cost.
+
 ### Changed
 
 - `drydock score llm` now renders cache writes as `—` when a provider does not report that token

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from drydock import __copyright__, __version__
-from drydock.config import DEFAULT_REPAIR_ATTEMPTS, settable_config_keys
+from drydock.config import DEFAULT_REPAIR_ATTEMPTS, LLM_PROVIDERS, settable_config_keys
 from drydock.errors import DrydockError, RecordedError, UsageError
 from drydock.stubs import not_implemented
 
@@ -226,7 +226,7 @@ def _add_llm_override_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--llm-provider",
         default=None,
-        choices=["claude", "codex"],
+        choices=list(LLM_PROVIDERS),
         metavar="<provider>",
         help="Override LLM provider (default: LLM_PROVIDER env or claude).",
     )
@@ -310,9 +310,10 @@ def _extract_global_overrides(
             if index + 1 >= len(argv):
                 raise UsageError("argument --llm-provider: expected one argument")
             provider = argv[index + 1]
-            if provider not in {"claude", "codex"}:
+            if provider not in LLM_PROVIDERS:
+                choices = ", ".join(repr(name) for name in LLM_PROVIDERS)
                 raise UsageError(
-                    f"argument --llm-provider: invalid choice: {provider!r} (choose from 'claude', 'codex')"
+                    f"argument --llm-provider: invalid choice: {provider!r} (choose from {choices})"
                 )
             overrides["llm_provider"] = provider
             index += 2
@@ -1646,7 +1647,7 @@ def _parse_document_args(tokens: list[str], *, prog: str) -> argparse.Namespace:
         "--llm-provider",
         dest="llm_provider",
         default=None,
-        choices=["claude", "codex"],
+        choices=list(LLM_PROVIDERS),
         metavar="<provider>",
     )
     parsed, extra = p.parse_known_args(tokens)
