@@ -91,8 +91,8 @@ drydock --version
 export PROJECTS="$HOME/projects" # main directory you keep your code/projects/git
 mkdir -p "$PROJECTS/drydock"     # the drydock workspace
 
-drydock config set llm_provider claude          # or codex, or gemini
-drydock config set drydock_model sonnet         # or gpt-5.4 or other models
+drydock config set drydock_model claude-opus-5  # required; the model selects the provider
+                                                # (gpt-5.6-luna -> codex, gemini-3.5-flash -> gemini)
 drydock config set drydock_workspace "$PROJECTS/drydock"
 drydock config set drydock_build_directory "$PROJECTS"
 drydock config show
@@ -182,7 +182,7 @@ Commander answers remain binding. An unresolved stall or failed repair returns e
 Use the recovery loop for unfinished Targets, including those already stalled before build:
 
 ```bash
-bash helpers/build_loop.sh "$PROJECT" --llm-provider codex --model gpt-5.6-luna
+bash helpers/build_loop.sh "$PROJECT" --model gpt-5.6-luna
 ```
 
 The loop builds available work and invokes diagnosis after a failed build or an unfinished

@@ -206,6 +206,8 @@ class TestImportIntentCli:
         source.write_text("# My Project\nThis is the intent.", encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path / "ws"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        # An empty config directory has no model, and Drydock no longer invents one.
+        monkeypatch.setenv("DRYDOCK_MODEL", "sonnet")
         monkeypatch.setattr(im, "run_prompt", lambda *a, **k: FakeRun())
 
         argv = ["import", "MyTarget", str(source), "--format", fmt, *extra_args]

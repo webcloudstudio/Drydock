@@ -79,9 +79,15 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Remove real env vars that could leak into tests
     for key in (
         "DRYDOCK_WORKSPACE",
+        "DRYDOCK_MODEL",
         "LLM_PROVIDER",
         "QUARTERDECK_PORT",
     ):
         monkeypatch.delenv(key, raising=False)
+
+    # Drydock has no default model: the model selects the provider, so guessing one would pick
+    # a vendor too. Every real workspace therefore sets one, and so does every test that is not
+    # specifically about an unset model.
+    monkeypatch.setenv("DRYDOCK_MODEL", "sonnet")
 
     return cfg_dir

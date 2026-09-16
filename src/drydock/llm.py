@@ -144,6 +144,26 @@ def _model_provider_family(model: str) -> str | None:
     return None
 
 
+def resolve_provider(cli_provider: str | None, model: str | None) -> str:
+    """Return the provider to run, given an optional explicit choice and the model.
+
+    A model name states which provider serves it, so naming the provider as well is
+    redundant: ``--model gemini-3.5-flash`` can only run on gemini. The model therefore
+    selects the provider whenever its family is recognized, and ``--llm-provider`` is needed
+    only for a model name Drydock does not recognize.
+
+    An explicit ``--llm-provider`` still wins, and is still checked against the model by
+    :func:`provider_model_conflict`, so a contradiction is reported rather than silently
+    resolved one way or the other.
+    """
+    if cli_provider:
+        return get_llm_provider(cli_provider)
+    family = _model_provider_family(model or "")
+    if family is not None:
+        return family
+    return get_llm_provider()
+
+
 def provider_model_conflict(llm: str | None, model: str | None) -> str | None:
     """Describe an invalid provider or a provider/model mismatch, else ``None``.
 

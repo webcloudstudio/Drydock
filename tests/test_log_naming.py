@@ -243,11 +243,25 @@ def test_log_llm_names_a_provider_only_when_one_runs(namespace, expected):
     assert _log_llm(argparse.Namespace(**namespace)) == expected
 
 
-def test_log_llm_falls_back_to_the_configured_provider(monkeypatch):
-    """With no override, the filename records whatever the configuration resolves to."""
+def test_log_llm_names_the_provider_the_model_selects(monkeypatch):
+    """The filename records the provider that will actually run, which the model decides."""
     import argparse
 
     args = argparse.Namespace(command="analyze", llm_provider=None, args=[])
+    # An inferred provider beats the configured one, because it is what will run.
+    monkeypatch.setenv("LLM_PROVIDER", "codex")
+    monkeypatch.setenv("DRYDOCK_MODEL", "claude-opus-5")
+    assert _log_llm(args) == "claude"
+    monkeypatch.setenv("DRYDOCK_MODEL", "gemini-3.5-flash")
+    assert _log_llm(args) == "gemini"
+
+
+def test_log_llm_falls_back_to_the_configured_provider(monkeypatch):
+    """An unrecognized model names no provider, so the configuration decides."""
+    import argparse
+
+    args = argparse.Namespace(command="analyze", llm_provider=None, args=[])
+    monkeypatch.setenv("DRYDOCK_MODEL", "some-unreleased-model")
     monkeypatch.setenv("LLM_PROVIDER", "codex")
     assert _log_llm(args) == "codex"
     monkeypatch.setenv("LLM_PROVIDER", "claude")

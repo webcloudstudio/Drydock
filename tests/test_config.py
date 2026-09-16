@@ -8,7 +8,6 @@ import pytest
 
 import drydock.config as config
 from drydock.config import (
-    DEFAULT_MODEL,
     DEFAULT_SANDBOX_MEM_LIMIT_MB,
     blueprint_dir_for,
     build_dir_for,
@@ -177,14 +176,17 @@ class TestConfigShow:
         default_build_root = tmp_path / "projects"
         default_build_root.mkdir()
         monkeypatch.setattr(config, "_default_build_directory", lambda: default_build_root)
+        monkeypatch.delenv("DRYDOCK_MODEL", raising=False)
         rows = config_show()
         by_name = {name: (value, source) for name, value, source in rows}
         assert by_name["drydock_build_directory"] == (str(default_build_root), "default")
         ws_value, ws_source = by_name["drydock_workspace"]
         assert ws_value != "(not set)"
         assert ws_source == "default"
-        assert by_name["drydock_model"][0] == "sonnet"
-        assert by_name["llm_provider"][0] == "claude"
+        # Neither has a built-in value any more: the model is required, and the provider
+        # follows from it.
+        assert by_name["drydock_model"][0] == "(not set)"
+        assert by_name["llm_provider"][0] == "(from the model)"
         assert by_name["prompt_warn_tokens"][0] == "50000"
         assert by_name["prompt_error_tokens"][0] == "120000"
         assert by_name["quarterdeck_port"][0] == "8080"
@@ -283,9 +285,11 @@ class TestWorkspaceResolution:
 
 
 class TestGetModel:
-    def test_default_is_sonnet(self, isolated_config):
-        assert get_model() == DEFAULT_MODEL
-        assert get_model() == "sonnet"
+    def test_an_unset_model_is_a_configuration_error(self, isolated_config, monkeypatch):
+        """There is no default: the model selects the provider, so guessing one picks a vendor."""
+        monkeypatch.delenv("DRYDOCK_MODEL", raising=False)
+        with pytest.raises(ConfigurationError, match="No LLM model is set"):
+            get_model()
 
     def test_cli_override_wins(self, isolated_config):
         assert get_model("opus") == "opus"
@@ -298,7 +302,8 @@ class TestGetModel:
         monkeypatch.setenv("DRYDOCK_MODEL", "haiku")
         assert get_model("opus") == "opus"
 
-    def test_config_set_persists(self, isolated_config):
+    def test_config_set_persists(self, isolated_config, monkeypatch):
+        monkeypatch.delenv("DRYDOCK_MODEL", raising=False)
         config_set("drydock_model", "opus")
         assert get_model() == "opus"
 

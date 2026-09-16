@@ -8,6 +8,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-09-15: `--llm-provider` is now optional. A recognized model name states which provider
+  serves it, so `--model gemini-3.5-flash` runs on gemini, `--model gpt-5.6-luna` on codex, and
+  `--model claude-opus-5` on claude, with no second flag. An inferred provider overrides the
+  configured `llm_provider`, which remains the fallback for a model name Drydock does not
+  recognize. An explicit `--llm-provider` still wins and is still checked against the model, so a
+  contradiction such as `--llm-provider claude --model gemini-3.5-flash` is reported rather than
+  silently resolved.
+
+- 2026-09-15: The model must now be specified. `drydock_model` has no built-in default, and an
+  unset model fails with a configuration error naming both remedies instead of falling back to
+  `sonnet`. The fallback became unsafe once the model selects the provider: a workspace
+  configured for one vendor would have quietly executed on another whenever the model went
+  unstated.
+
 ### Added
 
 - 2026-09-15: `gemini` joins `claude` and `codex` as a selectable LLM provider, available through

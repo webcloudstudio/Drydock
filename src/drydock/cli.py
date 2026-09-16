@@ -216,19 +216,33 @@ def _resume_stage_name(value: str) -> str:
     raise argparse.ArgumentTypeError(f"invalid choice: '{value}' (choose from {choices})")
 
 
+def _llm_provider(args) -> str:
+    """Resolve the provider for one invocation from ``--llm-provider`` and ``--model``.
+
+    ``--llm-provider`` is optional: a recognized model name names its own provider, so it is
+    needed only for a model Drydock does not recognize, or to state the provider explicitly.
+    """
+    from drydock.config import get_model
+    from drydock.llm import resolve_provider
+
+    return resolve_provider(
+        getattr(args, "llm_provider", None), get_model(getattr(args, "model", None))
+    )
+
+
 def _add_llm_override_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--model",
         default=None,
         metavar="<model>",
-        help="Override LLM model (default: the command's declared model or DRYDOCK_MODEL env/config).",
+        help="LLM model (default: DRYDOCK_MODEL env/config). Selects the provider.",
     )
     parser.add_argument(
         "--llm-provider",
         default=None,
         choices=list(LLM_PROVIDERS),
         metavar="<provider>",
-        help="Override LLM provider (default: LLM_PROVIDER env or claude).",
+        help="Override LLM provider. Optional: a recognized --model selects its own provider.",
     )
     from drydock.config import EFFORT_LEVELS
 
@@ -559,7 +573,7 @@ def _resolved_repair_attempts(args: argparse.Namespace) -> int:
 
 def cmd_uat(args: argparse.Namespace) -> int:
     """Run known project fixtures through an isolated unattended lifecycle."""
-    from drydock.config import get_effort, get_llm_provider, get_model, get_workspace
+    from drydock.config import get_effort, get_model, get_workspace
     from drydock.uat import make_streaming_runner, render_summary, run_uat
     from drydock.uat_console import StepConsole
 
@@ -618,7 +632,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
             selected=args.Project,
             uat_root=uat_root,
             model=get_model(getattr(args, "model", None)),
-            provider=get_llm_provider(getattr(args, "llm_provider", None)),
+            provider=_llm_provider(args),
             effort=get_effort(getattr(args, "effort", None)),
             max_build_passes=args.max_build_passes,
             repair_attempts=repair_attempts,
@@ -715,7 +729,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_diagnose(args: argparse.Namespace) -> int:
     """Diagnose a Target's latest run and offer the amendments the diagnosis proposes."""
-    from drydock.config import get_llm_provider, get_model
+    from drydock.config import get_model
     from drydock.diagnose_command import parse_mode, run
 
     mode = parse_mode(apply_all=args.apply_all, no_apply=args.no_apply)
@@ -723,7 +737,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         args.Target or "",
         run_stamp=args.run_stamp,
         mode=mode,
-        llm=get_llm_provider(getattr(args, "llm_provider", None)),
+        llm=_llm_provider(args),
         model=get_model(getattr(args, "model", None)),
     )
     return result.exit_code
@@ -744,7 +758,6 @@ def cmd_validate(args: argparse.Namespace) -> int:
 def cmd_rigging_compact(args: argparse.Namespace) -> int:
     from drydock.config import (
         blueprint_dir_for,
-        get_llm_provider,
         get_model,
         get_workspace,
         require_target_dir,
@@ -775,7 +788,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
 
     log_dir = get_workspace() / "logs"
     model = get_model(getattr(args, "model", None))
-    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    llm_provider = _llm_provider(args)
 
     def report(item: CompactItem) -> None:
         src = item.source.name
@@ -828,13 +841,13 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
 
 
 def cmd_refit(args: argparse.Namespace) -> int:
-    from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
+    from drydock.config import get_model, get_workspace, require_target_dir
     from drydock.refit import RefitItem, refit_target
 
     target_dir = require_target_dir(args.Target)
     log_dir = get_workspace() / "logs"
     model = get_model(getattr(args, "model", None))
-    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    llm_provider = _llm_provider(args)
 
     def report(item: RefitItem) -> None:
         name = item.ticket.name
@@ -943,13 +956,13 @@ def cmd_rigging_add(args: argparse.Namespace) -> int:
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
-    from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
+    from drydock.config import get_model, get_workspace, require_target_dir
     from drydock.project_status import record_status
     from drydock.quarterdeck_state import commanders_chair_command
 
     target_dir = require_target_dir(args.Target)
     model = get_model(getattr(args, "model", None))
-    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    llm_provider = _llm_provider(args)
     log_dir = get_workspace() / "logs"
     print(f"Analyzing Blueprint: {args.Target}")
     print("Running analysis...", flush=True)
@@ -1131,7 +1144,7 @@ def _fail_standing_plan(target: str, target_dir: Path, result) -> None:
 
 def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
     """Make unrunnable criteria runnable in one pass, then report what is still broken."""
-    from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
+    from drydock.config import get_model, get_workspace, require_target_dir
     from drydock.plan_repair import render, repair
     from drydock.plan_verify import render as render_verify
     from drydock.plan_verify import verify
@@ -1142,7 +1155,7 @@ def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
         target,
         target_dir,
         model=get_model(getattr(args, "model", None)),
-        llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+        llm_provider=_llm_provider(args),
         log_dir=get_workspace() / "logs",
         on_text=lambda text: print(text, end="", flush=True),
     )
@@ -1174,7 +1187,6 @@ def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
 def cmd_plan(args: argparse.Namespace) -> int:
     from drydock.config import (
         get_diagnose_enabled,
-        get_llm_provider,
         get_model,
         get_target_directory,
         get_workspace,
@@ -1212,7 +1224,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         if getattr(args, "lineage_model", None) is not None
         else model
     )
-    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    llm_provider = _llm_provider(args)
     from drydock.llm import provider_model_conflict
 
     if conflict := provider_model_conflict(llm_provider, lineage_model):
@@ -1321,7 +1333,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
 def cmd_survey(args: argparse.Namespace) -> int:
     from pathlib import Path as _Path
 
-    from drydock.config import get_llm_provider, get_model, require_target_dir
+    from drydock.config import get_model, require_target_dir
     from drydock.errors import UsageError
     from drydock.survey import (
         import_specs,
@@ -1333,7 +1345,7 @@ def cmd_survey(args: argparse.Namespace) -> int:
 
     target_dir = require_target_dir(args.Target)
     model = get_model(getattr(args, "model", None))
-    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    llm_provider = _llm_provider(args)
     if not target_dir.is_dir():
         raise UsageError(f"Target not found: {args.Target}")
 
@@ -1380,13 +1392,13 @@ def cmd_survey(args: argparse.Namespace) -> int:
 
 
 def cmd_prompt_review(args: argparse.Namespace) -> int:
-    from drydock.config import get_llm_provider, get_model, get_workspace
+    from drydock.config import get_model, get_workspace
     from drydock.paths import get_repo_root
     from drydock.prompt_review import review_prompt
 
     print(f"Reviewing prompt: {args.Component}")
     model = get_model(getattr(args, "model", None))
-    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    llm_provider = _llm_provider(args)
     log_dir = get_workspace() / "logs"
     result = review_prompt(args.Component, model=model, llm_provider=llm_provider, log_dir=log_dir)
     repo_root = get_repo_root()
@@ -1520,7 +1532,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             return 0
 
         if fmt in {"compass", "intent"}:
-            from drydock.config import get_llm_provider, get_model, get_workspace
+            from drydock.config import get_model, get_workspace
             from drydock.import_markdown import import_intent
 
             result = import_intent(
@@ -1529,7 +1541,7 @@ def cmd_import(args: argparse.Namespace) -> int:
                 td,
                 force=bool(getattr(args, "force", False)),
                 model=get_model(getattr(args, "model", None)),
-                llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+                llm_provider=_llm_provider(args),
                 log_dir=get_workspace() / "logs",
             )
             print_import_result(result.source, result.imported, result.blueprint_dir)
@@ -1657,14 +1669,14 @@ def _parse_document_args(tokens: list[str], *, prog: str) -> argparse.Namespace:
 
 
 def cmd_document_generate(args: argparse.Namespace) -> int:
-    from drydock.config import get_llm_provider, get_model, get_target_directory
+    from drydock.config import get_model, get_target_directory
     from drydock.target_documentation import generate_documentation
 
     result = generate_documentation(
         args.Target,
         get_target_directory(),
         model=get_model(getattr(args, "model", None)),
-        llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+        llm_provider=_llm_provider(args),
     )
     print(f"Generated documentation: {result.docs_dir}")
     for path in result.files:
@@ -1719,14 +1731,14 @@ def cmd_target_document_assemble(args: argparse.Namespace) -> int:
 
 
 def cmd_document_pipeline(args: argparse.Namespace) -> int:
-    from drydock.config import get_llm_provider, get_model, get_target_directory
+    from drydock.config import get_model, get_target_directory
     from drydock.target_documentation import document_target
 
     generated, assembled = document_target(
         args.Target,
         get_target_directory(),
         model=get_model(getattr(args, "model", None)),
-        llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+        llm_provider=_llm_provider(args),
         theme=getattr(args, "theme", None),
     )
     print(f"Generated documentation: {generated.docs_dir}")
@@ -2143,7 +2155,6 @@ def cmd_build(args: argparse.Namespace) -> int:
     )
     from drydock.config import (
         get_escalate_model,
-        get_llm_provider,
         get_model,
         get_workspace,
         require_target_dir,
@@ -2164,7 +2175,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     if getattr(args, "continue_", False) and getattr(args, "reset", False):
         raise UsageError("--continue and --reset are mutually exclusive.")
     model = get_model(getattr(args, "model", None))
-    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    llm_provider = _llm_provider(args)
     from drydock.llm import provider_model_conflict
 
     # Fail before staging assets or calling the agent when the resolved provider and
@@ -2919,12 +2930,8 @@ def cmd_score_report(target: str) -> int:
 
 
 def cmd_score_release(target: str) -> int:
-    from drydock.config import (
-        get_llm_provider,
-        get_model,
-        get_workspace,
-        require_target_dir,
-    )
+    from drydock.config import get_model, get_workspace, require_target_dir
+    from drydock.llm import resolve_provider
     from drydock.project_status import record_status
     from drydock.quarterdeck_state import refresh_commanders_chair
     from drydock.score import emit_failure, score_release
@@ -2934,7 +2941,7 @@ def cmd_score_release(target: str) -> int:
         target,
         target_dir,
         model=get_model(None),
-        llm_provider=get_llm_provider(None),
+        llm_provider=resolve_provider(None, get_model(None)),
         log_dir=get_workspace() / "logs",
         on_text=_stream_status_only,
     )
@@ -2984,13 +2991,8 @@ def cmd_score_spec(
     Normal output is the inventory line and the findings table; ``--debug`` prints the full
     scorecard. Either way the complete report is written to the Target.
     """
-    from drydock.config import (
-        get_effort,
-        get_llm_provider,
-        get_model,
-        get_workspace,
-        require_target_dir,
-    )
+    from drydock.config import get_effort, get_model, get_workspace, require_target_dir
+    from drydock.llm import resolve_provider
     from drydock.score_spec import render_console_report, score_spec
 
     target_dir = require_target_dir(target)
@@ -2999,7 +3001,7 @@ def cmd_score_spec(
         target_dir,
         model=get_model(model),
         effort=get_effort(effort),
-        llm_provider=get_llm_provider(llm_provider),
+        llm_provider=resolve_provider(llm_provider, get_model(model)),
         log_dir=get_workspace() / "logs",
         debug=debug,
     )
@@ -4915,7 +4917,7 @@ def _standoff_diagnosis(
     Advisory only: any failure here is swallowed so the original error and exit code stand.
     """
     try:
-        from drydock.config import get_diagnose_enabled, get_llm_provider, get_model, get_workspace
+        from drydock.config import get_diagnose_enabled, get_model, get_workspace
         from drydock.diagnose import diagnose, render_standoff_banner, should_diagnose
 
         if getattr(args, "no_diagnose", False) or not get_diagnose_enabled():
@@ -4935,7 +4937,7 @@ def _standoff_diagnosis(
             target_dir = Path.cwd()
         tokens = argv if argv is not None else sys.argv[1:]
         command = "drydock " + " ".join(tokens)
-        llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+        llm_provider = _llm_provider(args)
         model = get_model(getattr(args, "model", None))
 
         print(
@@ -5076,31 +5078,37 @@ def _invocation_uses_llm(args: argparse.Namespace) -> bool:
     return False
 
 
+def _operand_value(args: argparse.Namespace, flag: str) -> str | None:
+    """Return ``flag``'s value from a subcommand's raw operand list, when it carries one.
+
+    ``score`` declares no override flags of its own, so its overrides arrive as operands.
+    """
+    tokens = list(getattr(args, "args", None) or [])
+    for index, token in enumerate(tokens):
+        if token.startswith(f"{flag}="):
+            return token.split("=", 1)[1]
+        if token == flag and index + 1 < len(tokens):
+            return tokens[index + 1]
+    return None
+
+
 def _log_llm(args: argparse.Namespace) -> str:
     """Resolve the LLM provider this invocation will use, for the log filename.
 
     An LLM-assisted command records the provider in force — the ``--llm-provider`` override when
-    given, otherwise the configured default — so its transcript names the same provider as the
-    evidence files beneath it. A deterministic command names none: no model runs, so claiming one
-    in the filename would be false.
+    given, otherwise the one the model selects, otherwise the configured default — so its
+    transcript names the same provider as the evidence files beneath it. A deterministic command
+    names none: no model runs, so claiming one in the filename would be false.
     """
     if not _invocation_uses_llm(args):
         return ""
-    override = getattr(args, "llm_provider", None)
-    if not override:
-        # ``score`` declares no override flag of its own; the operand list still carries one.
-        tokens = list(getattr(args, "args", None) or [])
-        for index, token in enumerate(tokens):
-            if token.startswith("--llm-provider="):
-                override = token.split("=", 1)[1]
-                break
-            if token == "--llm-provider" and index + 1 < len(tokens):
-                override = tokens[index + 1]
-                break
+    override = getattr(args, "llm_provider", None) or _operand_value(args, "--llm-provider")
+    model = getattr(args, "model", None) or _operand_value(args, "--model")
     try:
-        from drydock.config import get_llm_provider
+        from drydock.config import get_model
+        from drydock.llm import resolve_provider
 
-        return get_llm_provider(override)
+        return resolve_provider(override, get_model(model))
     except Exception:  # noqa: BLE001 - an unnamable provider must not cost us the transcript
         return ""
 

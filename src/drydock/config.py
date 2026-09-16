@@ -67,7 +67,6 @@ _NUMERIC_BOUND_KEYS = {
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}
 
-DEFAULT_MODEL = "sonnet"
 
 # Reasoning effort, lowest to highest, in Drydock's own vocabulary. Providers map onto this
 # ladder; a level a provider cannot serve clamps down to the nearest one it can, never up.
@@ -227,12 +226,22 @@ def change_ticket_directory_for(target_dir: Path) -> Path:
 def get_model(cli_override: str | None = None) -> str:
     """Resolve the LLM model for this invocation.
 
-    Resolution order: cli_override → DRYDOCK_MODEL (env or config file) → ``sonnet``.
+    Resolution order: cli_override → DRYDOCK_MODEL (env or config file). There is no built-in
+    default. The model now selects the provider, so falling back to one would silently choose
+    a provider as well — a run configured for one vendor would quietly execute on another.
+    An unset model is a configuration error instead.
     """
     if cli_override:
         return cli_override.strip()
-    value, _source = _get("DRYDOCK_MODEL", DEFAULT_MODEL)
-    return (value or DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    value, _source = _get("DRYDOCK_MODEL")
+    model = (value or "").strip()
+    if not model:
+        raise ConfigurationError(
+            "No LLM model is set.\n"
+            "  Pass --model <model>, or set one for every run:\n"
+            "    drydock config set drydock_model <model>"
+        )
+    return model
 
 
 def invalid_effort_message(label: str, value: str) -> str:
@@ -527,10 +536,10 @@ def config_show() -> list[tuple[str, str, str]]:
             "DRYDOCK_CHANGE_TICKET_DIRECTORY",
             str(DEFAULT_CHANGE_TICKET_DIRECTORY),
         ),
-        ("drydock_model", "DRYDOCK_MODEL", DEFAULT_MODEL),
+        ("drydock_model", "DRYDOCK_MODEL", "(not set)"),
         ("drydock_effort", "DRYDOCK_EFFORT", "(provider default)"),
         ("drydock_build_escalate_model", "DRYDOCK_BUILD_ESCALATE_MODEL", "(not set)"),
-        ("llm_provider", "LLM_PROVIDER", "claude"),
+        ("llm_provider", "LLM_PROVIDER", "(from the model)"),
         ("codex_sandbox", "DRYDOCK_CODEX_SANDBOX", DEFAULT_CODEX_SANDBOX),
         ("prompt_warn_tokens", "PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS)),
         ("prompt_error_tokens", "PROMPT_ERROR_TOKENS", str(DEFAULT_PROMPT_ERROR_TOKENS)),

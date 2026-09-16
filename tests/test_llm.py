@@ -1909,3 +1909,29 @@ def test_provider_model_conflict_flags_gemini_with_claude_model():
 def test_provider_model_conflict_allows_gemini_models():
     assert drydock.llm.provider_model_conflict("gemini", "gemini-3.5-flash") is None
     assert drydock.llm.provider_model_conflict("gemini", "gemma-3") is None
+
+
+def test_provider_is_inferred_from_the_model(isolated_config):
+    """A recognized model names its own provider, so --llm-provider is unnecessary."""
+    assert drydock.llm.resolve_provider(None, "gemini-3.5-flash") == "gemini"
+    assert drydock.llm.resolve_provider(None, "gpt-5.6-luna") == "codex"
+    assert drydock.llm.resolve_provider(None, "claude-opus-5") == "claude"
+
+
+def test_inferred_provider_beats_the_configured_one(isolated_config, monkeypatch):
+    """The model is the specific instruction; the configured provider is only a fallback."""
+    monkeypatch.setenv("LLM_PROVIDER", "codex")
+
+    assert drydock.llm.resolve_provider(None, "gemini-3.5-flash") == "gemini"
+
+
+def test_unrecognized_model_falls_back_to_the_configured_provider(isolated_config, monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+
+    assert drydock.llm.resolve_provider(None, "some-unreleased-model") == "gemini"
+
+
+def test_explicit_provider_wins_over_the_model(isolated_config):
+    """An explicit choice is still honored here; the conflict check reports the contradiction."""
+    assert drydock.llm.resolve_provider("claude", "gemini-3.5-flash") == "claude"
+    assert drydock.llm.provider_model_conflict("claude", "gemini-3.5-flash") is not None
