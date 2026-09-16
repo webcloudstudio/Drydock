@@ -8,7 +8,31 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Fixed
+
+- 2026-09-16: A failed LLM run now names its cause. Commands reported only `LLM execution
+  failed`, leaving the provider's explanation in an evidence file the operator had no reason to
+  suspect existed; a retired model, an expired key, and a rate limit were indistinguishable. The
+  gemini adapter now also reads the error payload from stderr, where the CLI writes it when a run
+  fails before producing any response and stdout stays empty — the case that hid the withdrawal of
+  `gemini-2.5-flash-lite` behind a bare exit code. `llm.failure_reason` and `llm.failure_detail`
+  render the cause, preferring Drydock's own judgement, then the provider's structured error, then
+  the first informative stderr line, with console notices and stack frames dropped. `drydock
+  import --format compass`, `drydock analyze`, and plan repair report through it.
+
 ### Changed
+
+- 2026-09-16: Import format detection no longer inspects another tool's layout. `--format auto`
+  previously looked for a Spec Kit `.specify/` directory, which was unreachable — `auto` rejects
+  directories before detection runs, and `.specify` is only ever a directory — and the usage error
+  it raised named `speckit` as a remedy. Importing Spec Kit sources still works when `--format
+  speckit` is named explicitly, so the capability is the operator's stated intent rather than
+  something Drydock inferred.
+
+- 2026-09-16: `drydock_runner.sh` accepts only `gemini-3.5-flash-lite` among Gemini models.
+  `gemini-2.5-flash-lite` is withdrawn from new API projects and retires 2026-10-20, and
+  `gemini-3.1-flash-lite` is unverified; both were offered with quoted prices that implied they
+  had been tested.
 
 - 2026-09-15: `drydock_runner.sh` takes an optional third argument naming an import script, so a
   Target goes from nothing to built in one command instead of stopping twice for a manual

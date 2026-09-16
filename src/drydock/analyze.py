@@ -36,7 +36,7 @@ from drydock.exclude_files import (
     ensure_exclude_file,
     load_excluded_filenames,
 )
-from drydock.llm import run_prompt
+from drydock.llm import failure_detail, run_prompt
 from drydock.metadata import (
     METADATA_NAME,
     parse_metadata,
@@ -1129,7 +1129,11 @@ def analyze(
         )
 
     if not result.ok or not result.text.strip():
-        return _fail("LLM execution failed")
+        return _fail(
+            failure_detail(result)
+            if not result.ok
+            else "LLM execution succeeded but returned no output"
+        )
 
     try:
         (

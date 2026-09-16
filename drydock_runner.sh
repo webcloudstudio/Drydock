@@ -16,16 +16,12 @@ VALID_MODELS=(
   gpt-5.6-sol
   gpt-5.6-terra
   # Gemini — metered, billed per token
-  gemini-2.5-flash-lite
-  gemini-3.1-flash-lite
   gemini-3.5-flash-lite
 )
 
 model_cost() {
   case "$1" in
-    gemini-2.5-flash-lite) echo '$0.10/1M input, metered' ;;
-    gemini-3.1-flash-lite) echo '$0.25/1M input, metered' ;;
-    gemini-3.5-flash-lite) echo 'price unconfirmed, metered' ;;
+    gemini-3.5-flash-lite) echo 'metered, billed per token' ;;
     *) echo 'subscription' ;;
   esac
 }

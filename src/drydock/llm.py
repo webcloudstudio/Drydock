@@ -84,6 +84,10 @@ class LlmResult:
     record: Mapping[str, Any] = field(repr=False)
     # Set when the provider exited cleanly but Drydock judged the response unusable.
     failure: str | None = None
+    # The provider's own account of why it failed, extracted from its structured output.
+    # Kept apart from ``stderr`` so callers can report the cause without the console noise
+    # and stack frames that surround it.
+    provider_error: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -882,20 +886,28 @@ def _gemini_payload(raw: str) -> dict[str, Any]:
 
     Unlike claude and codex, gemini emits one pretty-printed object at the end of the run
     rather than a stream of records, so the whole transcript is parsed at once. The CLI may
-    precede it with unstructured console notices, so parsing starts at the first brace.
+    precede it with unstructured console notices and, on a failure, a stack trace whose final
+    frame ends in a brace-delimited fragment that is not JSON. Every brace is therefore tried
+    in turn and the object carrying ``response`` or ``error`` wins, so a leading fragment
+    cannot mask the payload behind it.
     """
     text = raw.strip()
     if not text:
         return {}
-    start = text.find("{")
-    if start < 0:
-        return {}
     decoder = json.JSONDecoder()
-    try:
-        payload, _end = decoder.raw_decode(text[start:])
-    except ValueError:
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    fallback: dict[str, Any] = {}
+    start = text.find("{")
+    while start >= 0:
+        try:
+            payload, _end = decoder.raw_decode(text[start:])
+        except ValueError:
+            payload = None
+        if isinstance(payload, dict):
+            if "response" in payload or "error" in payload:
+                return payload
+            fallback = fallback or payload
+        start = text.find("{", start + 1)
+    return fallback
 
 
 def _gemini_model_stats(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -1004,13 +1016,18 @@ def _parse_result(llm: str, raw: str, artifacts: ExecutionArtifacts) -> tuple[st
     return text, stats
 
 
-def _gemini_error(raw: str) -> str | None:
+def _gemini_error(raw: str, stderr: str = "") -> str | None:
     """Return the failure gemini reported in its JSON payload, when it reported one.
 
     A failed gemini run replaces ``response`` with an ``error`` object carrying the message
-    and the CLI's exit code, so the payload is the only place the cause appears.
+    and the CLI's exit code. When the run fails before any response is produced the CLI writes
+    that payload to stderr and leaves stdout empty, so both streams are searched: a model that
+    no longer exists is reported only on stderr, and losing it there leaves the operator with a
+    bare exit code.
     """
     error = _gemini_payload(raw).get("error")
+    if not error and stderr:
+        error = _gemini_payload(stderr).get("error")
     if isinstance(error, Mapping):
         message = str(error.get("message") or error.get("type") or "").strip()
     else:
@@ -1022,10 +1039,67 @@ def _gemini_error(raw: str) -> str | None:
     return f"provider error: {message}"
 
 
-def _provider_error(llm: str, raw: str) -> str | None:
+# Console notices every run emits, carrying no information about a failure. Dropping them is
+# what lets the real cause be the first thing an operator reads.
+_STDERR_NOISE: tuple[str, ...] = (
+    "warning: true color",
+    "ripgrep is not available",
+)
+
+
+def _stderr_reason(stderr: str) -> str | None:
+    """Return the first stderr line that explains a failure, ignoring routine notices.
+
+    Stack frames are dropped: the message above them is the cause, and the frames below it are
+    the provider CLI's internals, which no Drydock operator can act on.
+    """
+    for line in stderr.splitlines():
+        line = line.strip()
+        if not line or line.startswith("at ") or line in "{}":
+            continue
+        if any(marker in line.lower() for marker in _STDERR_NOISE):
+            continue
+        return line
+    return None
+
+
+def failure_reason(result: LlmResult) -> str | None:
+    """Return the most specific available explanation for a failed run, or ``None``.
+
+    Prefers Drydock's own judgement, then the provider's structured error, then the first
+    informative stderr line. Long messages are truncated: the first sentence of a provider
+    error names the problem, and the evidence files hold the rest.
+
+    Fields are read defensively. LLM-assisted commands are tested through injected fake
+    runners, which return result-like stand-ins rather than a full ``LlmResult``; a shared
+    reporting helper must not oblige every fake in the suite to grow a field it never sets.
+    """
+    reason = (
+        getattr(result, "failure", None)
+        or getattr(result, "provider_error", None)
+        or _stderr_reason(getattr(result, "stderr", "") or "")
+    )
+    if not reason:
+        return None
+    reason = " ".join(reason.split())
+    return reason if len(reason) <= 400 else reason[:397] + "..."
+
+
+def failure_detail(result: LlmResult, summary: str = "LLM execution failed") -> str:
+    """Return ``summary`` with the cause appended, for reporting a failed run to an operator.
+
+    A bare summary tells an operator only that something went wrong, leaving the cause in an
+    evidence file they have no reason to suspect exists. A retired model, an expired key, and a
+    rate limit are all actionable, and all indistinguishable without this.
+    """
+    reason = failure_reason(result)
+    return f"{summary}: {reason}" if reason else summary
+
+
+def _provider_error(llm: str, raw: str, stderr: str = "") -> str | None:
     """Return a concise provider error from the raw stream when one is present."""
     if llm == "gemini":
-        return _gemini_error(raw)
+        return _gemini_error(raw, stderr)
     events = _events(raw)
     final = next((event for event in reversed(events) if event.get("type") == "result"), {})
     if final.get("is_error") or final.get("api_error_status"):
@@ -1865,7 +1939,7 @@ def run_prompt(
         # Prune before the record is built so ``artifacts.paths()`` reflects what survives.
         artifacts.prune_empty()
         text, stats = _parse_result(selected, raw_output, artifacts)
-        provider_error = _provider_error(selected, raw_output)
+        provider_error = _provider_error(selected, raw_output, stderr)
         if selected == "claude":
             artifacts.output_file.write_text(text, encoding="utf-8", newline="\n")
         truncation = _claude_truncation(raw_output) if selected == "claude" else None
@@ -1988,6 +2062,7 @@ def run_prompt(
             artifacts=artifacts,
             record=record,
             failure=failure,
+            provider_error=provider_error,
         )
     except OSError as exc:
         completed_at = utc_now()

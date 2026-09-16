@@ -54,7 +54,7 @@ from drydock.acceptance import (
     unresolved_globals,
 )
 from drydock.errors import SpecificationError
-from drydock.llm import run_prompt
+from drydock.llm import failure_detail, run_prompt
 from drydock.plan_verify import Defect, verify
 from drydock.prompt_assembly import (
     PromptAssembly,
@@ -526,7 +526,7 @@ def repair(
         repaired = _container_repair_text(result.text) if result.ok else None
         if repaired is None:
             detail = (
-                "LLM execution failed" if not result.ok else "no repaired specification returned"
+                failure_detail(result) if not result.ok else "no repaired specification returned"
             )
         elif not _only_ac_delimiters_changed(original, repaired):
             detail = "repair changed content other than AC delimiters and was reverted"
@@ -584,7 +584,7 @@ def repair(
             execution_ids.append(result.execution_id)
 
         if not result.ok or not result.text.strip():
-            detail = "LLM execution failed" if not result.ok else "empty output"
+            detail = failure_detail(result) if not result.ok else "empty output"
             for filename in sorted(by_file):
                 before = _blocks(originals[filename])
                 for defect in by_file[filename]:

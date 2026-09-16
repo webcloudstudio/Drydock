@@ -13,7 +13,7 @@ from drydock.compass_sources import clear_compass_import_pending, seed_compass_f
 from drydock.errors import SpecificationError, UsageError
 from drydock.init_specification import init_specification
 from drydock.lineage import record_import_root, record_initial_snapshot
-from drydock.llm import run_prompt
+from drydock.llm import failure_detail, run_prompt
 from drydock.prompts import load_prompt
 
 _COMPASS_PROMPT_NAME = "import_compass"
@@ -57,11 +57,13 @@ class ImportResult:
 def detect_import_format(source: Path) -> str:
     """Infer the import format from the source path.
 
-    Precedence: speckit (.specify/ present) → source (code files present) → markdown.
-    Raises UsageError when format cannot be determined.
+    Precedence: source (code files present) → markdown. Raises UsageError when the format
+    cannot be determined.
+
+    Detection never inspects another tool's layout. ``--format speckit`` remains available and
+    must be named explicitly, so importing a Spec Kit project is always the operator's stated
+    intent rather than something Drydock inferred from a hidden directory it went looking for.
     """
-    if (source / ".specify").is_dir():
-        return "speckit"
     if source.is_dir() and any(
         p.suffix in _CODE_EXTENSIONS for p in source.rglob("*") if p.is_file()
     ):
@@ -72,7 +74,7 @@ def detect_import_format(source: Path) -> str:
         return "markdown"
     raise UsageError(
         f"Cannot detect import format for: {source}\n"
-        "  Specify --format markdown, --format source, or --format speckit."
+        "  Specify --format markdown or --format source."
     )
 
 
@@ -195,7 +197,11 @@ def import_intent(
         target=target,
     )
     if not result.ok or not result.text.strip():
-        raise SpecificationError("Compass normalization failed: LLM execution failed")
+        raise SpecificationError(
+            failure_detail(result, "Compass normalization failed: LLM execution failed")
+            if not result.ok
+            else "Compass normalization failed: the model returned no output"
+        )
 
     blocks = parse_artifact_blocks(
         result.text, label="import compass output", allowed_names={"COMPASS.md"}

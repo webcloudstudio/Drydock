@@ -1478,7 +1478,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         if fmt == "auto":
             if source.expanduser().is_dir():
                 raise UsageError(
-                    "--format auto requires a file; specify --format markdown, source, or speckit for a directory"
+                    "--format auto requires a file; specify --format markdown or source for a directory"
                 )
             fmt = detect_import_format(source)
 

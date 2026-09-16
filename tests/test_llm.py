@@ -14,7 +14,7 @@ import pytest
 
 import drydock.llm
 from drydock.errors import LlmConfigurationError, LlmError
-from drydock.llm import run_prompt
+from drydock.llm import LlmResult, LlmStats, failure_detail, run_prompt
 from drydock.prompt_assembly import PromptAssembly, lines_part, part
 
 
@@ -1843,6 +1843,97 @@ def test_run_gemini_reports_error_payload_as_the_failure(tmp_path, monkeypatch):
     assert result.returncode == 41
     # The cause is only in the payload: a failed gemini run writes no stderr.
     assert "rate limit" in _records(tmp_path)[-1]["result"]["error"].lower()
+
+
+def test_gemini_retired_model_error_on_stderr_reaches_the_caller(tmp_path, monkeypatch):
+    """A model the API has retired fails before any response, so the cause is on stderr only.
+
+    Reproduces a run against gemini-2.5-flash-lite after its withdrawal: stdout is empty, and
+    the payload naming the retired model is written to stderr alongside console notices and a
+    stack trace. Without this the operator sees nothing but a non-zero exit code.
+    """
+    stderr = (
+        "Warning: True color (24-bit) support not detected.\n"
+        "Ripgrep is not available. Falling back to GrepTool.\n"
+        "Error when talking to Gemini API Full report available at: /tmp/gemini-client-error.json\n"
+        "    at classifyGoogleError (file:///opt/gemini-cli/bundle/chunk.js:307106:12)\n"
+        "    at async main (file:///opt/gemini-cli/bundle/gemini.js:17295:5) {\n"
+        # The stack trace's closing fragment is brace-delimited but is not JSON, and precedes
+        # the real payload. Parsing must not stop here.
+        "  code: 404\n"
+        "}\n"
+        + _gemini_payload(
+            error={
+                "type": "Error",
+                "message": (
+                    "This model models/gemini-2.5-flash-lite is no longer available to new "
+                    "users. Please update your code to use models/gemini-3.5-flash-lite"
+                ),
+                "code": 1,
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command, stdout_text="", stderr_text=stderr, returncode=1, **kwargs
+        ),
+    )
+
+    result = run_prompt("Say OK.", tmp_path, llm="gemini", command_name="analyze")
+
+    assert not result.ok
+    assert result.provider_error is not None
+    assert "no longer available to new users" in result.provider_error
+
+    detail = failure_detail(result, "Compass normalization failed: LLM execution failed")
+    assert detail.startswith("Compass normalization failed: LLM execution failed: ")
+    assert "gemini-2.5-flash-lite" in detail
+    assert "gemini-3.5-flash-lite" in detail
+    # The console notices and stack frames stay in the evidence file, not the message.
+    assert "True color" not in detail
+    assert "classifyGoogleError" not in detail
+
+
+def test_failure_detail_falls_back_to_the_first_informative_stderr_line(tmp_path, monkeypatch):
+    """A provider that reports no structured error still yields an actionable message."""
+    stderr = (
+        "Warning: True color (24-bit) support not detected.\n"
+        "fatal: credential store is locked\n"
+        "    at openStore (file:///opt/cli/bundle/chunk.js:12:1)\n"
+    )
+
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command, stdout_text="", stderr_text=stderr, returncode=1, **kwargs
+        ),
+    )
+
+    result = run_prompt("Say OK.", tmp_path, llm="gemini", command_name="analyze")
+
+    assert failure_detail(result) == "LLM execution failed: fatal: credential store is locked"
+
+
+def test_failure_detail_is_the_bare_summary_when_nothing_explains_the_failure(tmp_path):
+    """No cause available is reported as before, rather than as an empty appended reason."""
+    result = LlmResult(
+        execution_id="x",
+        llm="gemini",
+        command=("gemini",),
+        working_directory=tmp_path,
+        returncode=1,
+        text="",
+        stderr="",
+        stats=LlmStats(),
+        artifacts=None,
+        record={},
+    )
+
+    assert failure_detail(result) == "LLM execution failed"
 
 
 def test_gemini_missing_key_is_reported_as_an_authentication_failure(tmp_path, monkeypatch, capsys):

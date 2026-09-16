@@ -2540,9 +2540,15 @@ class TestImport:
         assert "Target:" in out
         assert "\nmemory/constitution.md" in out
 
-    def test_import_speckit_auto_detects_speckit_directory(
+    def test_import_auto_never_detects_another_tools_layout(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
+        """Automatic detection does not go looking for a Spec Kit tree.
+
+        A directory carrying a Spec Kit layout is rejected like any other directory, and the
+        remedy names only Drydock's own formats. Importing Spec Kit sources remains possible
+        by naming ``--format speckit`` explicitly.
+        """
         self._configure(tmp_target_root, monkeypatch)
         src_dir = tmp_path / "sk"
         (src_dir / ".specify" / "memory").mkdir(parents=True)
@@ -2552,6 +2558,7 @@ class TestImport:
 
         assert rc == 2
         assert "--format auto requires a file" in err
+        assert "speckit" not in err
 
     def test_import_compass_rejects_directory(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
