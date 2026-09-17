@@ -1,15 +1,13 @@
-"""The one change-ticket format, shared by both refit paths.
+"""Legacy change-ticket parser retained for earlier ticket material.
 
 A change ticket is how work reaches ``build`` without editing a Blueprint. Blueprints are frozen
 once planned, so the graph only ever grows: a ticket becomes a new story whose ``implements:``
 names the ticket file, and the effective specification is the Blueprint plus its ticket chain.
 
-Two commands author tickets and they must produce the same artifact. ``drydock refit`` conforms
-hand-authored tickets — the production workflow, where a change arrives through an enterprise
-approval process. ``drydock refit --sources`` authors them from an imported source delta — the
-development workflow, where the Commander edits the specification and expects the system to keep
-up. Production cutover changes who writes a ticket, not what a ticket is, so both write
-``blueprint/changes/TICKET-NNN-{Name}.md`` with the header below.
+``drydock refit`` normalizes this earlier ticket material alongside raw external tickets, direct
+Blueprint edits, and Feature Blueprint comments. New normalized tickets reserve the
+``drydock_*`` front-matter namespace; this parser remains available solely to read earlier
+ticket headers during migration.
 
 Scope is the field that keeps an addition from overreaching. A ticket that merely adds behavior
 must not claim authority over its parent Blueprint, or a single new sentence would silently

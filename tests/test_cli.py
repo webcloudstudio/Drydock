@@ -2602,44 +2602,12 @@ class TestRefit:
         assert rc == 0
         assert "nothing to do" in (out + err).lower()
 
-    def test_help_lists_sources_and_relineage(self):
+    def test_help_does_not_offer_deprecated_source_or_lineage_routes(self):
         rc, out, err = run_cli("refit", "--help")
         combined = out + err
         assert rc == 0
-        assert "--sources" in combined
-        assert "--relineage" in combined
-
-    def test_sources_and_relineage_are_mutually_exclusive_exit_2(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
-        target = tmp_path / "targets" / "MyProject"
-        (target / "blueprint").mkdir(parents=True)
-        rc, out, err = run_cli("refit", "MyProject", "--sources", "--relineage")
-        assert rc == 2
-        assert "mutually exclusive" in (out + err).lower()
-
-    def test_relineage_upgrades_a_target_without_a_repository(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
-        target = tmp_path / "targets" / "MyProject"
-        (target / "blueprint" / "sources").mkdir(parents=True)
-        (target / "MANIFEST.md").write_text(
-            "# MANIFEST: MyProject\nstate: approved\n", encoding="utf-8"
-        )
-        rc, out, err = run_cli("refit", "MyProject", "--relineage")
-        assert rc == 0, err
-        assert (target / ".git").is_dir()
-        assert "Target - setup project workspace git store" in out
-        assert "Target - committed project workspace git store" in out
-
-    def test_sources_with_no_pending_versions_exits_0(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
-        target = tmp_path / "targets" / "MyProject"
-        (target / "blueprint" / "sources").mkdir(parents=True)
-        (target / "MANIFEST.md").write_text(
-            "# MANIFEST: MyProject\nstate: approved\n", encoding="utf-8"
-        )
-        rc, out, err = run_cli("refit", "MyProject", "--sources")
-        assert rc == 0
-        assert "no pending source versions" in (out + err).lower()
+        assert "--sources" not in combined
+        assert "--relineage" not in combined
 
 
 class TestDocumentAssemble:
