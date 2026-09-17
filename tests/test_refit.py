@@ -380,7 +380,7 @@ class TestRefitTarget:
         assert result.items == []
         assert result.exit_code() == 0
 
-    def test_unmatched_ticket_is_reported_as_failed(self, tmp_path, monkeypatch):
+    def test_ticket_without_amends_is_skipped(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
         target = _make_target(
             tmp_path,
@@ -389,23 +389,8 @@ class TestRefitTarget:
         )
         result = refit_target(target, runner=_fake_runner(""))
         assert len(result.items) == 1
-        assert result.items[0].status == "failed"
-        assert result.exit_code() == 1
-
-    def test_raw_ticket_with_explicit_target_is_normalized(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
-        target = _make_target(
-            tmp_path,
-            tickets={
-                "incoming.md": "---\nsummary: Add copy\namends: FEATURE-Copy.md\n---\n\nAdd copy.\n"
-            },
-            parent_specs={"FEATURE-Copy.md": "# FEATURE: Copy\n"},
-        )
-        result = refit_target(target, runner=_fake_runner(""))
-        normalized = list((target / "blueprint/changes").glob("TICKET-*.md"))
-        assert result.exit_code() == 1  # The generated ticket still requires a build-story pass.
-        assert normalized == []  # Failed conformance restores the ticket transaction.
-        assert "empty output" in (target / "BLOCKERS.md").read_text(encoding="utf-8")
+        assert result.items[0].status == "skipped-no-amends"
+        assert result.exit_code() == 0
 
     def test_conforms_ticket_and_patches_manifest(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
@@ -460,16 +445,12 @@ class TestRefitTarget:
         assert len(result.items) == 1
         assert result.items[0].status == "conformed"
 
-        # The imported ticket is preserved; Refit writes a separate normalized ticket.
-        normalized = [
-            path
-            for path in (target / "blueprint" / "changes").glob("TICKET-*.md")
-            if "drydock_id:" in path.read_text(encoding="utf-8")
-        ]
-        assert len(normalized) == 1
-        updated_ticket = normalized[0].read_text(encoding="utf-8")
-        assert "drydock_amends: FEATURE-Copy.md" in updated_ticket
-        assert "Add a copy button" in updated_ticket
+        # Ticket header should be normalized
+        updated_ticket = (target / "blueprint" / "changes" / "TICKET-001-AddCopy.md").read_text(
+            encoding="utf-8"
+        )
+        assert "20260630 V1" in updated_ticket
+        assert "FEATURE-Copy.md" in updated_ticket
 
         # Manifest should have the new story row
         updated_manifest = manifest.read_text(encoding="utf-8")
@@ -591,55 +572,6 @@ class TestDriftReconciliation:
         assert states["unrelated"] == "closed/verified"
         assert "SCREEN-A.md" not in plan.applied_specs
         assert "DATABASE.md" in plan.applied_specs
-
-    def test_direct_blueprint_drift_creates_a_normalized_ticket(self, tmp_path, monkeypatch):
-        from drydock.build_plan import parse_build_plan
-
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
-        target = _make_drift_target(tmp_path, screen_content="screen changed\n")
-        result = refit_target(target, runner=_fake_runner(""))
-        assert result.exit_code() == 0
-        tickets = list((target / "blueprint/changes").glob("TICKET-*.md"))
-        assert len(tickets) == 1
-        assert "drydock_source: blueprint-diff" in tickets[0].read_text(encoding="utf-8")
-        plan = parse_build_plan(target / "MANIFEST.md")
-        assert f"changes/{tickets[0].name}" in plan.by_id()["screen-a"].fields["context"]
-
-    def test_feature_blueprint_comment_creates_one_context_ticket(self, tmp_path, monkeypatch):
-        import hashlib
-
-        from drydock.build_plan import parse_build_plan
-
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
-        target = _make_target(
-            tmp_path,
-            tickets={},
-            parent_specs={
-                "FEATURE-Order.md": "# FEATURE: Order\n\n<!-- Add export to the order view. -->\n"
-            },
-        )
-        blueprint = target / "blueprint"
-        old = "# FEATURE: Order\n"
-        manifest = target / "MANIFEST.md"
-        manifest.write_text(
-            "# MANIFEST: Test\nstate: approved\napplied_specs: |\n"
-            f"  FEATURE-Order.md sha256={hashlib.sha256(old.encode()).hexdigest()} "
-            "commit=- applied_by=orders applied_at=2026-09-12\n\n"
-            "## story 1: Orders\nid: orders\nimplements: FEATURE-Order.md\n"
-            "state: closed/verified\n",
-            encoding="utf-8",
-        )
-
-        result = refit_target(target, runner=_fake_runner(""))
-
-        assert result.exit_code() == 0
-        tickets = list((blueprint / "changes").glob("TICKET-*.md"))
-        assert len(tickets) == 1
-        content = tickets[0].read_text(encoding="utf-8")
-        assert "drydock_source: blueprint-comment" in content
-        plan = parse_build_plan(manifest)
-        assert plan.by_id()["orders"].state == "pending"
-        assert f"changes/{tickets[0].name}" in plan.by_id()["orders"].fields["context"]
 
     def test_foundational_drift_without_ticket_resets_its_consumers(self, tmp_path, monkeypatch):
         from drydock.build_plan import parse_build_plan
@@ -811,24 +743,16 @@ state: closed/verified
         "order-view",
     )
 
-    # A direct edit uses the Manifest's public access-pattern snapshot, rather
-    # than a Git baseline or a pre-authored migration record.
+    # A direct edit with a target Git baseline does not need a change ticket or a pre-authored
+    # migration record to identify the operation-level rebuild closure.
     (ledger / "MIGRATION-FEATURE-ORDER-001.md").unlink()
-    manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            "state: approved\n",
-            "state: approved\napplied_specs: |\n"
-            "  DATABASE.md sha256=old commit=- applied_by=database applied_at=2026-07-01 "
-            "database_operations=FEATURE-ORDER-001:" + "0" * 64 + "\n",
-            1,
-        ),
-        encoding="utf-8",
+    monkeypatch.setattr(
+        "drydock.refit.changed_operation_ids_since",
+        lambda *_args, **_kwargs: ("FEATURE-ORDER-001",),
     )
-    assert _database_reset_ids(parse_build_plan(manifest), blueprint) == (
-        "database",
-        "orders",
-        "order-view",
-    )
+    assert _database_reset_ids(
+        parse_build_plan(manifest), blueprint, applied_commit="applied-commit"
+    ) == ("database", "orders", "order-view")
 
 
 class TestRefitVoidsVerifications:

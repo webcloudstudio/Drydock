@@ -207,7 +207,7 @@ def source_refit_target(
     if unrecorded:
         raise SpecificationError(
             f"No source lineage for {target_dir.name}.\n"
-            "  Replan the Target to establish source lineage."
+            f"  Run: drydock refit {target_dir.name} --relineage"
         )
     pending = lineage.pending_versions()
     if not pending:
