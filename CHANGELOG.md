@@ -10,6 +10,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-16: `drydock config env` is a pure query again. Every command outside a small read-only
+  set checkpoints the named Target's Git store, and that checkpoint prints `Target - committed
+  project workspace git store` to stdout. For `config env`, whose output a caller passes straight
+  to `eval`, the banner became a stray command: `drydock_runner.sh` died with
+  `Target: command not found`, attributed by bash to an unrelated line, whenever a Target had
+  uncommitted changes. `config` now joins `status` as read-only, so it neither creates nor commits
+  a Target's Git store.
+
 - 2026-09-16: A failed LLM run now names its cause. Commands reported only `LLM execution
   failed`, leaving the provider's explanation in an evidence file the operator had no reason to
   suspect existed; a retired model, an expired key, and a rate limit were indistinguishable. The

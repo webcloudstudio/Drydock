@@ -490,6 +490,20 @@ class TestConfigEnv:
         assert rc == 0
         assert "DRYDOCK_TARGET_DIR" in self._parse(out)
 
+    def test_an_existing_target_emits_no_git_store_banner(self, tmp_workspace, isolated_config):
+        """The invocation-level Git checkpoint must not print into eval-ready stdout."""
+        config_set("drydock_workspace", str(tmp_workspace))
+        target_dir = tmp_workspace / "targets" / "Demo"
+        target_dir.mkdir(parents=True)
+        (target_dir / "METADATA.md").write_text("name: Demo\n", encoding="utf-8")
+
+        rc, out = self._run("Demo")
+
+        assert rc == 0
+        assert "Target - " not in out
+        assert all("=" in line for line in out.splitlines())
+        assert not (target_dir / ".git").exists()
+
     def test_output_is_masthead_free_and_eval_safe(self, tmp_path, isolated_config):
         spaced = tmp_path / "work space"
         spaced.mkdir()

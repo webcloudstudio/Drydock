@@ -5186,8 +5186,9 @@ def _command_log_name(args: argparse.Namespace) -> str:
 
 #: Commands that only observe a Target. They neither create its Git store nor checkpoint it: a
 #: query must not mutate what it reports on, and the store's one-line banners would corrupt the
-#: machine-readable stdout of ``status --check``/``--ready`` that scripts consume verbatim.
-_READ_ONLY_COMMANDS = frozenset({"status"})
+#: machine-readable stdout that scripts consume verbatim: ``status --check``/``--ready``, and
+#: ``config env``, whose assignments a caller passes straight to ``eval``.
+_READ_ONLY_COMMANDS = frozenset({"status", "config"})
 
 
 def _is_score_query(args: argparse.Namespace) -> bool:
