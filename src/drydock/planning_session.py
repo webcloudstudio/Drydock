@@ -64,7 +64,7 @@ from drydock.build_plan import (
 )
 from drydock.compass_sources import normative_compass_sections
 from drydock.config import build_dir_for, get_llm_provider
-from drydock.database_contract import validate_sqlite_schema
+from drydock.database_contract import parse_database_contract, validate_sqlite_schema
 from drydock.database_schema import DATABASE_BLOCK, merge_schema, seed_blueprint
 from drydock.decisions import (
     ARCHITECTURE_BLUEPRINT,
@@ -2198,6 +2198,13 @@ def _integrity_check(
                     "DATABASE.md: declares no tables. A persistence Blueprint states every table "
                     "as a `## `table_name`` section over a | Field | Type | Notes | table."
                 )
+        # Build reads the operation surface through ``database_operation_fingerprints``. Parsing it
+        # here makes an unparseable declaration a free plan-time failure rather than one that
+        # surfaces after a block has already been paid for.
+        try:
+            parse_database_contract(database_text)
+        except SpecificationError as exc:
+            fatal.append(str(exc))
 
     executable_with_empty_depends = False
     spec_owners: dict[str, list[str]] = {}

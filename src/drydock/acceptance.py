@@ -17,7 +17,6 @@ import sys
 import tempfile
 import tokenize
 import warnings
-from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cache
@@ -1018,6 +1017,33 @@ def body_is_a_complete_cut(body: str) -> bool:
     return True
 
 
+def _markers_alternate(text: str) -> bool:
+    """True when every acceptance marker in ``text`` opens, closes with its own id, and is unique.
+
+    The structural half of :func:`parse_delimited_acceptance`, without the body parsing. A
+    speculative boundary repair is accepted only when it produces this shape, so the repair can
+    never hand Build a file that the real parser then rejects.
+    """
+    seen: set[str] = set()
+    pending: str | None = None
+    for _, kind, match in sorted(
+        [(m.start(), "open", m) for m in AC_OPEN_RE.finditer(text)]
+        + [(m.start(), "end", m) for m in AC_END_RE.finditer(text)],
+        key=lambda item: item[0],
+    ):
+        ident = match.group("id").strip()
+        if kind == "open":
+            if pending is not None or ident in seen:
+                return False
+            seen.add(ident)
+            pending = ident
+            continue
+        if pending != ident:
+            return False
+        pending = None
+    return pending is None
+
+
 def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | None:
     """Split an ``=== AC <id> ===`` block whose closer names a different, never-opened id.
 
@@ -1027,11 +1053,17 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
     where an LLM asked to repair it reliably renamed the wrong closer but never inserted the
     missing opener, failing identically on every attempt.
 
+    The fusion chains. A live run emitted ``workflow-columns`` closed by
+    ``workflow-production-terminal``, whose body was closed by ``workflow-catalog-boundary`` —
+    each wrong closer opening the next criterion in turn. Every link is repaired, not just the
+    first, because a chain is no more ambiguous than a single fusion: the walk carries the wrong
+    id forward as the new pending opener, exactly as the model should have written it.
+
     Repaired only when unambiguous: the wrong id never opens anywhere in the text (so it cannot
-    be a real, differently-placed criterion), it closes a second, genuine block later in the text
-    (so a synthetic opener has a real closer waiting for it), and the body being split off passes
-    :func:`body_is_a_complete_cut`. Anything else is left to the hard error in
-    :func:`parse_delimited_acceptance`.
+    be a real, differently-placed criterion), the body being split off passes
+    :func:`body_is_a_complete_cut`, and the repaired text alternates strictly. That last check is
+    the guard — a speculative repair that leaves any block unclosed, stray, or duplicated is
+    discarded whole and the hard error in :func:`parse_delimited_acceptance` stands.
 
     Returns ``(repaired_text, messages)`` when at least one boundary was inserted, else ``None``.
     Each message names the criterion id but not the file, so a caller with the filename can
@@ -1046,7 +1078,6 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
     if not markers:
         return None
     open_ids = {m.group("id").strip() for _, _, kind, m in markers if kind == "open"}
-    end_id_counts = Counter(m.group("id").strip() for _, _, kind, m in markers if kind == "end")
     repairs: list[tuple[int, int, str]] = []
     messages: list[str] = []
     pending: tuple[str, int] | None = None
@@ -1058,7 +1089,7 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
         if pending is None or ident == pending[0]:
             pending = None
             continue
-        if ident in open_ids or end_id_counts[ident] < 2:
+        if ident in open_ids:
             pending = None
             continue
         body = text[pending[1] : start]
@@ -1073,9 +1104,12 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
         pending = (ident, end)
     if not repairs:
         return None
+    repaired = text
     for start, end, replacement in sorted(repairs, key=lambda item: item[0], reverse=True):
-        text = text[:start] + replacement + text[end:]
-    return text, tuple(messages)
+        repaired = repaired[:start] + replacement + repaired[end:]
+    if not _markers_alternate(repaired):
+        return None
+    return repaired, tuple(messages)
 
 
 def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticAcceptance, ...]:

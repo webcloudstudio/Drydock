@@ -24,6 +24,23 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-17: `drydock plan` now validates the `DATABASE.md` operation surface, not only its
+  schema. Build reads `## Access Patterns` through `database_operation_fingerprints`, so a
+  declaration it cannot parse used to stop the build only after a block had already been spent — a
+  live run failed on `DATABASE.md: ## Access Patterns has no named operation` with block 1 already
+  accepted at 5/5. The plan integrity check parses the same contract and refuses the plan for free.
+  `Rigging/spec_template/DATABASE.md` and the Blueprints contract now state the required shape:
+  one `### FEATURE-<DOMAIN>-<NNN> — <Operation>` section per operation, never a single table of
+  operation rows.
+- 2026-09-17: `drydock plan` now repairs a *chain* of fused acceptance boundaries, not only a
+  single fusion. When the plan model closes one criterion with the next criterion's id and never
+  opens that one, the same slip can repeat down a file — a live run produced
+  `workflow-columns` → `workflow-production-terminal` → `workflow-catalog-boundary`, where every
+  wrong id appeared exactly once as a closer and the previous rule declined the whole chain,
+  shipping a Blueprint that acceptance parsing rejected before any test ran. Each link is now
+  carried forward as the next pending opener, and the repaired text is accepted only when its
+  markers alternate strictly; a speculative repair that would leave any block unclosed, stray, or
+  duplicated is discarded whole and the hard parse error stands.
 - 2026-09-17: A `DATABASE.md` that declares no tables now fails the plan integrity check instead of
   passing silently. A project without persistence has no `DATABASE.md` at all; one that exists and
   declares nothing is an empty contract, and Build filled that vacuum by inventing a schema no

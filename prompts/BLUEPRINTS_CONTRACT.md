@@ -746,6 +746,13 @@ optional `## Database Interface` section, including only fields they supply or r
 not cite a physical store. Persistence interfaces name the repository, module location, and
 allowed callers.
 
+Each access pattern is its own `### FEATURE-<DOMAIN>-<NNN> — <Operation>` section over a
+`| Field | Value |` table carrying Owner, Access, Repository operation, and Compatibility, followed
+by an `Input: <DTO>` and an `Output: <DTO>` field table. Never collapse the operations into one
+table of rows. A `DATABASE.md` whose `## Access Patterns` holds no named operation fails the plan:
+Build reads that surface to fingerprint the persistence contract, and an unparseable one stops the
+build after a block has already been spent.
+
 `DATABASE.md` is the one cumulative Blueprint. Drydock opens it before the first Blueprint batch,
 seeded from the Rigging template and every table the imported source specification already
 declared, and keeps it open for the whole planning run. Emit it in a batch only when a Blueprint in

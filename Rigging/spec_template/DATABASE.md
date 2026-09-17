@@ -21,6 +21,11 @@
 
 ## Access Patterns
 
+<!-- One `### <FEATURE-DOMAIN-NNN> — <Operation>` section per operation, below this heading. -->
+<!-- Never a single table of operations: each pattern is its own section over a | Field | Value | -->
+<!-- table carrying Owner, Access (read or write), Repository operation, and Compatibility. -->
+<!-- Plan appends new patterns as it authors Blueprints; it never rewrites held ones. -->
+
 <!-- drydock:example -->
 ### FEATURE-EXAMPLE-001 — Create item
 

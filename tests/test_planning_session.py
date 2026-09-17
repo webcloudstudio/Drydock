@@ -70,6 +70,23 @@ def _pa_code(*snippets: str) -> str:
     return "\n\n".join(blocks)
 
 
+#: A minimal ``## Access Patterns`` section that ``parse_database_contract`` accepts. Plan gates
+#: the operation surface because Build reads it through ``database_operation_fingerprints``.
+_ACCESS_PATTERNS = (
+    "## Access Patterns\n\n"
+    "### FEATURE-X-001 — Read setting\n\n"
+    "| Field | Value |\n|---|---|\n"
+    "| Owner | FEATURE-X.md |\n"
+    "| Access | read |\n"
+    "| Repository operation | `S.get(GetSetting) -> Setting` |\n"
+    "| Compatibility | rebuild |\n\n"
+    "Input: GetSetting\n\n"
+    "| Field | Type | Required |\n|---|---|---|\n| key | str | yes |\n\n"
+    "Output: Setting\n\n"
+    "| Field | Type |\n|---|---|\n| key | str |\n\n"
+)
+
+
 def test_default_feedback_heading_is_plan_compass(tmp_path):
     assert ensure_feedback_file(tmp_path) == "# Plan Compass\n"
 
@@ -1306,7 +1323,8 @@ def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
     # A persistence Blueprint declares its tables; an empty one fails the plan integrity check.
     db = _SPEC_HEADER.format(ftype="DATABASE", name="Example Data", ac="None.").replace(
         "## Programmatic Acceptance",
-        "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n\n"
+        _ACCESS_PATTERNS
+        + "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n\n"
         "## Programmatic Acceptance",
         1,
     )
@@ -4686,9 +4704,41 @@ def test_plan_splits_a_fused_acceptance_boundary_the_model_forgot_to_open():
     assert warnings[0].startswith("FEATURE-Date-and-Time.md [date-conformance]")
 
 
-def test_a_fused_boundary_with_no_second_closer_is_left_to_the_hard_error():
-    """The wrong-id closer appears only once — there is no real closer waiting for a synthetic
-    opener, so the shape is not the unambiguous fused case and nothing is inserted."""
+def test_plan_splits_a_chain_of_fused_acceptance_boundaries():
+    """The live Marina_Luna defect: three criteria fused, each closer naming the *next* one, so
+    every wrong id appears exactly once as a closer. The earlier single-fusion rule declined the
+    whole chain and shipped an unparseable Blueprint to Build."""
+    from drydock.planning_session import _normalize_fused_acceptance_boundaries
+
+    blocks = {
+        "SCREEN-Workflow.md": (
+            "# SCREEN: Workflow\n\n## Programmatic Acceptance\n\n"
+            "=== AC workflow-columns ===\nIntent: First.\n\nassert 1 == 1\n"
+            "=== END AC workflow-production-terminal ===\n"
+            "Intent: Second.\n\nassert 2 == 2\n"
+            "=== END AC workflow-catalog-boundary ===\n"
+            "Intent: Third.\n\nassert 3 == 3\n"
+            "=== END AC workflow-catalog-boundary ===\n"
+        )
+    }
+
+    warnings = _normalize_fused_acceptance_boundaries(blocks)
+
+    checks = parse_programmatic_acceptance_text(
+        blocks["SCREEN-Workflow.md"], source="SCREEN-Workflow.md"
+    )
+    assert [check.check_id for check in checks] == [
+        "workflow-columns",
+        "workflow-production-terminal",
+        "workflow-catalog-boundary",
+    ]
+    assert [check.code for check in checks] == ["assert 1 == 1", "assert 2 == 2", "assert 3 == 3"]
+    assert len(warnings) == 2
+
+
+def test_a_speculative_boundary_repair_that_does_not_alternate_is_discarded_whole():
+    """The wrong-id closer opens a synthetic block that nothing ever closes, so the repaired text
+    does not alternate and every insertion is dropped rather than handing Build a broken file."""
     from drydock.planning_session import _normalize_fused_acceptance_boundaries
 
     text = (
@@ -5428,10 +5478,34 @@ def test_a_persistence_declaration_with_tables_passes_the_plan(tmp_path):
         tmp_path,
         emitted_files={
             "DATABASE.md": (
-                "# DATABASE: X\n\n## `settings`\n\n"
+                "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
                 "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
             )
         },
     )
 
     assert any("1 declared table(s)" in warning for warning in warnings)
+
+
+def test_a_persistence_declaration_build_cannot_parse_fails_the_plan(tmp_path):
+    """The live Marina_Luna defect: the model wrote ``## Access Patterns`` as one flat table of
+    operations instead of a named section each. Build reads that surface through
+    ``database_operation_fingerprints``, so an unparseable declaration used to cost a paid block
+    before failing. Plan refuses it for free."""
+    with pytest.raises(SpecificationError) as excinfo:
+        ps._integrity_check(
+            _empty_plan(tmp_path),
+            tmp_path,
+            emitted_files={
+                "DATABASE.md": (
+                    "# DATABASE: X\n\n## Access Patterns\n\n"
+                    "| ID | Owner | Access | Repository method | Compatibility |\n"
+                    "|---|---|---|---|---|\n"
+                    "| FEATURE-X-001 | S | read | `S.get` | unchanged |\n\n"
+                    "## `settings`\n\n"
+                    "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+                )
+            },
+        )
+
+    assert "## Access Patterns has no named operation" in str(excinfo.value)
