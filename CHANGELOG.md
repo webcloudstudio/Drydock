@@ -8,7 +8,28 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-09-17: `DATABASE.md` is now a cumulative Blueprint rather than a write-once one. `drydock
+  plan` seeds it before the first Blueprint batch from `Rigging/spec_template/DATABASE.md` plus
+  every table the imported source specification already declared, and keeps it open for the whole
+  planning run. A batch emits only additions — new `` ## `table_name` `` sections, new field rows
+  on a table already declared, and new `## Access Patterns` entries — and Drydock appends them.
+  Nothing already declared can be retyped, reordered, or removed, so a Feature authored in a late
+  batch can add the storage it needs without a model restating, and paraphrasing away, the
+  declaration it was handed. The Stage 2 ledger lists `DATABASE.md` as `Open` instead of listing it
+  among the accepted artifacts a batch must not re-emit. The template marks its illustrative blocks
+  with `<!-- drydock:example -->`, which seeding strips, and declares its schema in the top-level
+  `` ## `table_name` `` form the schema reader has always required.
+
 ### Fixed
+
+- 2026-09-17: A `DATABASE.md` that declares no tables now fails the plan integrity check instead of
+  passing silently. A project without persistence has no `DATABASE.md` at all; one that exists and
+  declares nothing is an empty contract, and Build filled that vacuum by inventing a schema no
+  Blueprint described — models created by `create_all()` alone, which never alters a table that
+  already exists, so the first story needing a new column on an existing table deadlocked the build
+  against a database file that predated it.
 
 - 2026-09-16: `drydock config env` is a pure query again. Every command outside a small read-only
   set checkpoints the named Target's Git store, and that checkpoint prints `Target - committed

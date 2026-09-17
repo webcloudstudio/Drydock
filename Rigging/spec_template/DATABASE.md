@@ -21,6 +21,7 @@
 
 ## Access Patterns
 
+<!-- drydock:example -->
 ### FEATURE-EXAMPLE-001 — Create item
 
 | Field | Value |
@@ -42,6 +43,7 @@ Output: Item
 |-------|------|
 | id | UUID |
 | name | str |
+<!-- drydock:end-example -->
 
 ## Persistence Interfaces
 
@@ -49,17 +51,25 @@ Output: Item
 
 | Store | Interface | Module | Allowed Callers | Notes |
 |-------|-----------|--------|-----------------|-------|
+<!-- drydock:example -->
 | table_name | `ItemRepository` | persistence/items.py | Item service | SQLAlchemy models remain private |
+<!-- drydock:end-example -->
 
 ## Schemas
 
-### table_name
+<!-- One `## `table_name`` section per table, below this heading. Lowercase snake_case name in -->
+<!-- backticks; SQLite types only: INTEGER, TEXT, REAL, NUMERIC, BLOB. `PK` marks a primary key. -->
+<!-- Plan appends to these declarations as it authors Blueprints; it never rewrites them. -->
 
-| Column | Type | Notes |
+<!-- drydock:example -->
+## `table_name`
+
+| Field | Type | Notes |
 |--------|------|-------|
 | id | INTEGER PK | |
 | created_at | TEXT | timestamp |
 | updated_at | TEXT | timestamp |
+<!-- drydock:end-example -->
 
 ## Migrations
 
@@ -69,13 +79,17 @@ only when its DATABASE build story completes. Alembic records deployment applica
 
 | Access Pattern | Revision | State |
 |----------------|----------|-------|
+<!-- drydock:example -->
 | FEATURE-EXAMPLE-001 | `0001_initial_items` | planned |
+<!-- drydock:end-example -->
 
 ## Config (.env)
 
 | Key | Type | Required | Notes |
 |-----|------|----------|-------|
+<!-- drydock:example -->
 | SECRET_KEY | str | yes | |
+<!-- drydock:end-example -->
 
 ## File Stores
 

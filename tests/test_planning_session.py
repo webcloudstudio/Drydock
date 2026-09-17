@@ -1303,7 +1303,13 @@ def test_replan_prunes_applied_spec_when_authoritative_spec_changes(tmp_path):
 
 def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
     target_dir = _make_target(tmp_path)
-    db = _SPEC_HEADER.format(ftype="DATABASE", name="Example Data", ac="None.")
+    # A persistence Blueprint declares its tables; an empty one fails the plan integrity check.
+    db = _SPEC_HEADER.format(ftype="DATABASE", name="Example Data", ac="None.").replace(
+        "## Programmatic Acceptance",
+        "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n\n"
+        "## Programmatic Acceptance",
+        1,
+    )
     manifest = _manifest().replace(
         "scope: both\nstate: pending",
         "scope: both\ncontext: README.md, ARCHITECTURE.md\nstate: pending",
@@ -5306,3 +5312,126 @@ def test_the_authoring_contract_example_supplies_the_variables_it_documents():
     assert suite_checks, "the contract example no longer runs a staged suite runner"
 
     assert staged_asset_env_defects(suite_checks, {"tests/run_suite.py": asset}) == ()
+
+
+def test_stage_two_ledger_keeps_the_persistence_declaration_open_for_append():
+    # Every other Blueprint is frozen once accepted. This one is not: a Feature authored in a
+    # later batch may need a table, or a column on a table declared batches ago.
+    stories = (
+        PlannedStory(
+            story_id="story-1",
+            name="Persistence",
+            story_type="feature",
+            phase=1,
+            delivery_kind="capability",
+            acceptance_contract=True,
+            implements="DATABASE.md",
+        ),
+        PlannedStory(
+            story_id="story-2",
+            name="Items",
+            story_type="feature",
+            phase=1,
+            delivery_kind="capability",
+            acceptance_contract=True,
+            implements="FEATURE-ITEMS.md",
+        ),
+    )
+    blocks = {"TOPOLOGY.md": "complete", "DATABASE.md": "# DATABASE: X\n"}
+
+    ledger = ps._render_ledger(score_plan(stories, blocks))
+
+    assert "Open (DATABASE.md)" in ledger
+    assert "Accepted (0)" in ledger
+    assert "only the additions" in ledger
+    frozen_block = ledger.split("Open (DATABASE.md)")[0]
+    assert "DATABASE.md" not in frozen_block
+
+
+def test_the_persistence_declaration_is_seeded_from_the_template_and_the_imported_source(tmp_path):
+    blueprint_dir = tmp_path / "blueprint"
+    (blueprint_dir / "sources").mkdir(parents=True)
+    (blueprint_dir / "sources" / "DATABASE.md").write_text(
+        "# Database: Registry\n\n"
+        "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        encoding="utf-8",
+    )
+    stories = (
+        PlannedStory(
+            story_id="story-1",
+            name="Persistence",
+            story_type="feature",
+            phase=1,
+            delivery_kind="capability",
+            acceptance_contract=True,
+            implements="DATABASE.md",
+        ),
+    )
+    blocks: dict[str, str] = {}
+
+    ps._seed_database_blueprint(blocks, declared=stories, blueprint_dir=blueprint_dir)
+
+    seeded = blocks["DATABASE.md"]
+    assert "## `settings`" in seeded
+    assert "| key | TEXT PK | |" in seeded
+    assert "## Access Patterns" in seeded
+    assert "FEATURE-EXAMPLE-001" not in seeded
+
+
+def test_no_persistence_story_leaves_the_declaration_unseeded(tmp_path):
+    stories = (
+        PlannedStory(
+            story_id="story-1",
+            name="Items",
+            story_type="feature",
+            phase=1,
+            delivery_kind="capability",
+            acceptance_contract=True,
+            implements="FEATURE-ITEMS.md",
+        ),
+    )
+    blocks: dict[str, str] = {}
+
+    ps._seed_database_blueprint(blocks, declared=stories, blueprint_dir=tmp_path / "blueprint")
+
+    assert blocks == {}
+
+
+def _empty_plan(tmp_path) -> object:
+    from drydock.manifest import DrydockManifest, ManifestMetadata
+
+    return DrydockManifest(
+        path=tmp_path / "MANIFEST.md",
+        metadata=ManifestMetadata(project="X"),
+        blocks=[],
+        preamble=[],
+    )
+
+
+def test_a_persistence_declaration_with_no_tables_fails_the_plan(tmp_path):
+    # A project without persistence has no DATABASE.md at all. One that exists and declares
+    # nothing is an empty contract, and Build fills that vacuum by inventing its own schema.
+    with pytest.raises(SpecificationError) as excinfo:
+        ps._integrity_check(
+            _empty_plan(tmp_path),
+            tmp_path,
+            emitted_files={"DATABASE.md": "# DATABASE: X\n\n## Guardrails\n\n- None.\n"},
+        )
+
+    assert "DATABASE.md: declares no tables" in str(excinfo.value)
+
+
+def test_a_persistence_declaration_with_tables_passes_the_plan(tmp_path):
+    warnings = ps._integrity_check(
+        _empty_plan(tmp_path),
+        tmp_path,
+        emitted_files={
+            "DATABASE.md": (
+                "# DATABASE: X\n\n## `settings`\n\n"
+                "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+            )
+        },
+    )
+
+    assert any("1 declared table(s)" in warning for warning in warnings)

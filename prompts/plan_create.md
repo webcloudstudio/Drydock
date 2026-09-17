@@ -281,6 +281,11 @@ source material genuinely leaves an item open; then put it under `## Questions`.
 
 Rules:
 
+- `DATABASE.md` is cumulative and is never restated. Drydock seeds it from the template and the
+  imported source specification before the first batch, and appends the additions each batch emits.
+  Emit only new tables, new field rows on a table already declared, and new access patterns; a
+  table, column, or operation already held is kept exactly as declared. It must declare at least
+  one table.
 - `DATABASE.md` does not contain model-authored executable acceptance. Its `## Programmatic
   Acceptance` section is the inline `- None.` statement that Drydock owns SQLite schema
   construction and connectivity invariants deterministically. Do not create temporary SQLite

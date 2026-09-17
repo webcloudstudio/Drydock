@@ -746,6 +746,20 @@ optional `## Database Interface` section, including only fields they supply or r
 not cite a physical store. Persistence interfaces name the repository, module location, and
 allowed callers.
 
+`DATABASE.md` is the one cumulative Blueprint. Drydock opens it before the first Blueprint batch,
+seeded from the Rigging template and every table the imported source specification already
+declared, and keeps it open for the whole planning run. Emit it in a batch only when a Blueprint in
+that batch needs storage the declaration does not yet hold, and then emit only the additions: the
+new `` ## `table_name` `` sections, the new field rows for a table already declared, and the new
+`## Access Patterns` entries. Drydock appends what you emit and keeps everything already declared,
+so never restate a table, column, or operation already held.
+
+Each table is a top-level `` ## `table_name` `` section — lowercase snake_case in backticks — over
+a `| Field | Type | Notes |` table using SQLite types only: `INTEGER`, `TEXT`, `REAL`, `NUMERIC`,
+`BLOB`, with `PK` marking a primary key. A `DATABASE.md` that declares no table fails the plan:
+Build implements the declaration, and an empty one leaves Build inventing a schema no Blueprint
+describes.
+
 Python relational persistence requires `sqlalchemy.md` and `alembic.md` in the Technology Stack.
 SQLAlchemy owns runtime access; Alembic owns every schema revision. A Blueprint migration ledger
 record lives at `blueprint/migrations/MIGRATION-<AccessPatternId>.md`; it holds `upgrade` and

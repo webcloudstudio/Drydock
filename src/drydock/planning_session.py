@@ -65,6 +65,7 @@ from drydock.build_plan import (
 from drydock.compass_sources import normative_compass_sections
 from drydock.config import build_dir_for, get_llm_provider
 from drydock.database_contract import validate_sqlite_schema
+from drydock.database_schema import DATABASE_BLOCK, merge_schema, seed_blueprint
 from drydock.decisions import (
     ARCHITECTURE_BLUEPRINT,
     DECISIONS_BLOCK,
@@ -92,8 +93,8 @@ from drydock.llm import ClaudePromptSession, run_prompt
 from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.override import PLAN_DECISION, WaivedGate, dedupe_waivers, stamp_override
-from drydock.paths import get_prompts_root
-from drydock.plan_graph import PlanComputation, PlannedStory
+from drydock.paths import get_prompts_root, get_spec_template_dir
+from drydock.plan_graph import PlanComputation, PlannedStory, specification_names
 from drydock.plan_score import PlanScore, score_plan
 from drydock.plan_shape import OutputContract, ShapeDefect, check_contract, render_defects
 from drydock.plan_topology import TOPOLOGY_BLOCK, parse_topology
@@ -2189,6 +2190,14 @@ def _integrity_check(
                     "DATABASE.md: Drydock verified SQLite construction and connectivity for "
                     f"{len(schema_tables)} declared table(s)"
                 )
+            else:
+                # A project with no persistence has no DATABASE.md at all. One that exists and
+                # declares nothing is an empty contract, and Build fills that vacuum by inventing
+                # a schema no Blueprint describes.
+                fatal.append(
+                    "DATABASE.md: declares no tables. A persistence Blueprint states every table "
+                    "as a `## `table_name`` section over a | Field | Type | Notes | table."
+                )
 
     executable_with_empty_depends = False
     spec_owners: dict[str, list[str]] = {}
@@ -4025,10 +4034,21 @@ def _blueprint_tranche(score: PlanScore) -> tuple[str, ...]:
 def _render_ledger(score: PlanScore) -> str:
     """Render one bounded Stage 2 work queue, never the complete remaining topology."""
     tranche = frozenset(_blueprint_tranche(score))
-    lines = [f"Accepted ({len(score.accepted)}) — already held, do not re-emit:"]
-    lines.extend(f"  {name}" for name in sorted(score.accepted))
-    if not score.accepted:
+    frozen = sorted(name for name in score.accepted if name != DATABASE_BLOCK)
+    lines = [f"Accepted ({len(frozen)}) — already held, do not re-emit:"]
+    lines.extend(f"  {name}" for name in frozen)
+    if not frozen:
         lines.append("  (none)")
+    if DATABASE_BLOCK in score.accepted:
+        lines.append("")
+        lines.append(
+            f"Open ({DATABASE_BLOCK}) — the persistence declaration is cumulative. Emit it in "
+            "this batch only when a Blueprint in this batch needs storage the declaration does "
+            "not yet hold, and then emit only the additions: the new `## `table_name`` sections, "
+            "the new rows for a table already declared, and the new `## Access Patterns` entries. "
+            "Never restate a table, column, or operation already held — Drydock appends what you "
+            "emit and keeps everything already declared."
+        )
     lines.append("")
     lines.append(f"Current batch ({len(tranche)}) — emit exactly these, in this order:")
     lines.extend(f"  {item.rendered()}" for item in score.missing if item.filename in tranche)
@@ -4115,6 +4135,33 @@ class _Continuation:
     score: PlanScore
     execution_ids: tuple[str, ...]
     passes: int
+
+
+def _seed_database_blueprint(
+    blocks: dict[str, str], *, declared: Sequence[PlannedStory], blueprint_dir: Path
+) -> None:
+    """Open the cumulative persistence declaration before the first Blueprint batch runs.
+
+    The seed is the Rigging template plus whatever the imported source specification already
+    declared. Carrying those tables across deterministically is the point: a model asked to render
+    an input specification as a Blueprint paraphrases it, and a declaration that loses its tables
+    leaves Build implementing a schema no Blueprint describes.
+    """
+    if not any(DATABASE_BLOCK in specification_names(story.implements) for story in declared):
+        return
+    template_path = get_spec_template_dir() / DATABASE_BLOCK
+    if not template_path.is_file():
+        return
+    source = ""
+    sources_dir = blueprint_dir / "sources"
+    if sources_dir.is_dir():
+        for path in sorted(sources_dir.iterdir()):
+            if path.is_file() and path.name.casefold() == DATABASE_BLOCK.casefold():
+                source = path.read_text(encoding="utf-8")
+                break
+    seed = seed_blueprint(template_path.read_text(encoding="utf-8"), source)
+    emitted = blocks.get(DATABASE_BLOCK, "")
+    blocks[DATABASE_BLOCK] = merge_schema(seed, emitted) if emitted.strip() else seed
 
 
 def _continue_short_plan(
@@ -4268,6 +4315,16 @@ def _continue_short_plan(
                 if accumulated.get(name) != body:
                     rejection = f"{name} is frozen and this pass revised it"
                     break
+                continue
+            if name == DATABASE_BLOCK and name in declared_names:
+                # The persistence declaration is the one cumulative Blueprint. A Feature authored
+                # in a later batch may need a table, or a column on one declared batches ago, so
+                # this file is never frozen. The pass contributes additions and Drydock appends
+                # them: what is already declared cannot be retyped, reordered, or paraphrased away.
+                if name in pass_damaged:
+                    continue
+                held = candidate.get(name, "")
+                candidate[name] = merge_schema(held, body) if held.strip() else body
                 continue
             if name in accepted_now:
                 # An accepted artifact is frozen. A byte-identical repeat costs nothing; a
@@ -5150,6 +5207,9 @@ def create_plan(
                 )
             declared_stories, _ = parse_topology(blocks[TOPOLOGY_BLOCK])
             if declared_stories:
+                _seed_database_blueprint(
+                    blocks, declared=declared_stories, blueprint_dir=blueprint_dir
+                )
                 continuation = _continue_short_plan(
                     blocks,
                     blocks_text=blocks_text,
