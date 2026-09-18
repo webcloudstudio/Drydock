@@ -5487,25 +5487,54 @@ def test_a_persistence_declaration_with_tables_passes_the_plan(tmp_path):
     assert any("1 declared table(s)" in warning for warning in warnings)
 
 
-def test_a_persistence_declaration_build_cannot_parse_fails_the_plan(tmp_path):
+def test_a_persistence_declaration_build_cannot_parse_is_a_decision_not_a_discard():
     """The live Marina_Luna defect: the model wrote ``## Access Patterns`` as one flat table of
     operations instead of a named section each. Build reads that surface through
-    ``database_operation_fingerprints``, so an unparseable declaration used to cost a paid block
-    before failing. Plan refuses it for free."""
-    with pytest.raises(SpecificationError) as excinfo:
-        ps._integrity_check(
-            _empty_plan(tmp_path),
-            tmp_path,
-            emitted_files={
-                "DATABASE.md": (
-                    "# DATABASE: X\n\n## Access Patterns\n\n"
-                    "| ID | Owner | Access | Repository method | Compatibility |\n"
-                    "|---|---|---|---|---|\n"
-                    "| FEATURE-X-001 | S | read | `S.get` | unchanged |\n\n"
-                    "## `settings`\n\n"
-                    "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
-                )
-            },
+    ``database_operation_fingerprints``, so the declaration is unusable — but discarding a plan
+    that cost 39 accepted Blueprints over it is the response already settled against for a
+    criterion that does not compile. The plan is written; the story that implements it blocks."""
+    blocks = {
+        "DATABASE.md": (
+            "# DATABASE: X\n\n## Access Patterns\n\n"
+            "| ID | Owner | Access | Repository method | Compatibility |\n"
+            "|---|---|---|---|---|\n"
+            "| FEATURE-X-001 | S | read | `S.get` | unchanged |\n\n"
+            "## `settings`\n\n"
+            "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
         )
+    }
 
-    assert "## Access Patterns has no named operation" in str(excinfo.value)
+    defects = ps._database_contract_defects(blocks)
+    assert len(defects) == 1
+    assert "## Access Patterns has no named operation" in defects[0]
+
+    decision = ps.database_contract_decisions(defects)[0]
+    assert decision.severity == "blocking"
+    assert decision.blueprint == "DATABASE.md"
+    assert ps.database_contract_decisions(defects, unattended=True)[0].severity == "material"
+
+
+def test_an_unambiguous_access_spelling_is_read_as_the_contract_value():
+    """One cell reading ``read-write`` discarded a whole plan. The operation was correct and the
+    intent was not in doubt, so the spelling is settled to the stronger claim and reported."""
+    blocks = {
+        "DATABASE.md": _ACCESS_PATTERNS.replace("| Access | read |", "| Access | read/write |")
+    }
+
+    warnings = ps._normalize_database_access_values(blocks)
+
+    assert "| Access | write |" in blocks["DATABASE.md"]
+    assert len(warnings) == 1
+    assert "read as 'write'" in warnings[0]
+    assert ps._database_contract_defects(blocks) == ()
+
+
+def test_an_access_value_drydock_cannot_read_is_left_for_the_contract_parser():
+    """An unrecognized spelling is never reinterpreted by guesswork; it reaches the parser and is
+    surfaced as a decision there."""
+    blocks = {
+        "DATABASE.md": _ACCESS_PATTERNS.replace("| Access | read |", "| Access | telepathy |")
+    }
+
+    assert ps._normalize_database_access_values(blocks) == ()
+    assert "invalid Access: telepathy" in ps._database_contract_defects(blocks)[0]

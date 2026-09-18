@@ -2198,13 +2198,6 @@ def _integrity_check(
                     "DATABASE.md: declares no tables. A persistence Blueprint states every table "
                     "as a `## `table_name`` section over a | Field | Type | Notes | table."
                 )
-        # Build reads the operation surface through ``database_operation_fingerprints``. Parsing it
-        # here makes an unparseable declaration a free plan-time failure rather than one that
-        # surfaces after a block has already been paid for.
-        try:
-            parse_database_contract(database_text)
-        except SpecificationError as exc:
-            fatal.append(str(exc))
 
     executable_with_empty_depends = False
     spec_owners: dict[str, list[str]] = {}
@@ -2338,6 +2331,68 @@ def _parse_plan_text(text: str) -> BuildPlan:
     from drydock.manifest import DrydockManifest
 
     return DrydockManifest.parse(text, source="MANIFEST.md")
+
+
+def _database_contract_defects(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Return the reason ``DATABASE.md``'s operation surface cannot be parsed, or ``()``.
+
+    Build reads that surface through ``database_operation_fingerprints``, so a declaration this
+    rejects is one Build cannot consume. Returning the reason rather than raising is the policy
+    already settled for a criterion that does not compile: the plan is written and the defect is
+    raised as a blocking decision, instead of discarding every Blueprint the run paid for.
+    """
+    text = blocks.get(DATABASE_BLOCK)
+    if not text:
+        return ()
+    try:
+        parse_database_contract(text)
+    except SpecificationError as exc:
+        return (str(exc),)
+    return ()
+
+
+def database_contract_decisions(
+    defects: tuple[str, ...],
+    *,
+    unattended: bool = False,
+) -> tuple[Decision, ...]:
+    """Ask the Commander to settle a persistence declaration Build cannot read.
+
+    The argument is the one made for malformed acceptance criteria: ``DATABASE.md`` is generated
+    by a command Drydock runs, against a contract Drydock owns, so a pipeline that cannot process
+    one cleanly is a pipeline defect rather than a modelling accident. A live run lost 39 accepted
+    Blueprints across 9 LLM calls to a single ``Access`` cell, and nothing was written.
+
+    ``severity: blocking`` blocks only the story that implements the declaration, so Build still
+    cannot proceed on a contract it cannot read — the guarantee the fatal provided survives, at
+    the cost of one story rather than the whole plan.
+    """
+    return tuple(
+        Decision(
+            id=f"database-contract-{index:03d}",
+            type="text",
+            severity="material" if unattended else "blocking",
+            origin="plan",
+            blueprint=DATABASE_BLOCK,
+            story=None,
+            status="recommended" if unattended else "open",
+            archived=False,
+            title="Persistence declaration cannot be read by Build",
+            description=(
+                f"{reason}\n\n"
+                "Build fingerprints the persistence contract from `## Access Patterns`, so it "
+                "cannot consume this declaration as written. Correct the section in "
+                f"`blueprint/{DATABASE_BLOCK}` — each operation is its own "
+                "`### FEATURE-<DOMAIN>-<NNN> — <Operation>` section over a `| Field | Value |` "
+                "table carrying Owner, Access, Repository operation, and Compatibility, followed "
+                "by `Input:` and `Output:` field tables. The rest of the plan is written and "
+                "unaffected."
+            ),
+            options=(),
+            system_choice="",
+        )
+        for index, reason in enumerate(defects, start=1)
+    )
 
 
 def malformed_acceptance_decisions(
@@ -2642,6 +2697,73 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
         for boundary, terminator in reversed(repairs):
             text = text[:boundary] + terminator + text[boundary:]
         blocks[name] = text
+    return tuple(normalized)
+
+
+#: Unambiguous spellings of the two Access values the persistence contract defines. ``Access`` is
+#: consumed as a token: a Feature's ``## Database Interface`` citation must match the pattern it
+#: cites, and nothing else reads it. A pattern that both reads and writes is collapsed to ``write``
+#: because that is the stronger claim — a citation Drydock widens can never under-declare access.
+_ACCESS_SYNONYMS = {
+    "read": "read",
+    "read-only": "read",
+    "read only": "read",
+    "readonly": "read",
+    "get": "read",
+    "list": "read",
+    "query": "read",
+    "select": "read",
+    "write": "write",
+    "write-only": "write",
+    "writeonly": "write",
+    "read-write": "write",
+    "read/write": "write",
+    "read-and-write": "write",
+    "read and write": "write",
+    "readwrite": "write",
+    "rw": "write",
+    "append": "write",
+    "create": "write",
+    "insert": "write",
+    "update": "write",
+    "upsert": "write",
+    "delete": "write",
+    "mutate": "write",
+}
+
+_ACCESS_ROW_RE = re.compile(
+    r"^(\|\s*Access\s*\|\s*)([^|\n]+?)(\s*\|)\s*$", re.MULTILINE | re.IGNORECASE
+)
+
+
+def _normalize_database_access_values(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Rewrite each unambiguous ``| Access |`` spelling to the value the contract defines.
+
+    A live run lost a whole plan — 39 accepted Blueprints across 9 LLM calls — to one cell reading
+    ``read-write`` where the contract admits ``read`` or ``write``. The operation it described was
+    correct and the model's intent was not in doubt; only the spelling was outside the vocabulary.
+
+    Only a recognized spelling is rewritten. Anything else is left exactly as written, so a value
+    Drydock cannot read without guessing still reaches the contract parser and is surfaced there
+    rather than silently reinterpreted.
+    """
+    text = blocks.get(DATABASE_BLOCK)
+    if not text:
+        return ()
+    normalized: list[str] = []
+
+    def rewrite(match: re.Match[str]) -> str:
+        written = match.group(2).strip()
+        settled = _ACCESS_SYNONYMS.get(written.casefold())
+        if settled is None or settled == written:
+            return match.group(0)
+        normalized.append(
+            f"{DATABASE_BLOCK}: Access {written!r} read as {settled!r}; "
+            "the contract defines read and write"
+        )
+        return f"{match.group(1)}{settled}{match.group(3)}"
+
+    blocks[DATABASE_BLOCK] = _ACCESS_ROW_RE.sub(rewrite, text)
     return tuple(normalized)
 
 
@@ -3156,15 +3278,21 @@ def _validate_plan_output(
     # review. Either way the pipeline processes the criterion cleanly instead of stopping on it.
     # Terminators first: every pass below parses the acceptance containers, and an unclosed one
     # raises before any of them can report anything useful about the criterion it belongs to.
-    terminator_warnings = _normalize_unterminated_acceptance_blocks(
-        blocks
-    ) + _normalize_fused_acceptance_boundaries(blocks)
+    terminator_warnings = (
+        _normalize_unterminated_acceptance_blocks(blocks)
+        + _normalize_fused_acceptance_boundaries(blocks)
+        + _normalize_database_access_values(blocks)
+    )
     standalone_import_warnings = _normalize_standalone_subprocess_imports(blocks)
     escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
     malformed_warnings = tuple(
         f"{defect.rendered} — recorded as a blocking decision; this criterion gates nothing"
         for defect in malformed_acceptance
+    ) + tuple(
+        f"{reason} — recorded as a blocking decision against the story that implements it; "
+        "the rest of the plan is written"
+        for reason in _database_contract_defects(blocks)
     )
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
     if forbidden_artifacts:
@@ -5582,6 +5710,7 @@ def create_plan(
         *staged_asset_env_decisions(
             _staged_asset_env_defects(blocks, blueprint_dir), unattended=unattended
         ),
+        *database_contract_decisions(_database_contract_defects(blocks), unattended=unattended),
     )
     story_for_spec = {
         str(name): block.block_id

@@ -24,6 +24,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-17: A `DATABASE.md` defect no longer discards the plan that found it. A live run lost 39
+  accepted Blueprints across 9 LLM calls, writing nothing, because one `Access` cell read
+  `read-write` where the contract admits `read` or `write`. Two changes settle it. `drydock plan`
+  now reads every unambiguous `Access` spelling — `read/write`, `append`, `create`, `select` and
+  the rest — as the contract value it means, collapsing a combined operation to `write` because a
+  citation Drydock widens can never under-declare access, and reporting each rewrite. A spelling
+  Drydock cannot read without guessing is never reinterpreted. Anything the contract parser still
+  rejects is raised as a blocking decision against the story implementing the declaration rather
+  than as a fatal, which is the response already settled for an acceptance criterion that does not
+  compile: Build still cannot proceed on a contract it cannot read, but the cost is one story
+  instead of the whole run.
 - 2026-09-17: `drydock plan` now validates the `DATABASE.md` operation surface, not only its
   schema. Build reads `## Access Patterns` through `database_operation_fingerprints`, so a
   declaration it cannot parse used to stop the build only after a block had already been spent — a
@@ -31,7 +42,8 @@ command surface and Typed Specification contract are unstable and may change bet
   accepted at 5/5. The plan integrity check parses the same contract and refuses the plan for free.
   `Rigging/spec_template/DATABASE.md` and the Blueprints contract now state the required shape:
   one `### FEATURE-<DOMAIN>-<NNN> — <Operation>` section per operation, never a single table of
-  operation rows.
+  operation rows. The check is reported as a blocking decision, not a fatal, so the plan survives
+  it.
 - 2026-09-17: `drydock plan` now repairs a *chain* of fused acceptance boundaries, not only a
   single fusion. When the plan model closes one criterion with the next criterion's id and never
   opens that one, the same slip can repeat down a file — a live run produced
