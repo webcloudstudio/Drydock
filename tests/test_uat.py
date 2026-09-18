@@ -550,7 +550,9 @@ def test_run_uat_builds_initial_and_updated_sources_and_gates_on_the_release_ver
     assert any(label.endswith("after-refit-1-build-status") for label in labels)
     assert any(label.endswith("after-refit-1-build-workspace-status") for label in labels)
     assert (case_root / "result.json").is_file()
-    assert "ReadingList: FAILED" in (case_root / "README.md").read_text(encoding="utf-8")
+    readme = (case_root / "README.md").read_text(encoding="utf-8")
+    assert "| Release score passed | FAIL |" in readme
+    assert "- Failure: execution PASS, acceptance FAIL" in readme
     assert (case_root / "index.html").is_file()
 
 
@@ -741,7 +743,7 @@ def test_run_uat_carries_unproven_guardrails_into_the_run_record(tmp_path: Path)
     )
     # The operator reading the run summary is the one who must settle these.
     summary = render_summary(results)
-    assert "ReadingList: PASSED" in summary
+    assert "PROJECT READINGLIST — PASSED" in summary
     assert "### Manual verification required" in summary
     assert f"- {unproven}" in summary
 

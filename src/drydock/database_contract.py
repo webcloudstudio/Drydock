@@ -633,6 +633,8 @@ def changed_operation_ids_since(blueprint_dir: Path, commit: str) -> tuple[str, 
         ["git", "-C", str(blueprint_dir), "rev-parse", "--show-toplevel"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if root.returncode:
@@ -646,6 +648,8 @@ def changed_operation_ids_since(blueprint_dir: Path, commit: str) -> tuple[str, 
         ["git", "-C", str(root_path), "show", f"{commit}:{relative}"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if prior.returncode:

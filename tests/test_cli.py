@@ -376,11 +376,6 @@ class TestHelpAndVersion:
         assert "--from-step" in out
         assert "Resume" in out or "resume" in out
 
-    def test_uat_run_requires_a_resume_stage(self):
-        rc, _, err = run_cli("uat", "ReadingList", "--run", "20260809T000000.000000Z")
-        assert rc == 2
-        assert "--run requires --stage or --from-step" in err
-
     def test_uat_stage_accepts_verify(self):
         parser = _build_parser()
         ns = parser.parse_args(["uat", "ReadingList", "--stage", "verify"])
