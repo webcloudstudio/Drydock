@@ -26,6 +26,9 @@
 <!-- table carrying Owner, Access (read, write, or read-write), Repository operation, and -->
 <!-- Compatibility. Every Blueprint that reaches the database cites these ids in its own -->
 <!-- `## Database Interface` section; a citation may claim less access than granted, never more. -->
+<!-- A citation is one bullet on one line: -->
+<!--   - `FEATURE-ORDER-001` — write: create an order - supplies: `customer_id` - returns: `id` -->
+<!-- and a Blueprint that reaches no repository writes `- None — <who owns persistence>.` -->
 <!-- Plan appends new patterns as it authors Blueprints; it never rewrites held ones. -->
 
 <!-- Repository operation names one declared table and one verb as `<table>.<verb>`, lowercase, -->

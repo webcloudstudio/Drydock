@@ -27,6 +27,20 @@ _INTERFACE_RE = re.compile(
     r"\s+-\s+returns:\s*(?P<output>.*?)\s*$",
     re.MULTILINE | re.IGNORECASE,
 )
+_INTERFACE_BULLET_RE = re.compile(r"^\s*-\s+\S")
+#: A Blueprint that reaches no repository still often writes the heading, because a Screen that
+#: delegates persistence to a Feature is saying something true about itself. Without a declared
+#: form for that, the only way to say it is prose, and prose in this section is indistinguishable
+#: from a citation the author got wrong. ``- None`` makes the empty claim writable.
+_INTERFACE_NONE_RE = re.compile(r"^\s*-\s+none\b", re.IGNORECASE)
+#: Quoted verbatim in the parse failure. The repair loop is handed the message and nothing else,
+#: so a message that names the defect without showing the accepted form cannot be repaired: five
+#: passes of ``malformed ## Database Interface entry`` returned the same prose five times.
+_INTERFACE_FORM = (
+    "each entry is one line "
+    "``- `FEATURE-DOMAIN-001` — read: <operation> - supplies: `a`, `b` - returns: `c`, `d``, "
+    "and a Blueprint that reaches no repository declares ``- None — <why>.``"
+)
 _MIGRATION_FILE_RE = re.compile(
     r"^MIGRATION-(?:(?P<ticket>TICKET-\d+)-)?(?P<scope>[A-Z][A-Z0-9-]*(?:-\d{3})?)\.md$"
 )
@@ -403,12 +417,29 @@ def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> Databa
 
 
 def parse_database_interface(text: str, *, source: str = "Blueprint") -> tuple[DatabaseUse, ...]:
-    """Read a Blueprint's optional database-interface declaration."""
+    """Read a Blueprint's database-interface declaration.
+
+    Every bullet in the section is an entry, and every entry must parse. Reading only the
+    lines that happened to match let a Blueprint describe its persistence in prose beside one
+    well-formed citation and pass, which is the failure this section exists to catch.
+    """
     section = _section(text, "Database Interface")
     if not section.strip():
         return ()
     uses: list[DatabaseUse] = []
-    for match in _INTERFACE_RE.finditer(section):
+    declared_none = False
+    for line in section.splitlines():
+        if not _INTERFACE_BULLET_RE.match(line):
+            continue
+        if _INTERFACE_NONE_RE.match(line):
+            declared_none = True
+            continue
+        match = _INTERFACE_RE.match(line)
+        if match is None:
+            raise SpecificationError(
+                f"{source}: malformed ## Database Interface entry {line.strip()!r} — "
+                f"{_INTERFACE_FORM}"
+            )
         uses.append(
             DatabaseUse(
                 identifier=match.group("id"),
@@ -417,8 +448,15 @@ def parse_database_interface(text: str, *, source: str = "Blueprint") -> tuple[D
                 returns=_names(match.group("output")),
             )
         )
-    if not uses:
-        raise SpecificationError(f"{source}: malformed ## Database Interface entry")
+    if declared_none and uses:
+        raise SpecificationError(
+            f"{source}: ## Database Interface declares None and also cites "
+            f"{len(uses)} access pattern(s); it reaches a repository or it does not"
+        )
+    if not declared_none and not uses:
+        raise SpecificationError(
+            f"{source}: ## Database Interface states no entry — {_INTERFACE_FORM}"
+        )
     return tuple(uses)
 
 

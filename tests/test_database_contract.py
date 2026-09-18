@@ -315,3 +315,44 @@ def test_a_citation_may_never_claim_more_access_than_the_pattern_grants():
 
     with pytest.raises(SpecificationError, match="which write does not grant"):
         validate_database_interfaces(contract, {"FEATURE-Order.md": use})
+
+
+def test_a_blueprint_that_reaches_no_repository_declares_none():
+    """A Screen that delegates persistence must be able to say so without failing the plan."""
+    interface = _INTERFACE.replace(
+        "- `FEATURE-ORDER-001` — write: create an order"
+        " - supplies: `customer_id`, `items` - returns: `id`, `status`",
+        "- None — persistence is owned by FEATURE-Order.md.",
+    )
+
+    assert parse_database_interface(interface, source="SCREEN-Orders.md") == ()
+
+
+def test_prose_in_the_interface_section_names_the_line_and_the_accepted_form():
+    interface = _INTERFACE.replace(
+        "- `FEATURE-ORDER-001` — write: create an order"
+        " - supplies: `customer_id`, `items` - returns: `id`, `status`",
+        "- **Orders** — Read and write through the order repository declared by DATABASE.md.",
+    )
+
+    with pytest.raises(SpecificationError) as excinfo:
+        parse_database_interface(interface, source="FEATURE-Order.md")
+    message = str(excinfo.value)
+    assert "**Orders**" in message
+    assert "supplies:" in message
+    assert "- None" in message
+
+
+def test_every_bullet_must_parse_not_merely_one_of_them():
+    """One well-formed citation must not license prose beside it."""
+    interface = _INTERFACE + "- The remaining state lives in the session, not the database.\n"
+
+    with pytest.raises(SpecificationError, match="malformed ## Database Interface entry"):
+        parse_database_interface(interface, source="FEATURE-Order.md")
+
+
+def test_none_cannot_be_declared_beside_a_citation():
+    interface = _INTERFACE + "- None — nothing else is persisted.\n"
+
+    with pytest.raises(SpecificationError, match="declares None and also cites"):
+        parse_database_interface(interface, source="FEATURE-Order.md")

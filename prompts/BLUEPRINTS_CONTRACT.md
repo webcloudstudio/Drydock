@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260822 V16
+version: 20260918 V17
 ---
 
 ## Overview
@@ -761,8 +761,28 @@ do not cite a physical store. Persistence interfaces name the repository, module
 allowed callers.
 
 `## Database Interface` is required, not optional, for every Blueprint whose story declares
-persistence in `stack:`. A citation may claim less access than the pattern grants — a read-only
-consumer of a `read-write` surface is a real claim — but never more. Drydock checks each citation
+persistence in `stack:`. Each citation is one bullet on one line, in this exact form:
+
+```text
+## Database Interface
+
+- `FEATURE-ORDER-001` — write: create an order - supplies: `customer_id`, `items` - returns: `id`, `status`
+- `FEATURE-ORDER-002` — read: retrieve an order by id - supplies: `order_id` - returns: `status`, `total`
+```
+
+The id is an `## Access Patterns` id in backticks, the em dash is literal, the access is `read`,
+`write`, or `read-write`, and `supplies:` and `returns:` carry comma-separated backticked field
+names from that pattern's Input and Output DTOs. A Blueprint that reaches no repository — a Screen
+that delegates to a Feature's service routes — writes one bullet and no other:
+
+```text
+- None — persistence is owned by FEATURE-ORDER.md.
+```
+
+Every bullet under the heading is an entry and every entry is checked, so a sentence of prose there
+fails the plan as a malformed citation. Say it in `## Purpose` instead. A citation may claim less
+access than the pattern grants — a read-only consumer of a `read-write` surface is a real claim —
+but never more. Drydock checks each citation
 against the declaration. An unknown operation, a wrong owner, access the pattern does not grant, a
 field the DTO does not carry, or a required field left out is a conflict Build would implement, and
 it fails the plan. A Blueprint whose story selects a persistence stack and cites nothing fails it

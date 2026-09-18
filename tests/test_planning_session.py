@@ -5644,6 +5644,62 @@ def test_a_story_that_reaches_the_database_and_cites_nothing_fails_the_plan(tmp_
     assert "cites no access pattern" in defects[0][1].reason
 
 
+def test_a_blueprint_that_reaches_no_repository_declares_none_and_passes(tmp_path):
+    """A Screen that delegates persistence writes the heading because the claim is true of it.
+    With no declared form for the empty claim it had to write prose, and prose parsed as a
+    malformed citation — five repair passes that no message told how to repair."""
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "SCREEN-Example.md": (
+            "# SCREEN: Example\n\n## Database Interface\n\n"
+            "- None — persistence is owned by FEATURE-Example.md.\n"
+        ),
+    }
+
+    assert (
+        ps._database_interface_defects(_persistence_plan(tmp_path, stack=("python.md",)), blocks)
+        == ()
+    )
+
+
+def test_a_persistence_story_cannot_escape_the_gate_by_declaring_none(tmp_path):
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Database Interface\n\n- None — nothing is stored.\n"
+        ),
+    }
+
+    defects = ps._database_interface_defects(
+        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
+    )
+
+    assert [kind for kind, _ in defects] == ["database-interface-missing"]
+
+
+def test_prose_under_the_interface_heading_names_the_line_and_the_accepted_form(tmp_path):
+    """The repair prompt carries the defect message and nothing else, so the message is the
+    only place the grammar can reach the model that has to satisfy it."""
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Database Interface\n\n"
+            "- **Settings** — Read and write through the repository declared by DATABASE.md.\n"
+        ),
+    }
+
+    defects = ps._database_interface_defects(
+        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
+    )
+
+    assert [kind for kind, _ in defects] == ["database-interface-invalid"]
+    assert "**Settings**" in defects[0][1].reason
+    assert "supplies:" in defects[0][1].reason
+
+
 def test_a_citation_that_contradicts_the_declaration_fails_the_plan(tmp_path):
     """The Blueprint names an operation the declaration does not grant it, so Build would
     implement the disagreement."""

@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-18: The `## Database Interface` entry grammar is now stated in
+  `prompts/BLUEPRINTS_CONTRACT.md` and `Rigging/spec_template/DATABASE.md`, and a Blueprint that
+  reaches no repository declares `- None — <why>.` The grammar `parse_database_interface` enforces
+  — one bullet per line carrying an access-pattern id, access level, `supplies:`, and `returns:` —
+  appeared in no prompt the model reads, so a plan run emitted the prose the contract asked for and
+  21 Blueprints failed as malformed citations; the repair loop, which is handed the defect message
+  and nothing else, returned the same prose for five passes. A Screen that delegated persistence to
+  a Feature had no declared way to say so and failed for writing it in prose. Every bullet under
+  the heading is now checked rather than only those that happen to match, so prose beside one
+  well-formed citation no longer passes, and declaring `None` alongside a citation is a defect. The
+  parse failure quotes the offending line and the accepted form.
 - 2026-09-17: `drydock plan` now decides the persistence boundary rather than asking about it. The
   schema, the operation surface, and each Blueprint's citations either agree or they do not, and
   nothing about a disagreement needs a Commander, so four checks run at plan time: a Blueprint
