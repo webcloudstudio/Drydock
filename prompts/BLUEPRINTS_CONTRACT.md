@@ -765,14 +765,23 @@ persistence in `stack:`. A citation may claim less access than the pattern grant
 consumer of a `read-write` surface is a real claim — but never more. Drydock checks each citation
 against the declaration. An unknown operation, a wrong owner, access the pattern does not grant, a
 field the DTO does not carry, or a required field left out is a conflict Build would implement, and
-it blocks that Blueprint's story. A Blueprint that reaches the database and cites nothing is
-recorded as a material decision instead: the story builds correctly and only its storage access
-goes unchecked.
+it fails the plan. A Blueprint whose story selects a persistence stack and cites nothing fails it
+the same way. Persistence is the one part of a plan decidable from the artifacts alone, so none of
+it is left to a Commander to answer: Drydock repairs the cited Blueprint and re-validates, and a
+defect that survives repair stops the run.
 
 Each access pattern is its own `### FEATURE-<DOMAIN>-<NNN> — <Operation>` section over a
 `| Field | Value |` table carrying Owner, Access, Repository operation, and Compatibility, followed
 by an `Input: <DTO>` and an `Output: <DTO>` field table. Never collapse the operations into one
-table of rows. A `DATABASE.md` whose `## Access Patterns` holds no named operation fails the plan:
+table of rows.
+
+`Repository operation` names one declared table and one verb as `<table>.<verb>`, lowercase,
+several separated by commas: `` `settings.get`, `settings.set` ``. It is the only place the
+declaration says which table a pattern reaches, so the form is checked rather than advisory, and
+free text there fails the plan. Every table in `## Schema` is reached by at least one access
+pattern, and every operation names a table `## Schema` declares. A table nothing reaches is
+storage no story can use; an operation on a table that is not declared builds a repository against
+nothing. Declare the pattern in the same batch as the table. A `DATABASE.md` whose `## Access Patterns` holds no named operation fails the plan:
 Build reads that surface to fingerprint the persistence contract, and an unparseable one stops the
 build after a block has already been spent.
 

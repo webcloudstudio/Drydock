@@ -69,6 +69,7 @@ from drydock.database_contract import (
     DatabaseUse,
     parse_database_contract,
     parse_database_interface,
+    table_coverage_defects,
     validate_database_interfaces,
     validate_sqlite_schema,
 )
@@ -2354,35 +2355,36 @@ def _stack_selections(block: PlanBlock) -> frozenset[str]:
 
 def _database_interface_defects(
     plan: BuildPlan, blocks: dict[str, str]
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
+) -> tuple[tuple[str, MalformedAcceptance], ...]:
     """Return every way a Blueprint's persistence citation disagrees with the declaration.
 
     ``## Database Interface`` is how a Feature or Screen names the operations it uses, and
-    ``validate_database_interfaces`` has always been able to check one against the declared
-    contract — unknown operation, wrong owner, access it was not granted, a field the DTO does not
-    carry, a required field left out. Nothing called it outside ``refit``, and the section was
-    documented as optional, so in practice no Blueprint carried one and the boundary was prose.
+    ``validate_database_interfaces`` checks one against the declared contract — unknown
+    operation, wrong owner, access it was not granted, a field the DTO does not carry, a
+    required field left out. A story that declares persistence in ``stack:`` and cites nothing
+    is reported too. That is the decidable reading of "the service has a database": it is
+    authored in the Manifest rather than inferred from what the prose seems to describe.
 
-    A story that declares persistence in ``stack:`` and cites nothing is reported here. That is
-    the decidable reading of "the service has a database": it is authored in the Manifest rather
-    than inferred from what the prose seems to describe.
+    Both kinds are returned tagged for the artifact repair loop, which re-emits the cited
+    Blueprint and re-validates. Persistence is the one part of a plan that is wholly decidable
+    from the declaration, so it is repaired before the plan is written rather than emitted and
+    handed to a Commander as a question about a defect Drydock had already located. Reporting
+    them as decisions instead left 17 stories of a well-specified project citing nothing at all.
 
-    Returns ``(contradictions, omissions)``, and the split is the whole point. A citation that
-    disagrees with the declaration is a conflict that would build wrong code, and it blocks. A
-    citation that is merely absent is incompleteness: the story builds correctly, its storage
-    access simply goes unchecked, so it is recorded and counted rather than halted. Blocking that
-    case once put 22 stories of a well-specified project behind a question none of them needed.
+    The validator raises on the first defect it finds, so it is called once per Blueprint: one
+    bad citation in one file must not hide the citations in every other file from the repair
+    loop.
     """
     database_text = blocks.get(DATABASE_BLOCK)
     if not database_text:
-        return (), ()
+        return ()
     try:
         contract = parse_database_contract(database_text)
     except SpecificationError:
         # An unreadable declaration is ``_database_contract_defects``' business. Nothing can be
         # said about citations against a contract that does not parse.
-        return (), ()
-    defects: list[str] = []
+        return ()
+    defects: list[tuple[str, MalformedAcceptance]] = []
     interfaces: dict[str, tuple[DatabaseUse, ...]] = {}
     for name in sorted(blocks):
         if name in _RESERVED_BLOCKS or name == DATABASE_BLOCK:
@@ -2390,11 +2392,18 @@ def _database_interface_defects(
         try:
             interfaces[name] = parse_database_interface(blocks[name], source=name)
         except SpecificationError as exc:
-            defects.append(str(exc))
-    try:
-        validate_database_interfaces(contract, interfaces)
-    except SpecificationError as exc:
-        defects.append(str(exc))
+            defects.append((
+                "database-interface-invalid",
+                MalformedAcceptance(check_id="## Database Interface", source=name, reason=str(exc)),
+            ))
+    for name, uses in interfaces.items():
+        try:
+            validate_database_interfaces(contract, {name: uses})
+        except SpecificationError as exc:
+            defects.append((
+                "database-interface-invalid",
+                MalformedAcceptance(check_id="## Database Interface", source=name, reason=str(exc)),
+            ))
 
     persistent = {
         str(name)
@@ -2407,14 +2416,75 @@ def _database_interface_defects(
         )
         if name
     }
-    omissions = [
-        f"{name}: its story declares persistence in stack: but the Blueprint cites no "
-        "access pattern. State the operations it uses in a `## Database Interface` "
-        "section, or drop the persistence selection from the story."
+    defects.extend(
+        (
+            "database-interface-missing",
+            MalformedAcceptance(
+                check_id="## Database Interface",
+                source=name,
+                reason=(
+                    "its story declares persistence in stack: but the Blueprint cites no access "
+                    "pattern. State the operations it uses in a `## Database Interface` section, "
+                    "citing access-pattern ids from "
+                    f"`{DATABASE_BLOCK}` with only the fields it supplies or receives, or drop "
+                    "the persistence selection from the story."
+                ),
+            ),
+        )
         for name in sorted(persistent - {DATABASE_BLOCK})
         if name in interfaces and not interfaces[name]
-    ]
-    return tuple(defects), tuple(omissions)
+    )
+    return tuple(defects)
+
+
+def _database_table_defects(blocks: dict[str, str]) -> tuple[tuple[str, MalformedAcceptance], ...]:
+    """Return every disagreement between the declared schema and the operation surface.
+
+    A table no access pattern reaches is storage the declaration describes and no story can use.
+    An operation naming a table the schema never declares is the same disagreement seen from the
+    other side, and Build would write a repository against a table that will not exist. Neither
+    needs judgment to see: both are read from ``DATABASE.md`` alone, which is why they are gated
+    here instead of left to review. A plan that declared four tables and reached three shipped
+    with nothing looking at the fourth.
+    """
+    text = blocks.get(DATABASE_BLOCK)
+    if not text:
+        return ()
+    try:
+        uncited, undeclared = table_coverage_defects(text)
+    except SpecificationError:
+        # ``_database_contract_defects`` owns an unreadable declaration.
+        return ()
+    return tuple(
+        (
+            "database-table-uncited",
+            MalformedAcceptance(
+                check_id=table,
+                source=DATABASE_BLOCK,
+                reason=(
+                    f"table `{table}` is declared in `## Schema` but no access pattern reaches "
+                    "it, so no story can read or write it. Add a "
+                    "`### <FEATURE-DOMAIN-NNN> — <Operation>` pattern whose Repository operation "
+                    f"names `{table}.<verb>`, or remove the table."
+                ),
+            ),
+        )
+        for table in uncited
+    ) + tuple(
+        (
+            "database-table-undeclared",
+            MalformedAcceptance(
+                check_id=identifier,
+                source=DATABASE_BLOCK,
+                reason=(
+                    f"repository operation `{operation}` names table "
+                    f"`{operation.split('.', 1)[0]}`, which `## Schema` does not declare. Declare "
+                    "the table or correct the operation."
+                ),
+            ),
+        )
+        for identifier, operation in undeclared
+    )
 
 
 def _database_contract_defects(blocks: dict[str, str]) -> tuple[str, ...]:
@@ -2476,62 +2546,6 @@ def database_contract_decisions(
             system_choice="",
         )
         for index, reason in enumerate(defects, start=1)
-    )
-
-
-def _database_interface_warnings(
-    contradictions: tuple[str, ...], omissions: tuple[str, ...]
-) -> tuple[str, ...]:
-    """Render each citation defect at the weight its kind earns."""
-    return tuple(
-        f"{reason} — recorded as a blocking decision; this citation and the declaration "
-        "disagree, and Build would implement the disagreement"
-        for reason in contradictions
-    ) + tuple(
-        f"{reason} — recorded as a material decision; the story builds, but its storage access "
-        "goes unchecked"
-        for reason in omissions
-    )
-
-
-def database_interface_decisions(
-    contradictions: tuple[str, ...],
-    omissions: tuple[str, ...] = (),
-    *,
-    unattended: bool = False,
-) -> tuple[Decision, ...]:
-    """Record each persistence citation that does not hold against the declaration.
-
-    A contradiction blocks: the Blueprint names an operation the declaration does not grant it,
-    and Build would implement the disagreement. An omission does not: the story builds correctly
-    and only its storage access goes unchecked, so it is counted rather than halted. Blocking the
-    omission once parked 22 stories of a well-specified project behind a question about a section
-    the contract had called optional when the plan was authored.
-    """
-    items = [("blocking", reason) for reason in contradictions]
-    items += [("material", reason) for reason in omissions]
-    return tuple(
-        Decision(
-            id=f"database-interface-{index:03d}",
-            type="text",
-            severity="material" if unattended else severity,
-            origin="plan",
-            blueprint=DATABASE_BLOCK,
-            story=None,
-            status="recommended" if unattended else "open",
-            archived=False,
-            title="Persistence citation does not hold against the declaration",
-            description=(
-                f"{reason}\n\n"
-                "A Blueprint that reaches the database states the operations it uses in a "
-                "`## Database Interface` section, citing access-pattern ids from "
-                f"`blueprint/{DATABASE_BLOCK}` with only the fields it supplies or receives. It "
-                "never names a table, a column, or a physical store."
-            ),
-            options=(),
-            system_choice="",
-        )
-        for index, (severity, reason) in enumerate(items, start=1)
     )
 
 
@@ -2652,6 +2666,28 @@ class CriteriaDefect(SpecificationError):
     ``defects`` carries each contributing criterion tagged with the validator that found it
     (``kind``), so the repair loop can group repair calls by shared cause instead of dumping
     every cited file into one oversized prompt regardless of how many distinct bugs they carry.
+    """
+
+    def __init__(
+        self, message: str, defects: tuple[tuple[str, MalformedAcceptance], ...] = ()
+    ) -> None:
+        super().__init__(message)
+        self.defects = defects
+
+
+class DatabaseDefect(SpecificationError):
+    """A persistence defect that is decidable from the declaration, and so must be repaired.
+
+    Deliberately a sibling of :class:`CriteriaDefect` rather than a subclass. Both carry
+    ``defects`` in the same shape, so both drive the artifact repair loop — grouped by kind,
+    chunked, and budgeted to reach every chunk. They part at exhaustion. A criterion that still
+    cannot be written is recorded as a blocking decision and the plan is kept, because the rest
+    of the planning is sound and a Commander can answer for one snippet. A persistence defect is
+    not like that: the schema, the operation surface, and the citations either agree or they do
+    not, nothing about the disagreement needs a human to decide, and Build would implement it.
+    Exhausting the repair budget on one means the model could not produce a coherent persistence
+    boundary, so the run fails and writes nothing rather than handing forward a plan whose
+    storage contract is known to be wrong.
     """
 
     def __init__(
@@ -3507,7 +3543,6 @@ def _validate_plan_output(
             "implementation that does nothing"
             for defect in _weak_acceptance_defects(blocks)
         )
-        + _database_interface_warnings(*_database_interface_defects(plan, blocks))
     )
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
     if forbidden_artifacts:
@@ -3578,6 +3613,27 @@ def _validate_plan_output(
                 result,
             ),
             defects=kinded_criteria_defects,
+        )
+
+    # Persistence is the one part of a plan that is wholly decidable from the artifacts: the
+    # schema, the operation surface, and each Blueprint's citations either agree or they do not.
+    # Raising routes them into the same repair loop, and unlike a criterion they are not
+    # forgiven when it is exhausted — see ``DatabaseDefect``.
+    kinded_database_defects = (
+        _database_table_defects(blocks) + _database_interface_defects(plan, blocks)
+        if enforce_criteria
+        else ()
+    )
+    if kinded_database_defects:
+        raise DatabaseDefect(
+            _with_execution_evidence(
+                "Plan generation failed: the persistence declaration and the Blueprints that "
+                "cite it disagree.\n  "
+                + "\n  ".join(defect.rendered for _, defect in kinded_database_defects)
+                + "\n  No Blueprint or Manifest artifacts were written.",
+                result,
+            ),
+            defects=kinded_database_defects,
         )
 
     emitted_files = {name: text for name, text in blocks.items() if name not in _RESERVED_BLOCKS}
@@ -5927,9 +5983,6 @@ def create_plan(
         ),
         *database_contract_decisions(_database_contract_defects(blocks), unattended=unattended),
         *weak_acceptance_decisions(_weak_acceptance_defects(blocks), unattended=unattended),
-        *database_interface_decisions(
-            *_database_interface_defects(plan, blocks), unattended=unattended
-        ),
     )
     story_for_spec = {
         str(name): block.block_id

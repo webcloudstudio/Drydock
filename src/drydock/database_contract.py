@@ -42,6 +42,12 @@ _ACCESS_GRANTS = {
     "read-write": frozenset({"read", "write", "read-write"}),
 }
 _MIGRATION_STATES = frozenset({"planned", "built", "applied"})
+#: A repository operation names one table and one verb. The cell is the only place the
+#: declaration says which table a pattern reaches, so its shape is load-bearing rather than
+#: cosmetic: table coverage — every declared table reached by some pattern — is decided from
+#: these prefixes. Free text here makes that check guess, and a check that guesses about
+#: persistence is worse than no check at all.
+_REPOSITORY_OPERATION_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,12 @@ class AccessPattern:
     inputs: tuple[Field, ...]
     output_name: str
     outputs: tuple[Field, ...]
+    operations: tuple[str, ...] = ()
+
+    @property
+    def tables(self) -> frozenset[str]:
+        """Tables this pattern reaches, read from the prefix of each repository operation."""
+        return frozenset(operation.split(".", 1)[0] for operation in self.operations)
 
 
 @dataclass(frozen=True)
@@ -277,6 +289,55 @@ def _field_table(text: str, start: int) -> tuple[Field, ...]:
     return tuple(fields)
 
 
+def _repository_operations(value: str, *, identifier: str, source: str) -> tuple[str, ...]:
+    """Split a Repository operation cell into validated ``<table>.<verb>`` operations."""
+    operations = tuple(
+        item for item in (part.strip().strip("`").strip() for part in value.split(",")) if item
+    )
+    if not operations:
+        raise SpecificationError(f"{source}: {identifier} names no repository operation")
+    invalid = [item for item in operations if not _REPOSITORY_OPERATION_RE.fullmatch(item)]
+    if invalid:
+        raise SpecificationError(
+            f"{source}: {identifier} has invalid repository operation(s) "
+            f"{', '.join(repr(item) for item in invalid)}: each names one declared table and one "
+            "verb as `<table>.<verb>`, lowercase, and several are separated by commas"
+        )
+    return operations
+
+
+def table_coverage_defects(
+    text: str, *, source: str = "DATABASE.md"
+) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+    """Return the two ways the schema and the operation surface can disagree.
+
+    ``(uncited, undeclared)``. A declared table no pattern reaches cannot be read or written by
+    any story: it is storage the product describes and nothing can use, and it means the schema
+    and the stories disagree about what is kept. An operation naming a table the schema never
+    declares is the same disagreement from the other side, and it builds a repository against a
+    table that will not exist.
+
+    Both are decided from the declaration alone, with no model judgment, which is why persistence
+    is gated here rather than left to review.
+    """
+    tables = sqlite_schema_tables(text, source=source)
+    if not tables:
+        return (), ()
+    contract = parse_database_contract(text, source=source)
+    declared = {table.name for table in tables}
+    covered: set[str] = set()
+    undeclared: list[tuple[str, str]] = []
+    for pattern in contract.patterns:
+        covered |= pattern.tables
+        undeclared.extend(
+            (pattern.identifier, operation)
+            for operation in pattern.operations
+            if operation.split(".", 1)[0] not in declared
+        )
+    uncited = tuple(table.name for table in tables if table.name not in covered)
+    return uncited, tuple(undeclared)
+
+
 def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> DatabaseContract:
     """Parse the public operation surface from a DATABASE Blueprint."""
     access_patterns = _section(text, "Access Patterns")
@@ -325,6 +386,9 @@ def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> Databa
                 owner=metadata["owner"].strip(),
                 access=access,
                 repository_operation=metadata["repository operation"].strip("`"),
+                operations=_repository_operations(
+                    metadata["repository operation"], identifier=match.group(1), source=source
+                ),
                 compatibility=compatibility,
                 input_name=values["input"][0],
                 inputs=values["input"][1],

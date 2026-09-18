@@ -28,7 +28,7 @@ _DATABASE = """# DATABASE: Orders
 |---|---|
 | Owner | FEATURE-Order.md |
 | Access | write |
-| Repository operation | OrderRepository.create(CreateOrder) -> Order |
+| Repository operation | `orders.create` |
 | Compatibility | rebuild |
 
 Input: CreateOrder
@@ -51,7 +51,7 @@ Output: Order
 |---|---|
 | Owner | FEATURE-Order.md |
 | Access | read |
-| Repository operation | OrderRepository.get(UUID) -> Order |
+| Repository operation | `orders.get` |
 | Compatibility | data |
 
 Input: FindOrder
@@ -206,7 +206,7 @@ def test_public_contract_fingerprint_excludes_private_database_sections():
     assert database_operation_fingerprints(_DATABASE) == database_operation_fingerprints(
         private_edit
     )
-    changed_contract = _DATABASE.replace("OrderRepository.create", "OrderRepository.create_v2")
+    changed_contract = _DATABASE.replace("orders.create", "orders.create_v2")
     assert database_operation_fingerprints(_DATABASE) != database_operation_fingerprints(
         changed_contract
     )

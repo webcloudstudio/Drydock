@@ -28,6 +28,14 @@
 <!-- `## Database Interface` section; a citation may claim less access than granted, never more. -->
 <!-- Plan appends new patterns as it authors Blueprints; it never rewrites held ones. -->
 
+<!-- Repository operation names one declared table and one verb as `<table>.<verb>`, lowercase, -->
+<!-- several separated by commas: `settings.get`, `settings.set`. It is the only place the -->
+<!-- declaration says which table a pattern reaches, so the form is checked, not advisory. -->
+<!-- Every table in `## Schema` is reached by at least one pattern, and every pattern names a -->
+<!-- table `## Schema` declares. A table nothing reaches is storage no story can use; an -->
+<!-- operation on a table that is not declared builds a repository against nothing. Both fail -->
+<!-- the plan. -->
+
 <!-- drydock:example -->
 ### FEATURE-EXAMPLE-001 — Create item
 
@@ -35,7 +43,7 @@
 |-------|-------|
 | Owner | FEATURE-Example.md |
 | Access | write |
-| Repository operation | `ItemRepository.create(CreateItem) -> Item` |
+| Repository operation | `items.create` |
 | Compatibility | rebuild |
 
 Input: CreateItem

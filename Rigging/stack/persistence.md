@@ -39,6 +39,20 @@ SQLAlchemy 2 and Alembic; `stack/sqlalchemy.md` and `stack/alembic.md` are manda
 **Legacy examples below do not govern Python relational Targets.** They remain background for
 non-ORM adapters only and must not be copied into a Python application.
 
+**The declaration fixes the surface**: `DATABASE.md` names every operation in the
+`Repository operation` cell of each access pattern, as `<table>.<verb>`. That is the repository's
+public surface, not a suggestion for one. `settings.get` is method `get` on the `settings`
+repository. Implement exactly those methods: no public method the declaration does not name, and
+none it names left unimplemented. A private helper is free; a public one is a second, undeclared
+door into the store.
+
+**Why exactly**: the declaration is the only description of the store the rest of the plan is
+allowed to depend on. A public method it does not name is storage access no Blueprint cites, no
+review sees, and no contract governs — the raw-SQL problem restored one level up. A declared
+method left unimplemented breaks a caller that had every right to rely on it. Plan already
+refuses to write a plan whose tables, operations, and citations disagree; this keeps the built
+code in that same agreement.
+
 **Caller contract**: `Database` presents single-threaded semantics. Callers construct one
 instance, share it freely, call methods synchronously, and never reason about threads,
 connections, or locking. Thread handling is internal to the class and may change without
@@ -232,4 +246,6 @@ is the seam. Swapping the transport, or stubbing it in tests, changes one class.
       per thread, table classes take a connect provider
 - [ ] One typed `Config`, ENV-driven, no Dev/Prod/Test subclasses
 - [ ] Service wrappers extend the `ServiceClient` base class
+- [ ] Repository public methods are exactly the declared `Repository operation` entries
+- [ ] Every declared `<table>.<verb>` is implemented; no undeclared public method exists
 - [ ] Downstream specs depend on the class interface, not the schema

@@ -78,7 +78,7 @@ _ACCESS_PATTERNS = (
     "| Field | Value |\n|---|---|\n"
     "| Owner | FEATURE-X.md |\n"
     "| Access | read |\n"
-    "| Repository operation | `S.get(GetSetting) -> Setting` |\n"
+    "| Repository operation | `settings.get` |\n"
     "| Compatibility | rebuild |\n\n"
     "Input: GetSetting\n\n"
     "| Field | Type | Required |\n|---|---|---|\n| key | str | yes |\n\n"
@@ -5623,33 +5623,30 @@ def _persistence_plan(tmp_path, *, stack: str):
     )
 
 
-def test_a_story_that_reaches_the_database_and_cites_nothing_is_reported(tmp_path):
+def test_a_story_that_reaches_the_database_and_cites_nothing_fails_the_plan(tmp_path):
     """The boundary this section exists to enforce: a Blueprint whose story declares persistence
-    but names no operation has storage access that nothing checks. 22 of a live plan's Blueprints
-    were in exactly this state while the section was documented as optional."""
+    but names no operation has storage access that nothing checks. Recording it as a decision
+    left 17 of a live plan's Blueprints in exactly that state, so it is repaired instead."""
     blocks = {
         "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
         "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
         "FEATURE-Example.md": "# FEATURE: Example\n\n## Guardrails\n\n- None.\n",
     }
 
-    contradictions, omissions = ps._database_interface_defects(
+    defects = ps._database_interface_defects(
         _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
     )
 
-    assert contradictions == ()
-    assert len(omissions) == 1
-    assert "cites no access pattern" in omissions[0]
-    # A missing citation is incompleteness, not conflict: the story builds and only its storage
-    # access goes unchecked. Blocking it parked 22 stories of a well-specified project.
-    decision = ps.database_interface_decisions(contradictions, omissions)[0]
-    assert decision.severity == "material"
-    assert not decision.blocks_execution
+    assert [kind for kind, _ in defects] == ["database-interface-missing"]
+    # The repair loop chunks by source, so the defect names the Blueprint to re-emit — not
+    # DATABASE.md, which is correct as written.
+    assert defects[0][1].source == "FEATURE-Example.md"
+    assert "cites no access pattern" in defects[0][1].reason
 
 
-def test_a_citation_that_contradicts_the_declaration_blocks(tmp_path):
+def test_a_citation_that_contradicts_the_declaration_fails_the_plan(tmp_path):
     """The Blueprint names an operation the declaration does not grant it, so Build would
-    implement the disagreement. That is a conflict, and it holds the story."""
+    implement the disagreement."""
     blocks = {
         "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
         "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
@@ -5659,14 +5656,81 @@ def test_a_citation_that_contradicts_the_declaration_blocks(tmp_path):
         ),
     }
 
-    contradictions, omissions = ps._database_interface_defects(
+    defects = ps._database_interface_defects(
         _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
     )
 
-    assert omissions == ()
-    assert len(contradictions) == 1
-    assert "unknown database operation" in contradictions[0]
-    assert ps.database_interface_decisions(contradictions)[0].severity == "blocking"
+    assert [kind for kind, _ in defects] == ["database-interface-invalid"]
+    assert "unknown database operation" in defects[0][1].reason
+
+
+def test_one_bad_citation_does_not_hide_another_blueprint(tmp_path):
+    """The validator raises on the first defect it finds. Calling it once per Blueprint is what
+    lets the repair loop see every file that needs re-emitting instead of one per pass."""
+    interface = (
+        "# FEATURE: {name}\n\n## Database Interface\n\n"
+        "- `FEATURE-NOPE-001` — read: invented - supplies: `key` - returns: `key`\n"
+    )
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "FEATURE-Example.md": interface.format(name="Example"),
+        "FEATURE-Other.md": interface.format(name="Other"),
+    }
+
+    defects = ps._database_interface_defects(
+        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
+    )
+
+    assert sorted(defect.source for _, defect in defects) == [
+        "FEATURE-Example.md",
+        "FEATURE-Other.md",
+    ]
+
+
+def test_a_declared_table_no_pattern_reaches_fails_the_plan():
+    """Four tables and three access patterns shipped in a live plan with nothing looking at the
+    fourth. The table is storage the declaration describes and no story can use."""
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n\n"
+        "## `activity_events`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| id | INTEGER PK | |\n",
+    }
+
+    defects = ps._database_table_defects(blocks)
+
+    assert [kind for kind, _ in defects] == ["database-table-uncited"]
+    assert defects[0][1].check_id == "activity_events"
+    assert defects[0][1].source == "DATABASE.md"
+
+
+def test_an_operation_on_an_undeclared_table_fails_the_plan():
+    """The same disagreement from the other side: Build would write a repository against a table
+    that will not exist."""
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n"
+        + _ACCESS_PATTERNS.replace("`settings.get`", "`audit.get`")
+        + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+    }
+
+    defects = ps._database_table_defects(blocks)
+
+    assert sorted(kind for kind, _ in defects) == [
+        "database-table-uncited",
+        "database-table-undeclared",
+    ]
+
+
+def test_a_persistence_defect_is_not_forgiven_when_repair_is_exhausted():
+    """A criterion that cannot be repaired is recorded as a decision and the plan is kept. A
+    persistence defect is not: the amnesty at the end of the repair loop tests for CriteriaDefect,
+    and DatabaseDefect is deliberately a sibling rather than a subclass."""
+    defect = ps.DatabaseDefect("boom", defects=())
+
+    assert isinstance(defect, ps.SpecificationError)
+    assert not isinstance(defect, ps.CriteriaDefect)
 
 
 def test_a_story_that_never_reaches_the_database_needs_no_citation(tmp_path):
@@ -5676,6 +5740,9 @@ def test_a_story_that_never_reaches_the_database_needs_no_citation(tmp_path):
         "FEATURE-Example.md": "# FEATURE: Example\n\n## Guardrails\n\n- None.\n",
     }
 
-    assert ps._database_interface_defects(
-        _persistence_plan(tmp_path, stack=("python.md", "bootstrap5.md")), blocks
-    ) == ((), ())
+    assert (
+        ps._database_interface_defects(
+            _persistence_plan(tmp_path, stack=("python.md", "bootstrap5.md")), blocks
+        )
+        == ()
+    )
