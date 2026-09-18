@@ -723,6 +723,20 @@ A file can only be built in a phase after all its `Depends On` files are built.
 
 ---
 
+## Acceptance Strength
+
+A criterion states one expectation. Pin the status the implementation answers with: a stub that
+answers `200` is a real contract and a real test, and specifying a stub is legitimate.
+
+`404` means the endpoint is absent. Asserted alone it is a deliberate negative probe and one of the
+strongest checks available. Admitted beside any other status it makes the criterion true of an
+application that implements nothing, so `in {200, 404}` and `in {400, 404}` are both defects. A set
+admitting both success and a `5xx` is a defect for the same reason.
+
+A criterion that needs a row to exist creates it through the public interface first. Admitting the
+status that says the row never existed is not a substitute for building the state the criterion
+depends on.
+
 ## Persistence Encapsulation (DATABASE.md scope)
 
 `DATABASE.md` is the project's persistence contract — not SQL schema alone. It documents every
@@ -740,11 +754,19 @@ repository-call contract unchanged does not invalidate downstream features.
 
 Every `DATABASE.md` includes `## Access Patterns` and `## Persistence Interfaces` before schema
 details. Every access pattern has a stable feature-owned `FEATURE-<DOMAIN>-<NNN>` id, Owner,
-read/write access, repository method, DTO input and output shapes, and compatibility level:
-`unchanged`, `data`, or `rebuild`. Route and screen Blueprints cite only those ids through an
-optional `## Database Interface` section, including only fields they supply or receive; they do
-not cite a physical store. Persistence interfaces name the repository, module location, and
+`read`, `write`, or `read-write` access, repository method, DTO input and output shapes, and
+compatibility level: `unchanged`, `data`, or `rebuild`. Route and screen Blueprints cite only those
+ids through a `## Database Interface` section, including only fields they supply or receive; they
+do not cite a physical store. Persistence interfaces name the repository, module location, and
 allowed callers.
+
+`## Database Interface` is required, not optional, for every Blueprint whose story declares
+persistence in `stack:`. A citation may claim less access than the pattern grants — a read-only
+consumer of a `read-write` surface is a real claim — but never more. Drydock checks each citation
+against the declaration: an unknown operation, a wrong owner, access the pattern does not grant, a
+field the DTO does not carry, or a required field left out is a blocking decision on that
+Blueprint. A Blueprint that reaches the database and cites nothing has a storage boundary that
+nothing checks, which is the condition this section exists to rule out.
 
 Each access pattern is its own `### FEATURE-<DOMAIN>-<NNN> — <Operation>` section over a
 `| Field | Value |` table carrying Owner, Access, Repository operation, and Compatibility, followed

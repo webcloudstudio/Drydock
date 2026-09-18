@@ -23,7 +23,9 @@
 
 <!-- One `### <FEATURE-DOMAIN-NNN> — <Operation>` section per operation, below this heading. -->
 <!-- Never a single table of operations: each pattern is its own section over a | Field | Value | -->
-<!-- table carrying Owner, Access (read or write), Repository operation, and Compatibility. -->
+<!-- table carrying Owner, Access (read, write, or read-write), Repository operation, and -->
+<!-- Compatibility. Every Blueprint that reaches the database cites these ids in its own -->
+<!-- `## Database Interface` section; a citation may claim less access than granted, never more. -->
 <!-- Plan appends new patterns as it authors Blueprints; it never rewrites held ones. -->
 
 <!-- drydock:example -->

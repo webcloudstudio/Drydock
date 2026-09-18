@@ -23,7 +23,7 @@ _TABLE_ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$")
 _INPUT_OUTPUT_RE = re.compile(r"^(Input|Output):\s*(.+?)\s*$", re.MULTILINE)
 _INTERFACE_RE = re.compile(
     r"^\s*-\s+`(?P<id>[A-Z][A-Z0-9-]*-\d{3})`\s+—\s+"
-    r"(?P<access>read|write)\s*:\s*.*?\s+-\s+supplies:\s*(?P<input>.*?)"
+    r"(?P<access>read-write|read|write)\s*:\s*.*?\s+-\s+supplies:\s*(?P<input>.*?)"
     r"\s+-\s+returns:\s*(?P<output>.*?)\s*$",
     re.MULTILINE | re.IGNORECASE,
 )
@@ -32,6 +32,15 @@ _MIGRATION_FILE_RE = re.compile(
 )
 _OPERATION_ID_RE = re.compile(r"\b([A-Z][A-Z0-9-]*-\d{3})\b")
 _COMPATIBILITY = frozenset({"unchanged", "data", "rebuild"})
+#: Declared access levels. ``read-write`` exists because a repository surface is often genuinely
+#: both — ``settings.get``/``set``/``delete`` is one operation set, and forcing it apart invents a
+#: split the declaration never intended. A citation may claim less than the pattern grants but
+#: never more, so ``_ACCESS_GRANTS`` maps each declared level to the citations it admits.
+_ACCESS_GRANTS = {
+    "read": frozenset({"read"}),
+    "write": frozenset({"write"}),
+    "read-write": frozenset({"read", "write", "read-write"}),
+}
 _MIGRATION_STATES = frozenset({"planned", "built", "applied"})
 
 
@@ -295,7 +304,7 @@ def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> Databa
             )
         access = metadata["access"].casefold()
         compatibility = metadata["compatibility"].casefold()
-        if access not in {"read", "write"}:
+        if access not in _ACCESS_GRANTS:
             raise SpecificationError(f"{source}: {match.group(1)} has invalid Access: {access}")
         if compatibility not in _COMPATIBILITY:
             raise SpecificationError(
@@ -371,9 +380,12 @@ def validate_database_interfaces(
                 raise SpecificationError(
                     f"{blueprint}: {use.identifier} is owned by {pattern.owner}, not this Blueprint"
                 )
-            if use.access != pattern.access:
+            # A citation may narrow what the pattern grants — a read-only consumer of a
+            # read-write surface is a real and useful claim — but never widen it.
+            if use.access not in _ACCESS_GRANTS[pattern.access]:
                 raise SpecificationError(
-                    f"{blueprint}: {use.identifier} declares {use.access}, expected {pattern.access}"
+                    f"{blueprint}: {use.identifier} declares {use.access}, "
+                    f"which {pattern.access} does not grant"
                 )
             allowed_input = {field.name for field in pattern.inputs}
             allowed_output = {field.name for field in pattern.outputs}

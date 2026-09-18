@@ -5514,19 +5514,30 @@ def test_a_persistence_declaration_build_cannot_parse_is_a_decision_not_a_discar
     assert ps.database_contract_decisions(defects, unattended=True)[0].severity == "material"
 
 
-def test_an_unambiguous_access_spelling_is_read_as_the_contract_value():
-    """One cell reading ``read-write`` discarded a whole plan. The operation was correct and the
-    intent was not in doubt, so the spelling is settled to the stronger claim and reported."""
+def test_a_combined_access_spelling_is_read_as_read_write():
+    """One cell reading ``read-write`` discarded a whole plan. A combined surface keeps both
+    levels rather than collapsing: once a Blueprint must cite the pattern it uses, a collapsed
+    level would reject the read-only consumer that cites it honestly."""
     blocks = {
         "DATABASE.md": _ACCESS_PATTERNS.replace("| Access | read |", "| Access | read/write |")
     }
 
     warnings = ps._normalize_database_access_values(blocks)
 
-    assert "| Access | write |" in blocks["DATABASE.md"]
+    assert "| Access | read-write |" in blocks["DATABASE.md"]
     assert len(warnings) == 1
-    assert "read as 'write'" in warnings[0]
+    assert "read as 'read-write'" in warnings[0]
     assert ps._database_contract_defects(blocks) == ()
+
+
+def test_a_single_sided_access_synonym_keeps_its_side():
+    """``append`` writes and ``select`` reads; neither becomes the combined level."""
+    for written, settled in (("append", "write"), ("select", "read")):
+        blocks = {
+            "DATABASE.md": _ACCESS_PATTERNS.replace("| Access | read |", f"| Access | {written} |")
+        }
+        ps._normalize_database_access_values(blocks)
+        assert f"| Access | {settled} |" in blocks["DATABASE.md"]
 
 
 def test_an_access_value_drydock_cannot_read_is_left_for_the_contract_parser():
@@ -5538,3 +5549,109 @@ def test_an_access_value_drydock_cannot_read_is_left_for_the_contract_parser():
 
     assert ps._normalize_database_access_values(blocks) == ()
     assert "invalid Access: telepathy" in ps._database_contract_defects(blocks)[0]
+
+
+def _criterion(code: str, *, check_id: str = "c1") -> str:
+    return (
+        f"# FEATURE: Example\n\n## Programmatic Acceptance\n\n=== AC {check_id} ===\n"
+        f"Intent: Example.\n\n{code}\n=== END AC {check_id} ===\n"
+    )
+
+
+def test_a_criterion_admitting_not_found_beside_success_proves_nothing():
+    """The live shape: 37 criteria, 22% of a plan's gates, each satisfied by an application with
+    no routes at all. 404 means the endpoint is absent, so admitting it beside any other status
+    makes the criterion true of an implementation that does nothing."""
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code in {200, 404}")}
+
+    defects = ps._weak_acceptance_defects(blocks)
+
+    assert len(defects) == 1
+    assert "404 means the endpoint is absent" in defects[0].reason
+    assert ps.weak_acceptance_decisions(defects)[0].severity == "material"
+
+
+def test_a_stub_that_pins_the_status_it_answers_with_is_a_real_test():
+    """Specifying a stub is legitimate, and a stub that answers is a real contract. The criterion
+    is not the defect; one that declines to say what the stub answers is."""
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code == 200")}
+
+    assert ps._weak_acceptance_defects(blocks) == ()
+
+
+def test_a_not_found_probe_asserted_alone_is_one_of_the_strongest_checks():
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code == 404")}
+
+    assert ps._weak_acceptance_defects(blocks) == ()
+
+
+def test_a_criterion_admitting_success_and_server_failure_proves_nothing():
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code in (200, 503)")}
+
+    defects = ps._weak_acceptance_defects(blocks)
+
+    assert len(defects) == 1
+    assert "success and server failure" in defects[0].reason
+
+
+def test_a_determinate_pair_of_outcomes_is_not_weak():
+    """``created or already exists`` is one expectation stated over two codes; neither admits an
+    application that implements nothing, so it is left alone."""
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code in [201, 409]")}
+
+    assert ps._weak_acceptance_defects(blocks) == ()
+
+
+def _persistence_plan(tmp_path, *, stack: str):
+    from drydock.build_plan import PlanBlock
+    from drydock.manifest import DrydockManifest, ManifestMetadata
+
+    return DrydockManifest(
+        path=tmp_path / "MANIFEST.md",
+        metadata=ManifestMetadata(project="X"),
+        blocks=[
+            PlanBlock(
+                block_type="story",
+                number=1,
+                name="Feature",
+                block_id="feature-story",
+                state="pending",
+                fields={"implements": ("FEATURE-Example.md",), "stack": stack},
+            )
+        ],
+        preamble=[],
+    )
+
+
+def test_a_story_that_reaches_the_database_and_cites_nothing_is_reported(tmp_path):
+    """The boundary this section exists to enforce: a Blueprint whose story declares persistence
+    but names no operation has storage access that nothing checks. 22 of a live plan's Blueprints
+    were in exactly this state while the section was documented as optional."""
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "FEATURE-Example.md": "# FEATURE: Example\n\n## Guardrails\n\n- None.\n",
+    }
+
+    defects = ps._database_interface_defects(
+        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
+    )
+
+    assert len(defects) == 1
+    assert "cites no access pattern" in defects[0]
+    assert ps.database_interface_decisions(defects)[0].severity == "blocking"
+
+
+def test_a_story_that_never_reaches_the_database_needs_no_citation(tmp_path):
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "FEATURE-Example.md": "# FEATURE: Example\n\n## Guardrails\n\n- None.\n",
+    }
+
+    assert (
+        ps._database_interface_defects(
+            _persistence_plan(tmp_path, stack=("python.md", "bootstrap5.md")), blocks
+        )
+        == ()
+    )

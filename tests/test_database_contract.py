@@ -282,3 +282,36 @@ def test_git_contract_diff_names_only_changed_operations(tmp_path: Path):
     )
 
     assert changed_operation_ids_since(blueprint, baseline) == ("FEATURE-ORDER-001",)
+
+
+def test_a_combined_repository_surface_declares_read_write():
+    """``settings.get``/``set``/``delete`` is one repository surface. Forcing it into two patterns
+    invents a split the declaration never intended, so ``read-write`` is a declared level."""
+    contract = parse_database_contract(
+        _DATABASE.replace("| Access | write |", "| Access | read-write |")
+    )
+
+    assert contract.by_id()["FEATURE-ORDER-001"].access == "read-write"
+
+
+def test_a_citation_may_claim_less_access_than_the_pattern_grants():
+    """A read-only consumer of a read-write surface is a real and useful claim."""
+    contract = parse_database_contract(
+        _DATABASE.replace("| Access | write |", "| Access | read-write |")
+    )
+
+    for claimed in ("read", "write", "read-write"):
+        use = parse_database_interface(
+            _INTERFACE.replace("— write:", f"— {claimed}:"), source="FEATURE-Order.md"
+        )
+        validate_database_interfaces(contract, {"FEATURE-Order.md": use})
+
+
+def test_a_citation_may_never_claim_more_access_than_the_pattern_grants():
+    contract = parse_database_contract(_DATABASE)
+    use = parse_database_interface(
+        _INTERFACE.replace("— write:", "— read-write:"), source="FEATURE-Order.md"
+    )
+
+    with pytest.raises(SpecificationError, match="which write does not grant"):
+        validate_database_interfaces(contract, {"FEATURE-Order.md": use})

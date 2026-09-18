@@ -1436,6 +1436,77 @@ def acceptance_checks_from_file(
         return ()
 
 
+#: An ``assert <expr>.status_code <op> <codes>`` line, with the accepted codes as written. Both the
+#: membership form (``in {200, 404}``, and the tuple and list spellings) and the equality form
+#: (``== 200``) are read, because the defect is about which codes a criterion admits, not how the
+#: author spelled the admission.
+_STATUS_ASSERT_RE = re.compile(
+    r"^[ \t]*assert\b[^\n]*?\.status_code\s*(?:in\s*[\[({]\s*(?P<set>[^\])}]*)\s*[\])}]"
+    r"|==\s*(?P<one>\d{3}))",
+    re.MULTILINE,
+)
+
+
+def accepted_status_codes(code: str) -> tuple[tuple[str, frozenset[int]], ...]:
+    """Return each status assertion in ``code`` as its source line and the codes it admits."""
+    found: list[tuple[str, frozenset[int]]] = []
+    for match in _STATUS_ASSERT_RE.finditer(code):
+        if match.group("one") is not None:
+            codes = {int(match.group("one"))}
+        else:
+            codes = {int(item) for item in re.findall(r"\d{3}", match.group("set") or "")}
+        if codes:
+            found.append((match.group(0).strip(), frozenset(codes)))
+    return tuple(found)
+
+
+def weak_status_assertion(codes: frozenset[int]) -> str:
+    """Return why an accepted-status set asserts nothing, or ``""`` when it is determinate.
+
+    A criterion states one expectation. ``404`` means the endpoint is not there, so admitting it
+    beside any other code makes the criterion true of an application that implements nothing —
+    which is how a real run produced 37 criteria that an empty FastAPI app satisfies. Asserted
+    alone it is the opposite: a deliberate negative probe, and one of the stronger checks there is.
+
+    A stub is not the problem and is not caught here. A stub answers, and a criterion that pins
+    the status it answers with is a real test of a real contract.
+    """
+    if len(codes) < 2:
+        return ""
+    if 404 in codes:
+        return (
+            f"accepts {sorted(codes)}: 404 means the endpoint is absent, so this passes against "
+            "an application that implements nothing. Assert 404 alone for a negative probe, or "
+            "assert the status the implementation answers with."
+        )
+    if any(200 <= code < 300 for code in codes) and any(code >= 500 for code in codes):
+        return (
+            f"accepts {sorted(codes)}: success and server failure are both admitted, so the "
+            "criterion holds whatever the implementation does."
+        )
+    return ""
+
+
+def weak_acceptance_defects(
+    checks: Iterable[ProgrammaticAcceptance],
+) -> tuple[MalformedAcceptance, ...]:
+    """Return every criterion whose status assertion admits contradictory outcomes."""
+    defects: list[MalformedAcceptance] = []
+    for check in checks:
+        for line, codes in accepted_status_codes(check.code):
+            reason = weak_status_assertion(codes)
+            if reason:
+                defects.append(
+                    MalformedAcceptance(
+                        check_id=check.check_id,
+                        source=check.source,
+                        reason=f"{reason} ({line})",
+                    )
+                )
+                break
+    return tuple(defects)
+
+
 @dataclass(frozen=True)
 class MalformedAcceptance:
     """One acceptance criterion that does not compile, and so can never execute."""

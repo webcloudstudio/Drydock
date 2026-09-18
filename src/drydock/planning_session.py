@@ -56,6 +56,7 @@ from drydock.artifact_blocks import (
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
+    PlanBlock,
     build_relevant_sha256,
     build_relevant_text_sha256,
     disambiguate_manifest_ids,
@@ -64,7 +65,13 @@ from drydock.build_plan import (
 )
 from drydock.compass_sources import normative_compass_sections
 from drydock.config import build_dir_for, get_llm_provider
-from drydock.database_contract import parse_database_contract, validate_sqlite_schema
+from drydock.database_contract import (
+    DatabaseUse,
+    parse_database_contract,
+    parse_database_interface,
+    validate_database_interfaces,
+    validate_sqlite_schema,
+)
 from drydock.database_schema import DATABASE_BLOCK, merge_schema, seed_blueprint
 from drydock.decisions import (
     ARCHITECTURE_BLUEPRINT,
@@ -2333,6 +2340,75 @@ def _parse_plan_text(text: str) -> BuildPlan:
     return DrydockManifest.parse(text, source="MANIFEST.md")
 
 
+#: Stack selections that mean a story reaches persistence. A Blueprint whose story declares one of
+#: these touches the database, so its use of it is a contract and not an implementation detail.
+_PERSISTENCE_STACK = frozenset({"persistence.md", "sqlalchemy.md", "alembic.md", "sqlite.md"})
+
+
+def _stack_selections(block: PlanBlock) -> frozenset[str]:
+    """Return a story's ``stack:`` selections, however the Manifest parser surfaced the field."""
+    raw = block.fields.get("stack", ())
+    items = raw if isinstance(raw, tuple) else str(raw).split(",")
+    return frozenset(str(item).strip().casefold() for item in items if str(item).strip())
+
+
+def _database_interface_defects(plan: BuildPlan, blocks: dict[str, str]) -> tuple[str, ...]:
+    """Return every way a Blueprint's persistence citation disagrees with the declaration.
+
+    ``## Database Interface`` is how a Feature or Screen names the operations it uses, and
+    ``validate_database_interfaces`` has always been able to check one against the declared
+    contract — unknown operation, wrong owner, access it was not granted, a field the DTO does not
+    carry, a required field left out. Nothing called it outside ``refit``, and the section was
+    documented as optional, so in practice no Blueprint carried one and the boundary was prose.
+
+    A story that declares persistence in ``stack:`` and cites nothing is reported here. That is
+    the decidable reading of "the service has a database": it is authored in the Manifest rather
+    than inferred from what the prose seems to describe.
+    """
+    database_text = blocks.get(DATABASE_BLOCK)
+    if not database_text:
+        return ()
+    try:
+        contract = parse_database_contract(database_text)
+    except SpecificationError:
+        # An unreadable declaration is ``_database_contract_defects``' business. Nothing can be
+        # said about citations against a contract that does not parse.
+        return ()
+    defects: list[str] = []
+    interfaces: dict[str, tuple[DatabaseUse, ...]] = {}
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS or name == DATABASE_BLOCK:
+            continue
+        try:
+            interfaces[name] = parse_database_interface(blocks[name], source=name)
+        except SpecificationError as exc:
+            defects.append(str(exc))
+    try:
+        validate_database_interfaces(contract, interfaces)
+    except SpecificationError as exc:
+        defects.append(str(exc))
+
+    persistent = {
+        str(name)
+        for block in plan.blocks
+        if block.block_type == "story" and _PERSISTENCE_STACK & _stack_selections(block)
+        for name in (
+            block.fields.get("implements", ())
+            if isinstance(block.fields.get("implements", ()), tuple)
+            else (block.fields.get("implements", ""),)
+        )
+        if name
+    }
+    for name in sorted(persistent - {DATABASE_BLOCK}):
+        if name in interfaces and not interfaces[name]:
+            defects.append(
+                f"{name}: its story declares persistence in stack: but the Blueprint cites no "
+                "access pattern. State the operations it uses in a `## Database Interface` "
+                "section, or drop the persistence selection from the story."
+            )
+    return tuple(defects)
+
+
 def _database_contract_defects(blocks: dict[str, str]) -> tuple[str, ...]:
     """Return the reason ``DATABASE.md``'s operation surface cannot be parsed, or ``()``.
 
@@ -2387,6 +2463,42 @@ def database_contract_decisions(
                 "table carrying Owner, Access, Repository operation, and Compatibility, followed "
                 "by `Input:` and `Output:` field tables. The rest of the plan is written and "
                 "unaffected."
+            ),
+            options=(),
+            system_choice="",
+        )
+        for index, reason in enumerate(defects, start=1)
+    )
+
+
+def database_interface_decisions(
+    defects: tuple[str, ...],
+    *,
+    unattended: bool = False,
+) -> tuple[Decision, ...]:
+    """Ask the Commander to settle a persistence citation that does not hold.
+
+    ``severity: blocking`` because this is the boundary itself. A Blueprint that reaches the
+    database without naming the operations it uses is one whose storage access nothing checks,
+    which is the condition ``## Database Interface`` exists to rule out.
+    """
+    return tuple(
+        Decision(
+            id=f"database-interface-{index:03d}",
+            type="text",
+            severity="material" if unattended else "blocking",
+            origin="plan",
+            blueprint=DATABASE_BLOCK,
+            story=None,
+            status="recommended" if unattended else "open",
+            archived=False,
+            title="Persistence citation does not hold against the declaration",
+            description=(
+                f"{reason}\n\n"
+                "A Blueprint that reaches the database states the operations it uses in a "
+                "`## Database Interface` section, citing access-pattern ids from "
+                f"`blueprint/{DATABASE_BLOCK}` with only the fields it supplies or receives. It "
+                "never names a table, a column, or a physical store."
             ),
             options=(),
             system_choice="",
@@ -2620,6 +2732,72 @@ def _malformed_acceptance_defects(blocks: dict[str, str]) -> tuple[MalformedAcce
     return tuple(defects)
 
 
+def _weak_acceptance_defects(blocks: dict[str, str]) -> tuple[MalformedAcceptance, ...]:
+    """Return every criterion whose status assertion admits contradictory outcomes.
+
+    The sibling of ``_malformed_acceptance_defects``. That one catches a criterion that cannot
+    execute; this one catches a criterion that executes and proves nothing — a real run produced
+    37 of them, 22% of the plan's gates, each satisfied by an application with no routes at all.
+    A story whose acceptance is green on an empty implementation reports progress that has not
+    happened, which is the one failure Drydock exists to prevent.
+
+    Reported as a warning and a material decision rather than a blocking one. A stub is a
+    legitimate state for a Blueprint to specify and its criterion is not the defect; a criterion
+    that declines to say what the stub answers is.
+    """
+    from drydock.acceptance import parse_programmatic_acceptance_text, weak_acceptance_defects
+
+    defects: list[MalformedAcceptance] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            # Unparseable containers are ``_malformed_acceptance_defects``' business, not this
+            # pass's; reporting the same file twice helps nobody.
+            continue
+        defects.extend(weak_acceptance_defects(checks))
+    return tuple(defects)
+
+
+def weak_acceptance_decisions(
+    defects: tuple[MalformedAcceptance, ...],
+    *,
+    unattended: bool = False,
+) -> tuple[Decision, ...]:
+    """Record each criterion that proves nothing, for the Commander to settle.
+
+    ``severity: material`` and not ``blocking``: these criteria execute, and a plan full of stubs
+    is a legitimate early pass. The record exists so the weakness is counted and visible rather
+    than discovered when the build reports acceptance it never earned.
+    """
+    return tuple(
+        Decision(
+            id=f"weak-acceptance-{defect.source}-{defect.check_id or 'container'}",
+            type="text",
+            severity="material",
+            origin="plan",
+            blueprint=defect.source,
+            story=None,
+            status="recommended" if unattended else "open",
+            archived=False,
+            title=f"Acceptance criterion {defect.check_id or 'container'} proves nothing",
+            description=(
+                f"{defect.rendered}\n\n"
+                "A criterion states one expectation. Pin the status the implementation answers "
+                "with — a stub that answers is a real contract and a real test — or assert the "
+                "not-found status alone as a deliberate negative probe. A criterion that needs a "
+                "row to exist creates it through the public interface first rather than admitting "
+                "the status that says it never existed."
+            ),
+            options=(),
+            system_choice="",
+        )
+        for defect in defects
+    )
+
+
 def _body_is_a_complete_cut(body: str) -> bool:
     """True when ``body`` can stand as a whole criterion, so a boundary may be inserted after it.
 
@@ -2700,10 +2878,9 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
     return tuple(normalized)
 
 
-#: Unambiguous spellings of the two Access values the persistence contract defines. ``Access`` is
-#: consumed as a token: a Feature's ``## Database Interface`` citation must match the pattern it
-#: cites, and nothing else reads it. A pattern that both reads and writes is collapsed to ``write``
-#: because that is the stronger claim — a citation Drydock widens can never under-declare access.
+#: Unambiguous spellings of the three Access values the persistence contract defines. A combined
+#: surface reads as ``read-write`` rather than collapsing to ``write``: once a Blueprint must cite
+#: the pattern it uses, a collapsed level rejects the read-only consumer that cites it honestly.
 _ACCESS_SYNONYMS = {
     "read": "read",
     "read-only": "read",
@@ -2716,12 +2893,6 @@ _ACCESS_SYNONYMS = {
     "write": "write",
     "write-only": "write",
     "writeonly": "write",
-    "read-write": "write",
-    "read/write": "write",
-    "read-and-write": "write",
-    "read and write": "write",
-    "readwrite": "write",
-    "rw": "write",
     "append": "write",
     "create": "write",
     "insert": "write",
@@ -2729,6 +2900,13 @@ _ACCESS_SYNONYMS = {
     "upsert": "write",
     "delete": "write",
     "mutate": "write",
+    "read-write": "read-write",
+    "read/write": "read-write",
+    "read-and-write": "read-write",
+    "read and write": "read-write",
+    "read, write": "read-write",
+    "readwrite": "read-write",
+    "rw": "read-write",
 }
 
 _ACCESS_ROW_RE = re.compile(
@@ -3286,13 +3464,26 @@ def _validate_plan_output(
     standalone_import_warnings = _normalize_standalone_subprocess_imports(blocks)
     escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
-    malformed_warnings = tuple(
-        f"{defect.rendered} — recorded as a blocking decision; this criterion gates nothing"
-        for defect in malformed_acceptance
-    ) + tuple(
-        f"{reason} — recorded as a blocking decision against the story that implements it; "
-        "the rest of the plan is written"
-        for reason in _database_contract_defects(blocks)
+    malformed_warnings = (
+        tuple(
+            f"{defect.rendered} — recorded as a blocking decision; this criterion gates nothing"
+            for defect in malformed_acceptance
+        )
+        + tuple(
+            f"{reason} — recorded as a blocking decision against the story that implements it; "
+            "the rest of the plan is written"
+            for reason in _database_contract_defects(blocks)
+        )
+        + tuple(
+            f"{defect.rendered} — recorded as a material decision; this criterion passes against an "
+            "implementation that does nothing"
+            for defect in _weak_acceptance_defects(blocks)
+        )
+        + tuple(
+            f"{reason} — recorded as a blocking decision; the persistence boundary is unenforced "
+            "until it is settled"
+            for reason in _database_interface_defects(plan, blocks)
+        )
     )
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
     if forbidden_artifacts:
@@ -5711,6 +5902,10 @@ def create_plan(
             _staged_asset_env_defects(blocks, blueprint_dir), unattended=unattended
         ),
         *database_contract_decisions(_database_contract_defects(blocks), unattended=unattended),
+        *weak_acceptance_decisions(_weak_acceptance_defects(blocks), unattended=unattended),
+        *database_interface_decisions(
+            _database_interface_defects(plan, blocks), unattended=unattended
+        ),
     )
     story_for_spec = {
         str(name): block.block_id

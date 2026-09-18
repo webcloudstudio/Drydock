@@ -10,6 +10,24 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-17: `## Database Interface` is now required, not optional, for every Blueprint whose
+  story declares persistence in `stack:`. The machinery to check one has always existed —
+  `validate_database_interfaces` rejects an unknown operation, a wrong owner, access the pattern
+  does not grant, a field the DTO does not carry, and a required field left out — but nothing
+  called it outside `drydock refit`, so in practice no Blueprint carried the section and the
+  persistence boundary was prose. `drydock plan` now parses every citation and validates it against
+  the declaration, and reports a Blueprint that reaches the database while citing nothing. A live
+  plan had 22 Blueprints in exactly that state. Access gains a third declared level, `read-write`,
+  because a repository surface is often genuinely both and forcing it apart invents a split the
+  declaration never intended; a citation may claim less access than the pattern grants but never
+  more.
+- 2026-09-17: `drydock plan` now grades acceptance criteria for strength, not only for whether they
+  can execute. A criterion whose accepted-status set admits `404` beside any other status is true
+  of an application with no routes at all, and one admitting both a 2xx and a 5xx holds whatever
+  the implementation does; a live plan had 35 such criteria, 21% of its gates, reporting acceptance
+  no build had earned. Both shapes are now reported as a warning and a material decision against
+  the owning Blueprint. Specifying a stub stays legitimate — a stub that answers `200` is a real
+  contract and a real test — and `404` asserted alone remains a deliberate negative probe.
 - 2026-09-17: `DATABASE.md` is now a cumulative Blueprint rather than a write-once one. `drydock
   plan` seeds it before the first Blueprint batch from `Rigging/spec_template/DATABASE.md` plus
   every table the imported source specification already declared, and keeps it open for the whole
