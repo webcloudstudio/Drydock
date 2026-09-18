@@ -17,7 +17,10 @@ command surface and Typed Specification contract are unstable and may change bet
   called it outside `drydock refit`, so in practice no Blueprint carried the section and the
   persistence boundary was prose. `drydock plan` now parses every citation and validates it against
   the declaration, and reports a Blueprint that reaches the database while citing nothing. A live
-  plan had 22 Blueprints in exactly that state. Access gains a third declared level, `read-write`,
+  plan had 22 Blueprints in exactly that state. A citation that disagrees with the declaration
+  blocks that Blueprint's story, because Build would implement the disagreement; one that is merely
+  absent is recorded as a material decision, because the story builds correctly and only its
+  storage access goes unchecked. Access gains a third declared level, `read-write`,
   because a repository surface is often genuinely both and forcing it apart invents a split the
   declaration never intended; a citation may claim less access than the pattern grants but never
   more.

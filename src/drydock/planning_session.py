@@ -2352,7 +2352,9 @@ def _stack_selections(block: PlanBlock) -> frozenset[str]:
     return frozenset(str(item).strip().casefold() for item in items if str(item).strip())
 
 
-def _database_interface_defects(plan: BuildPlan, blocks: dict[str, str]) -> tuple[str, ...]:
+def _database_interface_defects(
+    plan: BuildPlan, blocks: dict[str, str]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return every way a Blueprint's persistence citation disagrees with the declaration.
 
     ``## Database Interface`` is how a Feature or Screen names the operations it uses, and
@@ -2364,16 +2366,22 @@ def _database_interface_defects(plan: BuildPlan, blocks: dict[str, str]) -> tupl
     A story that declares persistence in ``stack:`` and cites nothing is reported here. That is
     the decidable reading of "the service has a database": it is authored in the Manifest rather
     than inferred from what the prose seems to describe.
+
+    Returns ``(contradictions, omissions)``, and the split is the whole point. A citation that
+    disagrees with the declaration is a conflict that would build wrong code, and it blocks. A
+    citation that is merely absent is incompleteness: the story builds correctly, its storage
+    access simply goes unchecked, so it is recorded and counted rather than halted. Blocking that
+    case once put 22 stories of a well-specified project behind a question none of them needed.
     """
     database_text = blocks.get(DATABASE_BLOCK)
     if not database_text:
-        return ()
+        return (), ()
     try:
         contract = parse_database_contract(database_text)
     except SpecificationError:
         # An unreadable declaration is ``_database_contract_defects``' business. Nothing can be
         # said about citations against a contract that does not parse.
-        return ()
+        return (), ()
     defects: list[str] = []
     interfaces: dict[str, tuple[DatabaseUse, ...]] = {}
     for name in sorted(blocks):
@@ -2399,14 +2407,14 @@ def _database_interface_defects(plan: BuildPlan, blocks: dict[str, str]) -> tupl
         )
         if name
     }
-    for name in sorted(persistent - {DATABASE_BLOCK}):
-        if name in interfaces and not interfaces[name]:
-            defects.append(
-                f"{name}: its story declares persistence in stack: but the Blueprint cites no "
-                "access pattern. State the operations it uses in a `## Database Interface` "
-                "section, or drop the persistence selection from the story."
-            )
-    return tuple(defects)
+    omissions = [
+        f"{name}: its story declares persistence in stack: but the Blueprint cites no "
+        "access pattern. State the operations it uses in a `## Database Interface` "
+        "section, or drop the persistence selection from the story."
+        for name in sorted(persistent - {DATABASE_BLOCK})
+        if name in interfaces and not interfaces[name]
+    ]
+    return tuple(defects), tuple(omissions)
 
 
 def _database_contract_defects(blocks: dict[str, str]) -> tuple[str, ...]:
@@ -2471,22 +2479,42 @@ def database_contract_decisions(
     )
 
 
+def _database_interface_warnings(
+    contradictions: tuple[str, ...], omissions: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Render each citation defect at the weight its kind earns."""
+    return tuple(
+        f"{reason} — recorded as a blocking decision; this citation and the declaration "
+        "disagree, and Build would implement the disagreement"
+        for reason in contradictions
+    ) + tuple(
+        f"{reason} — recorded as a material decision; the story builds, but its storage access "
+        "goes unchecked"
+        for reason in omissions
+    )
+
+
 def database_interface_decisions(
-    defects: tuple[str, ...],
+    contradictions: tuple[str, ...],
+    omissions: tuple[str, ...] = (),
     *,
     unattended: bool = False,
 ) -> tuple[Decision, ...]:
-    """Ask the Commander to settle a persistence citation that does not hold.
+    """Record each persistence citation that does not hold against the declaration.
 
-    ``severity: blocking`` because this is the boundary itself. A Blueprint that reaches the
-    database without naming the operations it uses is one whose storage access nothing checks,
-    which is the condition ``## Database Interface`` exists to rule out.
+    A contradiction blocks: the Blueprint names an operation the declaration does not grant it,
+    and Build would implement the disagreement. An omission does not: the story builds correctly
+    and only its storage access goes unchecked, so it is counted rather than halted. Blocking the
+    omission once parked 22 stories of a well-specified project behind a question about a section
+    the contract had called optional when the plan was authored.
     """
+    items = [("blocking", reason) for reason in contradictions]
+    items += [("material", reason) for reason in omissions]
     return tuple(
         Decision(
             id=f"database-interface-{index:03d}",
             type="text",
-            severity="material" if unattended else "blocking",
+            severity="material" if unattended else severity,
             origin="plan",
             blueprint=DATABASE_BLOCK,
             story=None,
@@ -2503,7 +2531,7 @@ def database_interface_decisions(
             options=(),
             system_choice="",
         )
-        for index, reason in enumerate(defects, start=1)
+        for index, (severity, reason) in enumerate(items, start=1)
     )
 
 
@@ -3479,11 +3507,7 @@ def _validate_plan_output(
             "implementation that does nothing"
             for defect in _weak_acceptance_defects(blocks)
         )
-        + tuple(
-            f"{reason} — recorded as a blocking decision; the persistence boundary is unenforced "
-            "until it is settled"
-            for reason in _database_interface_defects(plan, blocks)
-        )
+        + _database_interface_warnings(*_database_interface_defects(plan, blocks))
     )
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
     if forbidden_artifacts:
@@ -5904,7 +5928,7 @@ def create_plan(
         *database_contract_decisions(_database_contract_defects(blocks), unattended=unattended),
         *weak_acceptance_decisions(_weak_acceptance_defects(blocks), unattended=unattended),
         *database_interface_decisions(
-            _database_interface_defects(plan, blocks), unattended=unattended
+            *_database_interface_defects(plan, blocks), unattended=unattended
         ),
     )
     story_for_spec = {

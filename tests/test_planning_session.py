@@ -5633,13 +5633,40 @@ def test_a_story_that_reaches_the_database_and_cites_nothing_is_reported(tmp_pat
         "FEATURE-Example.md": "# FEATURE: Example\n\n## Guardrails\n\n- None.\n",
     }
 
-    defects = ps._database_interface_defects(
+    contradictions, omissions = ps._database_interface_defects(
         _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
     )
 
-    assert len(defects) == 1
-    assert "cites no access pattern" in defects[0]
-    assert ps.database_interface_decisions(defects)[0].severity == "blocking"
+    assert contradictions == ()
+    assert len(omissions) == 1
+    assert "cites no access pattern" in omissions[0]
+    # A missing citation is incompleteness, not conflict: the story builds and only its storage
+    # access goes unchecked. Blocking it parked 22 stories of a well-specified project.
+    decision = ps.database_interface_decisions(contradictions, omissions)[0]
+    assert decision.severity == "material"
+    assert not decision.blocks_execution
+
+
+def test_a_citation_that_contradicts_the_declaration_blocks(tmp_path):
+    """The Blueprint names an operation the declaration does not grant it, so Build would
+    implement the disagreement. That is a conflict, and it holds the story."""
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Database Interface\n\n"
+            "- `FEATURE-NOPE-001` — read: invented - supplies: `key` - returns: `key`\n"
+        ),
+    }
+
+    contradictions, omissions = ps._database_interface_defects(
+        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
+    )
+
+    assert omissions == ()
+    assert len(contradictions) == 1
+    assert "unknown database operation" in contradictions[0]
+    assert ps.database_interface_decisions(contradictions)[0].severity == "blocking"
 
 
 def test_a_story_that_never_reaches_the_database_needs_no_citation(tmp_path):
@@ -5649,9 +5676,6 @@ def test_a_story_that_never_reaches_the_database_needs_no_citation(tmp_path):
         "FEATURE-Example.md": "# FEATURE: Example\n\n## Guardrails\n\n- None.\n",
     }
 
-    assert (
-        ps._database_interface_defects(
-            _persistence_plan(tmp_path, stack=("python.md", "bootstrap5.md")), blocks
-        )
-        == ()
-    )
+    assert ps._database_interface_defects(
+        _persistence_plan(tmp_path, stack=("python.md", "bootstrap5.md")), blocks
+    ) == ((), ())

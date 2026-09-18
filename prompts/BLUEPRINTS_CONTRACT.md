@@ -763,10 +763,11 @@ allowed callers.
 `## Database Interface` is required, not optional, for every Blueprint whose story declares
 persistence in `stack:`. A citation may claim less access than the pattern grants — a read-only
 consumer of a `read-write` surface is a real claim — but never more. Drydock checks each citation
-against the declaration: an unknown operation, a wrong owner, access the pattern does not grant, a
-field the DTO does not carry, or a required field left out is a blocking decision on that
-Blueprint. A Blueprint that reaches the database and cites nothing has a storage boundary that
-nothing checks, which is the condition this section exists to rule out.
+against the declaration. An unknown operation, a wrong owner, access the pattern does not grant, a
+field the DTO does not carry, or a required field left out is a conflict Build would implement, and
+it blocks that Blueprint's story. A Blueprint that reaches the database and cites nothing is
+recorded as a material decision instead: the story builds correctly and only its storage access
+goes unchecked.
 
 Each access pattern is its own `### FEATURE-<DOMAIN>-<NNN> — <Operation>` section over a
 `| Field | Value |` table carrying Owner, Access, Repository operation, and Compatibility, followed
