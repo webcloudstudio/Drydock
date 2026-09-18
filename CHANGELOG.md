@@ -10,6 +10,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-17: `drydock plan` now decides the persistence boundary rather than asking about it. The
+  schema, the operation surface, and each Blueprint's citations either agree or they do not, and
+  nothing about a disagreement needs a Commander, so four checks run at plan time: a Blueprint
+  whose story declares persistence in `stack:` cites the operations it uses, a citation never
+  widens what its pattern grants, every table in `## Schema` is reached by some access pattern, and
+  every operation names a table the schema declares. `Repository operation` is now a checked
+  `<table>.<verb>` form — it is the only place the declaration says which table a pattern reaches,
+  so table coverage is read from its prefix and free text there fails the plan. A live plan
+  declared four tables, reached three, and nothing looked at the fourth. Defects drive the existing
+  artifact repair loop, five Blueprints per pass with a budget that reaches every chunk, and unlike
+  an acceptance criterion they are not forgiven when that budget is spent: the run fails and writes
+  nothing rather than hand Build a storage contract known to be wrong. This replaces the material
+  and blocking decisions the previous entry describes, which reported the defect instead of
+  repairing it and left 17 Blueprints of a live plan citing no operation at all.
+  `Rigging/stack/persistence.md` binds the other end at build: a repository's public methods are
+  exactly the declared operations, none added and none missing.
 - 2026-09-17: `## Database Interface` is now required, not optional, for every Blueprint whose
   story declares persistence in `stack:`. The machinery to check one has always existed —
   `validate_database_interfaces` rejects an unknown operation, a wrong owner, access the pattern
