@@ -780,6 +780,46 @@ def parse_database_interface(text: str, *, source: str = "Blueprint") -> tuple[D
     return tuple(uses)
 
 
+def render_database_interface(contract: DatabaseContract, blueprint: str) -> str:
+    """Return the ``## Database Interface`` body the declaration implies for ``blueprint``.
+
+    A citation may only name a pattern the Blueprint owns, so an owner's section is a function of
+    ``DATABASE.md`` alone: every owned pattern at its declared access, supplying every Input field
+    and returning every Output field. A Blueprint that owns nothing declares ``- None``.
+    """
+    owned = [pattern for pattern in contract.patterns if pattern.owner == blueprint]
+    if not owned:
+        owners = sorted({pattern.owner for pattern in contract.patterns})
+        why = (
+            f"persistence is owned by {', '.join(owners)}."
+            if owners
+            else "no repository is declared."
+        )
+        return f"- None — {why}\n"
+
+    def names(fields: tuple[Field, ...]) -> str:
+        return ", ".join(f"`{field.name}`" for field in fields) or "—"
+
+    return "".join(
+        f"- `{pattern.identifier}` — {pattern.access}: {pattern.repository_operation} "
+        f"- supplies: {names(pattern.inputs)} - returns: {names(pattern.outputs)}\n"
+        for pattern in sorted(owned, key=lambda item: item.identifier)
+    )
+
+
+def replace_database_interface(text: str, body: str) -> str:
+    """Replace the ``## Database Interface`` section body with ``body``, appending if absent."""
+    match = next(
+        (m for m in _SECTION_RE.finditer(text) if m.group(1).strip() == "Database Interface"),
+        None,
+    )
+    if match is None:
+        return text.rstrip("\n") + "\n\n## Database Interface\n\n" + body
+    next_match = _SECTION_RE.search(text, match.end())
+    tail = text[next_match.start() :] if next_match else ""
+    return text[: match.end()] + "\n\n" + body + ("\n" + tail if tail else "")
+
+
 def _names(value: str) -> tuple[str, ...]:
     return tuple(
         item.strip().strip("`") for item in value.split(",") if item.strip() and item.strip() != "—"

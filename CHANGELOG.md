@@ -174,6 +174,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-19: `drydock plan` now writes an invalid or missing `## Database Interface` section itself
+  from `DATABASE.md` instead of sending it to the LLM repair loop. A Blueprint named as an access
+  pattern's `Owner` cites every pattern it owns at the declared access with the full Input and Output
+  field lists; any other Blueprint declares `- None`. A valid section, including a narrowed
+  citation, is left unchanged, and each rewrite is reported as a plan warning. Previously a live run
+  lost 41 accepted Blueprints when three repair passes, which had no DTO field names to work from,
+  never produced a well-formed citation.
 - 2026-09-17: A `DATABASE.md` defect no longer discards the plan that found it. A live run lost 39
   accepted Blueprints across 9 LLM calls, writing nothing, because one `Access` cell read
   `read-write` where the contract admits `read` or `write`. Two changes settle it. `drydock plan`

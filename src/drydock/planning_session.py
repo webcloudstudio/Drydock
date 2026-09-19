@@ -68,6 +68,8 @@ from drydock.database_contract import (
     DatabaseUse,
     parse_database_contract,
     parse_database_interface,
+    render_database_interface,
+    replace_database_interface,
     table_coverage_defects,
     validate_database_interfaces,
     validate_sqlite_schema,
@@ -3045,6 +3047,51 @@ def _normalize_database_access_values(blocks: dict[str, str]) -> tuple[str, ...]
     return tuple(normalized)
 
 
+def _normalize_database_interfaces(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Rewrite each invalid ``## Database Interface`` section from ``DATABASE.md``.
+
+    A citation may name only a pattern its Blueprint owns, so the section is derivable from the
+    declaration. The LLM repair loop could not derive it: its prompt carries the cited Blueprints
+    but not the DTO field names, and a live Marina_Luna run spent all three passes alternating
+    between a prose table, an empty section, and an ``Access pattern:`` sentence. A valid section
+    is left untouched, so a citation that deliberately claims less than the grant survives.
+
+    An Owner that names no emitted Blueprint is the declaration's defect; nothing is rewritten
+    against it, and ``_database_interface_defects`` routes it to repair.
+    """
+    database_text = blocks.get(DATABASE_BLOCK)
+    if not database_text:
+        return ()
+    try:
+        contract = parse_database_contract(database_text)
+    except SpecificationError:
+        return ()
+    if any(
+        pattern.owner not in blocks or pattern.owner in _RESERVED_BLOCKS
+        for pattern in contract.patterns
+    ):
+        return ()
+    owners = {pattern.owner for pattern in contract.patterns}
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS or name == DATABASE_BLOCK or not name.endswith(".md"):
+            continue
+        text = blocks[name]
+        try:
+            uses = parse_database_interface(text, source=name)
+            validate_database_interfaces(contract, {name: uses})
+            if uses or name not in owners:
+                continue
+            reason = "cites no access pattern it owns"
+        except SpecificationError as exc:
+            reason = str(exc).split(" — ", 1)[0]
+        blocks[name] = replace_database_interface(text, render_database_interface(contract, name))
+        normalized.append(
+            f"{name}: ## Database Interface rewritten from {DATABASE_BLOCK} ({reason})"
+        )
+    return tuple(normalized)
+
+
 def _normalize_fused_acceptance_boundaries(blocks: dict[str, str]) -> tuple[str, ...]:
     """Split every fused acceptance boundary in ``blocks``. See ``split_fused_acceptance_boundary``.
 
@@ -3560,6 +3607,7 @@ def _validate_plan_output(
         _normalize_unterminated_acceptance_blocks(blocks)
         + _normalize_fused_acceptance_boundaries(blocks)
         + _normalize_database_access_values(blocks)
+        + _normalize_database_interfaces(blocks)
     )
     standalone_import_warnings = _normalize_standalone_subprocess_imports(blocks)
     escape_warnings = _acceptance_escape_warnings(blocks)

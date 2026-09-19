@@ -5856,3 +5856,68 @@ def test_a_blueprint_the_declaration_names_nowhere_needs_no_citation():
     }
 
     assert ps._database_interface_defects(blocks) == ()
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        # The three shapes a live Marina_Luna repair loop alternated between for three passes.
+        "| Direction | Fields |\n|---|---|\n| Supplies | settings |\n",
+        "",
+        "- Access pattern: Reads and writes Marina-owned SQLite runtime state.\n",
+    ],
+)
+def test_an_owners_invalid_interface_is_rewritten_from_the_declaration(section):
+    """An owner may cite only what it owns, so its section is derivable from ``DATABASE.md``
+    and no LLM pass is spent on it."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": (
+            f"# FEATURE: Example\n\n## Database Interface\n\n{section}\n## Guardrails\n\n- None.\n"
+        ),
+    }
+
+    warnings = ps._normalize_database_interfaces(blocks)
+
+    assert len(warnings) == 1 and "FEATURE-Example.md" in warnings[0]
+    assert ps._database_interface_defects(blocks) == ()
+    assert "- `FEATURE-X-001` — " in blocks["FEATURE-Example.md"]
+    assert blocks["FEATURE-Example.md"].endswith("## Guardrails\n\n- None.\n")
+
+
+def test_an_owner_missing_the_section_gains_it():
+    blocks = {"DATABASE.md": _DATABASE, "FEATURE-Example.md": "# FEATURE: Example\n"}
+
+    assert ps._normalize_database_interfaces(blocks)
+    assert ps._database_interface_defects(blocks) == ()
+
+
+def test_a_non_owners_prose_interface_becomes_none():
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
+        "SCREEN-Example.md": "# SCREEN\n\n## Database Interface\n\nDelegates to the feature.\n",
+    }
+
+    ps._normalize_database_interfaces(blocks)
+
+    assert "- None — persistence is owned by FEATURE-Example.md." in blocks["SCREEN-Example.md"]
+    assert ps._database_interface_defects(blocks) == ()
+
+
+def test_a_valid_narrowed_citation_is_left_alone():
+    blocks = {"DATABASE.md": _DATABASE, "FEATURE-Example.md": _OWNER}
+
+    assert ps._normalize_database_interfaces(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == _OWNER
+
+
+def test_an_unknown_owner_is_left_to_the_repair_loop():
+    blocks = {
+        "DATABASE.md": _DATABASE.replace(
+            "| Owner | FEATURE-Example.md |", "| Owner | Settings service |"
+        ),
+        "FEATURE-Example.md": "# FEATURE: Example\n\n## Database Interface\n\nprose\n",
+    }
+
+    assert ps._normalize_database_interfaces(blocks) == ()
