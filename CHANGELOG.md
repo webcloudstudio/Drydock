@@ -41,6 +41,26 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-19: Relational persistence no longer requires an ORM or migration-framework selection.
+  `sqlalchemy.md` and `alembic.md` are no longer mandatory for a Python Target with a `DATABASE.md`,
+  because Build generates the persistence package from the declaration instead of asking an agent to
+  implement one from prose. The stack gate is now keyed on the Target's language rather than on
+  Python: a Target declaring a `DATABASE.md` in a language Drydock ships no adapter for is refused
+  by `drydock plan`, `technology_stack.approve`, and QuarterDeck, naming the language. The previous
+  check returned nothing at all for such a Target, so a Go Target with a database was never gated
+  and reached a build with no persistence layer to write. `technology_stack.required_rigging` and
+  `missing_required_rigging` are replaced by `declared_language` and `unsupported_persistence`.
+- 2026-09-19: `Rigging/stack/persistence.md`, `sqlite.md`, and `postgres.md` are rewritten for the
+  generated layer. `persistence.md` no longer carries a hand-rolled `Database`/table-class example
+  to copy — it states the generated package's call surface and forbids writing a repository,
+  session factory, connection helper, or migration by hand. `sqlite.md` and `postgres.md` are now
+  store references that dispatch on language and state what each engine enforces: SQLite ignores
+  `VARCHAR(n)` length and column types, so a green SQLite test is not evidence about either, and
+  PostgreSQL is the authority on both. `## Persistence Interfaces` is removed from
+  `Rigging/spec_template/DATABASE.md` and `prompts/BLUEPRINTS_CONTRACT.md` — it named per-feature
+  repository modules that no longer exist. The stale `*_compact.md` siblings of the three rewritten
+  files are deleted: stack compaction substitutes a compact sibling without a freshness check, so a
+  stale one would have injected the superseded guidance into every build after its first use.
 - 2026-09-19: `DATABASE.md` table declarations now carry the constraints a real schema needs, and
   Drydock renders executable DDL from them. A type cell is
   `<TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] [REFERENCES <table>(<column>)]`, where
