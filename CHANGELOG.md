@@ -174,6 +174,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-19: `drydock plan` now records a failed plan-verify gate in `ERRORS.md` (phase
+  `plan verify`, the rendered unbuildable criteria, recovery `drydock plan repair <Target>`).
+  The gate previously raised with no error record, so the only evidence was console output and
+  `helpers/plan_fix.sh` exited with nothing to fix from. `plan_fix.sh` also falls back to the
+  newest plan log when `ERRORS.md` is absent.
+- 2026-09-19: Plan normalization now adds an import a criterion omits when every sibling criterion
+  in the same Blueprint binds that name with the same import statement (`create_app()` read in one
+  AC, `from app import create_app` in its neighbours). Criteria execute as isolated scripts, so the
+  omission made the criterion unrunnable and failed the plan after the repair budget was spent.
+  Ambiguous or unbound names are left for plan verify to report.
 - 2026-09-19: `drydock plan` no longer reports success over a plan Build cannot execute. The plan
   ends on the `drydock plan verify` check; when a criterion cannot run or `DATABASE.md` cannot be
   read, the Blueprint and Manifest are still written for repair, but `MANIFEST.md` is left

@@ -39,6 +39,7 @@ from drydock.acceptance import (
     escape_defects,
     parse_programmatic_acceptance_text,
     split_fused_acceptance_boundary,
+    unresolved_globals,
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
 from drydock.acceptance_env import read_staged_assets, staged_asset_env_defects
@@ -3089,12 +3090,36 @@ def _acceptance_escape_warnings(blocks: dict[str, str]) -> tuple[str, ...]:
     return tuple(reported)
 
 
-def _normalize_standalone_subprocess_imports(blocks: dict[str, str]) -> tuple[str, ...]:
-    """Give each AC that reads ``subprocess`` its own explicit module import.
+def _top_level_imports(code: str) -> dict[str, str]:
+    """Map each name a criterion binds by a module-level import to that import statement."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return {}
+    bound: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                name = alias.asname or alias.name.split(".")[0]
+                bound[name] = ast.unparse(ast.Import(names=[alias]))
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            for alias in node.names:
+                if alias.name != "*":
+                    bound[alias.asname or alias.name] = ast.unparse(
+                        ast.ImportFrom(module=node.module, names=[alias], level=0)
+                    )
+    return bound
 
-    This is deliberately one exact normalization, not a general undefined-name predictor. A
-    qualified ``subprocess`` read is unambiguous, the module is in Python's standard library, and
-    the Blueprint contract already requires this import in every independently executed block.
+
+def _normalize_standalone_imports(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Give each AC the import its sibling criteria already state for a name it reads unbound.
+
+    Each criterion executes as an isolated script, and the model habitually writes the import
+    once and omits it from the next block (``create_app()`` with ``from app import create_app``
+    only in the neighbouring criterion). The import is taken only where it is unambiguous: every
+    sibling criterion in the same Blueprint that binds the name binds it with the same statement.
+    ``subprocess`` is standard library and needs no sibling. Anything else stays undefined and is
+    reported as before.
     """
     normalized: list[str] = []
     for name in sorted(blocks):
@@ -3104,36 +3129,21 @@ def _normalize_standalone_subprocess_imports(blocks: dict[str, str]) -> tuple[st
             checks = parse_programmatic_acceptance_text(blocks[name], source=name)
         except ValueError:
             continue
+        sibling_imports: dict[str, set[str]] = {}
+        for check in checks:
+            for bound, statement in _top_level_imports(check.code).items():
+                sibling_imports.setdefault(bound, set()).add(statement)
         text = blocks[name]
         for check in checks:
-            try:
-                tree = ast.parse(check.code)
-            except SyntaxError:
+            added: list[str] = []
+            for missing in unresolved_globals(check.code):
+                if missing == "subprocess":
+                    added.append("import subprocess")
+                elif len(statements := sibling_imports.get(missing, set())) == 1:
+                    added.append(next(iter(statements)))
+            if not added:
                 continue
-            reads_subprocess = any(
-                isinstance(node, ast.Name)
-                and node.id == "subprocess"
-                and isinstance(node.ctx, ast.Load)
-                for node in ast.walk(tree)
-            )
-            binds_subprocess = any(
-                (
-                    isinstance(node, ast.Import)
-                    and any(
-                        alias.name == "subprocess" and alias.asname in {None, "subprocess"}
-                        for alias in node.names
-                    )
-                )
-                or (
-                    isinstance(node, ast.Name)
-                    and node.id == "subprocess"
-                    and isinstance(node.ctx, ast.Store)
-                )
-                for node in ast.walk(tree)
-            )
-            if not reads_subprocess or binds_subprocess:
-                continue
-            replacement = "import subprocess\n\n" + check.code
+            replacement = "\n".join(added) + "\n\n" + check.code
             opening = next(
                 (
                     match
@@ -3158,8 +3168,12 @@ def _normalize_standalone_subprocess_imports(blocks: dict[str, str]) -> tuple[st
             if offset >= 0:
                 start = opening.end() + offset
                 text = text[:start] + replacement + text[start + len(check.code) :]
-                normalized.append(
+                normalized.extend(
                     f"{name} [{check.check_id}]: added the required standalone import subprocess"
+                    if statement == "import subprocess"
+                    else f"{name} [{check.check_id}]: added the standalone import {statement} "
+                    "its sibling criteria use"
+                    for statement in added
                 )
         blocks[name] = text
     return tuple(normalized)
@@ -3563,7 +3577,7 @@ def _validate_plan_output(
         + _normalize_database_access_values(blocks)
         + _normalize_database_interfaces(blocks)
     )
-    standalone_import_warnings = _normalize_standalone_subprocess_imports(blocks)
+    standalone_import_warnings = _normalize_standalone_imports(blocks)
     escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
     malformed_warnings = tuple(
@@ -6097,6 +6111,20 @@ def create_plan(
     stamp_override(target_dir, unique_waivers)
 
     if not buildability.ok:
+        # Recorded like every other plan failure, so ERRORS.md names the unbuildable criteria
+        # for the operator and for tooling that repairs from it.
+        write_error_record(
+            target_dir,
+            command="plan",
+            phase="plan verify",
+            classification="plan cannot be built as written",
+            detail=render_verify(buildability),
+            execution_id=exec_id,
+            evidence=log_dir,
+            recovery=f"Run: drydock plan repair {target}",
+            detail_limit=None,
+        )
+        _refresh_chair(target_dir)
         raise PlanNotBuildable(
             "Plan cannot be built as written. The Blueprint and Manifest are written for repair; "
             "the Manifest is draft and Build refuses it.\n" + render_verify(buildability)

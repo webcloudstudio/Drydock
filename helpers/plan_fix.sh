@@ -28,11 +28,16 @@ cd "$REPO" || exit 1
 evidence=$ERRORS
 plan_log=$(ls -t "$REPO"/logs/*_"${TARGET,,}"_plan_*.log 2>/dev/null | grep -Ev '\.(llm|stderr)\.log$' | head -1)
 rc="nonzero"
-if [ ! -s "$ERRORS" ]; then
-	echo "=== plan_fix: no $ERRORS to fix from; run drydock plan $TARGET first" >&2
+if [ -s "$ERRORS" ]; then
+	cat "$ERRORS"
+elif [ -n "$plan_log" ]; then
+	# A failure that wrote no ERRORS.md entry: the run's own output is the evidence.
+	evidence=$plan_log
+	echo "=== plan_fix: no $ERRORS; using $plan_log"
+else
+	echo "=== plan_fix: no $ERRORS or plan log to fix from; run drydock plan $TARGET first" >&2
 	exit 1
 fi
-cat "$ERRORS"
 
 for pass in $(seq 1 "$MAX_PASSES"); do
 	stamp=$(date +%Y%m%d.%H%M%S)

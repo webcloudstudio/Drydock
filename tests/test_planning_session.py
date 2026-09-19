@@ -4550,7 +4550,7 @@ def test_a_compiling_criterion_reports_nothing():
 
 
 def test_plan_normalizes_subprocess_import_inside_each_standalone_ac():
-    from drydock.planning_session import _normalize_standalone_subprocess_imports
+    from drydock.planning_session import _normalize_standalone_imports
 
     blocks = {
         "FEATURE-Example.md": (
@@ -4564,12 +4564,58 @@ def test_plan_normalizes_subprocess_import_inside_each_standalone_ac():
         )
     }
 
-    warnings = _normalize_standalone_subprocess_imports(blocks)
+    warnings = _normalize_standalone_imports(blocks)
 
     assert blocks["FEATURE-Example.md"].count("import subprocess") == 2
     assert warnings == (
         "FEATURE-Example.md [second]: added the required standalone import subprocess",
     )
+
+
+def test_plan_takes_an_omitted_import_from_its_sibling_criteria():
+    """Marina_Luna: ``create_app()`` read in one AC, imported only in its neighbours."""
+    from drydock.planning_session import _normalize_standalone_imports
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "from app import create_app\n\nassert create_app()\n"
+            "=== END AC first ===\n\n"
+            "=== AC second ===\nIntent: Second.\n\n"
+            "client = create_app().test_client()\nassert helper(client)\n"
+            "=== END AC second ===\n"
+        )
+    }
+
+    warnings = _normalize_standalone_imports(blocks)
+
+    checks = parse_programmatic_acceptance_text(
+        blocks["FEATURE-Example.md"], source="FEATURE-Example.md"
+    )
+    assert checks[1].code.startswith("from app import create_app\n\nclient =")
+    assert "helper" in checks[1].code  # no sibling binds it: left for verify to report
+    assert warnings == (
+        "FEATURE-Example.md [second]: added the standalone import from app import create_app "
+        "its sibling criteria use",
+    )
+
+
+def test_plan_does_not_guess_an_import_its_siblings_disagree_on():
+    from drydock.planning_session import _normalize_standalone_imports
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC a ===\nIntent: A.\n\nfrom app import create_app\nassert create_app()\n"
+        "=== END AC a ===\n\n"
+        "=== AC b ===\nIntent: B.\n\nfrom web import create_app\nassert create_app()\n"
+        "=== END AC b ===\n\n"
+        "=== AC c ===\nIntent: C.\n\nassert create_app()\n=== END AC c ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_standalone_imports(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
 
 
 def test_plan_closes_acceptance_blocks_whose_terminator_the_model_dropped():
@@ -5988,6 +6034,9 @@ def test_a_plan_build_cannot_execute_is_written_as_draft_and_fails(tmp_path):
     assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
     assert parse_build_plan(target_dir / "MANIFEST.md").state == "draft"
     assert get_sub_state(target_dir) == "unbuildable"
+    errors = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
+    assert "plan cannot be built as written" in errors
+    assert "status-open" in errors
 
 
 def test_an_idless_end_marker_is_a_terminator_not_a_missing_one():
