@@ -395,6 +395,76 @@ def sqlite_schema_sql(tables: Iterable[SQLiteTable]) -> str:
     return "\n".join(statements + indexes)
 
 
+def derived_indexes(
+    tables: tuple[SQLiteTable, ...], contract: DatabaseContract
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Indexes the declaration implies, as ``(table, columns)`` pairs in a stable order.
+
+    An index is derived rather than decided wherever the declaration already states the answer:
+    a foreign key is looked up by its child column, and a ``read`` pattern's ``Input:`` fields are
+    the predicate it filters on. Deriving them keeps the schema reproducible — an index invented
+    at build time and recorded only in a decision log is dropped by the next render, and nothing
+    detects the loss. Anything genuinely optional is declared as an ``- INDEX (...)`` bullet
+    instead.
+
+    ``read-write`` is excluded on purpose: its inputs are part predicate and part payload, and the
+    declaration does not say which, so deriving from it would index columns nothing searches.
+    """
+    by_name = {table.name: table for table in tables}
+    covered: set[tuple[str, tuple[str, ...]]] = set()
+    for table in tables:
+        for column in table.columns:
+            if column.primary_key or column.unique:
+                covered.add((table.name, (column.name,)))
+        for constraint in table.constraints:
+            covered.add((table.name, constraint.columns))
+    derived: list[tuple[str, tuple[str, ...]]] = []
+
+    def offer(table: str, columns: tuple[str, ...]) -> None:
+        key = (table, columns)
+        if not columns or key in covered:
+            return
+        covered.add(key)
+        derived.append(key)
+
+    for table in tables:
+        for column in table.columns:
+            if column.references is not None:
+                offer(table.name, (column.name,))
+    for pattern in contract.patterns:
+        if pattern.access != "read":
+            continue
+        for operation in pattern.operations:
+            table = by_name.get(operation.split(".", 1)[0])
+            if table is None:
+                continue
+            declared = {column.name for column in table.columns}
+            offer(
+                table.name, tuple(field.name for field in pattern.inputs if field.name in declared)
+            )
+    return tuple(derived)
+
+
+def schema_sql(text: str, *, source: str = "DATABASE.md") -> str:
+    """Render the complete declared schema: tables, declared constraints, and derived indexes."""
+    tables = sqlite_schema_tables(text, source=source)
+    if not tables:
+        return ""
+    statements = [sqlite_schema_sql(tables)]
+    try:
+        contract = parse_database_contract(text)
+    except SpecificationError:
+        contract = DatabaseContract(patterns=())
+    extra: list[str] = []
+    for table, columns in derived_indexes(tables, contract):
+        index = table + "_" + "_".join(columns) + "_idx"
+        names = ", ".join('"' + item + '"' for item in columns)
+        extra.append(
+            'CREATE INDEX IF NOT EXISTS "' + index + '" ON "' + table + '" (' + names + ");"
+        )
+    return "\n".join(statements + extra) if extra else statements[0]
+
+
 def validate_sqlite_schema(text: str, *, source: str = "DATABASE.md") -> tuple[SQLiteTable, ...]:
     """Prove a declared SQLite schema creates, connects, and exposes every declared column.
 

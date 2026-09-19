@@ -8,6 +8,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-09-19: `drydock build` now renders `DATABASE.md` into `schema.sql` beside the build when the
+  DATABASE story closes, so a fresh environment is created from the declaration rather than from
+  whatever the last build happened to execute. Indexes are derived, not decided: a foreign key is
+  indexed by its child column and a `read` access pattern's `Input:` fields are the predicate it
+  filters on, while `read-write` is excluded because its inputs are part predicate and part payload
+  and the declaration does not say which. Derivation keeps the schema reproducible — an index
+  invented at build time and recorded only in a decision log is dropped by the next render with
+  nothing detecting the loss. The derived set is reported as one `DECISIONS.json` record rather than
+  one per index, because it is one step of one build.
+
 ### Changed
 
 - 2026-09-19: `DATABASE.md` table declarations now carry the constraints a real schema needs, and

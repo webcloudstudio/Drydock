@@ -6,10 +6,12 @@ from drydock.database_contract import (
     changed_operation_ids_since,
     create_ticket_migration_records,
     database_operation_fingerprints,
+    derived_indexes,
     mark_migrations_built,
     migration_records,
     parse_database_contract,
     parse_database_interface,
+    schema_sql,
     sqlite_schema_sql,
     sqlite_schema_tables,
     staged_operation_ids,
@@ -481,3 +483,108 @@ def test_a_verb_outside_the_closed_set_is_refused():
 
     with pytest.raises(SpecificationError, match="get, list, create, update, delete"):
         parse_database_contract(invented)
+
+
+_DERIVATION = """# DATABASE: Derivation
+
+## Access Patterns
+
+### FEATURE-TICKET-001 — Find tickets
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-Ticket.md |
+| Access | read |
+| Repository operation | `tickets.list` |
+| Compatibility | unchanged |
+
+Input: FindTickets
+
+| Field | Type | Required |
+|---|---|---|
+| status | str | yes |
+| ignored_by_schema | str | no |
+
+Output: Ticket
+
+| Field | Type |
+|---|---|
+| id | int |
+
+### FEATURE-TICKET-002 — Save ticket
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-Ticket.md |
+| Access | write |
+| Repository operation | `tickets.update` |
+| Compatibility | unchanged |
+
+Input: SaveTicket
+
+| Field | Type | Required |
+|---|---|---|
+| title | str | yes |
+
+Output: Ticket
+
+| Field | Type |
+|---|---|
+| id | int |
+
+## `projects`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+
+## `tickets`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| project_id | INTEGER NOT NULL REFERENCES projects(id) | |
+| status | TEXT NOT NULL | |
+| title | VARCHAR(200) | |
+"""
+
+
+def test_indexes_are_derived_from_foreign_keys_and_read_predicates():
+    tables = sqlite_schema_tables(_DERIVATION)
+    contract = parse_database_contract(_DERIVATION)
+
+    assert derived_indexes(tables, contract) == (
+        ("tickets", ("project_id",)),
+        ("tickets", ("status",)),
+    )
+
+
+def test_a_write_pattern_contributes_no_index():
+    sql = schema_sql(_DERIVATION)
+
+    assert '"tickets_title_idx"' not in sql
+
+
+def test_a_derived_index_is_not_repeated_when_already_declared():
+    declared = _DERIVATION.replace(
+        "| status | TEXT NOT NULL | |", "| status | TEXT NOT NULL UNIQUE | |"
+    )
+    tables = sqlite_schema_tables(declared)
+
+    assert ("tickets", ("status",)) not in derived_indexes(
+        tables, parse_database_contract(declared)
+    )
+
+
+def test_the_rendered_schema_creates_tables_and_indexes_on_sqlite():
+    import sqlite3
+
+    with sqlite3.connect(":memory:") as connection:
+        connection.executescript(schema_sql(_DERIVATION))
+        indexes = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='index'")
+        }
+
+    assert "tickets_project_id_idx" in indexes
+    assert "tickets_status_idx" in indexes

@@ -212,3 +212,41 @@ def record_acceptance_env_decisions(
         )
     write_decisions(path, tuple(sorted(current.values(), key=lambda record: record.id)))
     return (path,)
+
+
+def record_derived_indexes(
+    indexes: tuple[tuple[str, tuple[str, ...]], ...], *, target_dir: Path
+) -> tuple[Path, ...]:
+    """Record, as one decision, every index the schema render derived rather than was told.
+
+    Derivation is deterministic — foreign-key child columns and ``read`` predicates — so this is a
+    report of what happened, not a choice awaiting an answer. It is one record rather than one per
+    index because it is one step of one build, and a reader wants the list, not a queue.
+    """
+    if not indexes:
+        return ()
+    path = target_dir / "DECISIONS.json"
+    current = {item.id: item for item in load_decisions(path)}
+    record_id = "build-schema-derived-indexes"
+    listing = "; ".join(f"{table}({', '.join(columns)})" for table, columns in indexes)
+    current[record_id] = Decision(
+        id=record_id,
+        type="text",
+        severity="informational",
+        origin="build",
+        blueprint="DATABASE.md",
+        story=None,
+        status="recommended",
+        archived=False,
+        title="Indexes derived from the persistence declaration",
+        description=(
+            f"The rendered schema indexes {listing}. Each is implied by the declaration — a "
+            "foreign key is looked up by its child column, and a read pattern's Input fields are "
+            "the predicate it filters on. Declare an `- INDEX (...)` bullet in DATABASE.md for "
+            "any index this does not cover."
+        ),
+        options=(),
+        system_choice=listing,
+    )
+    write_decisions(path, tuple(sorted(current.values(), key=lambda record: record.id)))
+    return (path,)

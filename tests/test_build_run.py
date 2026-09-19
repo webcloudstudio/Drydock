@@ -4704,3 +4704,42 @@ def test_a_story_whose_every_criterion_is_unverified_is_implemented_not_verified
     assert "every criterion this story declared settled UNVERIFIED" in (
         target_dir / "MANIFEST.md"
     ).read_text(encoding="utf-8")
+
+
+def test_the_database_step_renders_the_declaration_into_executable_ddl(tmp_path: Path):
+    from drydock.build_run import _write_schema_sql
+
+    blueprint_dir = tmp_path / "blueprint"
+    build_dir = tmp_path / "build"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text(
+        "# DATABASE: X\n\n"
+        "## Access Patterns\n\n"
+        "### FEATURE-TICKET-001 — Find tickets\n\n"
+        "| Field | Value |\n|---|---|\n"
+        "| Owner | FEATURE-Ticket.md |\n| Access | read |\n"
+        "| Repository operation | `tickets.list` |\n| Compatibility | unchanged |\n\n"
+        "Input: FindTickets\n\n| Field | Type | Required |\n|---|---|---|\n| status | str | yes |\n\n"
+        "Output: Ticket\n\n| Field | Type |\n|---|---|\n| id | int |\n\n"
+        "## `tickets`\n\n| Field | Type | Notes |\n|---|---|---|\n"
+        "| id | INTEGER PK | |\n| status | TEXT NOT NULL DEFAULT 'open' | |\n",
+        encoding="utf-8",
+    )
+
+    written = _write_schema_sql(blueprint_dir, build_dir, tmp_path, None)
+
+    rendered = (build_dir / "schema.sql").read_text(encoding="utf-8")
+    assert "\"status\" TEXT NOT NULL DEFAULT 'open'" in rendered
+    assert 'CREATE INDEX IF NOT EXISTS "tickets_status_idx"' in rendered
+    assert (tmp_path / "DECISIONS.json") in written
+
+
+def test_a_declaration_with_no_tables_writes_no_schema(tmp_path: Path):
+    from drydock.build_run import _write_schema_sql
+
+    blueprint_dir = tmp_path / "blueprint"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text("# DATABASE: X\n", encoding="utf-8")
+
+    assert _write_schema_sql(blueprint_dir, tmp_path / "build", tmp_path, None) == ()
+    assert not (tmp_path / "build" / "schema.sql").exists()
