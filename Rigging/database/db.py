@@ -34,6 +34,7 @@ __all__ = [
     "PersistenceError",
     "Schema",
     "Table",
+    "statements",
     "UnknownOperation",
 ]
 
@@ -213,9 +214,8 @@ class Database:
         connection = self._driver.connect()
         cursor = connection.cursor()
         try:
-            for statement in (part.strip() for part in sql.split(";")):
-                if statement and not statement.startswith("--"):
-                    cursor.execute(statement)
+            for statement in statements(sql):
+                cursor.execute(statement)
             connection.commit()
         finally:
             cursor.close()
@@ -299,6 +299,28 @@ class Database:
         return operation.row(**{
             name: value for name, value in zip(columns, row, strict=False) if name in accepted
         })
+
+
+def statements(sql: str) -> list[str]:
+    """Split a DDL script into statements.
+
+    Comment lines are dropped and a semicolon inside a quoted literal does not end a statement —
+    a ``DEFAULT \'a;b\'`` would otherwise be cut in half, and the halves are not valid SQL.
+    """
+    body = "\n".join(line for line in sql.splitlines() if not line.lstrip().startswith("--"))
+    parts: list[str] = []
+    current: list[str] = []
+    quoted = False
+    for character in body:
+        if character == "'":
+            quoted = not quoted
+        if character == ";" and not quoted:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(character)
+    parts.append("".join(current))
+    return [statement.strip() for statement in parts if statement.strip()]
 
 
 def open_driver(dsn: str) -> Driver:

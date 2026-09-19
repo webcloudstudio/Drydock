@@ -10,6 +10,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-19: `drydock build` now generates the Target's persistence package at the DATABASE step.
+  `write_persistence_package` copies the shipped engines into `persistence/` and emits
+  `persistence/schema.py` from `DATABASE.md`: the declared tables, the declared operations, and a
+  frozen dataclass per read output. The generated module contains no SQL — statements are built by
+  the driver for the engine in use — and its field annotations are emitted as declared and never
+  evaluated, so a declared type the module cannot import is preserved rather than dropped. The
+  declaration is now the source of the persistence layer rather than a description checked against
+  one a build agent rewrote from prose each build. `schema.sql` is written beside the package.
 - 2026-09-19: Drydock now ships the persistence layer itself. `Rigging/database/` holds `db.py`,
   `sqlite.py`, and `postgres.py` — Python source copied into a build unchanged, not guidance a
   build agent reinterprets. It is hardened and tested once in Drydock's own suite, so every Target

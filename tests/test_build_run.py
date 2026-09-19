@@ -4707,7 +4707,7 @@ def test_a_story_whose_every_criterion_is_unverified_is_implemented_not_verified
 
 
 def test_the_database_step_renders_the_declaration_into_executable_ddl(tmp_path: Path):
-    from drydock.build_run import _write_schema_sql
+    from drydock.build_run import _write_persistence
 
     blueprint_dir = tmp_path / "blueprint"
     build_dir = tmp_path / "build"
@@ -4726,20 +4726,23 @@ def test_the_database_step_renders_the_declaration_into_executable_ddl(tmp_path:
         encoding="utf-8",
     )
 
-    written = _write_schema_sql(blueprint_dir, build_dir, tmp_path, None)
+    written = _write_persistence(blueprint_dir, build_dir, tmp_path, None)
 
     rendered = (build_dir / "schema.sql").read_text(encoding="utf-8")
     assert "\"status\" TEXT NOT NULL DEFAULT 'open'" in rendered
     assert 'CREATE INDEX IF NOT EXISTS "tickets_status_idx"' in rendered
     assert (tmp_path / "DECISIONS.json") in written
+    assert (build_dir / "persistence" / "schema.py").is_file()
+    assert (build_dir / "persistence" / "db.py").is_file()
 
 
 def test_a_declaration_with_no_tables_writes_no_schema(tmp_path: Path):
-    from drydock.build_run import _write_schema_sql
+    from drydock.build_run import _write_persistence
 
     blueprint_dir = tmp_path / "blueprint"
     blueprint_dir.mkdir()
     (blueprint_dir / "DATABASE.md").write_text("# DATABASE: X\n", encoding="utf-8")
 
-    assert _write_schema_sql(blueprint_dir, tmp_path / "build", tmp_path, None) == ()
+    assert _write_persistence(blueprint_dir, tmp_path / "build", tmp_path, None) == ()
     assert not (tmp_path / "build" / "schema.sql").exists()
+    assert not (tmp_path / "build" / "persistence").exists()
