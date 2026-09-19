@@ -1049,6 +1049,30 @@ class TestRiggingCompact:
         assert rc == 0, err
         assert "Contracts via rigging_compact_contracts.md" in out
 
+    def test_all_without_target_refreshes_rigging_only(
+        self, tmp_target_root, isolated_config, monkeypatch, tmp_path
+    ):
+        """--all is a standalone Rigging refresh: no <Target>, no Blueprint scan."""
+        self._setup_blueprint(tmp_target_root)
+        rigging = tmp_path / "Rigging"
+        rigging.mkdir()
+        (rigging / "RULES.md").write_text("def rule(): ...\n", encoding="utf-8")
+        (rigging / "RULES_compact.md").write_text("stale\n", encoding="utf-8")
+        monkeypatch.setattr("drydock.rigging_compact.get_rigging_root", lambda: rigging)
+        self._fake_run_prompt(monkeypatch)
+        rc, out, err = run_cli("rigging", "compact", "--all", "--force")
+        assert rc == 0, err
+        assert "Drydock Rigging" in out
+        assert "1 compacted" in out
+        assert "must stay" in (rigging / "RULES_compact.md").read_text(encoding="utf-8")
+        # The Blueprint of an unrelated Target is not touched.
+        assert not (tmp_target_root / "Proj" / "blueprint" / "DATABASE_compact.md").exists()
+
+    def test_no_target_and_no_scope_is_usage_error(self, isolated_config):
+        rc, _, err = run_cli("rigging", "compact")
+        assert rc == 2
+        assert "--all" in err and "<Target> is required" in err
+
 
 class TestAnalyzeCommand:
     def test_help_lists_llm_provider_flag(self):

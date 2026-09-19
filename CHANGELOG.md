@@ -41,6 +41,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-19: `drydock rigging compact --all` now runs without a `<Target>`. Rigging is Drydock's
+  own shipped tree and has no Target, so refreshing its stale compacts no longer requires naming an
+  unrelated Blueprint whose scope is then also compacted. `--all` alone refreshes only Rigging;
+  `--all` with a `<Target>` keeps the previous behavior and adds that Blueprint's scope. Invoking
+  the command with neither a `<Target>` nor `--all`, `--include-file`, or `--include-dir` remains a
+  usage error and now names `--all` among the scopes that satisfy it.
+
 - 2026-09-19: Relational persistence no longer requires an ORM or migration-framework selection.
   `sqlalchemy.md` and `alembic.md` are no longer mandatory for a Python Target with a `DATABASE.md`,
   because Build generates the persistence package from the declaration instead of asking an agent to
