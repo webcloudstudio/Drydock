@@ -4630,18 +4630,18 @@ def test_a_marker_inside_a_string_literal_is_not_treated_as_a_boundary():
         parse_programmatic_acceptance_text(text, source="FEATURE-Example.md")
 
 
-def test_an_unrepairable_acceptance_container_keeps_the_plan(tmp_path):
-    """The jq failure: one unreadable container discarded six accepted batches.
+def test_an_unrepairable_acceptance_container_is_routed_to_repair(tmp_path):
+    """A container no normalizer can close is raised into the artifact repair loop.
 
-    The container cannot be repaired — its body does not tokenize, so no boundary is
-    inferable — and it must not cost the plan. It settles as a warning plus a blocking
-    decision against the story that owns it.
+    Its body does not tokenize, so no boundary is inferable. It was previously written as a
+    warning plus a blocking decision and the plan reported success; the criterion gated nothing
+    and Build stopped on it later. Validation now refuses it, and the repair-exhausted pass
+    (``enforce_criteria=False``) still returns the graph so the paid-for plan can be written for
+    the terminal buildability gate to fail.
     """
-    from drydock.planning_session import (
-        _malformed_acceptance_defects,
-        _validate_plan_output,
-        malformed_acceptance_decisions,
-    )
+    import pytest
+
+    from drydock.planning_session import CriteriaDefect, _validate_plan_output
 
     broken = (
         "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
@@ -4656,14 +4656,17 @@ def test_an_unrepairable_acceptance_container_keeps_the_plan(tmp_path):
         "MANIFEST.md": manifest,
     }
 
-    plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+    with pytest.raises(CriteriaDefect) as raised:
+        _validate_plan_output(dict(blocks), tmp_path, FakeRun(text=_llm_output(manifest)))
+    assert [(kind, item.source) for kind, item in raised.value.defects] == [
+        ("acceptance-malformed", "FEATURE-Status.md")
+    ]
 
+    plan, warnings = _validate_plan_output(
+        blocks, tmp_path, FakeRun(text=_llm_output(manifest)), enforce_criteria=False
+    )
     assert plan.blocks
     assert any("acceptance block is never closed" in warning for warning in warnings)
-    assert any("recorded as a blocking decision" in warning for warning in warnings)
-    decisions = malformed_acceptance_decisions(_malformed_acceptance_defects(blocks))
-    assert [item.id for item in decisions] == ["acceptance-FEATURE-Status.md-container-malformed"]
-    assert decisions[0].severity == "blocking"
 
 
 def test_unreadable_acceptance_declares_no_tooling_instead_of_raising(tmp_path):
@@ -5511,12 +5514,11 @@ def test_a_persistence_declaration_with_tables_passes_the_plan(tmp_path):
     assert any("1 declared table(s)" in warning for warning in warnings)
 
 
-def test_a_persistence_declaration_build_cannot_parse_is_a_decision_not_a_discard():
+def test_a_persistence_declaration_build_cannot_parse_is_a_database_defect():
     """The live Marina_Luna defect: the model wrote ``## Access Patterns`` as one flat table of
-    operations instead of a named section each. Build reads that surface through
-    ``database_operation_fingerprints``, so the declaration is unusable — but discarding a plan
-    that cost 39 accepted Blueprints over it is the response already settled against for a
-    criterion that does not compile. The plan is written; the story that implements it blocks."""
+    operations instead of a named section each. Build generates the persistence layer from that
+    surface, so it is repaired like every other persistence defect — recording it as a decision
+    also silenced the coverage and citation checks and let the plan report success."""
     blocks = {
         "DATABASE.md": (
             "# DATABASE: X\n\n## Access Patterns\n\n"
@@ -5529,13 +5531,41 @@ def test_a_persistence_declaration_build_cannot_parse_is_a_decision_not_a_discar
     }
 
     defects = ps._database_contract_defects(blocks)
-    assert len(defects) == 1
-    assert "## Access Patterns has no named operation" in defects[0]
 
-    decision = ps.database_contract_decisions(defects)[0]
-    assert decision.severity == "blocking"
-    assert decision.blueprint == "DATABASE.md"
-    assert ps.database_contract_decisions(defects, unattended=True)[0].severity == "material"
+    assert [kind for kind, _ in defects] == ["database-contract-invalid"]
+    assert defects[0][1].source == "DATABASE.md"
+    assert "## Access Patterns has no named operation" in defects[0][1].reason
+
+
+def test_every_incomplete_access_pattern_is_reported_in_one_pass():
+    """Marina_Luna: a repair pass added thirteen patterns without Input/Output tables. The parser
+    stops at the first; the repair loop must see all thirteen, and the owners they name."""
+    incomplete = (
+        "### FEATURE-Y-00{n} — Store thing\n\n| Field | Value |\n|-------|-------|\n"
+        "| Owner | FEATURE-INVENTED.md |\n| Access | read-write |\n"
+        "| Repository operation | `settings.update` |\n| Compatibility | data |\n\n"
+    )
+    database = (
+        "# DATABASE: X\n\n"
+        + _ACCESS_PATTERNS.rstrip("\n")
+        + "\n\n"
+        + incomplete.format(n=1)
+        + incomplete.format(n=2)
+        + "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+    )
+    blocks = {"DATABASE.md": database, "FEATURE-Example.md": "# FEATURE: Example\n"}
+
+    contract = ps._database_contract_defects(blocks)
+    owners = ps._database_interface_defects(blocks)
+
+    assert [item.reason.split(" requires")[0] for _, item in contract] == [
+        "DATABASE.md: FEATURE-Y-001",
+        "DATABASE.md: FEATURE-Y-002",
+    ]
+    assert "`Input: <DtoName>`" in contract[0][1].reason
+    assert [(kind, "FEATURE-INVENTED.md" in item.reason) for kind, item in owners] == [
+        ("database-owner-unknown", True)
+    ]
 
 
 def test_a_combined_access_spelling_is_read_as_read_write():
@@ -5566,13 +5596,13 @@ def test_a_single_sided_access_synonym_keeps_its_side():
 
 def test_an_access_value_drydock_cannot_read_is_left_for_the_contract_parser():
     """An unrecognized spelling is never reinterpreted by guesswork; it reaches the parser and is
-    surfaced as a decision there."""
+    raised for repair there."""
     blocks = {
         "DATABASE.md": _ACCESS_PATTERNS.replace("| Access | read |", "| Access | telepathy |")
     }
 
     assert ps._normalize_database_access_values(blocks) == ()
-    assert "invalid Access: telepathy" in ps._database_contract_defects(blocks)[0]
+    assert "invalid Access: telepathy" in ps._database_contract_defects(blocks)[0][1].reason
 
 
 def _criterion(code: str, *, check_id: str = "c1") -> str:
@@ -5921,3 +5951,56 @@ def test_an_unknown_owner_is_left_to_the_repair_loop():
     }
 
     assert ps._normalize_database_interfaces(blocks) == ()
+
+
+def test_a_plan_build_cannot_execute_is_written_as_draft_and_fails(tmp_path):
+    """The Marina_Luna false positive: a plan with criteria that cannot run reported
+    ``PLAN CREATED`` pass and ``approved``. The terminal gate keeps the paid-for artifacts for
+    ``drydock plan repair`` but leaves the Manifest draft and fails the command."""
+    from drydock.build_plan import parse_build_plan
+    from drydock.metadata import get_sub_state
+    from drydock.planning_session import PlanNotBuildable
+
+    target_dir = _make_target(tmp_path)
+    (target_dir / "METADATA.md").write_text("name: Example\nbuild_sub_state: \n", encoding="utf-8")
+    broken = _llm_output().replace(
+        "### check-1\nThe Status route responds with HTTP 200.\n\n```python\nassert True\n```",
+        '=== AC status-open ===\nIntent: Never closed.\n\nsample = """\n',
+        1,
+    )
+    assert broken != _llm_output()
+
+    feature = broken[
+        broken.index("=== FEATURE-Status.md ===") : broken.index("=== MANIFEST.md ===")
+    ]
+    calls: list[str] = []
+
+    def runner(*args, **kwargs):
+        # The plan call, then repair calls that return the criterion still unclosed.
+        calls.append("call")
+        return FakeRun(text=broken if len(calls) == 1 else feature)
+
+    with pytest.raises(PlanNotBuildable, match="cannot be built as written"):
+        create_plan("Example", "Example", tmp_path, runner=runner, allow_diagnostic_recovery=True)
+
+    assert len(calls) > 1  # the criterion reached the repair loop before the plan was failed
+
+    assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+    assert parse_build_plan(target_dir / "MANIFEST.md").state == "draft"
+    assert get_sub_state(target_dir) == "unbuildable"
+
+
+def test_an_idless_end_marker_is_a_terminator_not_a_missing_one():
+    """Treated as absent, the unterminated-block pass appended a terminator after the section's
+    prose, burying the bare marker and the prose inside the criterion's code."""
+    from drydock.planning_session import (
+        _normalize_fused_acceptance_boundaries,
+        _normalize_unterminated_acceptance_blocks,
+    )
+
+    text = "=== AC only ===\nIntent: One.\nassert 1\n=== END AC\n\n## Guardrails\n\n- None.\n"
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_unterminated_acceptance_blocks(blocks) == ()
+    assert _normalize_fused_acceptance_boundaries(blocks)
+    assert "=== END AC only ===\n\n## Guardrails" in blocks["FEATURE-Example.md"]

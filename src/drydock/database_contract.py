@@ -682,68 +682,128 @@ def table_coverage_defects(
     return uncited, tuple(undeclared)
 
 
-def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> DatabaseContract:
-    """Parse the public operation surface from a DATABASE Blueprint."""
+def _pattern_blocks(text: str, source: str) -> list[tuple[re.Match[str], str]]:
+    """Split ``## Access Patterns`` into one ``(heading, body)`` pair per named operation."""
     access_patterns = _section(text, "Access Patterns")
     if not access_patterns.strip():
         raise SpecificationError(f"{source}: missing required ## Access Patterns section")
-    patterns: list[AccessPattern] = []
     matches = list(_H3_RE.finditer(access_patterns))
     if not matches:
         raise SpecificationError(f"{source}: ## Access Patterns has no named operation")
-    for index, match in enumerate(matches):
-        block = access_patterns[
-            match.end() : matches[index + 1].start()
-            if index + 1 < len(matches)
-            else len(access_patterns)
-        ]
-        metadata = {key.casefold(): value for key, value in _rows(block)}
-        missing = [
-            label
-            for label in ("owner", "access", "repository operation", "compatibility")
-            if not metadata.get(label)
-        ]
-        if missing:
-            raise SpecificationError(
-                f"{source}: {match.group(1)} missing access-pattern field(s): {', '.join(missing)}"
-            )
-        access = metadata["access"].casefold()
-        compatibility = metadata["compatibility"].casefold()
-        if access not in _ACCESS_GRANTS:
-            raise SpecificationError(f"{source}: {match.group(1)} has invalid Access: {access}")
-        if compatibility not in _COMPATIBILITY:
-            raise SpecificationError(
-                f"{source}: {match.group(1)} has invalid Compatibility: {compatibility}"
-            )
-        io = list(_INPUT_OUTPUT_RE.finditer(block))
-        values: dict[str, tuple[str, tuple[Field, ...]]] = {}
-        for io_match in io:
-            values[io_match.group(1).casefold()] = (
-                io_match.group(2).strip("` "),
-                _field_table(block, io_match.end()),
-            )
-        if "input" not in values or "output" not in values:
-            raise SpecificationError(f"{source}: {match.group(1)} requires Input and Output tables")
-        patterns.append(
-            AccessPattern(
-                identifier=match.group(1),
-                owner=metadata["owner"].strip(),
-                access=access,
-                repository_operation=metadata["repository operation"].strip("`"),
-                operations=_repository_operations(
-                    metadata["repository operation"], identifier=match.group(1), source=source
-                ),
-                compatibility=compatibility,
-                input_name=values["input"][0],
-                inputs=values["input"][1],
-                output_name=values["output"][0],
-                outputs=values["output"][1],
-            )
+    return [
+        (
+            match,
+            access_patterns[
+                match.end() : matches[index + 1].start()
+                if index + 1 < len(matches)
+                else len(access_patterns)
+            ],
         )
+        for index, match in enumerate(matches)
+    ]
+
+
+def _parse_access_pattern(match: re.Match[str], block: str, source: str) -> AccessPattern:
+    metadata = {key.casefold(): value for key, value in _rows(block)}
+    missing = [
+        label
+        for label in ("owner", "access", "repository operation", "compatibility")
+        if not metadata.get(label)
+    ]
+    if missing:
+        raise SpecificationError(
+            f"{source}: {match.group(1)} missing access-pattern field(s): {', '.join(missing)}"
+        )
+    access = metadata["access"].casefold()
+    compatibility = metadata["compatibility"].casefold()
+    if access not in _ACCESS_GRANTS:
+        raise SpecificationError(f"{source}: {match.group(1)} has invalid Access: {access}")
+    if compatibility not in _COMPATIBILITY:
+        raise SpecificationError(
+            f"{source}: {match.group(1)} has invalid Compatibility: {compatibility}"
+        )
+    values: dict[str, tuple[str, tuple[Field, ...]]] = {}
+    for io_match in _INPUT_OUTPUT_RE.finditer(block):
+        values[io_match.group(1).casefold()] = (
+            io_match.group(2).strip("` "),
+            _field_table(block, io_match.end()),
+        )
+    if "input" not in values or "output" not in values:
+        # The repair prompt carries this message and nothing else, so it states the grammar.
+        raise SpecificationError(
+            f"{source}: {match.group(1)} requires Input and Output tables — after the "
+            "`| Field | Value |` table, write `Input: <DtoName>` and `Output: <DtoName>`, each "
+            "followed by a `| Field | Type |` table of the fields it carries"
+        )
+    return AccessPattern(
+        identifier=match.group(1),
+        owner=metadata["owner"].strip(),
+        access=access,
+        repository_operation=metadata["repository operation"].strip("`"),
+        operations=_repository_operations(
+            metadata["repository operation"], identifier=match.group(1), source=source
+        ),
+        compatibility=compatibility,
+        input_name=values["input"][0],
+        inputs=values["input"][1],
+        output_name=values["output"][0],
+        outputs=values["output"][1],
+    )
+
+
+def declared_owners(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
+    """Return every ``| Owner |`` value in ``## Access Patterns``, whether or not it parses.
+
+    Ownership is checked against the emitted Blueprints independently of the rest of the
+    pattern, so an unreadable pattern does not also hide the fact that it names no Blueprint.
+    """
+    try:
+        blocks = _pattern_blocks(text, source)
+    except SpecificationError:
+        return ()
+    owners: list[str] = []
+    for _, block in blocks:
+        metadata = {key.casefold(): value for key, value in _rows(block)}
+        if owner := metadata.get("owner", "").strip():
+            owners.append(owner)
+    return tuple(owners)
+
+
+def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> DatabaseContract:
+    """Parse the public operation surface from a DATABASE Blueprint."""
+    patterns = [
+        _parse_access_pattern(match, block, source)
+        for match, block in _pattern_blocks(text, source)
+    ]
     ids = [pattern.identifier for pattern in patterns]
     if len(ids) != len(set(ids)):
         raise SpecificationError(f"{source}: duplicate access-pattern identifier")
     return DatabaseContract(tuple(patterns))
+
+
+def database_contract_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
+    """Return every reason :func:`parse_database_contract` would reject ``text``, or ``()``.
+
+    The parser stops at the first bad pattern. A repair pass handed only that one fixes it and
+    returns to find the next, so thirteen incomplete patterns cost thirteen passes against a
+    budget sized for far fewer. Each pattern is judged on its own here.
+    """
+    try:
+        blocks = _pattern_blocks(text, source)
+    except SpecificationError as exc:
+        return (str(exc),)
+    defects: list[str] = []
+    ids: list[str] = []
+    for match, block in blocks:
+        ids.append(match.group(1))
+        try:
+            _parse_access_pattern(match, block, source)
+        except SpecificationError as exc:
+            defects.append(str(exc))
+    duplicates = sorted({ident for ident in ids if ids.count(ident) > 1})
+    if duplicates:
+        defects.append(f"{source}: duplicate access-pattern identifier(s): {', '.join(duplicates)}")
+    return tuple(defects)
 
 
 def parse_database_interface(text: str, *, source: str = "Blueprint") -> tuple[DatabaseUse, ...]:

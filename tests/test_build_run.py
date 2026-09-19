@@ -4746,3 +4746,23 @@ def test_a_declaration_with_no_tables_writes_no_schema(tmp_path: Path):
     assert _write_persistence(blueprint_dir, tmp_path / "build", tmp_path, None) == ()
     assert not (tmp_path / "build" / "schema.sql").exists()
     assert not (tmp_path / "build" / "persistence").exists()
+
+
+def test_build_refuses_a_persistence_declaration_it_cannot_read(tmp_path):
+    """Marina_Luna: thirteen access patterns without Input/Output tables. Build generates the
+    persistence package from the declaration, so it refuses before spending a call rather than
+    printing ``persistence: not generated`` at the DATABASE step and building on."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "# DATABASE: Demo\n\n## Access Patterns\n\n### FEATURE-SVC-001 — Store setting\n\n"
+        "| Field | Value |\n|---|---|\n| Owner | SERVICE.md |\n| Access | read-write |\n"
+        "| Repository operation | `settings.update` |\n| Compatibility | data |\n\n"
+        "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        encoding="utf-8",
+    )
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError, match="Build cannot read DATABASE.md"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert runner.calls == []

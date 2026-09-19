@@ -2145,13 +2145,14 @@ def _write_persistence(
     text = database_path.read_text(encoding="utf-8")
     try:
         written = write_persistence_package(blueprint_dir, build_dir)
+        if not written:
+            return ()
         tables = sqlite_schema_tables(text)
         contract = parse_database_contract(text)
     except SpecificationError as exc:
-        _emit(on_text, f"persistence: not generated — {exc}")
-        return ()
-    if not written:
-        return ()
+        # The schema story just closed on a declaration nothing can generate from. Continuing
+        # would let every later story build against a persistence layer that does not exist.
+        raise SpecificationError(f"persistence: not generated — {exc}") from exc
     return written + record_derived_indexes(
         derived_indexes(tables, contract), target_dir=target_dir
     )
@@ -2198,6 +2199,19 @@ def build_target(
     # exclusive reconciliation point for Blueprint drift; no build option may erase its evidence.
     blueprint_dir = blueprint_dir_for(target_dir)
     _ensure_applied_specs_current(manifest_path, blueprint_dir)
+
+    # Build generates the persistence package from DATABASE.md, so a declaration it cannot read
+    # is a build that cannot work: every story after the DATABASE step would be written against
+    # a persistence layer that is never generated. Refused before anything is spent. A criterion
+    # that cannot run is not refused here — it settles UNVERIFIED and costs its story nothing.
+    from drydock.plan_verify import persistence_defects
+
+    if unreadable := persistence_defects(blueprint_dir):
+        raise SpecificationError(
+            "Build refused: Build cannot read DATABASE.md.\n"
+            + "\n".join(f"  ✗  {defect.rendered}" for defect in unreadable)
+            + f"\n  Run: drydock plan {target}"
+        )
 
     # A build owns the current Target error record. Remove the prior run's recovery signal before
     # any new run is observed; a new terminal failure writes a fresh record below.

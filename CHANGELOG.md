@@ -174,6 +174,32 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-19: `drydock plan` no longer reports success over a plan Build cannot execute. The plan
+  ends on the `drydock plan verify` check; when a criterion cannot run or `DATABASE.md` cannot be
+  read, the Blueprint and Manifest are still written for repair, but `MANIFEST.md` is left
+  `state: draft`, `build_sub_state` is `unbuildable`, `PLAN CREATED` is recorded as failed, and the
+  command exits `1` with the defect list. Neither `--override` nor an unattended run waives it.
+  Previously these defects were demoted to `DECISIONS.json` entries (downgraded to `material` when
+  unattended) and the command stamped `approved`.
+- 2026-09-19: An unreadable `DATABASE.md` access-pattern surface now raises `DatabaseDefect` into
+  the artifact repair loop, and every incomplete pattern is reported in one pass. It was recorded
+  as a decision, and because the table-coverage and citation checks skip a contract that does not
+  parse, an unreadable declaration silenced every persistence gate. `| Owner |` values naming no
+  Blueprint are reported even when the contract does not parse. Persistence checks also run in the
+  repair-exhausted fallback pass, which previously skipped them.
+- 2026-09-19: Malformed acceptance containers are raised into the artifact repair loop instead of
+  being recorded as blocking decisions. The fused-boundary normalizer now repairs the two shapes
+  it missed: an `Intent:` line containing an apostrophe (the cut check tokenized the prose), and a
+  chain closed by an id-less `=== END AC`.
+- 2026-09-19: `drydock plan verify` reports `DATABASE.md` contract, unknown-owner, and table
+  coverage defects when the declaration declares tables, and names `drydock plan <Target>` as
+  their repair. `drydock plan repair` leaves those defects outstanding instead of sending
+  `DATABASE.md` to the criterion prompt, records `PLAN REPAIRED` as passed only when the
+  post-repair verification is clean, and sets the Manifest `approved` or `draft` to match.
+- 2026-09-19: `drydock build` refuses to start when a `DATABASE.md` that declares tables cannot be
+  read, and stops when the DATABASE step cannot generate the persistence package instead of printing
+  `persistence: not generated` and continuing. An unrunnable criterion still settles UNVERIFIED
+  without refusing the build.
 - 2026-09-19: `DATABASE.md` type cells accept column modifiers wrapped in the square brackets of the
   documented form (`TEXT NOT NULL [UNIQUE]`, `[DEFAULT 0]`, `[REFERENCES t(c)]`); the brackets are
   removed before validation instead of failing `drydock plan` with an unknown column modifier after

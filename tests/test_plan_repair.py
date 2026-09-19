@@ -665,3 +665,24 @@ def test_a_missing_blueprint_is_an_error(tmp_path, missing):
 
     with pytest.raises(SpecificationError):
         repair("Demo", tmp_path / "Demo", runner=_runner(""))
+
+
+def test_a_persistence_defect_is_never_handed_to_the_criterion_prompt(tmp_path):
+    """``plan repair`` rewrites acceptance criteria. Sent DATABASE.md as a "container", it would
+    rewrite the declaration as one; the defect stays outstanding so the command cannot pass."""
+    database = (
+        "# DATABASE: Demo\n\n## Access Patterns\n\n### FEATURE-X-001 — Store setting\n\n"
+        "| Field | Value |\n|---|---|\n| Owner | FEATURE_Ok.md |\n| Access | read |\n"
+        "| Repository operation | `settings.get` |\n| Compatibility | data |\n\n"
+        "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+    )
+    target = _target(tmp_path, DATABASE=database, FEATURE_Ok="## Programmatic Acceptance\n")
+    runner = _runner("")
+
+    result = repair("Demo", target, runner=runner)
+
+    assert runner.calls == []
+    assert not result.ok
+    (item,) = result.outstanding
+    assert item.filename == "DATABASE.md"
+    assert "drydock plan Demo" in item.detail

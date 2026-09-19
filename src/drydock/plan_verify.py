@@ -37,6 +37,12 @@ from drydock.acceptance import (
     syntax_defect,
     unresolved_globals,
 )
+from drydock.database_contract import (
+    database_contract_defects,
+    declared_owners,
+    sqlite_schema_tables,
+    table_coverage_defects,
+)
 from drydock.errors import SpecificationError
 from drydock.story_guidance import load_guidance
 
@@ -94,10 +100,19 @@ class VerifyResult:
                 f"{self.checked_files} {'file' if self.checked_files == 1 else 'files'}: "
                 "every one can run"
             )
-        return (
-            f"{len(self.defects)} "
-            f"{'criterion' if len(self.defects) == 1 else 'criteria'} cannot run as written"
-        )
+        criteria = sum(1 for defect in self.defects if not defect.kind.startswith("database-"))
+        persistence = len(self.defects) - criteria
+        parts = []
+        if criteria:
+            parts.append(
+                f"{criteria} {'criterion' if criteria == 1 else 'criteria'} cannot run as written"
+            )
+        if persistence:
+            parts.append(
+                f"{persistence} persistence "
+                f"{'defect' if persistence == 1 else 'defects'}: Build cannot read DATABASE.md"
+            )
+        return "; ".join(parts)
 
 
 def _blueprint_files(blueprint_dir: Path) -> list[Path]:
@@ -106,6 +121,64 @@ def _blueprint_files(blueprint_dir: Path) -> list[Path]:
         for path in sorted(blueprint_dir.glob("*.md"))
         if path.name not in _GENERATED_FILES and "_compact." not in path.name
     ]
+
+
+def persistence_defects(blueprint_dir: Path) -> list[Defect]:
+    """Return every reason Build cannot generate the persistence layer from ``DATABASE.md``.
+
+    Build generates the persistence package from this declaration, so a declaration it cannot
+    parse is a plan that cannot be built — the same verdict as a criterion that cannot run, and
+    decidable from the file alone.
+    """
+    path = blueprint_dir / "DATABASE.md"
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8")
+    try:
+        declares_storage = bool(sqlite_schema_tables(text))
+    except SpecificationError:
+        declares_storage = True  # a schema that does not parse is itself a declaration defect
+    if not declares_storage:
+        # The rule Build applies: a declaration with no tables generates no persistence package,
+        # so there is no contract for Build to read.
+        return []
+    defects = [
+        Defect("DATABASE.md", "", "database-contract", reason.removeprefix("DATABASE.md: "))
+        for reason in database_contract_defects(text)
+    ]
+    blueprints = {candidate.name for candidate in _blueprint_files(blueprint_dir)}
+    defects.extend(
+        Defect(
+            "DATABASE.md",
+            "",
+            "database-owner-unknown",
+            f"`| Owner |` names {owner!r}, which is not a Blueprint in this plan",
+        )
+        for owner in sorted(set(declared_owners(text)) - blueprints)
+    )
+    try:
+        uncited, undeclared = table_coverage_defects(text)
+    except SpecificationError:
+        return defects  # the unreadable contract is already reported above
+    defects.extend(
+        Defect(
+            "DATABASE.md",
+            "",
+            "database-table-uncited",
+            f"table `{table}` is declared in `## Schema` but no access pattern reaches it",
+        )
+        for table in uncited
+    )
+    defects.extend(
+        Defect(
+            "DATABASE.md",
+            "",
+            "database-table-undeclared",
+            f"{identifier}: `{operation}` names a table `## Schema` does not declare",
+        )
+        for identifier, operation in undeclared
+    )
+    return defects
 
 
 def verify(target: str, target_dir: Path) -> VerifyResult:
@@ -198,6 +271,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                     "rather than derived from the input or read back from the system"
                 )
 
+    defects.extend(persistence_defects(blueprint_dir))
     guidance = load_guidance(target_dir)
     return VerifyResult(
         target=target,
@@ -229,6 +303,9 @@ def render(result: VerifyResult) -> str:
         lines.append(
             f"       {', '.join(where[:_WARNING_DETAIL_LIMIT])}, and {len(where) - _WARNING_DETAIL_LIMIT} more"
         )
-    if result.defects:
+    if any(not defect.kind.startswith("database-") for defect in result.defects):
         lines.append(f"  Run: drydock plan repair {result.target}")
+    if any(defect.kind.startswith("database-") for defect in result.defects):
+        # ``plan repair`` rewrites acceptance criteria only; the declaration is Plan's to repair.
+        lines.append(f"  Run: drydock plan {result.target}")
     return "\n".join(lines)

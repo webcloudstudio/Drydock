@@ -1721,3 +1721,48 @@ def test_a_step_keeps_the_criteria_of_its_readable_specs(tmp_path):
     assert [check.check_id for check in checks] == ["good-first"]
     assert len(defects) == 1
     assert defects[0].startswith("FEATURE-Broken.md")
+
+
+def test_a_fused_boundary_under_a_possessive_intent_is_split():
+    """Marina_Luna SCREEN-SETUP-WORKSPACE.md. The cut check tokenized the ``Intent:`` prose, and
+    the apostrophe in ``screen's`` read as an unterminated string, so the repair was refused."""
+    from drydock.acceptance import (
+        parse_programmatic_acceptance_text,
+        split_fused_acceptance_boundary,
+    )
+
+    text = (
+        "=== AC route ===\nIntent: Reachable.\nassert True\n=== END AC route ===\n\n"
+        "=== AC api ===\nIntent: The screen's inventory is reachable.\nassert 1\n"
+        "=== END AC empty ===\nIntent: Empty state.\nassert 2\n=== END AC empty ===\n"
+    )
+
+    repaired, messages = split_fused_acceptance_boundary(text)
+
+    assert len(messages) == 1
+    ids = [check.check_id for check in parse_programmatic_acceptance_text(repaired, source="S")]
+    assert ids == ["route", "api", "empty"]
+
+
+def test_a_fused_chain_closed_by_an_idless_end_marker_is_split():
+    """Five Marina_Luna Screens: a chain of wrong closers, the last criterion closed by a bare
+    ``=== END AC``. The bare marker closes whatever is open; without that the whole chain's
+    repair was discarded because the final block never closed."""
+    from drydock.acceptance import (
+        parse_programmatic_acceptance_text,
+        split_fused_acceptance_boundary,
+    )
+
+    text = (
+        "=== AC page ===\nIntent: Reachable.\nassert True\n"
+        "=== END AC list ===\nIntent: Lists.\nassert 1\n"
+        "=== END AC write ===\nIntent: Writes.\nassert 2\n"
+        "=== END AC\n\n## User Acceptance\n\n- A user's view.\n"
+    )
+
+    repaired, messages = split_fused_acceptance_boundary(text)
+
+    assert len(messages) == 3
+    ids = [check.check_id for check in parse_programmatic_acceptance_text(repaired, source="S")]
+    assert ids == ["page", "list", "write"]
+    assert repaired.endswith("=== END AC write ===\n\n## User Acceptance\n\n- A user's view.\n")

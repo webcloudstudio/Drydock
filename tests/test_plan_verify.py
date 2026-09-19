@@ -555,3 +555,40 @@ class TestVerifyRecordsOnlyFailure:
         capsys.readouterr()
 
         assert [e.label for e in read_status(target_dir)] == ["INITIALIZED"]
+
+
+_UNREADABLE_DATABASE = """# DATABASE: Demo
+
+## Access Patterns
+
+### FEATURE-X-001 — Store setting
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-INVENTED.md |
+| Access | read-write |
+| Repository operation | `settings.update` |
+| Compatibility | data |
+
+## `settings`
+
+| Field | Type | Notes |
+|---|---|---|
+| key | TEXT PK | |
+"""
+
+
+def test_a_persistence_declaration_build_cannot_read_fails_verification(tmp_path):
+    """Build generates the persistence layer from DATABASE.md, so a declaration it cannot parse
+    is a plan that cannot be built — Marina_Luna reported PLAN CREATED over thirteen of them."""
+    result = verify("Demo", _target(tmp_path, DATABASE=_UNREADABLE_DATABASE))
+
+    assert not result.ok
+    assert sorted(defect.kind for defect in result.defects) == [
+        "database-contract",
+        "database-owner-unknown",
+    ]
+    assert "persistence defect" in result.summary
+    rendered = render(result)
+    assert "Run: drydock plan Demo" in rendered
+    assert "Run: drydock plan repair Demo" not in rendered

@@ -15,11 +15,9 @@ Tests inject a fake runner and never spend API credits.
 from __future__ import annotations
 
 import ast
-import io
 import json
 import os
 import re
-import tokenize
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -31,11 +29,13 @@ from typing import Protocol, cast
 
 from drydock import technology_stack
 from drydock.acceptance import (
+    AC_BARE_END_RE,
     AC_END_RE,
     AC_OPEN_RE,
     MalformedAcceptance,
     ProgrammaticAcceptance,
     acceptance_checks_from_text,
+    body_is_a_complete_cut,
     escape_defects,
     parse_programmatic_acceptance_text,
     split_fused_acceptance_boundary,
@@ -61,11 +61,14 @@ from drydock.build_plan import (
     disambiguate_manifest_ids,
     parse_build_plan,
     set_applied_specs,
+    set_plan_state,
 )
 from drydock.compass_sources import normative_compass_sections
 from drydock.config import build_dir_for, get_llm_provider
 from drydock.database_contract import (
     DatabaseUse,
+    database_contract_defects,
+    declared_owners,
     parse_database_contract,
     parse_database_interface,
     render_database_interface,
@@ -2379,34 +2382,17 @@ def _database_interface_defects(
     database_text = blocks.get(DATABASE_BLOCK)
     if not database_text:
         return ()
-    try:
-        contract = parse_database_contract(database_text)
-    except SpecificationError:
-        # An unreadable declaration is ``_database_contract_defects``' business. Nothing can be
-        # said about citations against a contract that does not parse.
-        return ()
     defects: list[tuple[str, MalformedAcceptance]] = []
-    interfaces: dict[str, tuple[DatabaseUse, ...]] = {}
-    for name in sorted(blocks):
-        if name in _RESERVED_BLOCKS or name == DATABASE_BLOCK:
-            continue
-        try:
-            interfaces[name] = parse_database_interface(blocks[name], source=name)
-        except SpecificationError as exc:
-            defects.append((
-                "database-interface-invalid",
-                MalformedAcceptance(check_id="## Database Interface", source=name, reason=str(exc)),
-            ))
-
     # An Owner naming something that is not an emitted Blueprint is the declaration's defect and
     # nobody else's. Caught here it is one message against one file; left uncaught it reappears
     # as a wrong-owner conflict in every Blueprint that cites the pattern, none of which can fix
     # it. Marina_Luna declared five owners as service names and spent its whole repair budget on
-    # the first Blueprint to notice.
+    # the first Blueprint to notice. Read before the contract is parsed: a repair that invented
+    # both an owner and an incomplete pattern must hear about both in the same pass.
     unowned = sorted({
-        pattern.owner
-        for pattern in contract.patterns
-        if pattern.owner not in blocks or pattern.owner in _RESERVED_BLOCKS
+        owner
+        for owner in declared_owners(database_text)
+        if owner not in blocks or owner in _RESERVED_BLOCKS
     })
     defects.extend(
         (
@@ -2423,6 +2409,23 @@ def _database_interface_defects(
         )
         for owner in unowned
     )
+    try:
+        contract = parse_database_contract(database_text)
+    except SpecificationError:
+        # An unreadable declaration is ``_database_contract_defects``' business. Nothing can be
+        # said about citations against a contract that does not parse.
+        return tuple(defects)
+    interfaces: dict[str, tuple[DatabaseUse, ...]] = {}
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS or name == DATABASE_BLOCK:
+            continue
+        try:
+            interfaces[name] = parse_database_interface(blocks[name], source=name)
+        except SpecificationError as exc:
+            defects.append((
+                "database-interface-invalid",
+                MalformedAcceptance(check_id="## Database Interface", source=name, reason=str(exc)),
+            ))
 
     for name, uses in interfaces.items():
         try:
@@ -2525,65 +2528,29 @@ def _database_table_defects(blocks: dict[str, str]) -> tuple[tuple[str, Malforme
     )
 
 
-def _database_contract_defects(blocks: dict[str, str]) -> tuple[str, ...]:
-    """Return the reason ``DATABASE.md``'s operation surface cannot be parsed, or ``()``.
+def _database_contract_defects(
+    blocks: dict[str, str],
+) -> tuple[tuple[str, MalformedAcceptance], ...]:
+    """Return every reason ``DATABASE.md``'s operation surface cannot be parsed, or ``()``.
 
-    Build reads that surface through ``database_operation_fingerprints``, so a declaration this
-    rejects is one Build cannot consume. Returning the reason rather than raising is the policy
-    already settled for a criterion that does not compile: the plan is written and the defect is
-    raised as a blocking decision, instead of discarding every Blueprint the run paid for.
+    Build reads that surface through ``database_operation_fingerprints`` and generates the
+    persistence package from it, so a declaration this rejects is one Build cannot consume.
+    It raises ``DatabaseDefect`` like every other persistence defect: an unreadable declaration
+    also silences the table-coverage and citation checks, which cannot judge a contract that
+    does not parse, so recording it as a decision let a plan whose whole persistence layer was
+    unchecked report success.
     """
     text = blocks.get(DATABASE_BLOCK)
     if not text:
         return ()
-    try:
-        parse_database_contract(text)
-    except SpecificationError as exc:
-        return (str(exc),)
-    return ()
-
-
-def database_contract_decisions(
-    defects: tuple[str, ...],
-    *,
-    unattended: bool = False,
-) -> tuple[Decision, ...]:
-    """Ask the Commander to settle a persistence declaration Build cannot read.
-
-    The argument is the one made for malformed acceptance criteria: ``DATABASE.md`` is generated
-    by a command Drydock runs, against a contract Drydock owns, so a pipeline that cannot process
-    one cleanly is a pipeline defect rather than a modelling accident. A live run lost 39 accepted
-    Blueprints across 9 LLM calls to a single ``Access`` cell, and nothing was written.
-
-    ``severity: blocking`` blocks only the story that implements the declaration, so Build still
-    cannot proceed on a contract it cannot read — the guarantee the fatal provided survives, at
-    the cost of one story rather than the whole plan.
-    """
     return tuple(
-        Decision(
-            id=f"database-contract-{index:03d}",
-            type="text",
-            severity="material" if unattended else "blocking",
-            origin="plan",
-            blueprint=DATABASE_BLOCK,
-            story=None,
-            status="recommended" if unattended else "open",
-            archived=False,
-            title="Persistence declaration cannot be read by Build",
-            description=(
-                f"{reason}\n\n"
-                "Build fingerprints the persistence contract from `## Access Patterns`, so it "
-                "cannot consume this declaration as written. Correct the section in "
-                f"`blueprint/{DATABASE_BLOCK}` — each operation is its own "
-                "`### FEATURE-<DOMAIN>-<NNN> — <Operation>` section over a `| Field | Value |` "
-                "table carrying Owner, Access, Repository operation, and Compatibility, followed "
-                "by `Input:` and `Output:` field tables. The rest of the plan is written and "
-                "unaffected."
+        (
+            "database-contract-invalid",
+            MalformedAcceptance(
+                check_id="## Access Patterns", source=DATABASE_BLOCK, reason=reason
             ),
-            options=(),
-            system_choice="",
         )
-        for index, reason in enumerate(defects, start=1)
+        for reason in database_contract_defects(text)
     )
 
 
@@ -2711,6 +2678,10 @@ class CriteriaDefect(SpecificationError):
     ) -> None:
         super().__init__(message)
         self.defects = defects
+
+
+class PlanNotBuildable(SpecificationError):
+    """The plan was written but fails the buildability gate, so ``drydock plan`` fails."""
 
 
 class DatabaseDefect(SpecificationError):
@@ -2900,29 +2871,6 @@ def weak_acceptance_decisions(
     )
 
 
-def _body_is_a_complete_cut(body: str) -> bool:
-    """True when ``body`` can stand as a whole criterion, so a boundary may be inserted after it.
-
-    This is the one decidable question that separates a dropped terminator from a real defect.
-    An ``=== AC ... ===`` line only matches at column zero, so the sole way one lands inside a
-    criterion rather than after it is inside a triple-quoted string — and a target that processes
-    Drydock's own markup will legitimately embed one. Cutting there leaves an unterminated
-    literal, which ``tokenize`` reports and ``compile`` alone would not distinguish from ordinary
-    bad Python.
-
-    Tokenizing rather than compiling is the point. ``assert 1 ==`` is bad Python that tokenizes;
-    it is normalized here and then downgraded to a blocking decision downstream, which is the
-    policy already settled for a criterion that does not compile. ``sample = \"\"\"`` and ``f(``
-    do not tokenize; they mean the boundary is not where the marker is, so nothing is inserted
-    and the existing hard error stands.
-    """
-    try:
-        list(tokenize.generate_tokens(io.StringIO(body).readline))
-    except (tokenize.TokenError, SyntaxError, IndentationError):
-        return False
-    return True
-
-
 def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[str, ...]:
     """Close ``=== AC <id> ===`` blocks whose ``=== END AC <id> ===`` the model omitted.
 
@@ -2934,7 +2882,7 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
 
     Only the unambiguous shape is repaired. An open marker followed by another open marker, or a
     trailing open marker at the end of the block, has exactly one possible boundary, and
-    ``_body_is_a_complete_cut`` confirms the boundary is where the marker is. A mismatched end
+    ``body_is_a_complete_cut`` confirms the boundary is where the marker is. A mismatched end
     id, a stray end marker, and a duplicate id have no single answer and are left to the hard
     error in ``parse_delimited_acceptance``.
 
@@ -2948,7 +2896,13 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
         text = blocks[name]
         markers = sorted(
             [(match.start(), match.end(), "open", match) for match in AC_OPEN_RE.finditer(text)]
-            + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)],
+            + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)]
+            # An id-less end marker is a terminator, not a missing one; the fused-boundary pass
+            # names it. Treating it as absent appended a terminator after the section's prose.
+            + [
+                (match.start(), match.end(), "end", match)
+                for match in AC_BARE_END_RE.finditer(text)
+            ],
             key=lambda item: item[0],
         )
         if not markers:
@@ -2963,7 +2917,7 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
                 continue
             boundary = following[0] if following is not None else len(text)
             body = text[end:boundary]
-            if not _body_is_a_complete_cut(body):
+            if not body_is_a_complete_cut(body):
                 continue
             ident = match.group("id").strip()
             terminator = f"=== END AC {ident} ===\n"
@@ -3612,21 +3566,13 @@ def _validate_plan_output(
     standalone_import_warnings = _normalize_standalone_subprocess_imports(blocks)
     escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
-    malformed_warnings = (
-        tuple(
-            f"{defect.rendered} — recorded as a blocking decision; this criterion gates nothing"
-            for defect in malformed_acceptance
-        )
-        + tuple(
-            f"{reason} — recorded as a blocking decision against the story that implements it; "
-            "the rest of the plan is written"
-            for reason in _database_contract_defects(blocks)
-        )
-        + tuple(
-            f"{defect.rendered} — recorded as a material decision; this criterion passes against an "
-            "implementation that does nothing"
-            for defect in _weak_acceptance_defects(blocks)
-        )
+    malformed_warnings = tuple(
+        f"{defect.rendered} — recorded as a blocking decision; this criterion gates nothing"
+        for defect in malformed_acceptance
+    ) + tuple(
+        f"{defect.rendered} — recorded as a material decision; this criterion passes against an "
+        "implementation that does nothing"
+        for defect in _weak_acceptance_defects(blocks)
     )
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
     if forbidden_artifacts:
@@ -3677,7 +3623,8 @@ def _validate_plan_output(
     # all. Prose in the planning contract instructs the model on both, and a 370 KB prompt is
     # not a gate.
     kinded_criteria_defects: tuple[tuple[str, MalformedAcceptance], ...] = (
-        tuple(
+        tuple(("acceptance-malformed", defect) for defect in malformed_acceptance)
+        + tuple(
             ("staged-asset-env", defect)
             for defect in _staged_asset_env_defects(blocks, blueprint_dir)
         )
@@ -3704,9 +3651,9 @@ def _validate_plan_output(
     # Raising routes them into the same repair loop, and unlike a criterion they are not
     # forgiven when it is exhausted — see ``DatabaseDefect``.
     kinded_database_defects = (
-        _database_table_defects(blocks) + _database_interface_defects(blocks)
-        if enforce_criteria
-        else ()
+        _database_contract_defects(blocks)
+        + _database_table_defects(blocks)
+        + _database_interface_defects(blocks)
     )
     if kinded_database_defects:
         raise DatabaseDefect(
@@ -6073,7 +6020,6 @@ def create_plan(
         *staged_asset_env_decisions(
             _staged_asset_env_defects(blocks, blueprint_dir), unattended=unattended
         ),
-        *database_contract_decisions(_database_contract_defects(blocks), unattended=unattended),
         *weak_acceptance_decisions(_weak_acceptance_defects(blocks), unattended=unattended),
     )
     story_for_spec = {
@@ -6112,6 +6058,20 @@ def create_plan(
         log_dir=log_dir,
         target=target,
     )
+    # The terminal gate. Everything above repairs what it can; this asks the one question the
+    # command's exit status answers — can Build execute what was written — with the same check
+    # ``drydock plan verify`` and ``drydock build`` apply. A plan that fails it is kept, because
+    # it was paid for and ``drydock plan repair`` works from disk, but it is left ``draft`` and
+    # the command fails: reporting success over a Manifest whose criteria cannot run or whose
+    # persistence declaration Build cannot read is a false positive, not a warning. No waiver
+    # applies — neither ``--override`` nor an unattended run can make a defect buildable.
+    from drydock.plan_verify import render as render_verify
+    from drydock.plan_verify import verify as verify_plan
+
+    buildability = verify_plan(target, target_dir)
+    if not buildability.ok:
+        set_plan_state(plan_path, "draft")
+
     from drydock.question_gates import synchronize_manifest_question_gates
 
     plan = synchronize_manifest_question_gates(plan_path, blueprint_dir)
@@ -6126,7 +6086,7 @@ def create_plan(
 
     increment_version(target_dir)
     set_build_state(target_dir, "planned")
-    set_sub_state(target_dir, "approved")
+    set_sub_state(target_dir, "approved" if buildability.ok else "unbuildable")
     stamp_last(target_dir, "planned")
 
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
@@ -6135,6 +6095,12 @@ def create_plan(
 
     unique_waivers = dedupe_waivers(waivers)
     stamp_override(target_dir, unique_waivers)
+
+    if not buildability.ok:
+        raise PlanNotBuildable(
+            "Plan cannot be built as written. The Blueprint and Manifest are written for repair; "
+            "the Manifest is draft and Build refuses it.\n" + render_verify(buildability)
+        )
 
     return PlanCreateResult(
         plan=plan,

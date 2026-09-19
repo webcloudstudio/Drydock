@@ -46,6 +46,9 @@ REQUIRES_RE = re.compile(r"^Requires:\s*(?P<value>.+?)\s*$", re.MULTILINE | re.I
 #: Markup-processing targets make fence-bearing criteria ordinary rather than exotic.
 AC_OPEN_RE = re.compile(r"^===[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", re.MULTILINE)
 AC_END_RE = re.compile(r"^===[ \t]+END[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", re.MULTILINE)
+#: An end marker the model wrote without its id (``=== END AC`` or ``=== END AC ===``). It closes
+#: whichever criterion is open; it is never a valid terminator as written.
+AC_BARE_END_RE = re.compile(r"^===[ \t]+END[ \t]+AC[ \t]*(?:===)?[ \t]*$", re.MULTILINE)
 #: Leading ``Key: value`` metadata lines inside an AC block, terminated by the first blank line.
 AC_META_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9 _-]*):[ \t]*(?P<value>.*?)[ \t]*$")
 
@@ -1009,9 +1012,14 @@ def body_is_a_complete_cut(body: str) -> bool:
     criterion rather than after it is inside a triple-quoted string. Tokenizing rather than
     compiling is deliberate: ``assert 1 ==`` is bad Python that still tokenizes, which is the
     point — the check only needs to rule out a cut landing mid-literal, not judge the Python.
+
+    Only the proof body is tokenized. The leading ``Intent:`` declaration is prose, and an
+    apostrophe in it (``the screen's inventory``) reads as an unterminated string literal, which
+    refused every repair of a criterion whose intent used a possessive.
     """
+    code = _parse_ac_block(body, check_id="", source="").code
     try:
-        list(tokenize.generate_tokens(io.StringIO(body).readline))
+        list(tokenize.generate_tokens(io.StringIO(code).readline))
     except (tokenize.TokenError, SyntaxError, IndentationError):
         return False
     return True
@@ -1072,7 +1080,8 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
     """
     markers = sorted(
         [(match.start(), match.end(), "open", match) for match in AC_OPEN_RE.finditer(text)]
-        + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)],
+        + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)]
+        + [(match.start(), match.end(), "bare", match) for match in AC_BARE_END_RE.finditer(text)],
         key=lambda item: item[0],
     )
     if not markers:
@@ -1082,6 +1091,14 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
     messages: list[str] = []
     pending: tuple[str, int] | None = None
     for start, end, kind, match in markers:
+        if kind == "bare":
+            # The chain's last link is closed by an end marker with no id. Whatever is open is
+            # the only thing it can close; with nothing open it is stray and left for the parser.
+            if pending is not None:
+                repairs.append((start, end, f"=== END AC {pending[0]} ==="))
+                messages.append(f"[{pending[0]}]: '=== END AC' without an id closed it; id added")
+                pending = None
+            continue
         ident = match.group("id").strip()
         if kind == "open":
             pending = (ident, end)

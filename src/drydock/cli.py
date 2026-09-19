@@ -1205,6 +1205,18 @@ def _fail_standing_plan(target: str, target_dir: Path, result) -> None:
     )
 
 
+def _settle_plan_state(target_dir: Path, *, buildable: bool) -> None:
+    """Mark the Manifest approved only when the Blueprint it builds passes ``plan verify``."""
+    from drydock.build_plan import set_plan_state
+    from drydock.metadata import set_sub_state
+
+    manifest = target_dir / "MANIFEST.md"
+    if not manifest.is_file():
+        return
+    set_plan_state(manifest, "approved" if buildable else "draft")
+    set_sub_state(target_dir, "approved" if buildable else "unbuildable")
+
+
 def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
     """Make unrunnable criteria runnable in one pass, then report what is still broken."""
     from drydock.config import get_model, get_workspace, require_target_dir
@@ -1224,14 +1236,17 @@ def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
     )
     print(render(result))
     if result.nothing_to_repair:
+        _settle_plan_state(target_dir, buildable=True)
         record_status(
             target_dir, "PLAN REPAIRED", passed=True, command=f"drydock plan repair {target}"
         )
         return 0
     # Re-verify from disk rather than trusting the repair's own bookkeeping. The plan is about to
     # be built against these files, so the last word belongs to the same check the build uses.
-    print(render_verify(verify(target, target_dir)))
-    exit_code = result.exit_code()
+    verified = verify(target, target_dir)
+    print(render_verify(verified))
+    exit_code = result.exit_code() or verified.exit_code()
+    _settle_plan_state(target_dir, buildable=not exit_code)
     if exit_code:
         record_status(
             target_dir,
@@ -1299,24 +1314,31 @@ def cmd_plan(args: argparse.Namespace) -> int:
     if continue_attempts < 0:
         raise UsageError("--continue-attempts must be zero or greater.")
     plan_started = time.monotonic()
-    with commanders_chair_command(target_dir, f"drydock plan {args.Target}"):
-        result = create_plan(
-            args.Target,
-            args.Target,
-            target_directory,
-            overwrite=getattr(args, "overwrite", False),
-            conform=not getattr(args, "no_conform", False),
-            model=model,
-            lineage_model=lineage_model,
-            llm_provider=llm_provider,
-            log_dir=log_dir,
-            on_text=_progress,
-            allow_diagnostic_recovery=(
-                get_diagnose_enabled() and not getattr(args, "no_diagnose", False)
-            ),
-            continue_attempts=continue_attempts,
-            override=bool(getattr(args, "override", False)),
-        )
+    from drydock.project_status import record_failure
+
+    try:
+        with commanders_chair_command(target_dir, f"drydock plan {args.Target}"):
+            result = create_plan(
+                args.Target,
+                args.Target,
+                target_directory,
+                overwrite=getattr(args, "overwrite", False),
+                conform=not getattr(args, "no_conform", False),
+                model=model,
+                lineage_model=lineage_model,
+                llm_provider=llm_provider,
+                log_dir=log_dir,
+                on_text=_progress,
+                allow_diagnostic_recovery=(
+                    get_diagnose_enabled() and not getattr(args, "no_diagnose", False)
+                ),
+                continue_attempts=continue_attempts,
+                override=bool(getattr(args, "override", False)),
+            )
+    except Exception as exc:
+        # A run that did not produce a buildable Manifest never stands at PLAN CREATED.
+        record_failure(target_dir, "PLAN CREATED", exc, command=f"drydock plan {args.Target}")
+        raise
     if isinstance(result, PlanDeferredResult):
         print()
         print(_render_plan_deferred(result, target=args.Target))
