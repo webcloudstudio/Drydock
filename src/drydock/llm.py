@@ -1864,8 +1864,10 @@ def run_prompt(
     )
     logger = create_execution_logger(artifacts.execution_id, debug=debug)
     started_at = utc_now()
+    # The console names the stage; evidence keeps the bare command so usage classification holds.
+    display_name = f"{command_name} · {sub_command}" if sub_command else command_name
     if announce:
-        _print_run_header(artifacts, llm=selected, command_name=command_name, model=model)
+        _print_run_header(artifacts, llm=selected, command_name=display_name, model=model)
     if claude_session is not None:
         _announce(
             artifacts,
@@ -2043,7 +2045,7 @@ def run_prompt(
         _print_performance_summary(
             artifacts,
             llm=selected,
-            command_name=command_name,
+            command_name=display_name,
             execution_id=artifacts.execution_id,
             returncode=returncode,
             stats=stats,

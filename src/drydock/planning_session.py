@@ -4194,6 +4194,7 @@ def _repair_declaration(
             "llm": llm_provider,
             "model": model,
             "command_name": "plan",
+            "sub_command": "declaration repair",
             "parameters": {
                 "target": target,
                 "declaration_repair_pass": repair_pass,
@@ -4668,6 +4669,7 @@ def _continue_short_plan(
             "llm": llm_provider,
             "model": model,
             "command_name": "plan",
+            "sub_command": f"blueprint batch {passes}",
             "parameters": {
                 "target": target,
                 "continuation_pass": passes,
@@ -5356,6 +5358,7 @@ def create_plan(
         "llm": llm_provider,
         "model": model or prompt.model,
         "command_name": "plan",
+        "sub_command": "topology",
         "parameters": {"target": target, "blueprint": str(blueprint_dir)},
         "log_dir": log_dir,
         "target": target,
@@ -5504,6 +5507,7 @@ def create_plan(
                     "llm": llm_provider,
                     "model": model or prompt.model,
                     "command_name": "plan",
+                    "sub_command": "conflict challenge",
                     "parameters": {
                         "target": target,
                         "blueprint": str(blueprint_dir),
@@ -5728,6 +5732,7 @@ def create_plan(
                         "llm": llm_provider,
                         "model": model or prompt.model,
                         "command_name": "plan",
+                        "sub_command": "topology repair",
                         "parameters": {
                             "target": target,
                             "topology_repair_pass": repair_pass,
@@ -5837,6 +5842,7 @@ def create_plan(
                         "llm": llm_provider,
                         "model": model or prompt.model,
                         "command_name": "plan",
+                        "sub_command": "artifact repair",
                         "parameters": {
                             "target": target,
                             "artifact_repair_pass": repair_pass,

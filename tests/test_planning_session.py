@@ -4196,6 +4196,20 @@ def test_nonclaude_continuation_reuses_the_original_prefix_and_carries_the_ledge
     assert "## story story-status" in appended
 
 
+def test_each_plan_call_names_its_stage_for_console_progress(tmp_path):
+    _make_target(tmp_path)
+    stages: list[object] = []
+
+    def runner(prompt_text, *_args, **kwargs):
+        stages.append(kwargs.get("sub_command"))
+        text = _short_output() if len(stages) == 1 else _feature_block()
+        return FakeRun(text=text, execution_id=f"exec-{len(stages)}")
+
+    create_plan("Example", "Example", tmp_path, runner=runner, llm_provider="codex")
+
+    assert stages[:2] == ["topology", "blueprint batch 1"]
+
+
 def test_claude_continuation_resumes_the_initial_session_with_only_the_ledger(tmp_path):
     _make_target(tmp_path)
     calls: list[tuple[str, dict[str, object]]] = []

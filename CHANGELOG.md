@@ -41,6 +41,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-19: `drydock plan` console progress names the stage of each LLM call —
+  `Calling CODEX/<model> (plan · topology)...`, then `plan · blueprint batch <n>`,
+  `plan · conflict challenge`, `plan · topology repair`, `plan · declaration repair`, or
+  `plan · artifact repair`. `llm.run_prompt` renders its `sub_command` into the Calling and
+  Completed lines; the recorded `command_name` stays `plan`, so evidence and usage classification
+  are unchanged.
+
 - 2026-09-19: `drydock rigging compact --all` now runs without a `<Target>`. Rigging is Drydock's
   own shipped tree and has no Target, so refreshing its stale compacts no longer requires naming an
   unrelated Blueprint whose scope is then also compacted. `--all` alone refreshes only Rigging;
