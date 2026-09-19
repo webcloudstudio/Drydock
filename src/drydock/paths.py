@@ -155,6 +155,14 @@ def get_stack_dir() -> Path:
     return get_rigging_root() / "stack"
 
 
+def get_database_dir() -> Path:
+    """Return the database/ directory inside Rigging.
+
+    It holds shipped persistence source — not guidance — copied into a build unchanged.
+    """
+    return get_rigging_root() / "database"
+
+
 def get_repo_root() -> Path:
     """Return the Drydock repository root when running from a source checkout."""
     src = _source_tree_repo_root()

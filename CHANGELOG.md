@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-19: Drydock now ships the persistence layer itself. `Rigging/database/` holds `db.py`,
+  `sqlite.py`, and `postgres.py` — Python source copied into a build unchanged, not guidance a
+  build agent reinterprets. It is hardened and tested once in Drydock's own suite, so every Target
+  inherits a persistence layer that has already passed rather than one re-derived from 126 lines of
+  prose on each build. The caller surface is one attribute per declared table and one method per
+  declared access pattern: `db.tickets.get(id=7)`. Values are bound, never formatted into SQL, and
+  identifiers come only from the generated schema, which Drydock validated before emitting. Both
+  engines are copied into every build and selected at runtime from the DSN, because the same build
+  runs SQLite in test and PostgreSQL in production. A verb a table does not declare raises
+  `UnknownOperation` naming what it does grant, rather than reaching the database. `drydock.paths`
+  resolves the directory through `get_database_dir()`.
 - 2026-09-19: `drydock build` now renders `DATABASE.md` into `schema.sql` beside the build when the
   DATABASE story closes, so a fresh environment is created from the declaration rather than from
   whatever the last build happened to execute. Indexes are derived, not decided: a foreign key is
