@@ -2200,17 +2200,18 @@ def build_target(
     blueprint_dir = blueprint_dir_for(target_dir)
     _ensure_applied_specs_current(manifest_path, blueprint_dir)
 
-    # Build generates the persistence package from DATABASE.md, so a declaration it cannot read
-    # is a build that cannot work: every story after the DATABASE step would be written against
-    # a persistence layer that is never generated. Refused before anything is spent. A criterion
-    # that cannot run is not refused here — it settles UNVERIFIED and costs its story nothing.
-    from drydock.plan_verify import persistence_defects
+    # Build executes only a plan it can execute, judged by the check ``drydock plan`` ends on. A
+    # criterion that cannot run fails in its own code before it reaches the product, so no build
+    # can turn it green; a DATABASE.md that cannot be read generates no persistence layer for the
+    # stories after it. Both are refused before anything is spent. A criterion that merely might
+    # fail is graded as usual — only a defect in the criterion's own text is refused here.
+    from drydock.plan_verify import render as render_verify
+    from drydock.plan_verify import verify as verify_plan
 
-    if unreadable := persistence_defects(blueprint_dir):
+    buildability = verify_plan(target, target_dir) if blueprint_dir.is_dir() else None
+    if buildability is not None and not buildability.ok:
         raise SpecificationError(
-            "Build refused: Build cannot read DATABASE.md.\n"
-            + "\n".join(f"  ✗  {defect.rendered}" for defect in unreadable)
-            + f"\n  Run: drydock plan {target}"
+            "Build refused: the plan cannot be built as written.\n" + render_verify(buildability)
         )
 
     # A build owns the current Target error record. Remove the prior run's recovery signal before

@@ -196,10 +196,10 @@ command surface and Typed Specification contract are unstable and may change bet
   their repair. `drydock plan repair` leaves those defects outstanding instead of sending
   `DATABASE.md` to the criterion prompt, records `PLAN REPAIRED` as passed only when the
   post-repair verification is clean, and sets the Manifest `approved` or `draft` to match.
-- 2026-09-19: `drydock build` refuses to start when a `DATABASE.md` that declares tables cannot be
-  read, and stops when the DATABASE step cannot generate the persistence package instead of printing
-  `persistence: not generated` and continuing. An unrunnable criterion still settles UNVERIFIED
-  without refusing the build.
+- 2026-09-19: `drydock build` refuses to start when `drydock plan verify` fails — a criterion that
+  cannot run, or a `DATABASE.md` that declares tables and cannot be read — and stops when the
+  DATABASE step cannot generate the persistence package instead of printing `persistence: not
+  generated` and continuing. Such criteria previously settled UNVERIFIED and let their story close.
 - 2026-09-19: `DATABASE.md` type cells accept column modifiers wrapped in the square brackets of the
   documented form (`TEXT NOT NULL [UNIQUE]`, `[DEFAULT 0]`, `[REFERENCES t(c)]`); the brackets are
   removed before validation instead of failing `drydock plan` with an unknown column modifier after
