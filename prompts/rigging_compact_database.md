@@ -20,6 +20,7 @@ Preserve the following when present:
 - Store names and responsibilities
 - Read and write operations
 - Accepted inputs, returned data shapes, and schemas
+- Every column's type cell verbatim, including `PK`, `NOT NULL`, `UNIQUE`, `DEFAULT <literal>`, and `REFERENCES <table>(<column>)`, and every composite `- UNIQUE (...)` or `- INDEX (...)` bullet. Drydock renders executable DDL from these, so a dropped constraint is a schema the built database does not have.
 - Mutation rules, identity rules, and concurrency assumptions
 - Persistence-layer interfaces used by other modules
 - Guardrails on who may access storage and how

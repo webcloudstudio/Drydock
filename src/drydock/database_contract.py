@@ -61,7 +61,14 @@ _MIGRATION_STATES = frozenset({"planned", "built", "applied"})
 #: cosmetic: table coverage — every declared table reached by some pattern — is decided from
 #: these prefixes. Free text here makes that check guess, and a check that guesses about
 #: persistence is worse than no check at all.
-_REPOSITORY_OPERATION_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
+#:
+#: The verb is a closed set because the generated persistence layer builds the statement rather
+#: than carrying SQL text. A builder for five shapes is small and testable; one for an open verb
+#: set is a SQL generator, which is the thing this design exists to avoid.
+_REPOSITORY_VERBS = ("get", "list", "create", "update", "delete")
+_REPOSITORY_OPERATION_RE = re.compile(
+    r"^[a-z][a-z0-9_]*\.(?:" + "|".join(_REPOSITORY_VERBS) + r")$"
+)
 
 
 @dataclass(frozen=True)
@@ -99,15 +106,157 @@ class DatabaseContract:
 
 
 @dataclass(frozen=True)
+class ColumnSpec:
+    """One column's declared type and constraints, parsed from its ``| Field | Type |`` row."""
+
+    name: str
+    sql_type: str
+    primary_key: bool = False
+    not_null: bool = False
+    unique: bool = False
+    default: str | None = None
+    references: tuple[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class TableConstraint:
+    """A composite ``UNIQUE`` or ``INDEX`` spanning more than one column."""
+
+    kind: str
+    columns: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class SQLiteTable:
     """One table declared by the SQLite-facing portion of ``DATABASE.md``."""
 
     name: str
     fields: tuple[Field, ...]
+    columns: tuple[ColumnSpec, ...] = ()
+    constraints: tuple[TableConstraint, ...] = ()
 
 
 _SQLITE_TABLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-_SQLITE_TYPES = frozenset({"BLOB", "INTEGER", "NUMERIC", "REAL", "TEXT"})
+#: Declared column types. ``VARCHAR(n)`` carries a length because PostgreSQL enforces one and
+#: SQLite parses the identical declaration while ignoring it, so a single rendering serves both
+#: engines and no engine-specific stripping is needed.
+_BARE_TYPES = frozenset({"INTEGER", "NUMERIC", "REAL", "TEXT"})
+_VARCHAR_RE = re.compile(r"^VARCHAR\([1-9][0-9]{0,5}\)$")
+_COLUMN_MODIFIERS = frozenset({"PK", "NOT_NULL", "UNIQUE"})
+#: ``REFERENCES`` and ``DEFAULT`` are the two type-cell entries carrying an argument, so they are
+#: lifted out before the remainder is tokenized on whitespace.
+_REFERENCES_RE = re.compile(
+    r"\bREFERENCES\s+([a-z][a-z0-9_]*)\s*\(\s*([a-z][a-z0-9_]*)\s*\)", re.IGNORECASE
+)
+#: This DDL is rendered by Drydock and then executed against a live connection, so the literal
+#: set is closed rather than free text: an open DEFAULT cell is a DDL injection path into
+#: Drydock's own process, not merely a malformed declaration.
+_DEFAULT_RE = re.compile(
+    r"\bDEFAULT\s+(?P<literal>'[^']*'|-?\d+(?:\.\d+)?|NULL|CURRENT_TIMESTAMP|CURRENT_DATE"
+    r"|CURRENT_TIME)(?=\s|$)",
+    re.IGNORECASE,
+)
+_NOT_NULL_RE = re.compile(r"\bNOT\s+NULL\b", re.IGNORECASE)
+#: A composite constraint spans columns, so it cannot live in a per-column row. It is declared as
+#: a bullet under the table's field table.
+_TABLE_CONSTRAINT_RE = re.compile(
+    r"^-\s+(?P<kind>UNIQUE|INDEX)\s*\((?P<columns>[^)]*)\)\s*$", re.IGNORECASE
+)
+#: Quoted verbatim in the parse failure, for the same reason as ``_INTERFACE_FORM``: the repair
+#: loop is handed the message and nothing else.
+_COLUMN_FORM = (
+    "a type cell is `<TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] "
+    "[REFERENCES <table>(<column>)]`, where <TYPE> is INTEGER, NUMERIC, REAL, TEXT, or "
+    "VARCHAR(<n>), and <literal> is a single-quoted string, a number, NULL, CURRENT_TIMESTAMP, "
+    "CURRENT_DATE, or CURRENT_TIME"
+)
+
+
+def _parse_column(field: Field, *, table: str, source: str) -> ColumnSpec:
+    """Read one ``| Field | Type |`` cell into a validated column declaration.
+
+    ``REFERENCES`` and ``DEFAULT`` carry arguments containing spaces, so both are lifted out of
+    the cell before the remainder is tokenized. What is left must be the type and a closed set of
+    bare modifiers; anything else is refused by name rather than ignored, because a modifier that
+    parses as nothing is a constraint the author believes exists and the database does not have.
+    """
+    cell = field.type.strip()
+    references: tuple[str, str] | None = None
+    reference = _REFERENCES_RE.search(cell)
+    if reference is not None:
+        references = (reference.group(1), reference.group(2))
+        cell = f"{cell[: reference.start()]} {cell[reference.end() :]}".strip()
+    default: str | None = None
+    literal = _DEFAULT_RE.search(cell)
+    if literal is not None:
+        default = literal.group("literal")
+        cell = f"{cell[: literal.start()]} {cell[literal.end() :]}".strip()
+    if re.search(r"\bDEFAULT\b", cell, re.IGNORECASE):
+        raise SpecificationError(
+            f"{source}: {table}.{field.name} has an unreadable DEFAULT value — {_COLUMN_FORM}"
+        )
+    tokens = _NOT_NULL_RE.sub("NOT_NULL", cell).split()
+    if not tokens:
+        raise SpecificationError(f"{source}: {table}.{field.name} names no type — {_COLUMN_FORM}")
+    sql_type = tokens[0].upper()
+    if sql_type not in _BARE_TYPES and not _VARCHAR_RE.fullmatch(sql_type):
+        raise SpecificationError(
+            f"{source}: {table}.{field.name} has unsupported type {field.type!r} — {_COLUMN_FORM}"
+        )
+    modifiers = [token.upper() for token in tokens[1:]]
+    unknown = [token for token in modifiers if token not in _COLUMN_MODIFIERS]
+    if unknown:
+        raise SpecificationError(
+            f"{source}: {table}.{field.name} has unknown column modifier(s) "
+            f"{', '.join(repr(token.replace('NOT_NULL', 'NOT NULL')) for token in unknown)} — "
+            f"{_COLUMN_FORM}"
+        )
+    if len(set(modifiers)) != len(modifiers):
+        raise SpecificationError(
+            f"{source}: {table}.{field.name} repeats a column modifier — {_COLUMN_FORM}"
+        )
+    return ColumnSpec(
+        name=field.name,
+        sql_type=sql_type,
+        primary_key="PK" in modifiers,
+        not_null="NOT_NULL" in modifiers,
+        unique="UNIQUE" in modifiers,
+        default=default,
+        references=references,
+    )
+
+
+def _table_constraints(
+    body: str, *, table: str, source: str, columns: tuple[ColumnSpec, ...]
+) -> tuple[TableConstraint, ...]:
+    """Read the composite ``UNIQUE``/``INDEX`` bullets declared under one table's field table."""
+    declared = {column.name for column in columns}
+    constraints: list[TableConstraint] = []
+    for line in body.splitlines():
+        match = _TABLE_CONSTRAINT_RE.match(line.strip())
+        if match is None:
+            continue
+        names = tuple(
+            item
+            for item in (part.strip().strip("`") for part in match["columns"].split(","))
+            if item
+        )
+        if len(names) < 2:
+            raise SpecificationError(
+                f"{source}: {table} declares a composite {match['kind'].upper()} over "
+                f"{len(names)} column(s). A composite constraint spans two or more; a single "
+                "column states UNIQUE in its own type cell."
+            )
+        missing = [item for item in names if item not in declared]
+        if missing:
+            raise SpecificationError(
+                f"{source}: {table} constrains undeclared column(s) "
+                f"{', '.join(repr(item) for item in missing)}"
+            )
+        if len(set(names)) != len(names):
+            raise SpecificationError(f"{source}: {table} repeats a column in one constraint")
+        constraints.append(TableConstraint(kind=match["kind"].upper(), columns=names))
+    return tuple(constraints)
 
 
 def sqlite_schema_tables(text: str, *, source: str = "DATABASE.md") -> tuple[SQLiteTable, ...]:
@@ -118,45 +267,132 @@ def sqlite_schema_tables(text: str, *, source: str = "DATABASE.md") -> tuple[SQL
     database contracts alone.  The result is used to prove the declaration can create and open a
     SQLite store before any model is asked to implement an application adapter.
     """
+    sections = list(_SECTION_RE.finditer(text))
     tables: list[SQLiteTable] = []
-    for match in _SECTION_RE.finditer(text):
+    for index, match in enumerate(sections):
         name = match.group(1).strip().strip("`")
         if not _SQLITE_TABLE_NAME_RE.fullmatch(name):
             continue
         fields = _field_table(text, match.end())
         if not fields:
             continue
-        names: set[str] = set()
+        seen: set[str] = set()
+        columns: list[ColumnSpec] = []
         for field in fields:
             if not _SQLITE_TABLE_NAME_RE.fullmatch(field.name):
                 raise SpecificationError(f"{source}: {name} has invalid field name {field.name!r}")
-            if field.name in names:
+            if field.name in seen:
                 raise SpecificationError(f"{source}: {name} declares {field.name!r} more than once")
-            names.add(field.name)
-            sql_type = field.type.upper().split(maxsplit=1)[0]
-            if sql_type not in _SQLITE_TYPES:
-                raise SpecificationError(
-                    f"{source}: {name}.{field.name} has unsupported SQLite type {field.type!r}"
-                )
-        tables.append(SQLiteTable(name, fields))
+            seen.add(field.name)
+            columns.append(_parse_column(field, table=name, source=source))
+        stop = sections[index + 1].start() if index + 1 < len(sections) else len(text)
+        tables.append(
+            SQLiteTable(
+                name,
+                fields,
+                tuple(columns),
+                _table_constraints(
+                    text[match.end() : stop], table=name, source=source, columns=tuple(columns)
+                ),
+            )
+        )
     names = [table.name for table in tables]
     if len(names) != len(set(names)):
         raise SpecificationError(f"{source}: duplicate SQLite table declaration")
+    _validate_references(tuple(tables), source=source)
     return tuple(tables)
+
+
+def _validate_references(tables: tuple[SQLiteTable, ...], *, source: str) -> None:
+    """Refuse a foreign key whose target the declaration never states.
+
+    A key pointing at a table or column that does not exist is accepted silently by SQLite and
+    refused by PostgreSQL, so the declaration would build in test and fail in production.
+    """
+    declared = {table.name: {column.name for column in table.columns} for table in tables}
+    for table in tables:
+        for column in table.columns:
+            if column.references is None:
+                continue
+            target, target_column = column.references
+            if target not in declared:
+                raise SpecificationError(
+                    f"{source}: {table.name}.{column.name} references table {target!r}, which "
+                    "this declaration does not declare"
+                )
+            if target_column not in declared[target]:
+                raise SpecificationError(
+                    f"{source}: {table.name}.{column.name} references {target}.{target_column}, "
+                    f"which {target} does not declare"
+                )
+
+
+def _creation_order(tables: tuple[SQLiteTable, ...], *, source: str) -> tuple[SQLiteTable, ...]:
+    """Order tables so every foreign-key target is created before the table citing it.
+
+    SQLite tolerates any order; PostgreSQL does not. Rendering one ordering for both engines
+    keeps the generated schema portable rather than accidentally SQLite-shaped.
+    """
+    by_name = {table.name: table for table in tables}
+    ordered: list[SQLiteTable] = []
+    placed: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(table: SQLiteTable) -> None:
+        if table.name in placed:
+            return
+        if table.name in visiting:
+            raise SpecificationError(
+                f"{source}: foreign keys form a cycle through {table.name!r}. Break it by "
+                "dropping one REFERENCES and enforcing that edge in the repository."
+            )
+        visiting.add(table.name)
+        for column in table.columns:
+            if column.references is not None and column.references[0] != table.name:
+                target = by_name.get(column.references[0])
+                if target is not None:
+                    visit(target)
+        visiting.discard(table.name)
+        placed.add(table.name)
+        ordered.append(table)
+
+    for table in tables:
+        visit(table)
+    return tuple(ordered)
+
+
+def _column_sql(column: ColumnSpec) -> str:
+    """Render one column definition, identical for SQLite and PostgreSQL."""
+    parts = [f'"{column.name}"', column.sql_type]
+    if column.primary_key:
+        parts.append("PRIMARY KEY")
+    if column.not_null:
+        parts.append("NOT NULL")
+    if column.unique:
+        parts.append("UNIQUE")
+    if column.default is not None:
+        parts.append(f"DEFAULT {column.default}")
+    if column.references is not None:
+        parts.append(f'REFERENCES "{column.references[0]}"("{column.references[1]}")')
+    return " ".join(parts)
 
 
 def sqlite_schema_sql(tables: Iterable[SQLiteTable]) -> str:
     """Render idempotent SQLite DDL from :func:`sqlite_schema_tables` output."""
+    ordered = _creation_order(tuple(tables), source="DATABASE.md")
     statements: list[str] = []
-    for table in tables:
-        columns = []
-        for field in table.fields:
-            tokens = field.type.upper().split()
-            sql_type = tokens[0]
-            suffix = " PRIMARY KEY" if "PK" in tokens else ""
-            columns.append(f'"{field.name}" {sql_type}{suffix}')
-        statements.append(f'CREATE TABLE IF NOT EXISTS "{table.name}" ({", ".join(columns)});')
-    return "\n".join(statements)
+    indexes: list[str] = []
+    for table in ordered:
+        definitions = [_column_sql(column) for column in table.columns]
+        for constraint in table.constraints:
+            names = ", ".join(f'"{item}"' for item in constraint.columns)
+            if constraint.kind == "UNIQUE":
+                definitions.append(f"UNIQUE ({names})")
+            else:
+                index = f"{table.name}_{'_'.join(constraint.columns)}_idx"
+                indexes.append(f'CREATE INDEX IF NOT EXISTS "{index}" ON "{table.name}" ({names});')
+        statements.append(f'CREATE TABLE IF NOT EXISTS "{table.name}" ({", ".join(definitions)});')
+    return "\n".join(statements + indexes)
 
 
 def validate_sqlite_schema(text: str, *, source: str = "DATABASE.md") -> tuple[SQLiteTable, ...]:
@@ -304,18 +540,32 @@ def _field_table(text: str, start: int) -> tuple[Field, ...]:
 
 
 def _repository_operations(value: str, *, identifier: str, source: str) -> tuple[str, ...]:
-    """Split a Repository operation cell into validated ``<table>.<verb>`` operations."""
+    """Read a Repository operation cell into the one validated ``<table>.<verb>`` it names.
+
+    One pattern declares one operation. The cell once accepted a comma-separated list, but a
+    pattern carries exactly one ``Input:`` and one ``Output:`` table, so a cell naming
+    ``settings.get, settings.set`` describes two operations with one pair of DTOs and leaves
+    which fields belong to which undeclared. Splitting them is the only reading that stays
+    honest, and it is what lets the generated persistence layer build a statement per operation.
+    """
     operations = tuple(
         item for item in (part.strip().strip("`").strip() for part in value.split(",")) if item
     )
     if not operations:
         raise SpecificationError(f"{source}: {identifier} names no repository operation")
+    if len(operations) > 1:
+        raise SpecificationError(
+            f"{source}: {identifier} names {len(operations)} repository operations "
+            f"({', '.join(repr(item) for item in operations)}). One access pattern declares one "
+            "operation, because it carries one Input and one Output. Give each operation its own "
+            "`### <FEATURE-DOMAIN-NNN>` section with its own DTO tables."
+        )
     invalid = [item for item in operations if not _REPOSITORY_OPERATION_RE.fullmatch(item)]
     if invalid:
         raise SpecificationError(
-            f"{source}: {identifier} has invalid repository operation(s) "
-            f"{', '.join(repr(item) for item in invalid)}: each names one declared table and one "
-            "verb as `<table>.<verb>`, lowercase, and several are separated by commas"
+            f"{source}: {identifier} has invalid repository operation "
+            f"{invalid[0]!r}: it names one declared table and one verb as `<table>.<verb>`, "
+            f"lowercase, where the verb is one of {', '.join(_REPOSITORY_VERBS)}"
         )
     return operations
 

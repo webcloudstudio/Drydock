@@ -10,6 +10,29 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-19: `DATABASE.md` table declarations now carry the constraints a real schema needs, and
+  Drydock renders executable DDL from them. A type cell is
+  `<TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] [REFERENCES <table>(<column>)]`, where
+  `<TYPE>` is `INTEGER`, `TEXT`, `REAL`, `NUMERIC`, or `VARCHAR(<n>)`; `BLOB` is no longer
+  declarable. `DEFAULT` takes a closed literal set — a single-quoted string, a number, `NULL`,
+  `CURRENT_TIMESTAMP`, `CURRENT_DATE`, or `CURRENT_TIME` — because the rendered DDL is executed
+  against a live connection, so an open cell is a DDL injection path rather than merely a malformed
+  declaration. A constraint spanning several columns is declared as a `- UNIQUE (a, b)` or
+  `- INDEX (a, b)` bullet under the table's field table. Foreign keys are resolved against the same
+  file: a key naming an undeclared table or column fails the plan, and `CREATE TABLE` statements are
+  emitted in dependency order so the schema is portable rather than accidentally SQLite-shaped —
+  SQLite tolerates any order, PostgreSQL does not. A key cycle is named instead of rendered.
+  `VARCHAR(<n>)` is emitted verbatim to both engines: PostgreSQL enforces the length and SQLite
+  parses the identical declaration and ignores it, so no engine-specific stripping exists.
+- 2026-09-19: An access pattern in `DATABASE.md` now declares exactly one repository operation, and
+  its verb is one of `get`, `list`, `create`, `update`, or `delete`. The cell previously accepted a
+  comma-separated list, but a pattern carries exactly one `Input:` and one `Output:` table, so
+  `settings.get, settings.set` described two operations with one pair of DTOs and left which fields
+  belonged to which undeclared. The closed verb set exists because the generated persistence layer
+  builds each statement rather than carrying SQL text. Both rules are stated in
+  `prompts/BLUEPRINTS_CONTRACT.md` (V19), `Rigging/spec_template/DATABASE.md`, and
+  `prompts/rigging_compact_database.md`, which now preserves column constraints verbatim so
+  compaction cannot drop a constraint the built database would then not have.
 - 2026-09-18: `drydock plan` now reads persistence ownership from `DATABASE.md` rather than from a
   story's `stack:`. An access pattern's `| Owner |` row carries the owning Blueprint's file name,
   and that decides who must cite: a Blueprint named as an Owner states the operations it owns, a

@@ -206,7 +206,7 @@ def test_public_contract_fingerprint_excludes_private_database_sections():
     assert database_operation_fingerprints(_DATABASE) == database_operation_fingerprints(
         private_edit
     )
-    changed_contract = _DATABASE.replace("orders.create", "orders.create_v2")
+    changed_contract = _DATABASE.replace("orders.create", "orders.update")
     assert database_operation_fingerprints(_DATABASE) != database_operation_fingerprints(
         changed_contract
     )
@@ -356,3 +356,128 @@ def test_none_cannot_be_declared_beside_a_citation():
 
     with pytest.raises(SpecificationError, match="declares None and also cites"):
         parse_database_interface(interface, source="FEATURE-Order.md")
+
+
+_COLUMN_GRAMMAR = """# DATABASE: Grammar
+
+## `projects`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| name | VARCHAR(80) NOT NULL UNIQUE | |
+| status | TEXT NOT NULL DEFAULT 'active' | |
+| created_at | TEXT DEFAULT CURRENT_TIMESTAMP | |
+
+## `tickets`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| project_id | INTEGER NOT NULL REFERENCES projects(id) | |
+| title | VARCHAR(200) NOT NULL | |
+| opened_on | TEXT | |
+
+- UNIQUE (project_id, title)
+- INDEX (project_id, opened_on)
+"""
+
+
+def test_column_grammar_renders_every_declared_constraint():
+    tables = validate_sqlite_schema(_COLUMN_GRAMMAR)
+    sql = sqlite_schema_sql(tables)
+
+    assert '"name" VARCHAR(80) NOT NULL UNIQUE' in sql
+    assert "\"status\" TEXT NOT NULL DEFAULT 'active'" in sql
+    assert '"created_at" TEXT DEFAULT CURRENT_TIMESTAMP' in sql
+    assert '"project_id" INTEGER NOT NULL REFERENCES "projects"("id")' in sql
+    assert 'UNIQUE ("project_id", "title")' in sql
+    assert 'CREATE INDEX IF NOT EXISTS "tickets_project_id_opened_on_idx"' in sql
+
+
+def test_a_referenced_table_is_created_before_the_table_citing_it():
+    reversed_order = _COLUMN_GRAMMAR.replace("# DATABASE: Grammar\n", "")
+    head, _, tail = reversed_order.partition("## `tickets`")
+    tables = sqlite_schema_tables("# DATABASE: Grammar\n\n## `tickets`" + tail + "\n" + head)
+    sql = sqlite_schema_sql(tables)
+
+    assert sql.index('CREATE TABLE IF NOT EXISTS "projects"') < sql.index(
+        'CREATE TABLE IF NOT EXISTS "tickets"'
+    )
+
+
+def test_a_foreign_key_to_an_undeclared_table_fails():
+    orphan = _COLUMN_GRAMMAR.replace("REFERENCES projects(id)", "REFERENCES clients(id)")
+
+    with pytest.raises(SpecificationError, match="references table 'clients'"):
+        sqlite_schema_tables(orphan)
+
+
+def test_a_foreign_key_to_an_undeclared_column_fails():
+    orphan = _COLUMN_GRAMMAR.replace("REFERENCES projects(id)", "REFERENCES projects(slug)")
+
+    with pytest.raises(SpecificationError, match="which projects does not declare"):
+        sqlite_schema_tables(orphan)
+
+
+def test_a_foreign_key_cycle_is_named_rather_than_rendered():
+    cyclic = _COLUMN_GRAMMAR.replace(
+        "| opened_on | TEXT | |", "| opened_on | TEXT | |\n| owner_id | INTEGER | |"
+    ).replace(
+        "| created_at | TEXT DEFAULT CURRENT_TIMESTAMP | |",
+        "| created_at | TEXT | |\n| lead_ticket | INTEGER REFERENCES tickets(id) | |",
+    )
+
+    with pytest.raises(SpecificationError, match="foreign keys form a cycle"):
+        sqlite_schema_sql(sqlite_schema_tables(cyclic))
+
+
+def test_an_unknown_column_modifier_names_the_accepted_form():
+    bogus = _COLUMN_GRAMMAR.replace(
+        "| title | VARCHAR(200) NOT NULL |", "| title | VARCHAR(200) AUTOINCREMENT |"
+    )
+
+    with pytest.raises(SpecificationError, match="unknown column modifier.*VARCHAR\\(<n>\\)"):
+        sqlite_schema_tables(bogus)
+
+
+def test_blob_is_no_longer_a_declarable_type():
+    blob = _COLUMN_GRAMMAR.replace("| opened_on | TEXT | |", "| payload | BLOB | |")
+
+    with pytest.raises(SpecificationError, match="unsupported type 'BLOB'"):
+        sqlite_schema_tables(blob)
+
+
+def test_an_unquoted_default_literal_is_refused():
+    injected = _COLUMN_GRAMMAR.replace("DEFAULT 'active'", "DEFAULT active")
+
+    with pytest.raises(SpecificationError, match="unreadable DEFAULT value"):
+        sqlite_schema_tables(injected)
+
+
+def test_a_composite_constraint_over_an_undeclared_column_fails():
+    bogus = _COLUMN_GRAMMAR.replace("- UNIQUE (project_id, title)", "- UNIQUE (project_id, slug)")
+
+    with pytest.raises(SpecificationError, match="constrains undeclared column"):
+        sqlite_schema_tables(bogus)
+
+
+def test_a_single_column_composite_constraint_is_refused():
+    single = _COLUMN_GRAMMAR.replace("- UNIQUE (project_id, title)", "- UNIQUE (title)")
+
+    with pytest.raises(SpecificationError, match="composite UNIQUE over 1 column"):
+        sqlite_schema_tables(single)
+
+
+def test_one_access_pattern_declares_one_repository_operation():
+    paired = _DATABASE.replace("| `orders.create` |", "| `orders.create`, `orders.update` |")
+
+    with pytest.raises(SpecificationError, match="names 2 repository operations"):
+        parse_database_contract(paired)
+
+
+def test_a_verb_outside_the_closed_set_is_refused():
+    invented = _DATABASE.replace("| `orders.create` |", "| `orders.archive` |")
+
+    with pytest.raises(SpecificationError, match="get, list, create, update, delete"):
+        parse_database_contract(invented)

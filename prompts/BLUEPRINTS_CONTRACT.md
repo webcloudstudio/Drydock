@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260918 V18
+version: 20260919 V19
 ---
 
 ## Overview
@@ -807,10 +807,13 @@ which data, so it is compared to the emitted file names rather than read as pros
 something that is not a Blueprint in this plan fails the plan, as does a Blueprint that owns a
 pattern and cites nothing.
 
-`Repository operation` names one declared table and one verb as `<table>.<verb>`, lowercase,
-several separated by commas: `` `settings.get`, `settings.set` ``. It is the only place the
-declaration says which table a pattern reaches, so the form is checked rather than advisory, and
-free text there fails the plan. Every table in `## Schema` is reached by at least one access
+`Repository operation` names one declared table and one verb as `<table>.<verb>`, lowercase:
+`` `settings.get` ``. The verb is one of `get`, `list`, `create`, `update`, or `delete`, and no
+other. One access pattern declares exactly one operation, because it carries exactly one `Input:`
+and one `Output:` table — a cell naming two operations leaves which fields belong to which
+undeclared. Give each operation its own `### <FEATURE-DOMAIN-NNN>` section with its own DTO
+tables. It is the only place the declaration says which table a pattern reaches, so the form is
+checked rather than advisory, and free text there fails the plan. Every table in `## Schema` is reached by at least one access
 pattern, and every operation names a table `## Schema` declares. A table nothing reaches is
 storage no story can use; an operation on a table that is not declared builds a repository against
 nothing. Declare the pattern in the same batch as the table. A `DATABASE.md` whose `## Access Patterns` holds no named operation fails the plan:
@@ -826,8 +829,25 @@ new `` ## `table_name` `` sections, the new field rows for a table already decla
 so never restate a table, column, or operation already held.
 
 Each table is a top-level `` ## `table_name` `` section — lowercase snake_case in backticks — over
-a `| Field | Type | Notes |` table using SQLite types only: `INTEGER`, `TEXT`, `REAL`, `NUMERIC`,
-`BLOB`, with `PK` marking a primary key. A `DATABASE.md` that declares no table fails the plan:
+a `| Field | Type | Notes |` table. A type cell is
+`<TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] [REFERENCES <table>(<column>)]`, where
+`<TYPE>` is `INTEGER`, `TEXT`, `REAL`, `NUMERIC`, or `VARCHAR(<n>)`, and `<literal>` is a
+single-quoted string, a number, `NULL`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, or `CURRENT_TIME`.
+Nothing else is accepted: Drydock renders executable DDL from these cells, so a modifier it cannot
+read is a constraint the built database would not have. Declare a length where one matters —
+PostgreSQL enforces `VARCHAR(<n>)` and SQLite accepts the same declaration and ignores it, so one
+spelling serves both. A foreign key names a table and column this same file declares.
+
+A constraint spanning more than one column cannot live in a per-column row, so it is declared as a
+bullet directly under that table's field table, one per line:
+
+```markdown
+- UNIQUE (project_id, title)
+- INDEX (project_id, opened_on)
+```
+
+Both forms take two or more declared columns of that table. A single-column `UNIQUE` states
+`UNIQUE` in its own type cell instead. A `DATABASE.md` that declares no table fails the plan:
 Build implements the declaration, and an empty one leaves Build inventing a schema no Blueprint
 describes.
 

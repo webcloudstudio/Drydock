@@ -35,9 +35,11 @@
 <!-- Blueprint named as Owner nowhere may write `- None`. -->
 <!-- Plan appends new patterns as it authors Blueprints; it never rewrites held ones. -->
 
-<!-- Repository operation names one declared table and one verb as `<table>.<verb>`, lowercase, -->
-<!-- several separated by commas: `settings.get`, `settings.set`. It is the only place the -->
-<!-- declaration says which table a pattern reaches, so the form is checked, not advisory. -->
+<!-- Repository operation names one declared table and one verb as `<table>.<verb>`, lowercase: -->
+<!-- `settings.get`. The verb is get, list, create, update, or delete, and no other. One pattern -->
+<!-- declares one operation, because it carries one Input and one Output; give each operation its -->
+<!-- own `### <FEATURE-DOMAIN-NNN>` section. It is the only place the declaration says which -->
+<!-- table a pattern reaches, so the form is checked, not advisory. -->
 <!-- Every table in `## Schema` is reached by at least one pattern, and every pattern names a -->
 <!-- table `## Schema` declares. A table nothing reaches is storage no story can use; an -->
 <!-- operation on a table that is not declared builds a repository against nothing. Both fail -->
@@ -80,7 +82,17 @@ Output: Item
 ## Schemas
 
 <!-- One `## `table_name`` section per table, below this heading. Lowercase snake_case name in -->
-<!-- backticks; SQLite types only: INTEGER, TEXT, REAL, NUMERIC, BLOB. `PK` marks a primary key. -->
+<!-- backticks. A type cell is: -->
+<!--   <TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] [REFERENCES <table>(<column>)] -->
+<!-- where <TYPE> is INTEGER, TEXT, REAL, NUMERIC, or VARCHAR(<n>), and <literal> is a -->
+<!-- single-quoted string, a number, NULL, CURRENT_TIMESTAMP, CURRENT_DATE, or CURRENT_TIME. -->
+<!-- Nothing else is accepted: Drydock renders executable DDL from these cells, so a modifier it -->
+<!-- cannot read is a constraint the built database would not have. Postgres enforces -->
+<!-- VARCHAR(<n>) and SQLite accepts the same declaration and ignores it, so one spelling serves -->
+<!-- both engines. A foreign key names a table and column this same file declares. -->
+<!-- A constraint spanning several columns is a bullet under that table's field table, one per -->
+<!-- line: `- UNIQUE (a, b)` or `- INDEX (a, b)`, each over two or more declared columns. A -->
+<!-- single-column UNIQUE states UNIQUE in its own type cell instead. -->
 <!-- Plan appends to these declarations as it authors Blueprints; it never rewrites them. -->
 
 <!-- drydock:example -->
@@ -89,8 +101,13 @@ Output: Item
 | Field | Type | Notes |
 |--------|------|-------|
 | id | INTEGER PK | |
-| created_at | TEXT | timestamp |
-| updated_at | TEXT | timestamp |
+| project_id | INTEGER NOT NULL REFERENCES projects(id) | |
+| name | VARCHAR(120) NOT NULL | |
+| status | TEXT NOT NULL DEFAULT 'active' | |
+| created_at | TEXT DEFAULT CURRENT_TIMESTAMP | timestamp |
+
+- UNIQUE (project_id, name)
+- INDEX (project_id, created_at)
 <!-- drydock:end-example -->
 
 ## Migrations
