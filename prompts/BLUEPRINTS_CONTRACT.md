@@ -834,7 +834,8 @@ a `| Field | Type | Notes |` table. A type cell is
 `<TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] [REFERENCES <table>(<column>)]`, where
 `<TYPE>` is `INTEGER`, `TEXT`, `REAL`, `NUMERIC`, or `VARCHAR(<n>)`, and `<literal>` is a
 single-quoted string, a number, `NULL`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, or `CURRENT_TIME`.
-Nothing else is accepted: Drydock renders executable DDL from these cells, so a modifier it cannot
+Brackets mark optional entries and are not written: `TEXT NOT NULL UNIQUE`, never
+`TEXT NOT NULL [UNIQUE]`. Nothing else is accepted: Drydock renders executable DDL from these cells, so a modifier it cannot
 read is a constraint the built database would not have. Declare a length where one matters —
 PostgreSQL enforces `VARCHAR(<n>)` and SQLite accepts the same declaration and ignores it, so one
 spelling serves both. A foreign key names a table and column this same file declares.

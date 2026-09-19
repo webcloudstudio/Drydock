@@ -157,6 +157,15 @@ _DEFAULT_RE = re.compile(
     re.IGNORECASE,
 )
 _NOT_NULL_RE = re.compile(r"\bNOT\s+NULL\b", re.IGNORECASE)
+#: The accepted form marks optional entries with square brackets, and a model reading it writes
+#: ``TEXT NOT NULL [UNIQUE]`` often enough that repair passes return the same cell unchanged. The
+#: brackets carry no meaning, so a bracketed modifier is unwrapped rather than refused. Only a
+#: bracket enclosing a known modifier is removed, so a quoted default such as ``'[]'`` survives.
+_BRACKETED_MODIFIER_RE = re.compile(
+    r"\[\s*(PK|NOT\s+NULL|UNIQUE|DEFAULT\s+(?:'[^']*'|[^\s\]]+)"
+    r"|REFERENCES\s+[a-z][a-z0-9_]*\s*\(\s*[a-z][a-z0-9_]*\s*\))\s*\]",
+    re.IGNORECASE,
+)
 #: A composite constraint spans columns, so it cannot live in a per-column row. It is declared as
 #: a bullet under the table's field table.
 _TABLE_CONSTRAINT_RE = re.compile(
@@ -168,7 +177,8 @@ _COLUMN_FORM = (
     "a type cell is `<TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] "
     "[REFERENCES <table>(<column>)]`, where <TYPE> is INTEGER, NUMERIC, REAL, TEXT, or "
     "VARCHAR(<n>), and <literal> is a single-quoted string, a number, NULL, CURRENT_TIMESTAMP, "
-    "CURRENT_DATE, or CURRENT_TIME"
+    "CURRENT_DATE, or CURRENT_TIME; brackets mark optional entries and are not written, "
+    "as in `TEXT NOT NULL UNIQUE`"
 )
 
 
@@ -180,7 +190,7 @@ def _parse_column(field: Field, *, table: str, source: str) -> ColumnSpec:
     bare modifiers; anything else is refused by name rather than ignored, because a modifier that
     parses as nothing is a constraint the author believes exists and the database does not have.
     """
-    cell = field.type.strip()
+    cell = _BRACKETED_MODIFIER_RE.sub(r"\1", field.type.strip())
     references: tuple[str, str] | None = None
     reference = _REFERENCES_RE.search(cell)
     if reference is not None:

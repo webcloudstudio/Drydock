@@ -174,6 +174,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-19: `DATABASE.md` type cells accept column modifiers wrapped in the square brackets of the
+  documented form (`TEXT NOT NULL [UNIQUE]`, `[DEFAULT 0]`, `[REFERENCES t(c)]`); the brackets are
+  removed before validation instead of failing `drydock plan` with an unknown column modifier after
+  repair passes return the same cell. The form text in `BLUEPRINTS_CONTRACT.md` and the parse error
+  now state that brackets mark optional entries and are not written.
 - 2026-09-19: `drydock plan` now writes an invalid or missing `## Database Interface` section itself
   from `DATABASE.md` instead of sending it to the LLM repair loop. A Blueprint named as an access
   pattern's `Owner` cites every pattern it owns at the declared access with the full Input and Output

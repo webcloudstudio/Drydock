@@ -443,6 +443,17 @@ def test_an_unknown_column_modifier_names_the_accepted_form():
         sqlite_schema_tables(bogus)
 
 
+def test_bracketed_modifiers_copied_from_the_form_are_unwrapped():
+    bracketed = _COLUMN_GRAMMAR.replace(
+        "| title | VARCHAR(200) NOT NULL |", "| title | VARCHAR(200) [NOT NULL] [UNIQUE] |"
+    ).replace("DEFAULT 'active'", "[DEFAULT '[]']")
+
+    sql = sqlite_schema_sql(sqlite_schema_tables(bracketed))
+
+    assert '"title" VARCHAR(200) NOT NULL UNIQUE' in sql
+    assert "\"status\" TEXT NOT NULL DEFAULT '[]'" in sql
+
+
 def test_blob_is_no_longer_a_declarable_type():
     blob = _COLUMN_GRAMMAR.replace("| opened_on | TEXT | |", "| payload | BLOB | |")
 
