@@ -76,7 +76,7 @@ _ACCESS_PATTERNS = (
     "## Access Patterns\n\n"
     "### FEATURE-X-001 — Read setting\n\n"
     "| Field | Value |\n|---|---|\n"
-    "| Owner | FEATURE-X.md |\n"
+    "| Owner | FEATURE-Example.md |\n"
     "| Access | read |\n"
     "| Repository operation | `settings.get` |\n"
     "| Compatibility | rebuild |\n\n"
@@ -1323,8 +1323,18 @@ def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
     # A persistence Blueprint declares its tables; an empty one fails the plan integrity check.
     db = _SPEC_HEADER.format(ftype="DATABASE", name="Example Data", ac="None.").replace(
         "## Programmatic Acceptance",
-        _ACCESS_PATTERNS
+        _ACCESS_PATTERNS.replace("FEATURE-Example.md", "FEATURE-Status.md")
         + "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n\n"
+        "## Programmatic Acceptance",
+        1,
+    )
+    # The declaration names FEATURE-Status.md as the owner of FEATURE-X-001, so it cites it.
+    status = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    ).replace(
+        "## Programmatic Acceptance",
+        "## Database Interface\n\n"
+        "- `FEATURE-X-001` — read: read a setting - supplies: `key` - returns: `key`\n\n"
         "## Programmatic Acceptance",
         1,
     )
@@ -1335,7 +1345,7 @@ def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
     out = (
         f"=== ARCHITECTURE.md ===\n{_SPEC_HEADER.format(ftype='ARCHITECTURE', name='Example', ac='None.')}\n=== END ARCHITECTURE.md ===\n"
         f"=== DATABASE.md ===\n{db}\n=== END DATABASE.md ===\n"
-        f"=== FEATURE-Status.md ===\n{_SPEC_HEADER.format(ftype='FEATURE', name='Status', ac='Status command exits successfully.')}\n=== END FEATURE-Status.md ===\n"
+        f"=== FEATURE-Status.md ===\n{status}\n=== END FEATURE-Status.md ===\n"
         f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n"
     )
 
@@ -5602,125 +5612,162 @@ def test_a_determinate_pair_of_outcomes_is_not_weak():
     assert ps._weak_acceptance_defects(blocks) == ()
 
 
-def _persistence_plan(tmp_path, *, stack: str):
-    from drydock.build_plan import PlanBlock
-    from drydock.manifest import DrydockManifest, ManifestMetadata
-
-    return DrydockManifest(
-        path=tmp_path / "MANIFEST.md",
-        metadata=ManifestMetadata(project="X"),
-        blocks=[
-            PlanBlock(
-                block_type="story",
-                number=1,
-                name="Feature",
-                block_id="feature-story",
-                state="pending",
-                fields={"implements": ("FEATURE-Example.md",), "stack": stack},
-            )
-        ],
-        preamble=[],
-    )
+_DATABASE = (
+    "# DATABASE: X\n\n"
+    + _ACCESS_PATTERNS
+    + "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+)
+#: The owner of ``FEATURE-X-001`` citing it correctly. Present in a case that is about some
+#: other Blueprint, so the declaration is coherent and only the Blueprint under test is at issue.
+_OWNER = (
+    "# FEATURE: Example\n\n## Database Interface\n\n"
+    "- `FEATURE-X-001` — read: read a setting - supplies: `key` - returns: `key`\n"
+)
 
 
-def test_a_story_that_reaches_the_database_and_cites_nothing_fails_the_plan(tmp_path):
-    """The boundary this section exists to enforce: a Blueprint whose story declares persistence
-    but names no operation has storage access that nothing checks. Recording it as a decision
-    left 17 of a live plan's Blueprints in exactly that state, so it is repaired instead."""
+def test_a_blueprint_named_as_owner_that_cites_nothing_fails_the_plan():
+    """The boundary this section exists to enforce: the declaration says this Blueprint reaches
+    the repository and the Blueprint names no operation, so its storage access is unchecked.
+    Recording it as a decision left 17 of a live plan's Blueprints in exactly that state."""
     blocks = {
-        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
-        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "DATABASE.md": _DATABASE,
         "FEATURE-Example.md": "# FEATURE: Example\n\n## Guardrails\n\n- None.\n",
     }
 
-    defects = ps._database_interface_defects(
-        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
-    )
+    defects = ps._database_interface_defects(blocks)
 
     assert [kind for kind, _ in defects] == ["database-interface-missing"]
     # The repair loop chunks by source, so the defect names the Blueprint to re-emit — not
     # DATABASE.md, which is correct as written.
     assert defects[0][1].source == "FEATURE-Example.md"
-    assert "cites no access pattern" in defects[0][1].reason
+    assert "FEATURE-X-001" in defects[0][1].reason
 
 
-def test_a_blueprint_that_reaches_no_repository_declares_none_and_passes(tmp_path):
+def test_a_blueprint_that_reaches_no_repository_declares_none_and_passes():
     """A Screen that delegates persistence writes the heading because the claim is true of it.
     With no declared form for the empty claim it had to write prose, and prose parsed as a
     malformed citation — five repair passes that no message told how to repair."""
     blocks = {
-        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
-        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
         "SCREEN-Example.md": (
             "# SCREEN: Example\n\n## Database Interface\n\n"
             "- None — persistence is owned by FEATURE-Example.md.\n"
         ),
     }
 
-    assert (
-        ps._database_interface_defects(_persistence_plan(tmp_path, stack=("python.md",)), blocks)
-        == ()
-    )
+    assert ps._database_interface_defects(blocks) == ()
 
 
-def test_a_persistence_story_cannot_escape_the_gate_by_declaring_none(tmp_path):
+def test_an_owner_cannot_escape_the_gate_by_declaring_none():
+    """``- None`` is the empty claim, available only to a Blueprint the declaration names
+    nowhere. An owner saying it contradicts the pattern that names it."""
     blocks = {
-        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
-        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "DATABASE.md": _DATABASE,
         "FEATURE-Example.md": (
             "# FEATURE: Example\n\n## Database Interface\n\n- None — nothing is stored.\n"
         ),
     }
 
-    defects = ps._database_interface_defects(
-        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
-    )
+    defects = ps._database_interface_defects(blocks)
 
     assert [kind for kind, _ in defects] == ["database-interface-missing"]
 
 
-def test_prose_under_the_interface_heading_names_the_line_and_the_accepted_form(tmp_path):
+def test_ownership_is_read_from_the_declaration_not_from_the_story_stack():
+    """A stack selection says which technology the story is built with, not whether it reaches a
+    repository. Every Python story carries sqlalchemy.md and alembic.md, so the application shell
+    that only runs the startup migration was told to cite an operation it does not own — and a Go
+    or C++ Target was never gated at all."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
+        "FEATURE-Shell.md": (
+            "# FEATURE: Shell\n\n## Database Interface\n\n"
+            "- None — the shell runs the migration; FEATURE-Example.md owns the data.\n"
+        ),
+    }
+
+    assert ps._database_interface_defects(blocks) == ()
+
+
+def test_an_owner_that_names_no_blueprint_is_the_declarations_defect():
+    """Marina_Luna declared every Owner as a service name — `Workflow service` — and the check
+    compares it to a file name. Caught per citation it is one unrepairable defect in the first
+    Blueprint to notice, which is where four repair passes went. Caught here it is one message
+    against the one file that is wrong."""
+    blocks = {
+        "DATABASE.md": _DATABASE.replace(
+            "| Owner | FEATURE-Example.md |", "| Owner | Settings service |"
+        ),
+        "FEATURE-Example.md": _OWNER,
+    }
+
+    defects = ps._database_interface_defects(blocks)
+
+    assert "database-owner-unknown" in {kind for kind, _ in defects}
+    unknown = next(defect for kind, defect in defects if kind == "database-owner-unknown")
+    assert unknown.source == "DATABASE.md"
+    assert "Settings service" in unknown.reason
+
+
+def test_a_citation_conflict_repairs_both_sides():
+    """A citation conflict is a disagreement between two files. The repair loop re-emits exactly
+    the sources it is given, so a pass handed only the Blueprint has no legal move when the
+    declaration is the wrong side — four passes returning the same defect was the observed cost."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Database Interface\n\n"
+            "- `FEATURE-X-001` — write: write a setting - supplies: `key` - returns: `key`\n"
+        ),
+    }
+
+    defects = ps._database_interface_defects(blocks)
+
+    assert {kind for kind, _ in defects} == {"database-citation-conflict"}
+    assert sorted(defect.source for _, defect in defects) == [
+        "DATABASE.md",
+        "FEATURE-Example.md",
+    ]
+
+
+def test_prose_under_the_interface_heading_names_the_line_and_the_accepted_form():
     """The repair prompt carries the defect message and nothing else, so the message is the
     only place the grammar can reach the model that has to satisfy it."""
     blocks = {
-        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
-        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "DATABASE.md": _DATABASE,
         "FEATURE-Example.md": (
             "# FEATURE: Example\n\n## Database Interface\n\n"
             "- **Settings** — Read and write through the repository declared by DATABASE.md.\n"
         ),
     }
 
-    defects = ps._database_interface_defects(
-        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
-    )
+    defects = ps._database_interface_defects(blocks)
 
     assert [kind for kind, _ in defects] == ["database-interface-invalid"]
     assert "**Settings**" in defects[0][1].reason
     assert "supplies:" in defects[0][1].reason
 
 
-def test_a_citation_that_contradicts_the_declaration_fails_the_plan(tmp_path):
+def test_a_citation_that_contradicts_the_declaration_fails_the_plan():
     """The Blueprint names an operation the declaration does not grant it, so Build would
     implement the disagreement."""
     blocks = {
-        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
-        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "DATABASE.md": _DATABASE,
         "FEATURE-Example.md": (
             "# FEATURE: Example\n\n## Database Interface\n\n"
             "- `FEATURE-NOPE-001` — read: invented - supplies: `key` - returns: `key`\n"
         ),
     }
 
-    defects = ps._database_interface_defects(
-        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
-    )
+    defects = ps._database_interface_defects(blocks)
 
-    assert [kind for kind, _ in defects] == ["database-interface-invalid"]
+    assert {kind for kind, _ in defects} == {"database-citation-conflict"}
     assert "unknown database operation" in defects[0][1].reason
 
 
-def test_one_bad_citation_does_not_hide_another_blueprint(tmp_path):
+def test_one_bad_citation_does_not_hide_another_blueprint():
     """The validator raises on the first defect it finds. Calling it once per Blueprint is what
     lets the repair loop see every file that needs re-emitting instead of one per pass."""
     interface = (
@@ -5728,17 +5775,15 @@ def test_one_bad_citation_does_not_hide_another_blueprint(tmp_path):
         "- `FEATURE-NOPE-001` — read: invented - supplies: `key` - returns: `key`\n"
     )
     blocks = {
-        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
-        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        "DATABASE.md": _DATABASE,
         "FEATURE-Example.md": interface.format(name="Example"),
         "FEATURE-Other.md": interface.format(name="Other"),
     }
 
-    defects = ps._database_interface_defects(
-        _persistence_plan(tmp_path, stack=("python.md", "sqlalchemy.md")), blocks
-    )
+    defects = ps._database_interface_defects(blocks)
 
-    assert sorted(defect.source for _, defect in defects) == [
+    assert sorted({defect.source for _, defect in defects}) == [
+        "DATABASE.md",
         "FEATURE-Example.md",
         "FEATURE-Other.md",
     ]
@@ -5789,16 +5834,11 @@ def test_a_persistence_defect_is_not_forgiven_when_repair_is_exhausted():
     assert not isinstance(defect, ps.CriteriaDefect)
 
 
-def test_a_story_that_never_reaches_the_database_needs_no_citation(tmp_path):
+def test_a_blueprint_the_declaration_names_nowhere_needs_no_citation():
     blocks = {
-        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
-        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
-        "FEATURE-Example.md": "# FEATURE: Example\n\n## Guardrails\n\n- None.\n",
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
+        "SCREEN-Other.md": "# SCREEN: Other\n\n## Guardrails\n\n- None.\n",
     }
 
-    assert (
-        ps._database_interface_defects(
-            _persistence_plan(tmp_path, stack=("python.md", "bootstrap5.md")), blocks
-        )
-        == ()
-    )
+    assert ps._database_interface_defects(blocks) == ()

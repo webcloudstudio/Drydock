@@ -56,7 +56,6 @@ from drydock.artifact_blocks import (
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
-    PlanBlock,
     build_relevant_sha256,
     build_relevant_text_sha256,
     disambiguate_manifest_ids,
@@ -2341,35 +2340,35 @@ def _parse_plan_text(text: str) -> BuildPlan:
     return DrydockManifest.parse(text, source="MANIFEST.md")
 
 
-#: Stack selections that mean a story reaches persistence. A Blueprint whose story declares one of
-#: these touches the database, so its use of it is a contract and not an implementation detail.
-_PERSISTENCE_STACK = frozenset({"persistence.md", "sqlalchemy.md", "alembic.md", "sqlite.md"})
-
-
-def _stack_selections(block: PlanBlock) -> frozenset[str]:
-    """Return a story's ``stack:`` selections, however the Manifest parser surfaced the field."""
-    raw = block.fields.get("stack", ())
-    items = raw if isinstance(raw, tuple) else str(raw).split(",")
-    return frozenset(str(item).strip().casefold() for item in items if str(item).strip())
-
-
 def _database_interface_defects(
-    plan: BuildPlan, blocks: dict[str, str]
+    blocks: dict[str, str],
 ) -> tuple[tuple[str, MalformedAcceptance], ...]:
     """Return every way a Blueprint's persistence citation disagrees with the declaration.
 
     ``## Database Interface`` is how a Feature or Screen names the operations it uses, and
     ``validate_database_interfaces`` checks one against the declared contract — unknown
     operation, wrong owner, access it was not granted, a field the DTO does not carry, a
-    required field left out. A story that declares persistence in ``stack:`` and cites nothing
-    is reported too. That is the decidable reading of "the service has a database": it is
-    authored in the Manifest rather than inferred from what the prose seems to describe.
+    required field left out.
 
-    Both kinds are returned tagged for the artifact repair loop, which re-emits the cited
-    Blueprint and re-validates. Persistence is the one part of a plan that is wholly decidable
-    from the declaration, so it is repaired before the plan is written rather than emitted and
-    handed to a Commander as a question about a defect Drydock had already located. Reporting
-    them as decisions instead left 17 stories of a well-specified project citing nothing at all.
+    Ownership is read from the declaration, never from the story's ``stack:``. A stack selection
+    says which technology the story is built with, not whether it reaches a repository: in a
+    Python Target every story carries ``sqlalchemy.md`` and ``alembic.md`` whether it owns data
+    or merely runs the migration at startup, so a gate keyed on the stack demanded a citation
+    from the application shell and was silent about a Go or C++ Target entirely. Each access
+    pattern already names its ``Owner``. A Blueprint named there owns that operation and must
+    cite it; a Blueprint named nowhere reaches no repository and declares ``- None``. That is
+    decidable from the artifacts, in any language, with no list of technology files to maintain.
+
+    Three kinds are returned tagged for the artifact repair loop. A citation conflict is a
+    disagreement between two files, so it is reported against both the citing Blueprint and
+    ``DATABASE.md`` — the repair loop re-emits exactly the sources it is given, and a pass handed
+    only the Blueprint has no legal move when the declaration is the wrong side. That was the
+    observed deadlock: four passes, one file, the same defect returned each time.
+
+    Persistence is the one part of a plan that is wholly decidable from the declaration, so it is
+    repaired before the plan is written rather than emitted and handed to a Commander as a
+    question about a defect Drydock had already located. Reporting them as decisions instead left
+    17 stories of a well-specified project citing nothing at all.
 
     The validator raises on the first defect it finds, so it is called once per Blueprint: one
     bad citation in one file must not hide the citations in every other file from the repair
@@ -2396,26 +2395,57 @@ def _database_interface_defects(
                 "database-interface-invalid",
                 MalformedAcceptance(check_id="## Database Interface", source=name, reason=str(exc)),
             ))
+
+    # An Owner naming something that is not an emitted Blueprint is the declaration's defect and
+    # nobody else's. Caught here it is one message against one file; left uncaught it reappears
+    # as a wrong-owner conflict in every Blueprint that cites the pattern, none of which can fix
+    # it. Marina_Luna declared five owners as service names and spent its whole repair budget on
+    # the first Blueprint to notice.
+    unowned = sorted({
+        pattern.owner
+        for pattern in contract.patterns
+        if pattern.owner not in blocks or pattern.owner in _RESERVED_BLOCKS
+    })
+    defects.extend(
+        (
+            "database-owner-unknown",
+            MalformedAcceptance(
+                check_id="## Access Patterns",
+                source=DATABASE_BLOCK,
+                reason=(
+                    f"`| Owner |` names {owner!r}, which is not a Blueprint in this plan. Every "
+                    "access pattern is owned by the Blueprint that reaches it, named by its file "
+                    "name — `FEATURE-ORDER.md`, not a service or module name."
+                ),
+            ),
+        )
+        for owner in unowned
+    )
+
     for name, uses in interfaces.items():
         try:
             validate_database_interfaces(contract, {name: uses})
         except SpecificationError as exc:
             defects.append((
-                "database-interface-invalid",
+                "database-citation-conflict",
                 MalformedAcceptance(check_id="## Database Interface", source=name, reason=str(exc)),
             ))
+            defects.append((
+                "database-citation-conflict",
+                MalformedAcceptance(
+                    check_id="## Access Patterns",
+                    source=DATABASE_BLOCK,
+                    reason=(
+                        f"the declaration disagrees with {name}: {exc}. Repair whichever side is "
+                        "wrong — the citation or the pattern it cites."
+                    ),
+                ),
+            ))
 
-    persistent = {
-        str(name)
-        for block in plan.blocks
-        if block.block_type == "story" and _PERSISTENCE_STACK & _stack_selections(block)
-        for name in (
-            block.fields.get("implements", ())
-            if isinstance(block.fields.get("implements", ()), tuple)
-            else (block.fields.get("implements", ""),)
-        )
-        if name
-    }
+    # An owner that cites nothing. The declaration says this Blueprint reaches the repository, so
+    # ``- None`` is not available to it: it states the operations it owns or the pattern moves to
+    # the Blueprint that does own it.
+    owners = {pattern.owner for pattern in contract.patterns}
     defects.extend(
         (
             "database-interface-missing",
@@ -2423,16 +2453,22 @@ def _database_interface_defects(
                 check_id="## Database Interface",
                 source=name,
                 reason=(
-                    "its story declares persistence in stack: but the Blueprint cites no access "
-                    "pattern. State the operations it uses in a `## Database Interface` section, "
-                    "citing access-pattern ids from "
-                    f"`{DATABASE_BLOCK}` with only the fields it supplies or receives, or drop "
-                    "the persistence selection from the story."
+                    f"`{DATABASE_BLOCK}` names it as the Owner of "
+                    + ", ".join(
+                        sorted(
+                            pattern.identifier
+                            for pattern in contract.patterns
+                            if pattern.owner == name
+                        )
+                    )
+                    + ", but the Blueprint cites no access pattern. State them in a "
+                    "`## Database Interface` section with only the fields it supplies or "
+                    "receives, or move the `| Owner |` row to the Blueprint that owns them."
                 ),
             ),
         )
-        for name in sorted(persistent - {DATABASE_BLOCK})
-        if name in interfaces and not interfaces[name]
+        for name in sorted(owners & set(interfaces))
+        if not interfaces[name]
     )
     return tuple(defects)
 
@@ -3620,7 +3656,7 @@ def _validate_plan_output(
     # Raising routes them into the same repair loop, and unlike a criterion they are not
     # forgiven when it is exhausted — see ``DatabaseDefect``.
     kinded_database_defects = (
-        _database_table_defects(blocks) + _database_interface_defects(plan, blocks)
+        _database_table_defects(blocks) + _database_interface_defects(blocks)
         if enforce_criteria
         else ()
     )

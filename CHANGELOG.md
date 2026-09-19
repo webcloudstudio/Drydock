@@ -10,6 +10,20 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-18: `drydock plan` now reads persistence ownership from `DATABASE.md` rather than from a
+  story's `stack:`. An access pattern's `| Owner |` row carries the owning Blueprint's file name,
+  and that decides who must cite: a Blueprint named as an Owner states the operations it owns, a
+  Blueprint named nowhere declares `- None`. A stack selection says which technology a story is
+  built with, not whether it reaches a repository — every Python story selects `sqlalchemy.md` and
+  `alembic.md`, so the previous gate demanded a citation from the application shell that only runs
+  the startup migration, while a Go or C++ Target was never gated at all. An `Owner` naming
+  something that is not a Blueprint in the plan is now reported once against `DATABASE.md` as
+  `database-owner-unknown` instead of resurfacing as a wrong-owner conflict in every Blueprint that
+  cites it, and a citation conflict is reported against both the Blueprint and `DATABASE.md` so the
+  repair loop can correct whichever side is wrong. A plan run had spent four of five repair passes
+  re-emitting one Blueprint that could not be fixed from its own contents, leaving twelve further
+  defects unattempted. `Owner` semantics are stated in `prompts/BLUEPRINTS_CONTRACT.md` and
+  `Rigging/spec_template/DATABASE.md`.
 - 2026-09-18: The `## Database Interface` entry grammar is now stated in
   `prompts/BLUEPRINTS_CONTRACT.md` and `Rigging/spec_template/DATABASE.md`, and a Blueprint that
   reaches no repository declares `- None — <why>.` The grammar `parse_database_interface` enforces

@@ -29,6 +29,10 @@
 <!-- A citation is one bullet on one line: -->
 <!--   - `FEATURE-ORDER-001` — write: create an order - supplies: `customer_id` - returns: `id` -->
 <!-- and a Blueprint that reaches no repository writes `- None — <who owns persistence>.` -->
+<!-- Owner is the file name of the Blueprint that reaches the pattern — FEATURE-Example.md — -->
+<!-- never a service or module name. It is compared to the emitted Blueprints, so an Owner -->
+<!-- naming no Blueprint fails the plan, as does an Owner that cites nothing. Only a -->
+<!-- Blueprint named as Owner nowhere may write `- None`. -->
 <!-- Plan appends new patterns as it authors Blueprints; it never rewrites held ones. -->
 
 <!-- Repository operation names one declared table and one verb as `<table>.<verb>`, lowercase, -->

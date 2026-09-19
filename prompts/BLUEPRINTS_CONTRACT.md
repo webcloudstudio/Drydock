@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260918 V17
+version: 20260918 V18
 ---
 
 ## Overview
@@ -760,8 +760,10 @@ ids through a `## Database Interface` section, including only fields they supply
 do not cite a physical store. Persistence interfaces name the repository, module location, and
 allowed callers.
 
-`## Database Interface` is required, not optional, for every Blueprint whose story declares
-persistence in `stack:`. Each citation is one bullet on one line, in this exact form:
+`## Database Interface` is required, not optional, for every Blueprint that `DATABASE.md` names
+as the `Owner` of an access pattern. Ownership is read from the declaration, never guessed from a
+story's `stack:`: a stack selection says which technology the story is built with, not whether it
+reaches a repository. Each citation is one bullet on one line, in this exact form:
 
 ```text
 ## Database Interface
@@ -779,6 +781,10 @@ that delegates to a Feature's service routes — writes one bullet and no other:
 - None — persistence is owned by FEATURE-ORDER.md.
 ```
 
+`- None` is available only to a Blueprint the declaration names nowhere. A Blueprint named as an
+`Owner` states the operations it owns, or the `| Owner |` row moves to the Blueprint that does own
+them.
+
 Every bullet under the heading is an entry and every entry is checked, so a sentence of prose there
 fails the plan as a malformed citation. Say it in `## Purpose` instead. A citation may claim less
 access than the pattern grants — a read-only consumer of a `read-write` surface is a real claim —
@@ -794,6 +800,12 @@ Each access pattern is its own `### FEATURE-<DOMAIN>-<NNN> — <Operation>` sect
 `| Field | Value |` table carrying Owner, Access, Repository operation, and Compatibility, followed
 by an `Input: <DTO>` and an `Output: <DTO>` field table. Never collapse the operations into one
 table of rows.
+
+`Owner` is the file name of the Blueprint that reaches this pattern — `FEATURE-ORDER.md` — and
+never a service, module, or layer name. It is the only place the plan says which Blueprint owns
+which data, so it is compared to the emitted file names rather than read as prose: an Owner naming
+something that is not a Blueprint in this plan fails the plan, as does a Blueprint that owns a
+pattern and cites nothing.
 
 `Repository operation` names one declared table and one verb as `<table>.<verb>`, lowercase,
 several separated by commas: `` `settings.get`, `settings.set` ``. It is the only place the

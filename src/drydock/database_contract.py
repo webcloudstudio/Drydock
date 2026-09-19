@@ -476,11 +476,15 @@ def validate_database_interfaces(
             pattern = patterns.get(use.identifier)
             if pattern is None:
                 raise SpecificationError(
-                    f"{blueprint}: unknown database operation {use.identifier}"
+                    f"{blueprint}: unknown database operation {use.identifier} — "
+                    f"no `### {use.identifier}` section is declared in ## Access Patterns"
                 )
             if pattern.owner != blueprint:
                 raise SpecificationError(
-                    f"{blueprint}: {use.identifier} is owned by {pattern.owner}, not this Blueprint"
+                    f"{blueprint}: {use.identifier} is owned by {pattern.owner!r}, not this "
+                    f"Blueprint. Either its `| Owner |` row names the owning Blueprint's file "
+                    f"name — {blueprint} — or this Blueprint reaches no repository and declares "
+                    f"`- None — <who owns it>.` instead. A service name is not an owner."
                 )
             # A citation may narrow what the pattern grants — a read-only consumer of a
             # read-write surface is a real and useful claim — but never widen it.
