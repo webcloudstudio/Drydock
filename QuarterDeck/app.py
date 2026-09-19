@@ -2685,16 +2685,18 @@ def render_technology_stack(item: dict[str, Any]) -> str:
         name.removesuffix(".md").lower().replace("-", "").replace("_", ""): name
         for name in technology_stack.rigging_names()
     })
-    required = (
-        technology_stack.missing_required_rigging(source_path.parent, entries)
+    unsupported = (
+        technology_stack.unsupported_persistence(source_path.parent, entries)
         if source_path is not None
-        else ()
+        else None
     )
     required_note = (
-        "<p class='item-warning'>Python relational persistence requires these Rigging selections: "
-        + ", ".join(html.escape(name) for name in required)
+        "<p class='item-warning'>Drydock ships no persistence adapter for "
+        + html.escape(unsupported)
+        + ". A Target with a DATABASE.md is limited to "
+        + ", ".join(html.escape(name) for name in technology_stack.PERSISTENCE_LANGUAGES)
         + ".</p>"
-        if required
+        if unsupported
         else ""
     )
     return (
@@ -3338,12 +3340,13 @@ def api_approve_item(item_id: str, request: Request = None) -> dict[str, Any]:
                 entries = technology_stack.parse(path.read_text(encoding="utf-8"))
             except OSError:
                 entries = []
-            missing = technology_stack.missing_required_rigging(path.parent, entries)
-            if missing:
+            unsupported = technology_stack.unsupported_persistence(path.parent, entries)
+            if unsupported:
                 raise HTTPException(
                     status_code=400,
-                    detail="Python relational persistence requires Rigging selection: "
-                    + ", ".join(missing),
+                    detail=f"Drydock ships no persistence adapter for {unsupported}. A Target "
+                    "with a DATABASE.md is limited to "
+                    + ", ".join(technology_stack.PERSISTENCE_LANGUAGES),
                 )
             _atomic_write_text(path, technology_stack.render(entries, approved))
         return {"ok": True, "item_id": item_id, "state": "approved", "approved": approved}

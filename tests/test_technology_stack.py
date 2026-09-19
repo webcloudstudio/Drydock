@@ -250,36 +250,50 @@ def test_approve_defaults_to_today_and_re_dates_an_approved_stack(tmp_path):
     assert technology_stack.load_text(tmp_path).count("**Approved:**") == 1
 
 
-def test_python_relational_persistence_requires_sqlalchemy_and_alembic(tmp_path):
-    import pytest
-
+def test_a_python_target_with_a_database_needs_no_orm_selection(tmp_path):
     (tmp_path / "blueprint").mkdir()
     (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
     entries = [StackEntry("Python", "python.md")]
     technology_stack.write(tmp_path, entries)
 
-    assert technology_stack.required_rigging(tmp_path) == ("sqlalchemy.md", "alembic.md")
-    assert technology_stack.missing_required_rigging(tmp_path) == ("sqlalchemy.md", "alembic.md")
-    with pytest.raises(ValueError, match="sqlalchemy.md, alembic.md"):
+    assert technology_stack.declared_language(tmp_path) == "python"
+    assert technology_stack.unsupported_persistence(tmp_path) is None
+
+    technology_stack.approve(tmp_path, "2026-09-19")
+
+    assert technology_stack.is_approved(tmp_path)
+
+
+def test_a_language_with_no_shipped_adapter_is_refused_rather_than_ignored(tmp_path):
+    import pytest
+
+    (tmp_path / "blueprint").mkdir()
+    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
+    technology_stack.write(tmp_path, [StackEntry("Go", "go.md")])
+
+    assert technology_stack.unsupported_persistence(tmp_path) == "go"
+    with pytest.raises(ValueError, match="ships no persistence adapter for go"):
         technology_stack.approve(tmp_path)
     assert not technology_stack.is_approved(tmp_path)
 
 
-def test_python_relational_persistence_approves_with_required_rigging(tmp_path):
-    (tmp_path / "blueprint").mkdir()
-    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
-    technology_stack.write(
-        tmp_path,
-        [
-            StackEntry("Python", "python.md"),
-            StackEntry("SQLAlchemy", "sqlalchemy.md"),
-            StackEntry("Alembic", "alembic.md"),
-        ],
-    )
+def test_an_unsupported_language_without_a_database_is_not_gated(tmp_path):
+    technology_stack.write(tmp_path, [StackEntry("Go", "go.md")])
 
-    technology_stack.approve(tmp_path, "2026-09-09")
+    assert technology_stack.unsupported_persistence(tmp_path) is None
+
+    technology_stack.approve(tmp_path, "2026-09-19")
 
     assert technology_stack.is_approved(tmp_path)
+
+
+def test_an_undeclared_language_leaves_the_stack_undecided_rather_than_blocked(tmp_path):
+    (tmp_path / "blueprint").mkdir()
+    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
+    technology_stack.write(tmp_path, [StackEntry("Bootstrap 5", "bootstrap5.md")])
+
+    assert technology_stack.declared_language(tmp_path) is None
+    assert technology_stack.unsupported_persistence(tmp_path) is None
 
 
 def test_is_approved_is_false_for_a_missing_document(tmp_path):

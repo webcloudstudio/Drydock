@@ -39,8 +39,13 @@ _DEFAULT_CATEGORY = "Technologies"
 _CATEGORY_ORDER = ["Web Server", "Persistence", "AWS", "Technologies", "Branding"]
 _CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
-#: Relational persistence in a Python Target has one governed implementation path.
-_PYTHON_RELATIONAL_RIGGING = ("sqlalchemy.md", "alembic.md")
+#: Languages Drydock ships a persistence adapter for, in ``Rigging/database/``. A Target in one of
+#: these gets its persistence package generated from ``DATABASE.md``; the build writes callers, not
+#: a repository, so no ORM or migration-framework selection is required of the Commander.
+PERSISTENCE_LANGUAGES = ("python",)
+#: Implementation languages a Target may declare. A Target declaring none leaves the stack
+#: undecided, which Plan resolves from the sources rather than gating on.
+_LANGUAGES = ("python", "go", "typescript", "javascript", "java", "rust", "c", "c++", "ruby")
 
 _PREAMBLE = (
     "Technology decisions of record for this Target. One row per technology, naming the",
@@ -277,7 +282,7 @@ def is_approved(target_dir: Path) -> bool:
     An absent file is not approved: the stack is an outstanding action until the
     Commander either edits and approves it or approves it as proposed.
     """
-    return approved_on(target_dir) is not None and not missing_required_rigging(target_dir)
+    return approved_on(target_dir) is not None and unsupported_persistence(target_dir) is None
 
 
 def approve(target_dir: Path, when: str | None = None) -> Path:
@@ -287,10 +292,12 @@ def approve(target_dir: Path, when: str | None = None) -> Path:
     canonically. Approving an already approved stack re-dates it.
     """
     entries = load(target_dir)
-    missing = missing_required_rigging(target_dir, entries)
-    if missing:
+    unsupported = unsupported_persistence(target_dir, entries)
+    if unsupported:
         raise ValueError(
-            "Python relational persistence requires Rigging selection: " + ", ".join(missing)
+            f"Drydock ships no persistence adapter for {unsupported}. Targets with a DATABASE.md "
+            f"are limited to {', '.join(PERSISTENCE_LANGUAGES)}; add an adapter to "
+            "Rigging/database/ to support another."
         )
     return write(target_dir, entries, when or date.today().isoformat())
 
@@ -309,23 +316,35 @@ def stack_files(target_dir: Path) -> list[str]:
     return stack_files_from(load(target_dir))
 
 
-def required_rigging(target_dir: Path, entries: list[StackEntry] | None = None) -> tuple[str, ...]:
-    """Return mandatory Rigging files for the Target's declared architecture."""
+def declared_language(target_dir: Path, entries: list[StackEntry] | None = None) -> str | None:
+    """The Target's implementation language, or ``None`` when the stack names none."""
     rows = load(target_dir) if entries is None else entries
-    python_declared = any(
-        _normalize(row.technology) == "python" or row.rigging == "python.md" for row in rows
-    )
-    has_database = (target_dir / "blueprint" / "DATABASE.md").is_file()
-    return _PYTHON_RELATIONAL_RIGGING if python_declared and has_database else ()
+    for row in rows:
+        normalized = _normalize(row.technology)
+        if normalized in _LANGUAGES:
+            return normalized
+        if row.rigging and row.rigging.removesuffix(".md") in _LANGUAGES:
+            return row.rigging.removesuffix(".md")
+    return None
 
 
-def missing_required_rigging(
+def unsupported_persistence(
     target_dir: Path, entries: list[StackEntry] | None = None
-) -> tuple[str, ...]:
-    """Return required files absent from the Commander's stack selection."""
+) -> str | None:
+    """The declared language when it has a ``DATABASE.md`` and Drydock ships no adapter for it.
+
+    Drydock generates the persistence package from the declaration, so a Target declares storage
+    only in a language it can be generated for. Returning the language rather than silently
+    returning nothing is the point: the previous check was keyed on Python, so a Go Target with a
+    database was never gated at all and reached a build that had no persistence layer to write.
+    """
     rows = load(target_dir) if entries is None else entries
-    selected = set(stack_files_from(rows))
-    return tuple(name for name in required_rigging(target_dir, rows) if name not in selected)
+    if not (target_dir / "blueprint" / "DATABASE.md").is_file():
+        return None
+    language = declared_language(target_dir, rows)
+    if language is None or language in PERSISTENCE_LANGUAGES:
+        return None
+    return language
 
 
 # ── Seeding and migration ───────────────────────────────────────────────────────

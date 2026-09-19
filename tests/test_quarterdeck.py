@@ -2214,11 +2214,29 @@ def test_approving_the_technology_stack_records_the_marker_without_changing_rows
     ]
 
 
-def test_technology_stack_requires_sqlalchemy_and_alembic_for_python_database(
-    tmp_path, monkeypatch
-):
+def test_technology_stack_refuses_a_database_in_a_language_with_no_adapter(tmp_path, monkeypatch):
     import pytest
 
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "TECHNOLOGY_STACK.md"
+    (tmp_path / "blueprint").mkdir()
+    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("Go", "go.md")])
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
+    monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
+
+    with pytest.raises(quarterdeck.HTTPException) as exc:
+        quarterdeck.api_approve_item("technology_stack", None)
+
+    assert exc.value.status_code == 400
+    assert "no persistence adapter for go" in str(exc.value.detail)
+
+
+def test_technology_stack_approves_a_python_database_without_an_orm_selection(
+    tmp_path, monkeypatch
+):
     from drydock import technology_stack
 
     quarterdeck = _load_quarterdeck()
@@ -2229,11 +2247,7 @@ def test_technology_stack_requires_sqlalchemy_and_alembic_for_python_database(
     monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
     monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
 
-    with pytest.raises(quarterdeck.HTTPException) as exc:
-        quarterdeck.api_approve_item("technology_stack", None)
-
-    assert exc.value.status_code == 400
-    assert "sqlalchemy.md, alembic.md" in str(exc.value.detail)
+    assert quarterdeck.api_approve_item("technology_stack", None)["state"] == "approved"
 
 
 def test_editing_the_technology_stack_preserves_an_existing_approval(tmp_path, monkeypatch):

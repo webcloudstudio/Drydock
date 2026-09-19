@@ -742,18 +742,19 @@ depends on.
 `DATABASE.md` is the project's persistence contract — not SQL schema alone. It documents every
 persistent store and the typed repository contract that encapsulates it:
 
-- **Relational stores** — private SQLAlchemy models and sessions, repository interfaces, DTO
-  inputs/outputs, and Alembic revisions.
+- **Relational stores** — declared tables, the access patterns that reach them, and their DTO
+  inputs and outputs. Drydock generates the implementation from this; no Blueprint describes one.
 - **Config / `.env`** — required keys and the typed `Config` class.
 - **File stores** — directories and the `FileStore` class.
 - **External services** — the service contract and its wrapper.
 
-Routes call services; services call project-owned repository methods. ORM models, sessions, SQL,
-table names, and column names never cross that boundary. A storage change that leaves the named
+Routes call services; services call the generated persistence package — `db.<table>.<verb>(...)`,
+one method per declared access pattern. SQL, sessions, table names, and column names never cross
+that boundary, and no Blueprint describes a repository implementation: Drydock generates it from
+this declaration. A storage change that leaves the named
 repository-call contract unchanged does not invalidate downstream features.
 
-Every `DATABASE.md` includes `## Access Patterns` and `## Persistence Interfaces` before schema
-details. Every access pattern has a stable feature-owned `FEATURE-<DOMAIN>-<NNN>` id, Owner,
+Every `DATABASE.md` includes `## Access Patterns` before schema details. Every access pattern has a stable feature-owned `FEATURE-<DOMAIN>-<NNN>` id, Owner,
 `read`, `write`, or `read-write` access, repository method, DTO input and output shapes, and
 compatibility level: `unchanged`, `data`, or `rebuild`. Route and screen Blueprints cite only those
 ids through a `## Database Interface` section, including only fields they supply or receive; they
@@ -851,10 +852,14 @@ Both forms take two or more declared columns of that table. A single-column `UNI
 Build implements the declaration, and an empty one leaves Build inventing a schema no Blueprint
 describes.
 
-Python relational persistence requires `sqlalchemy.md` and `alembic.md` in the Technology Stack.
-SQLAlchemy owns runtime access; Alembic owns every schema revision. A Blueprint migration ledger
-record lives at `blueprint/migrations/MIGRATION-<AccessPatternId>.md`; it holds `upgrade` and
-`downgrade` snippets and is `planned` until the DATABASE build story completes, then `built`.
+Relational persistence needs no ORM or migration-framework selection in the Technology Stack.
+Drydock generates the persistence package from this declaration at the DATABASE build step and
+copies the engines in unchanged, so a story that implements `DATABASE.md` writes callers, not a
+repository. A Target declaring a `DATABASE.md` in a language Drydock ships no adapter for fails
+before planning rather than reaching a build with no persistence layer to write. A Blueprint
+migration ledger record lives at `blueprint/migrations/MIGRATION-<AccessPatternId>.md`; it holds
+`upgrade` and `downgrade` snippets and is `planned` until the DATABASE build story completes, then
+`built`. Within a release the schema is built once and never migrated.
 
 `ARCHITECTURE.md` includes a module ownership table for persistence, configuration, file-store, and
 external-service boundaries. It states which module owns each boundary and which low-level APIs that

@@ -15,9 +15,9 @@
 
 | Boundary | Rule |
 |----------|------|
-| Raw storage access | Only repository implementations access SQLAlchemy models and sessions. |
-| Caller dependency | Features depend on named repository calls and DTOs, not schemas or provider APIs. |
-| Python relational stack | `sqlalchemy.md` and `alembic.md` are required selections. |
+| Raw storage access | Only the generated `persistence/` package reaches the store. |
+| Caller dependency | Features depend on declared access patterns and their DTOs, not on schemas. |
+| Implementation | Generated from this file at the DATABASE build step; never written by hand. |
 
 ## Access Patterns
 
@@ -67,16 +67,6 @@ Output: Item
 |-------|------|
 | id | UUID |
 | name | str |
-<!-- drydock:end-example -->
-
-## Persistence Interfaces
-
-<!-- The typed classes that encapsulate each store. Patterns from stack/persistence.md applied during conversion. -->
-
-| Store | Interface | Module | Allowed Callers | Notes |
-|-------|-----------|--------|-----------------|-------|
-<!-- drydock:example -->
-| table_name | `ItemRepository` | persistence/items.py | Item service | SQLAlchemy models remain private |
 <!-- drydock:end-example -->
 
 ## Schemas

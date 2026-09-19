@@ -5148,12 +5148,14 @@ def create_plan(
         raise SpecificationError(
             "ANALYSIS.md quality is Blocked — resolve blockers and re-run analyze before planning."
         )
-    missing_persistence_rigging = technology_stack.missing_required_rigging(target_dir)
-    if missing_persistence_rigging:
+    unsupported_persistence = technology_stack.unsupported_persistence(target_dir)
+    if unsupported_persistence:
         raise SpecificationError(
-            "Python relational persistence requires Rigging selections before planning: "
-            + ", ".join(missing_persistence_rigging)
-            + f". Set them in {technology_stack.FILENAME} through QuarterDeck."
+            f"This Target declares {unsupported_persistence} and a DATABASE.md, and Drydock ships "
+            f"no persistence adapter for {unsupported_persistence}. Build generates the "
+            "persistence package from the declaration, so a Target declares storage only in a "
+            f"language it can be generated for: {', '.join(technology_stack.PERSISTENCE_LANGUAGES)}"
+            ". Add an adapter to Rigging/database/, or remove DATABASE.md."
         )
     # TECHNOLOGY_STACK.md otherwise never gates planning. An absent or empty stack file means the
     # stack is undecided, which plan resolves from the sources — it is not a Commander decision to await.
