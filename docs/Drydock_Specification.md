@@ -969,7 +969,7 @@ Refit leaves unbuilt work available for its first build using the current requir
 
 Refit applies Manifest and normalized-ticket updates atomically. Its finalization always attempts a Target Git commit for every artifact it writes, including `BLOCKERS.md` notifications written after an error. A failed reconciliation does not apply partial Manifest or normalized-ticket updates. A failure to commit is reported as an operational error.
 
-For `DATABASE.md`, changes to Persistence Interfaces, Schemas, or Migrations create `database-private` or `database-data` tickets and affect database implementation or migration work only. A change to a named Access Pattern affects only its owner, Features that cite that operation, and their dependent work when `compatibility: rebuild`. `compatibility: data` affects database migration and implementation work only. `compatibility: unchanged` records the change without resetting work. Each database change has a distinct normalized ticket and migration-change record.
+For `DATABASE.md`, changes to Schemas or Migrations create `database-private` or `database-data` tickets and affect database implementation or migration work only. A change to a named Access Pattern affects only its owner, Features that cite that operation, and their dependent work when `compatibility: rebuild`. `compatibility: data` affects database migration and implementation work only. `compatibility: unchanged` records the change without resetting work. Each database change has a distinct normalized ticket and migration-change record.
 
 **Exit codes.** `0` success or no-op; `1` an ambiguous, conflicting, unassignable, or unincorporated change, or a commit failure; `2` usage error.
 
