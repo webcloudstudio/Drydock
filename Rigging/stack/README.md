@@ -20,6 +20,7 @@ These technology files are **shared across all projects** in this specification 
 | `uv_ruff.md` | `tooling: uv-ruff` | uv environment/lock workflow, ruff lint+format configuration, identical local/CI gates |
 | `typescript.md` | `language: typescript` | Code style, strict compiler settings, no `any`/unsafe assertions, explicit domain modeling, boundary validation, generated types |
 | `go.md` | `language: go` | Module layout, errors as values, consumer-side interfaces, goroutine lifetimes, table-driven tests, build and lint gates, dependency discipline |
+| `cli.md` | `framework: cli` | Entry point and exit codes, argparse separation, bash and PowerShell launchers, in-process testing |
 | `flask.md` | `framework: flask` | App factory, blueprints, Jinja2, HTMX, test client, security |
 | `django.md` | `framework: django` | Settings package, ORM, migrations, admin, django-htmx |
 | `sqlite.md` | `database: sqlite` | Connection setup, PRAGMAs, JSON columns, migrations, backup |

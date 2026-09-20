@@ -528,6 +528,13 @@ and no execution order. A snippet that reads a name another snippet bound raises
 every run — it reports UNVERIFIED rather than failing the build, which means it verifies nothing
 and buys nothing. Each snippet imports what it uses and binds every name it reads.
 
+**A check calls the foundation's published fixture; it never constructs a client.** The Rigging
+file for the Target's web server, database and CLI publishes a `## Foundation Contract` naming the
+package, the entry point, and the fixture — `web_client`, `db_session`, `cli_runner`. Those names
+are fixed by the technology the Commander selected, so a criterion writes them rather than
+inventing a package or a client of its own. Constructing one is how a Blueprint set ends up split
+between two package names and calling a framework's method on another framework's object.
+
 **A check never reads a Blueprint document.** The Blueprint is the build's *input*; the build
 directory holds the code written from it and nothing copies a specification next to that code.
 `pathlib.Path("ARCHITECTURE.md").read_text()` raises `FileNotFoundError` on every run, so no

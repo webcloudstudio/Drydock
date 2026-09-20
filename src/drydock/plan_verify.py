@@ -186,6 +186,26 @@ def persistence_defects(blueprint_dir: Path) -> list[Defect]:
     return defects
 
 
+def _foundation_defects(target_dir: Path) -> list[Defect]:
+    """Refuse a plan whose Technology Stack cannot yield one foundation per kind.
+
+    Checked at plan, not at analyze. Analyze proposes ``TECHNOLOGY_STACK.md`` — the questionnaire —
+    and the Commander answers it; an unanswered row is a normal intermediate state there. By plan
+    it is not: the foundation's package name, entry point, and fixture come from the selected
+    Rigging file, and without one every criterion invents its own. Drydock does not pick a web
+    server on the operator's behalf.
+    """
+    from drydock import technology_stack
+
+    if not technology_stack.path_for(target_dir).is_file():
+        # No stack file is a different, earlier problem, reported by the commands that need one.
+        return []
+    return [
+        Defect(technology_stack.FILENAME, "", "foundation", reason)
+        for reason in technology_stack.foundation_defects(technology_stack.load(target_dir))
+    ]
+
+
 def verify(target: str, target_dir: Path) -> VerifyResult:
     """Judge every acceptance criterion in the Target's Blueprint. Never writes."""
     blueprint_dir = target_dir / "blueprint"
@@ -289,6 +309,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                 )
 
     defects.extend(persistence_defects(blueprint_dir))
+    defects.extend(_foundation_defects(target_dir))
     guidance = load_guidance(target_dir)
     return VerifyResult(
         target=target,

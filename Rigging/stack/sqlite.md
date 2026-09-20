@@ -2,11 +2,37 @@
 
 **Version:** 20260919 V3
 **Category:** Persistence
+**Foundation:** database
 **Description:** SQLite as a Drydock store: what it enforces, what it ignores, and how a Target reaches it.
 
 Technology reference. This file does not change between projects.
 
 Prerequisite: `stack/persistence.md`
+
+---
+
+## Foundation Contract
+
+The published shape of this foundation. Drydock synthesizes the story that builds it and every
+acceptance criterion writes against these names. Carried verbatim into `sqlite_compact.md`.
+
+- package: persistence
+- entry: open_session() -> Session
+- fixture: db_session
+- fixture_source: conftest.py
+
+```python
+# conftest.py
+import pytest
+from persistence import open_session
+
+@pytest.fixture
+def db_session():
+    with open_session() as session:
+        yield session
+```
+
+A criterion calls `db_session`; it never opens a connection itself and never imports `sqlite3`.
 
 ---
 

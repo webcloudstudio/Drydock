@@ -416,3 +416,57 @@ def ensure_technology_stack(
     written = write(target_dir, rows)
     _archive_legacy_questionnaire(target_dir)
     return written
+
+
+# ── Foundation selection ────────────────────────────────────────────────────────
+
+
+def foundation_defects(entries: list[StackEntry]) -> list[str]:
+    """Return the reasons this stack cannot produce a coherent set of foundations.
+
+    Two questions, both answerable from the Commander's own decisions of record.
+
+    *Unanswered*: a row names a technology whose Rigging file publishes a foundation, and the
+    Commander left the Rigging cell blank. Drydock will not choose a web server on the operator's
+    behalf — one cannot be built without someone identifying which one — so the plan stops and the
+    row is named.
+
+    *Doubled*: two selected files publish the same foundation kind. FastAPI and Flask are not a
+    richer stack; they are two application shapes in one build tree, and every acceptance criterion
+    then coin-flips between them.
+    """
+    from drydock.rigging_contract import foundation_contracts
+
+    published = foundation_contracts()
+    defects: list[str] = []
+
+    for entry in entries:
+        if entry.rigging:
+            continue
+        suggested = suggest_rigging(entry.technology)
+        if suggested and (contract := published.get(suggested)) is not None:
+            defects.append(
+                f"{entry.technology}: names a {contract.kind} but selects no Rigging file; "
+                f"set the Rigging column to {suggested} or remove the row"
+            )
+
+    by_kind: dict[str, list[str]] = {}
+    for name in stack_files_from(entries):
+        if (contract := published.get(name)) is not None:
+            by_kind.setdefault(contract.kind, []).append(name)
+    for kind, names in sorted(by_kind.items()):
+        if len(names) > 1:
+            defects.append(
+                f"{kind}: {len(names)} selected ({', '.join(sorted(names))}); "
+                f"a Target has exactly one {kind}"
+            )
+
+    return defects
+
+
+def selected_foundations(entries: list[StackEntry]) -> dict[str, str]:
+    """Return ``{kind: rigging filename}`` for each foundation this stack selects."""
+    from drydock.rigging_contract import foundation_contracts
+
+    published = foundation_contracts()
+    return {published[name].kind: name for name in stack_files_from(entries) if name in published}

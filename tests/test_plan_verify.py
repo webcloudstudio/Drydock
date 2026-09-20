@@ -703,3 +703,90 @@ def test_a_persistence_declaration_build_cannot_read_fails_verification(tmp_path
     rendered = render(result)
     assert "Run: drydock plan Demo" in rendered
     assert "Run: drydock plan repair Demo" not in rendered
+
+
+_STACK_HEADER = """# Technology Stack
+
+| Technology | Rigging | Notes |
+|---|---|---|
+"""
+
+
+def _with_stack(target, rows: str):
+    (target / "TECHNOLOGY_STACK.md").write_text(_STACK_HEADER + rows, encoding="utf-8")
+    return target
+
+
+def test_a_stack_selecting_one_foundation_per_kind_verifies_clean(tmp_path):
+    target = _with_stack(
+        _target(tmp_path, FEATURE_Ok=_RUNNABLE),
+        "| Python | python.md | |\n| FastAPI | fastapi.md | |\n| SQLite | sqlite.md | |\n",
+    )
+
+    result = verify("Demo", target)
+
+    assert result.ok
+    assert result.defects == ()
+
+
+def test_two_web_servers_is_a_defect(tmp_path):
+    """One build tree cannot hold two application shapes."""
+    target = _with_stack(
+        _target(tmp_path, FEATURE_Ok=_RUNNABLE),
+        "| FastAPI | fastapi.md | |\n| Flask | flask.md | |\n",
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "foundation"
+    assert "web-server: 2 selected" in defect.detail
+    assert defect.filename == "TECHNOLOGY_STACK.md"
+
+
+def test_an_unanswered_foundation_row_is_a_defect(tmp_path):
+    """Drydock does not pick a web server for the operator. Analyze asks; plan refuses."""
+    target = _with_stack(
+        _target(tmp_path, FEATURE_Ok=_RUNNABLE),
+        "| Python | python.md | |\n| FastAPI | — | |\n",
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "foundation"
+    assert "FastAPI" in defect.detail
+    assert "fastapi.md" in defect.detail
+
+
+def test_an_unanswered_non_foundation_row_is_not_a_defect(tmp_path):
+    """A technology with no Rigging guidance is normal and never an error."""
+    target = _with_stack(
+        _target(tmp_path, FEATURE_Ok=_RUNNABLE),
+        "| Python | python.md | |\n| Git | — | |\n| GitHub CLI | — | |\n",
+    )
+
+    result = verify("Demo", target)
+
+    assert result.ok
+
+
+def test_additive_files_beside_one_database_are_clean(tmp_path):
+    """sqlalchemy.md and alembic.md are Persistence files selected alongside the one database."""
+    target = _with_stack(
+        _target(tmp_path, FEATURE_Ok=_RUNNABLE),
+        "| SQLite | sqlite.md | |\n| SQLAlchemy | sqlalchemy.md | |\n| Alembic | alembic.md | |\n",
+    )
+
+    result = verify("Demo", target)
+
+    assert result.ok
+
+
+def test_no_stack_file_is_not_a_foundation_defect(tmp_path):
+    """A missing stack is an earlier problem, reported by the commands that need one."""
+    result = verify("Demo", _target(tmp_path, FEATURE_Ok=_RUNNABLE))
+
+    assert result.ok

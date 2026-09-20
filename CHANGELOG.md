@@ -8,6 +8,42 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-09-20: Rigging files publish a **foundation contract**. A file that defines a foundation
+  declares its kind in the header (`**Foundation:** web-server`) and its shape in a
+  `## Foundation Contract` section naming the package, the entry point, and the test fixture.
+  `fastapi.md`, `flask.md` and `django.md` publish `web-server`; `sqlite.md` and `postgres.md`
+  publish `database`; the new `cli.md` publishes `cli`. Every web server builds `app_server` and
+  offers `web_client`, every database builds `persistence` and offers `db_session`, so an
+  acceptance criterion writes one name whichever framework the Commander selected — in Marina_Luna
+  those names were invented 47 Blueprints at a time, splitting 98 imports of `app` against 77 of
+  `marina_app` and calling Flask's `test_client()` 134 times on a FastAPI application. Kinds are
+  open: a new exclusive foundation is a new Rigging file with a new `**Foundation:**` value.
+  `prompts/BLUEPRINTS_CONTRACT.md` requires criteria to call the published fixture.
+- 2026-09-20: `Rigging/stack/cli.md` — command-line application guidance: `main(argv) -> int` that
+  returns rather than exits, argparse construction separated from behavior, exit codes `0`/`1`/`2`,
+  and bash plus PowerShell launchers that share one `python -m cli` invocation so the two cannot
+  drift in behavior.
+
+### Changed
+
+- 2026-09-20: `drydock plan verify` refuses a Technology Stack that cannot yield one foundation per
+  kind, a new `foundation` defect. Two files of one kind — FastAPI and Flask — are refused, because
+  that is two application shapes in one build tree rather than a richer stack. A row naming a
+  technology whose Rigging publishes a foundation but leaving the Rigging column blank is refused
+  too: Drydock does not choose a web server on the operator's behalf. Checked at plan, not at
+  analyze — `drydock analyze` proposes the questionnaire and an unanswered row is a normal
+  intermediate state there.
+- 2026-09-20: `drydock rigging compact` carries a `## Foundation Contract` section verbatim. The
+  section is removed before the prompt is assembled and spliced back into the output, so the model
+  never sees it and cannot shorten it. A compacted contract is a changed contract, and the builder's
+  copy and the Blueprint author's copy would drift silently.
+- 2026-09-20: `fastapi.md` and `flask.md` name the application package `app_server` rather than
+  `app`. `app` is also the conventional name of the ASGI/WSGI instance, and a package and an
+  instance sharing a name is the ambiguity that made `from app import create_app` followed by
+  `app.test_client()` look plausible.
+
 ### Fixed
 
 - 2026-09-20: `drydock plan verify` refuses a criterion that reads a Blueprint document, a new

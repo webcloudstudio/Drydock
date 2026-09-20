@@ -20,6 +20,7 @@ not open individual component files.
 | `aws-s3.md` | AWS | Private encrypted S3 storage and prefix-scoped sharing patterns. | `cloud-client-library.md` |
 | `aws-sqs.md` | AWS | SQS durable queue, polling, and error-handling patterns. | `aws-lambda.md` |
 | `bootstrap5.md` | Web Server | Bootstrap 5 layout, components, and form conventions. | — |
+| `cli.md` | Technologies | Command-line application entry point, exit codes, cross-platform launchers, and in-process testing. | `common.md`, `python.md` |
 | `cloud-client-library.md` | AWS | Encapsulated AWS library for use in applications; application dont uses boto3. | `python.md`, `persistence.md` |
 | `common.md` | Technologies | Common project layout, scripts, Git hygiene, and development workflow. | — |
 | `django.md` | Web Server | Django settings, ORM, migrations, admin, and web application patterns. | `common.md`, `python.md` |

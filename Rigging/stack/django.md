@@ -2,11 +2,36 @@
 
 **Version:** 20260320 V1  
 **Category:** Web Server
+**Foundation:** web-server
 **Description:** Django web framework patterns: models, views, URLs, and admin
 
 Technology reference for Django web applications. This file does not change between projects.
 
 Prerequisites: `stack/common.md`, `stack/python.md`
+
+---
+
+## Foundation Contract
+
+The published shape of this foundation. Drydock synthesizes the story that builds it and every
+acceptance criterion writes against these names. Carried verbatim into `django_compact.md`.
+
+- package: app_server
+- entry: get_wsgi_application() -> WSGIHandler
+- fixture: web_client
+- fixture_source: conftest.py
+
+```python
+# conftest.py
+import pytest
+from django.test import Client
+
+@pytest.fixture
+def web_client() -> Client:
+    return Client()
+```
+
+A criterion calls `web_client`; it never constructs a client itself.
 
 ---
 
