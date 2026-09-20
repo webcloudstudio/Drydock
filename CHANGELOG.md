@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-20: `drydock plan verify` refuses a criterion that reads a Blueprint document, a new
+  `blueprint-read` defect. Acceptance runs with the build directory as its working directory and
+  the Blueprint is an input to the build, so `pathlib.Path("ARCHITECTURE.md").read_text()` raises
+  `FileNotFoundError` on every run — no implementation and no repair pass can turn it green. The
+  reading is worthless where it succeeds, too: grepping a specification for the words it was
+  written with asserts that the document contains itself and passes against an empty build
+  directory. Paths under `sources/` are exempt, because the Analysis stages those into the build.
+  `drydock plan` already gates on verify, so such a plan is now written `unbuildable` and named at
+  plan time instead of blocking a story a block at a time; in Marina_Luna this is 14 criteria
+  across four Blueprints, the first three of which blocked the first build block after a paid
+  model call. `prompts/BLUEPRINTS_CONTRACT.md` states the authoring rule.
 - 2026-09-20: `drydock plan` no longer writes a plan that `drydock plan verify` refuses over a
   criterion reading the module it imported its factory from. `from app import create_app` followed
   by `client = app.test_client()` binds nothing named `app`, so the criterion raises `NameError`

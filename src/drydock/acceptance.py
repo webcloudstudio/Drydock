@@ -20,7 +20,7 @@ import warnings
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from drydock.acceptance_runner import (
     PROGRESS_BEGIN,
@@ -1639,6 +1639,74 @@ def regex_defects(code: str) -> tuple[str, ...]:
             re.compile(pattern)
         except re.error as exc:
             defects.append(f"line {node.lineno}: pattern {pattern!r} does not compile: {exc}")
+    return tuple(defects)
+
+
+#: Callables whose first positional argument names a path on disk. Matched on the terminal name,
+#: so ``open``, ``io.open``, ``Path``, ``pathlib.Path`` and ``os.path.exists`` are all covered.
+_PATH_ARGUMENT_NAMES = frozenset({
+    "open",
+    "Path",
+    "PosixPath",
+    "exists",
+    "isfile",
+    "isdir",
+    "getsize",
+    "stat",
+})
+
+
+def _opened_path_literals(tree: ast.Module) -> tuple[tuple[int, str], ...]:
+    """Return ``(line, literal)`` for every statically-known path a criterion opens or stats."""
+    strings = _module_string_literals(tree)
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name not in _PATH_ARGUMENT_NAMES:
+            continue
+        if (literal := _literal_string(node.args[0], strings)) is not None:
+            found.append((node.lineno, literal))
+    return tuple(found)
+
+
+def blueprint_read_defects(code: str, blueprint_dir: Path) -> tuple[str, ...]:
+    """Return the Blueprint documents a criterion opens, which the build directory never holds.
+
+    Acceptance runs with the build directory as its working directory, and the Blueprint is an
+    *input* to the build: nothing copies ``ARCHITECTURE.md`` next to the code written from it. A
+    criterion reading one raises ``FileNotFoundError`` in its own frame on every run, so no
+    implementation and no repair pass can turn it green — it is a test that cannot run, detected
+    here rather than paid for a block at a time.
+
+    The reading is also worthless where it succeeds. A Blueprint document is the statement of
+    intent the story implements, so grepping it for the words it was written with asserts that the
+    specification contains itself. It passes against an empty build directory.
+
+    Staged assets under ``sources/`` are excluded: the Analysis marks those for copying into the
+    build, so a criterion invoking one names a path that will exist.
+    """
+    try:
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        # Not parseable is a separate, already-reported fact.
+        return ()
+
+    defects: list[str] = []
+    for line, literal in _opened_path_literals(tree):
+        relative = literal.removeprefix("./")
+        if PurePosixPath(relative).is_absolute() or relative.startswith(_STAGED_PREFIX):
+            continue
+        relative = relative.removeprefix("blueprint/")
+        if relative.startswith(_STAGED_PREFIX) or not (blueprint_dir / relative).is_file():
+            continue
+        defects.append(
+            f"line {line}: reads {relative}, a Blueprint document the build directory never "
+            "holds; assert against the code the story builds, not the specification it builds from"
+        )
     return tuple(defects)
 
 

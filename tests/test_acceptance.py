@@ -1766,3 +1766,49 @@ def test_a_fused_chain_closed_by_an_idless_end_marker_is_split():
     ids = [check.check_id for check in parse_programmatic_acceptance_text(repaired, source="S")]
     assert ids == ["page", "list", "write"]
     assert repaired.endswith("=== END AC write ===\n\n## User Acceptance\n\n- A user's view.\n")
+
+
+def test_blueprint_read_defects_finds_every_path_taking_call(tmp_path):
+    """``open``, ``pathlib.Path`` and ``os.path.exists`` all name a path in the same position."""
+    from drydock.acceptance import blueprint_read_defects
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "ARCHITECTURE.md").write_text("FastAPI\n", encoding="utf-8")
+
+    for code in (
+        'open("ARCHITECTURE.md").read()',
+        'import pathlib\npathlib.Path("ARCHITECTURE.md").read_text()',
+        'import os\nassert os.path.exists("ARCHITECTURE.md")',
+        'import pathlib\npathlib.Path("./ARCHITECTURE.md").read_text()',
+        'import pathlib\npathlib.Path("blueprint/ARCHITECTURE.md").read_text()',
+        'import pathlib\nSPEC = "ARCHITECTURE.md"\npathlib.Path(SPEC).read_text()',
+    ):
+        assert blueprint_read_defects(code, blueprint), code
+
+
+def test_blueprint_read_defects_ignores_paths_the_build_directory_holds(tmp_path):
+    from drydock.acceptance import blueprint_read_defects
+
+    blueprint = tmp_path / "blueprint"
+    (blueprint / "sources").mkdir(parents=True)
+    (blueprint / "ARCHITECTURE.md").write_text("FastAPI\n", encoding="utf-8")
+    (blueprint / "sources" / "kit.py").write_text("print('ok')\n", encoding="utf-8")
+
+    for code in (
+        'open("marina_app/storage.py").read()',
+        'import pathlib\npathlib.Path("sources/kit.py").read_text()',
+        'import pathlib\npathlib.Path("/etc/ARCHITECTURE.md").read_text()',
+        'assert "ARCHITECTURE.md" in ["ARCHITECTURE.md"]',
+        "import pathlib\npathlib.Path(name).read_text()",
+    ):
+        assert blueprint_read_defects(code, blueprint) == (), code
+
+
+def test_blueprint_read_defects_tolerates_unparseable_code(tmp_path):
+    """Syntax is reported by its own check; this one stays silent rather than naming it twice."""
+    from drydock.acceptance import blueprint_read_defects
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    assert blueprint_read_defects("def (:", blueprint) == ()

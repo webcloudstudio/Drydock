@@ -528,6 +528,16 @@ and no execution order. A snippet that reads a name another snippet bound raises
 every run — it reports UNVERIFIED rather than failing the build, which means it verifies nothing
 and buys nothing. Each snippet imports what it uses and binds every name it reads.
 
+**A check never reads a Blueprint document.** The Blueprint is the build's *input*; the build
+directory holds the code written from it and nothing copies a specification next to that code.
+`pathlib.Path("ARCHITECTURE.md").read_text()` raises `FileNotFoundError` on every run, so no
+implementation and no repair pass can turn it green. It is also worthless where it succeeds:
+grepping a specification for the words it was written with asserts that the document contains
+itself, and passes against an empty build directory. Assert against the built artifact — import
+the module, call the route, read the value off the settings object. Only paths under `sources/`
+are staged into the build and may be named. `drydock plan verify` refuses a criterion that reads
+one, and the plan is written `unbuildable`.
+
 **A check that shells out prints what it captured before it asserts.** `capture_output=True`
 routes the runner's tally and its failing cases into a variable; asserting on the exit code alone
 then discards them, and the failure reports the assertion with no evidence of what went wrong.

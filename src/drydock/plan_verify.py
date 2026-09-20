@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from drydock.acceptance import (
+    blueprint_read_defects,
     captures_without_reporting,
     dynamic_selector_advisory,
     parse_programmatic_acceptance,
@@ -222,6 +223,18 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
             # reporting both would name the same fault twice and give repair two things to fix.
             if (reason := syntax_defect(check.code)) is not None:
                 defects.append(Defect(path.name, check.check_id, "syntax", reason))
+                continue
+            if reasons := blueprint_read_defects(check.code, blueprint_dir):
+                # Raised before the content checks: a criterion reading its own specification
+                # cannot run at all, so its regexes and expectations are not yet worth judging.
+                defects.append(
+                    Defect(
+                        path.name,
+                        check.check_id,
+                        "blueprint-read",
+                        "; ".join(reasons),
+                    )
+                )
                 continue
             if reasons := regex_defects(check.code):
                 defects.append(

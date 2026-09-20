@@ -35,6 +35,47 @@ assert result.returncode == 0
 === END AC path-filter ===
 """
 
+_READS_ITS_OWN_SPECIFICATION = """# FEATURE: Self Reading
+
+## Programmatic Acceptance
+
+=== AC boundaries ===
+Intent: The architecture declares the required boundaries.
+
+import pathlib
+
+text = pathlib.Path("FEATURE_Self.md").read_text()
+assert "FastAPI" in text
+=== END AC boundaries ===
+"""
+
+_READS_A_BUILT_FILE = """# FEATURE: Built Reading
+
+## Programmatic Acceptance
+
+=== AC storage-module ===
+Intent: The storage module is written.
+
+import pathlib
+
+text = pathlib.Path("marina_app/storage.py").read_text()
+assert "def open_session" in text
+=== END AC storage-module ===
+"""
+
+_RUNS_A_STAGED_ASSET = """# FEATURE: Staged Reading
+
+## Programmatic Acceptance
+
+=== AC conformance ===
+Intent: The imported suite passes.
+
+import pathlib
+
+assert pathlib.Path("sources/run_conformance.py").is_file()
+=== END AC conformance ===
+"""
+
 _BROKEN_SYNTAX = """# FEATURE: Malformed
 
 ## Programmatic Acceptance
@@ -149,6 +190,61 @@ def test_a_syntax_error_is_a_defect(tmp_path):
 
     assert not result.ok
     assert result.defects[0].kind == "syntax"
+
+
+def test_reading_a_blueprint_document_is_a_defect(tmp_path):
+    """The exact failure that blocked Marina_Luna's first block: acceptance runs in the build
+    directory, which never holds the specification the story was built from."""
+    result = verify("Demo", _target(tmp_path, FEATURE_Self=_READS_ITS_OWN_SPECIFICATION))
+
+    assert not result.ok
+    assert result.exit_code() == 1
+    (defect,) = result.defects
+    assert defect.check_id == "boundaries"
+    assert defect.kind == "blueprint-read"
+    assert "FEATURE_Self.md" in defect.detail
+    assert "never holds" in defect.detail
+
+
+def test_reading_a_file_the_story_builds_is_not_a_defect(tmp_path):
+    """Only a path that exists in the Blueprint is refused. A build output does not yet exist
+    anywhere, and asserting on one is the normal shape."""
+    result = verify("Demo", _target(tmp_path, FEATURE_Built=_READS_A_BUILT_FILE))
+
+    assert result.ok
+    assert result.defects == ()
+
+
+def test_reading_a_staged_asset_is_not_a_defect(tmp_path):
+    """Assets the Analysis marks ``stage`` are copied into the build, so the path resolves."""
+    target = _target(tmp_path, FEATURE_Staged=_RUNS_A_STAGED_ASSET)
+    sources = target / "blueprint" / "sources"
+    sources.mkdir()
+    (sources / "run_conformance.py").write_text("print('ok')\n", encoding="utf-8")
+
+    result = verify("Demo", target)
+
+    assert result.ok
+    assert result.defects == ()
+
+
+def test_reading_another_blueprint_document_is_a_defect(tmp_path):
+    """The fault is the Blueprint, not self-reference: a sibling specification is equally absent."""
+    result = verify(
+        "Demo",
+        _target(
+            tmp_path,
+            FEATURE_Ok=_RUNNABLE,
+            FEATURE_Self=_READS_ITS_OWN_SPECIFICATION.replace(
+                'pathlib.Path("FEATURE_Self.md")', 'pathlib.Path("FEATURE_Ok.md")'
+            ),
+        ),
+    )
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "blueprint-read"
+    assert "FEATURE_Ok.md" in defect.detail
 
 
 def test_an_uncompilable_regex_pattern_is_a_defect(tmp_path):
