@@ -5961,6 +5961,92 @@ def test_an_owners_invalid_interface_is_rewritten_from_the_declaration(section):
     assert blocks["FEATURE-Example.md"].endswith("## Guardrails\n\n- None.\n")
 
 
+def test_an_unknown_owner_elsewhere_does_not_stop_a_real_owners_rewrite():
+    """Marina_Luna: one invented owner made this function bail on all of them, so four sections
+    it derives exactly were handed to the model instead, and the repair budget died on them."""
+    invented = _DATABASE.replace(
+        "### FEATURE-X-001",
+        "### FEATURE-Y-001 — Read setting\n\n| Field | Value |\n|---|---|\n"
+        "| Owner | FEATURE-Absent.md |\n| Access | read |\n"
+        "| Repository operation | `settings.get` |\n| Compatibility | rebuild |\n\n"
+        "Input: GetSetting\n\n| Field | Type | Required |\n|---|---|---|\n| key | str | yes |\n\n"
+        "Output: Setting\n\n| Field | Type |\n|---|---|\n| key | str |\n\n### FEATURE-X-001",
+        1,
+    )
+    blocks = {
+        "DATABASE.md": invented,
+        "FEATURE-Example.md": "# FEATURE: Example\n",
+        "SCREEN-Other.md": "# SCREEN: Other\n\n## Guardrails\n\n- None.\n",
+    }
+
+    warnings = ps._normalize_database_interfaces(blocks)
+
+    # The owner's own section is a function of the patterns that name it, so it is written.
+    assert [w.split(":")[0] for w in warnings] == ["FEATURE-Example.md"]
+    assert "- `FEATURE-X-001` — " in blocks["FEATURE-Example.md"]
+    # The Blueprint that owns nothing is left alone: the invented owner may be its name
+    # misspelled, and `- None` would overwrite the citations it is owed.
+    assert "## Database Interface" not in blocks["SCREEN-Other.md"]
+    # Only the declaration's own defect survives, for one repair pass that can fix it.
+    assert [kind for kind, _ in ps._database_interface_defects(blocks)] == [
+        "database-owner-unknown"
+    ]
+
+
+def test_a_database_repair_prompt_lists_the_blueprints_that_may_own_a_pattern():
+    """The invented owner came from a pass that was never told which Blueprints exist."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
+        "MANIFEST.md": "",
+        "DECISIONS.json": "[]",
+    }
+
+    rendered = ps._artifact_repair_assembly(
+        blocks=blocks, names=("DATABASE.md",), defect="d", pass_number=1
+    ).rendered_text
+
+    assert "- FEATURE-Example.md" in rendered
+    assert "- MANIFEST.md" not in rendered and "- DECISIONS.json" not in rendered
+    assert "- DATABASE.md" not in rendered
+
+
+def test_a_blueprint_only_repair_prompt_carries_no_owner_list():
+    rendered = ps._artifact_repair_assembly(
+        blocks={"DATABASE.md": _DATABASE, "FEATURE-Example.md": _OWNER},
+        names=("FEATURE-Example.md",),
+        defect="d",
+        pass_number=1,
+    ).rendered_text
+
+    assert "may own" not in rendered and "- FEATURE-Example.md" not in rendered
+
+
+def test_one_repair_pass_carries_every_defect_its_files_have():
+    """Three passes on one DATABASE.md, each shown one defect and failing on the next, is how a
+    live run spent its budget without ever validating."""
+    from drydock.acceptance import MalformedAcceptance
+    from drydock.planning_session import _PLAN_BLUEPRINT_BATCH_SIZE, _next_repair_chunk
+
+    class FakeCriteriaDefect(Exception):
+        defects: tuple
+
+    exc = FakeCriteriaDefect()
+    exc.defects = (
+        ("owner-unknown", MalformedAcceptance(check_id="a", source="DATABASE.md", reason="one")),
+        ("too-many-ops", MalformedAcceptance(check_id="b", source="DATABASE.md", reason="two")),
+        ("other", MalformedAcceptance(check_id="c", source="FEATURE-Other.md", reason="three")),
+    )
+
+    kind, names, text = _next_repair_chunk(
+        exc, {"DATABASE.md": "", "FEATURE-Other.md": ""}, _PLAN_BLUEPRINT_BATCH_SIZE
+    )
+
+    assert names == ("DATABASE.md",)
+    assert "one" in text and "two" in text
+    assert "three" not in text  # a file this pass does not re-emit is not its business
+
+
 def test_an_owner_missing_the_section_gains_it():
     blocks = {"DATABASE.md": _DATABASE, "FEATURE-Example.md": "# FEATURE: Example\n"}
 

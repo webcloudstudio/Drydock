@@ -3011,8 +3011,14 @@ def _normalize_database_interfaces(blocks: dict[str, str]) -> tuple[str, ...]:
     between a prose table, an empty section, and an ``Access pattern:`` sentence. A valid section
     is left untouched, so a citation that deliberately claims less than the grant survives.
 
-    An Owner that names no emitted Blueprint is the declaration's defect; nothing is rewritten
-    against it, and ``_database_interface_defects`` routes it to repair.
+    An Owner that names no emitted Blueprint is the declaration's defect, and
+    ``_database_interface_defects`` routes it to repair. It does not stop the rewrite here. An
+    owner's section is a function of the patterns that name *it*, so a bad owner elsewhere cannot
+    make it wrong. Only ``- None`` is withheld while one exists: the unknown owner may be this
+    Blueprint's own name misspelled, and writing ``- None`` over its citations would destroy them.
+    Bailing on all of them cost a Marina_Luna run its whole repair budget — four Blueprints whose
+    sections this function derives exactly were handed to the model because a fifth pattern named
+    an owner that did not exist.
     """
     database_text = blocks.get(DATABASE_BLOCK)
     if not database_text:
@@ -3021,11 +3027,10 @@ def _normalize_database_interfaces(blocks: dict[str, str]) -> tuple[str, ...]:
         contract = parse_database_contract(database_text)
     except SpecificationError:
         return ()
-    if any(
+    unknown_owner = any(
         pattern.owner not in blocks or pattern.owner in _RESERVED_BLOCKS
         for pattern in contract.patterns
-    ):
-        return ()
+    )
     owners = {pattern.owner for pattern in contract.patterns}
     normalized: list[str] = []
     for name in sorted(blocks):
@@ -3040,6 +3045,8 @@ def _normalize_database_interfaces(blocks: dict[str, str]) -> tuple[str, ...]:
             reason = "cites no access pattern it owns"
         except SpecificationError as exc:
             reason = str(exc).split(" — ", 1)[0]
+        if unknown_owner and name not in owners:
+            continue
         blocks[name] = replace_database_interface(text, render_database_interface(contract, name))
         normalized.append(
             f"{name}: ## Database Interface rewritten from {DATABASE_BLOCK} ({reason})"
@@ -4309,7 +4316,12 @@ def _next_repair_chunk(
         names = tuple(sorted({item.source for item in items if item.source in blocks}))[:batch_size]
         if not names:
             continue
-        text = "\n".join(item.rendered for item in items if item.source in names)
+        # Every defect those files carry travels, whatever kind found it. The pass rewrites the
+        # whole file, so a defect of another kind left out of the prompt is a defect the model is
+        # told to preserve byte-for-byte and then fails on in the next pass. Marina_Luna spent
+        # three passes on one DATABASE.md that way, each fixing the defect it was shown and
+        # leaving the next.
+        text = "\n".join(defect.rendered for _, defect in defects if defect.source in names)
         return kind, names, text
     return None
 
@@ -4368,6 +4380,25 @@ def _artifact_repair_assembly(
         "Deterministic validation defect:",
         defect.strip(),
     ]
+    if DATABASE_BLOCK in names:
+        # The only legal `| Owner |` values. Without them the model has no way to know which
+        # Blueprints this plan contains, and a repair pass asked to split an access pattern
+        # invented `FEATURE-ACTIVITY-EVENTS.md` — an owner no Blueprint answers to, which no
+        # later pass could resolve. The names are free: they are the keys of the artifacts the
+        # plan already holds.
+        owners = sorted(
+            name
+            for name in blocks
+            if name.endswith(".md") and name != DATABASE_BLOCK and name not in _RESERVED_BLOCKS
+        )
+        if owners:
+            lines.extend([
+                "",
+                "Every `| Owner |` names one of these Blueprints, exactly as written. There are "
+                "no others, and a name not on this list is a defect:",
+                "",
+                *(f"- {name}" for name in owners),
+            ])
     compass = normative_compass_sections(target_dir) if target_dir is not None else ""
     if compass:
         lines.extend([
@@ -5956,6 +5987,10 @@ def create_plan(
                     execution_id=exec_id,
                     evidence=log_dir,
                     recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",
+                    # Every surviving defect, not the first 800 characters of them. This record
+                    # is the whole evidence of a failed plan: a list cut mid-way hid four of the
+                    # five defects of a Marina_Luna run from the operator repairing it.
+                    detail_limit=None,
                 )
                 from drydock.quarterdeck_state import refresh_commanders_chair
 

@@ -174,6 +174,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-19: Persistence repair no longer spends the plan's repair budget on sections Drydock
+  derives itself. `_normalize_database_interfaces` used to bail on every Blueprint as soon as one
+  access pattern named an Owner that is not a Blueprint in the plan; a live Marina_Luna run sent
+  four `## Database Interface` sections to the model that `DATABASE.md` defines exactly, and
+  failed. Each owner's section is now written from the declaration regardless, since it is a
+  function of the patterns naming that owner. Only `- None` is withheld while an unknown owner
+  exists, because the unknown name may be that Blueprint's own, misspelled.
+- 2026-09-19: A plan artifact repair pass now carries every defect its files have, not only the
+  defects of one kind. One `DATABASE.md` with three defects consumed three passes, each fixing
+  what it was shown and failing on the next.
+- 2026-09-19: A repair pass that re-emits `DATABASE.md` is given the Blueprint file names in the
+  plan — the only legal `| Owner |` values. A pass asked to split an access pattern invented
+  `FEATURE-ACTIVITY-EVENTS.md`, an owner no Blueprint answers to and no later pass could resolve.
+- 2026-09-19: The `ERRORS.md` record for a failed plan validation carries every defect instead of
+  the first 800 characters. The truncation hid four of five defects from the operator repairing
+  the plan.
 - 2026-09-19: `drydock plan` now records a failed plan-verify gate in `ERRORS.md` (phase
   `plan verify`, the rendered unbuildable criteria, recovery `drydock plan repair <Target>`).
   The gate previously raised with no error record, so the only evidence was console output and
