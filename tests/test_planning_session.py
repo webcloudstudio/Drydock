@@ -5961,6 +5961,38 @@ def test_an_owners_invalid_interface_is_rewritten_from_the_declaration(section):
     assert blocks["FEATURE-Example.md"].endswith("## Guardrails\n\n- None.\n")
 
 
+def test_an_owner_no_feature_answers_to_becomes_the_declarations_own():
+    """Marina_Luna's activity log: six Features append to it, none owns it, and a repair pass
+    invented `FEATURE-ACTIVITY-EVENTS.md` for the gap. The plan resolves it without an LLM."""
+    blocks = {
+        "DATABASE.md": _DATABASE.replace(
+            "| Owner | FEATURE-Example.md |", "| Owner | FEATURE-Activity-Events.md |", 1
+        ),
+        "FEATURE-Example.md": "# FEATURE: Example\n",
+        "SCREEN-Other.md": "# SCREEN: Other\n",
+    }
+
+    warnings = ps._normalize_database_owners(blocks)
+
+    assert len(warnings) == 1 and "FEATURE-Activity-Events.md" in warnings[0]
+    assert "| Owner | DATABASE.md |" in blocks["DATABASE.md"]
+    assert ps._database_interface_defects(blocks) == ()
+    # Shared, so no Blueprint is required to cite it and none is rewritten for it.
+    assert ps._normalize_database_interfaces(blocks) == ()
+
+
+def test_a_screen_may_not_own_a_table():
+    blocks = {
+        "DATABASE.md": _DATABASE.replace(
+            "| Owner | FEATURE-Example.md |", "| Owner | SCREEN-Example.md |", 1
+        ),
+        "SCREEN-Example.md": "# SCREEN: Example\n",
+    }
+
+    assert ps._normalize_database_owners(blocks)
+    assert "| Owner | DATABASE.md |" in blocks["DATABASE.md"]
+
+
 def test_an_unknown_owner_elsewhere_does_not_stop_a_real_owners_rewrite():
     """Marina_Luna: one invented owner made this function bail on all of them, so four sections
     it derives exactly were handed to the model instead, and the repair budget died on them."""
@@ -6009,6 +6041,7 @@ def test_a_database_repair_prompt_lists_the_blueprints_that_may_own_a_pattern():
     assert "- FEATURE-Example.md" in rendered
     assert "- MANIFEST.md" not in rendered and "- DECISIONS.json" not in rendered
     assert "- DATABASE.md" not in rendered
+    assert "`DATABASE.md` for a pattern no single Feature owns" in rendered
 
 
 def test_a_blueprint_only_repair_prompt_carries_no_owner_list():

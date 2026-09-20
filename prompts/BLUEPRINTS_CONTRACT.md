@@ -782,9 +782,10 @@ that delegates to a Feature's service routes — writes one bullet and no other:
 - None — persistence is owned by FEATURE-ORDER.md.
 ```
 
-`- None` is available only to a Blueprint the declaration names nowhere. A Blueprint named as an
-`Owner` states the operations it owns, or the `| Owner |` row moves to the Blueprint that does own
-them.
+`- None` is available only to a Blueprint the declaration names nowhere. A Feature named as an
+`Owner` states the operations it owns, or the `| Owner |` row moves to the Feature that does own
+them. A pattern owned by `DATABASE.md` is shared: any Blueprint may cite it, and none is required
+to.
 
 Every bullet under the heading is an entry and every entry is checked, so a sentence of prose there
 fails the plan as a malformed citation. Say it in `## Purpose` instead. A citation may claim less
@@ -802,11 +803,18 @@ Each access pattern is its own `### FEATURE-<DOMAIN>-<NNN> — <Operation>` sect
 by an `Input: <DTO>` and an `Output: <DTO>` field table. Never collapse the operations into one
 table of rows.
 
-`Owner` is the file name of the Blueprint that reaches this pattern — `FEATURE-ORDER.md` — and
-never a service, module, or layer name. It is the only place the plan says which Blueprint owns
-which data, so it is compared to the emitted file names rather than read as prose: an Owner naming
-something that is not a Blueprint in this plan fails the plan, as does a Blueprint that owns a
+`Owner` is the file name of the Feature that reaches this pattern — `FEATURE-ORDER.md` — and
+never a service, module, or layer name. Only a Feature owns data: a Screen renders it through a
+Feature's service and never holds a repository. It is the only place the plan says which Feature
+owns which data, so it is compared to the emitted file names rather than read as prose: an Owner
+naming something that is not a Feature in this plan fails the plan, as does a Feature that owns a
 pattern and cites nothing.
+
+A pattern no single Feature owns — an activity log or other shared surface several Features write
+and several Screens read — names `DATABASE.md` as its `Owner`. That states the fact: the data is
+declared here and no Feature claims it. Any Blueprint may cite a shared pattern, no Blueprint is
+required to, and `DATABASE.md` cites nothing itself. Never invent a Blueprint file name for a
+surface that has no Feature; name `DATABASE.md` instead.
 
 `Repository operation` names one declared table and one verb as `<table>.<verb>`, lowercase:
 `` `settings.get` ``. The verb is one of `get`, `list`, `create`, `update`, or `delete`, and no

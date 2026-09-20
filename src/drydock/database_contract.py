@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 import subprocess
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -19,6 +19,10 @@ from drydock.errors import SpecificationError
 
 _SECTION_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 _H3_RE = re.compile(r"^###\s+([A-Z][A-Z0-9-]*-\d{3})\s+—\s+(.+?)\s*$", re.MULTILINE)
+#: One ``| Owner | <name> |`` row, split so the cell is replaceable without touching the table.
+_OWNER_CELL_RE = re.compile(
+    r"(?P<head>^\|\s*Owner\s*\|)(?P<owner>[^|\n]*)(?P<tail>\|)", re.MULTILINE
+)
 _TABLE_ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$")
 _INPUT_OUTPUT_RE = re.compile(r"^(Input|Output):\s*(.+?)\s*$", re.MULTILINE)
 _INTERFACE_RE = re.compile(
@@ -751,6 +755,53 @@ def _parse_access_pattern(match: re.Match[str], block: str, source: str) -> Acce
     )
 
 
+#: The declaration itself, named as the ``| Owner |`` of a shared access pattern: one no single
+#: Feature owns, reached by several. An audit or activity log is the shape that needs it — six
+#: Features append to it and two Screens read it, so naming any one of them the owner is a lie,
+#: and inventing a Blueprint for it is worse. A shared pattern may be cited by any Blueprint and
+#: is required of none.
+SHARED_OWNER = "DATABASE.md"
+
+
+def legal_owner(owner: str, blueprints: Collection[str]) -> bool:
+    """True when ``owner`` may appear in an ``| Owner |`` cell.
+
+    Only a Feature owns data. A Screen renders it and a Release verifies it; both reach it
+    through a Feature's service, so neither may hold a repository. ``DATABASE.md`` is the one
+    other legal value, and it means shared.
+    """
+    return owner == SHARED_OWNER or (owner.startswith("FEATURE") and owner in blueprints)
+
+
+def rewrite_illegal_owners(
+    text: str, blueprints: Collection[str], *, source: str = "DATABASE.md"
+) -> tuple[str, tuple[str, ...]]:
+    """Point every illegal ``| Owner |`` cell at ``DATABASE.md``; return the text and what changed.
+
+    A name that owns nothing in this plan — a service, a module, a Screen, or a Blueprint the
+    model invented for the purpose — states no fact that can be checked. The one thing known
+    about the pattern is that no Feature here claims it, which is what ``DATABASE.md`` as owner
+    says. Deterministic, because there is nothing to decide: the alternative was an LLM repair
+    pass that invented `FEATURE-ACTIVITY-EVENTS.md`, a file no Blueprint answered to.
+    """
+    changes: list[str] = []
+
+    def replace(match: re.Match[str]) -> str:
+        owner = match.group("owner").strip()
+        if legal_owner(owner, blueprints):
+            return match.group(0)
+        changes.append(owner)
+        return match.group("head") + f" {SHARED_OWNER} " + match.group("tail")
+
+    patterns = _section(text, "Access Patterns")
+    if not patterns.strip():
+        return text, ()
+    rewritten = _OWNER_CELL_RE.sub(replace, patterns)
+    if not changes:
+        return text, ()
+    return text.replace(patterns, rewritten, 1), tuple(sorted(set(changes)))
+
+
 def declared_owners(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
     """Return every ``| Owner |`` value in ``## Access Patterns``, whether or not it parses.
 
@@ -909,7 +960,7 @@ def validate_database_interfaces(
                     f"{blueprint}: unknown database operation {use.identifier} — "
                     f"no `### {use.identifier}` section is declared in ## Access Patterns"
                 )
-            if pattern.owner != blueprint:
+            if pattern.owner != blueprint and pattern.owner != SHARED_OWNER:
                 raise SpecificationError(
                     f"{blueprint}: {use.identifier} is owned by {pattern.owner!r}, not this "
                     f"Blueprint. Either its `| Owner |` row names the owning Blueprint's file "

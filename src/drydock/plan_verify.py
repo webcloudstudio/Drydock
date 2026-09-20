@@ -40,6 +40,7 @@ from drydock.acceptance import (
 from drydock.database_contract import (
     database_contract_defects,
     declared_owners,
+    legal_owner,
     sqlite_schema_tables,
     table_coverage_defects,
 )
@@ -152,9 +153,12 @@ def persistence_defects(blueprint_dir: Path) -> list[Defect]:
             "DATABASE.md",
             "",
             "database-owner-unknown",
-            f"`| Owner |` names {owner!r}, which is not a Blueprint in this plan",
+            f"`| Owner |` names {owner!r}, which is not a Feature in this plan; a pattern no "
+            "single Feature owns names `DATABASE.md`",
         )
-        for owner in sorted(set(declared_owners(text)) - blueprints)
+        for owner in sorted(
+            owner for owner in set(declared_owners(text)) if not legal_owner(owner, blueprints)
+        )
     )
     try:
         uncited, undeclared = table_coverage_defects(text)

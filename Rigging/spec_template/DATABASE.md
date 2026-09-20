@@ -29,10 +29,14 @@
 <!-- A citation is one bullet on one line: -->
 <!--   - `FEATURE-ORDER-001` — write: create an order - supplies: `customer_id` - returns: `id` -->
 <!-- and a Blueprint that reaches no repository writes `- None — <who owns persistence>.` -->
-<!-- Owner is the file name of the Blueprint that reaches the pattern — FEATURE-Example.md — -->
-<!-- never a service or module name. It is compared to the emitted Blueprints, so an Owner -->
-<!-- naming no Blueprint fails the plan, as does an Owner that cites nothing. Only a -->
-<!-- Blueprint named as Owner nowhere may write `- None`. -->
+<!-- Owner is the file name of the Feature that reaches the pattern — FEATURE-Example.md — -->
+<!-- never a Screen, a service, or a module name: only a Feature owns data. It is compared to -->
+<!-- the emitted Features, so an Owner naming none of them fails the plan, as does an Owner -->
+<!-- that cites nothing. Only a Blueprint named as Owner nowhere may write `- None`. -->
+<!-- A pattern no single Feature owns — an activity log several Features write and several -->
+<!-- Screens read — names DATABASE.md as its Owner. Any Blueprint may cite a shared pattern, -->
+<!-- none is required to, and DATABASE.md cites nothing itself. Never invent a Blueprint file -->
+<!-- name for a surface that has no Feature. -->
 <!-- Plan appends new patterns as it authors Blueprints; it never rewrites held ones. -->
 
 <!-- Repository operation names one declared table and one verb as `<table>.<verb>`, lowercase: -->

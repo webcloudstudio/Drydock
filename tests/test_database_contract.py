@@ -131,6 +131,63 @@ def test_interface_validates_owner_access_and_fields():
     validate_database_interfaces(contract, {"FEATURE-Order.md": use})
 
 
+def test_a_shared_pattern_may_be_cited_by_any_blueprint():
+    """A log is owned by no single Feature: every Feature appends to it. `DATABASE.md` as Owner
+    says exactly that, and a citation of one is legal from anywhere."""
+    shared = _DATABASE.replace("| Owner | FEATURE-Order.md |", "| Owner | DATABASE.md |", 1)
+    contract = parse_database_contract(shared)
+
+    validate_database_interfaces(
+        contract,
+        {
+            "FEATURE-Shipping.md": parse_database_interface(
+                "## Database Interface\n\n- `FEATURE-ORDER-001` — write: create an order "
+                "- supplies: `customer_id`, `items` - returns: `id`\n",
+                source="FEATURE-Shipping.md",
+            )
+        },
+    )
+
+
+def test_a_feature_owned_pattern_is_still_cited_only_by_its_owner():
+    """The boundary shared ownership must not dissolve."""
+    contract = parse_database_contract(_DATABASE)
+
+    with pytest.raises(SpecificationError, match="is owned by 'FEATURE-Order.md'"):
+        validate_database_interfaces(
+            contract,
+            {"FEATURE-Shipping.md": parse_database_interface(_INTERFACE)},
+        )
+
+
+def test_only_a_feature_in_the_plan_or_the_declaration_may_own_a_pattern():
+    from drydock.database_contract import legal_owner
+
+    blueprints = {"FEATURE-Order.md", "SCREEN-Orders.md"}
+
+    assert legal_owner("FEATURE-Order.md", blueprints)
+    assert legal_owner("DATABASE.md", blueprints)
+    # A Screen renders data through a Feature's service; it never holds a repository.
+    assert not legal_owner("SCREEN-Orders.md", blueprints)
+    assert not legal_owner("order_service", blueprints)
+    assert not legal_owner("FEATURE-Absent.md", blueprints)
+
+
+def test_an_owner_that_owns_no_data_in_the_plan_is_rewritten_to_the_declaration():
+    """Deterministic, because nothing is left to decide: no Feature here claims the pattern."""
+    from drydock.database_contract import declared_owners, rewrite_illegal_owners
+
+    text = _DATABASE.replace("| Owner | FEATURE-Order.md |", "| Owner | order_service |", 1)
+
+    rewritten, changed = rewrite_illegal_owners(text, {"FEATURE-Order.md"})
+
+    assert changed == ("order_service",)
+    assert declared_owners(rewritten) == ("DATABASE.md", "FEATURE-Order.md")
+    # The table around the cell is untouched.
+    assert rewritten.count("| Access | write |") == text.count("| Access | write |")
+    assert rewrite_illegal_owners(rewritten, {"FEATURE-Order.md"}) == (rewritten, ())
+
+
 def test_interface_cannot_escape_repository_contract():
     contract = parse_database_contract(_DATABASE)
     interface = _INTERFACE.replace("`id`, `status`", "`id`, `table_name`")

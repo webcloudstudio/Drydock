@@ -578,6 +578,21 @@ _UNREADABLE_DATABASE = """# DATABASE: Demo
 """
 
 
+def test_verification_reads_the_same_ownership_rule_as_plan(tmp_path):
+    """A Screen cannot own a table; `DATABASE.md` can, and means shared."""
+    screen_owned = _UNREADABLE_DATABASE.replace(
+        "| Owner | FEATURE-INVENTED.md |", "| Owner | SCREEN-X.md |"
+    )
+    result = verify("Demo", _target(tmp_path / "screen", DATABASE=screen_owned, SCREEN_X=""))
+    assert "database-owner-unknown" in {defect.kind for defect in result.defects}
+
+    shared = _UNREADABLE_DATABASE.replace(
+        "| Owner | FEATURE-INVENTED.md |", "| Owner | DATABASE.md |"
+    )
+    result = verify("Demo", _target(tmp_path / "shared", DATABASE=shared))
+    assert "database-owner-unknown" not in {defect.kind for defect in result.defects}
+
+
 def test_a_persistence_declaration_build_cannot_read_fails_verification(tmp_path):
     """Build generates the persistence layer from DATABASE.md, so a declaration it cannot parse
     is a plan that cannot be built — Marina_Luna reported PLAN CREATED over thirteen of them."""

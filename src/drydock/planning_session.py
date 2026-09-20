@@ -67,13 +67,16 @@ from drydock.build_plan import (
 from drydock.compass_sources import normative_compass_sections
 from drydock.config import build_dir_for, get_llm_provider
 from drydock.database_contract import (
+    SHARED_OWNER,
     DatabaseUse,
     database_contract_defects,
     declared_owners,
+    legal_owner,
     parse_database_contract,
     parse_database_interface,
     render_database_interface,
     replace_database_interface,
+    rewrite_illegal_owners,
     table_coverage_defects,
     validate_database_interfaces,
     validate_sqlite_schema,
@@ -2390,10 +2393,9 @@ def _database_interface_defects(
     # it. Marina_Luna declared five owners as service names and spent its whole repair budget on
     # the first Blueprint to notice. Read before the contract is parsed: a repair that invented
     # both an owner and an incomplete pattern must hear about both in the same pass.
+    blueprints = {name for name in blocks if name not in _RESERVED_BLOCKS}
     unowned = sorted({
-        owner
-        for owner in declared_owners(database_text)
-        if owner not in blocks or owner in _RESERVED_BLOCKS
+        owner for owner in declared_owners(database_text) if not legal_owner(owner, blueprints)
     })
     defects.extend(
         (
@@ -2402,9 +2404,11 @@ def _database_interface_defects(
                 check_id="## Access Patterns",
                 source=DATABASE_BLOCK,
                 reason=(
-                    f"`| Owner |` names {owner!r}, which is not a Blueprint in this plan. Every "
-                    "access pattern is owned by the Blueprint that reaches it, named by its file "
-                    "name — `FEATURE-ORDER.md`, not a service or module name."
+                    f"`| Owner |` names {owner!r}, which is not a Feature in this plan. An "
+                    "access pattern is owned by the Feature that reaches it, named by its file "
+                    "name — `FEATURE-ORDER.md`, never a Screen, a service, or a module. A "
+                    f"pattern no single Feature owns names `{SHARED_OWNER}` and may be cited by "
+                    "any Blueprint."
                 ),
             ),
         )
@@ -3002,6 +3006,31 @@ def _normalize_database_access_values(blocks: dict[str, str]) -> tuple[str, ...]
     return tuple(normalized)
 
 
+def _normalize_database_owners(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Point an `| Owner |` cell that names no Feature in this plan at ``DATABASE.md``.
+
+    There is nothing here for a model to decide: the cell names something that does not own data
+    in this plan, and the one checkable fact left is that no Feature claims the pattern — which
+    is what ``DATABASE.md`` as owner states. A log is the honest case (every Feature appends,
+    no Feature owns it); a Screen or a service name in the cell is the sloppy one, and both
+    resolve the same way. Run before ``_normalize_database_interfaces``, whose rewrite is a
+    function of these owners.
+    """
+    database_text = blocks.get(DATABASE_BLOCK)
+    if not database_text:
+        return ()
+    blueprints = {name for name in blocks if name not in _RESERVED_BLOCKS}
+    rewritten, changed = rewrite_illegal_owners(database_text, blueprints)
+    if not changed:
+        return ()
+    blocks[DATABASE_BLOCK] = rewritten
+    return tuple(
+        f"{DATABASE_BLOCK}: `| Owner |` named {owner!r}, which owns no data in this plan; "
+        f"the pattern is now owned by {SHARED_OWNER} and may be cited by any Blueprint"
+        for owner in changed
+    )
+
+
 def _normalize_database_interfaces(blocks: dict[str, str]) -> tuple[str, ...]:
     """Rewrite each invalid ``## Database Interface`` section from ``DATABASE.md``.
 
@@ -3027,10 +3056,8 @@ def _normalize_database_interfaces(blocks: dict[str, str]) -> tuple[str, ...]:
         contract = parse_database_contract(database_text)
     except SpecificationError:
         return ()
-    unknown_owner = any(
-        pattern.owner not in blocks or pattern.owner in _RESERVED_BLOCKS
-        for pattern in contract.patterns
-    )
+    blueprints = {name for name in blocks if name not in _RESERVED_BLOCKS}
+    unknown_owner = any(not legal_owner(pattern.owner, blueprints) for pattern in contract.patterns)
     owners = {pattern.owner for pattern in contract.patterns}
     normalized: list[str] = []
     for name in sorted(blocks):
@@ -3582,6 +3609,7 @@ def _validate_plan_output(
         _normalize_unterminated_acceptance_blocks(blocks)
         + _normalize_fused_acceptance_boundaries(blocks)
         + _normalize_database_access_values(blocks)
+        + _normalize_database_owners(blocks)
         + _normalize_database_interfaces(blocks)
     )
     standalone_import_warnings = _normalize_standalone_imports(blocks)
@@ -4389,13 +4417,16 @@ def _artifact_repair_assembly(
         owners = sorted(
             name
             for name in blocks
-            if name.endswith(".md") and name != DATABASE_BLOCK and name not in _RESERVED_BLOCKS
+            if name.startswith("FEATURE-") and name.endswith(".md") and name not in _RESERVED_BLOCKS
         )
         if owners:
             lines.extend([
                 "",
-                "Every `| Owner |` names one of these Blueprints, exactly as written. There are "
-                "no others, and a name not on this list is a defect:",
+                "Every `| Owner |` names one of these Features, exactly as written, or "
+                f"`{SHARED_OWNER}` for a pattern no single Feature owns — a log or other surface "
+                "several Features reach, which any Blueprint may then cite. There are no other "
+                "legal values: a Screen, a service, a module, and a file not on this list are "
+                "each a defect.",
                 "",
                 *(f"- {name}" for name in owners),
             ])

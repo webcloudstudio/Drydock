@@ -8,6 +8,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-09-19: Table ownership has one rule: only a Feature owns an access pattern, and a pattern no
+  single Feature owns names `DATABASE.md` as its `| Owner |`. A Screen renders data through a
+  Feature's service and may no longer be named an owner. A `DATABASE.md`-owned pattern is shared —
+  any Blueprint may cite it, none is required to, and the declaration cites nothing itself. This is
+  the shape an activity log takes: in Marina_Luna six Features append to `activity_events` and two
+  Screens read it, so every candidate owner was a lie and a repair pass invented a Blueprint file
+  name for the gap. `drydock plan` now rewrites an `| Owner |` that names no Feature in the plan to
+  `DATABASE.md` deterministically, with a warning and no LLM pass, and `drydock plan verify` reads
+  the same rule. `prompts/BLUEPRINTS_CONTRACT.md` and the `DATABASE.md` template state it.
+
 ### Added
 
 - 2026-09-19: `drydock build` now generates the Target's persistence package at the DATABASE step.
