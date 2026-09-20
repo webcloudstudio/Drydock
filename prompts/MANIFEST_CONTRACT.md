@@ -171,23 +171,24 @@ ui. Commander ordering direction is input the model weighs, not an override appl
 `Phase` describes when a file is built, not the file, so it lives in the Manifest and never in a
 Blueprint header.
 
-### Layer
+### Tier
 
 The chain that repeats inside each phase is ordered, and each Rigging file declares its position
-with a `**Layer:**` header:
+with a `**Tier:**` header. A tier is a rank inside a phase — never a phase, never a block.
 
-| Layer | Holds | Rule |
-|---|---|---|
-| `language` | `python.md`, `go.md`, `typescript.md` | Built first. A web server, a database, or a CLI is built *into* the tree, the environment, and the test runner this lays down. |
-| `platform` | `fastapi.md`, `flask.md`, `django.md`, `sqlite.md`, `postgres.md`, `cli.md` | One file per foundation kind. Depends on the language. |
-| `interface` | `bootstrap5.md` | The shared UI shell. After the platform, before any screen; unordered against services. |
-| `screen` | `ui-flask.bootstrap-client.md` | Screens, built on a shell that already exists. |
+| Tier | Name | Builds | Holds |
+|---|---|---|---|
+| 1 | `language` | The tree, the environment, the test runner everything else is built into. | `python.md`, `go.md`, `typescript.md` |
+| 2 | `platform` | The one web server, the one database, the one CLI, built into that tree. | `fastapi.md`, `flask.md`, `django.md`, `sqlite.md`, `postgres.md`, `cli.md` |
+| 3 | `branding` | The palette, the typography, the voice. | `BRANDING_MAIN.md`, `BRANDING_WEBSITE.md`, `BRANDING_DOCUMENTATION.md` |
+| 4 | `interface` | The shared UI shell, built with that palette. | `bootstrap5.md` |
+| 5 | `screen` | Screens, built on that shell. | `ui-flask.bootstrap-client.md` |
 
-A file with no `**Layer:**` makes no ordering claim. Services are deliberately unranked: a service
-may be built before or after the interface layer.
+A file with no `**Tier:**` makes no ordering claim. Services are deliberately untiered: a service
+may be built either side of the interface tier.
 
-A layer is a rank inside a phase, never a phase. Each foundation is its own story; the block
-packer may put two in one block or split them, and either is correct.
+Each foundation is its own story. The block packer may put two in one block or split them across
+blocks, and either is correct.
 
 ### Blocks
 

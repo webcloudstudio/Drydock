@@ -415,11 +415,11 @@ Declare, per story:
 - `type` — `foundational`, `service`, or `feature`, per `MANIFEST_CONTRACT.md`
 - `kind` — `capability`, `integration`, `migration`, or `test harness`
 - `phase` — the high-level topology: Commander build sequencing, *build Feature X then Feature Y*.
-  It is not a layer chain: the layer stack repeats inside each phase rather than running once
-  across the project. Weigh Commander ordering direction as input when assigning it.
-- Inside a phase, `depends` carries the layer chain each story's `stack:` files declare —
-  `language`, then `platform`, then `interface`, then `screen`, per `MANIFEST_CONTRACT.md`. A
-  story building on `bootstrap5.md` depends on the language and platform foundations and precedes
+  It is not the tier chain: the tiers repeat inside each phase rather than running once across
+  the project. Weigh Commander ordering direction as input when assigning it.
+- Inside a phase, `depends` carries the tier chain each story's `stack:` files declare —
+  `language`, `platform`, `branding`, `interface`, `screen`, per `MANIFEST_CONTRACT.md`. A story
+  building on `bootstrap5.md` depends on the language, platform, and branding work and precedes
   every screen story; it carries no ordering claim against a service.
 - `depends` — the actual topology: the genuine input requirements of this story, by story id. A
   `feature` story depends on its member stories.

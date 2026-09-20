@@ -2675,9 +2675,8 @@ def _foundation_fieldset(group: dict[str, Any]) -> str:
     return (
         f"<fieldset class='ts-foundation' data-kind='{html.escape(kind)}'>"
         f"<legend>{html.escape(str(group['label']))} "
-        f"<span class='ts-layer'>{html.escape(str(group['layer']))}</span></legend>"
-        + "".join(options)
-        + "</fieldset>"
+        f"<span class='ts-tier'>Tier {group['tier_number']} · "
+        f"{html.escape(str(group['tier']))}</span></legend>" + "".join(options) + "</fieldset>"
     )
 
 
@@ -2690,6 +2689,37 @@ def _tech_row(technology: str = "", rigging: str | None = None, notes: str = "")
         "<td><button type='button' class='ts-remove' onclick='tsRemoveRow(this)' "
         "title='Remove this technology'>✕</button></td>"
         "</tr>"
+    )
+
+
+#: What each tier builds, in the order it is built. Tiers 1 and 2 are the exclusive foundation
+#: choices above; the rest are chosen in the table below, and Drydock orders them from the
+#: ``**Tier:**`` header each Rigging file carries.
+_TIER_SUMMARY = (
+    ("language", "the tree, the environment, the test runner"),
+    ("platform", "the one web server, the one database, the one CLI"),
+    ("branding", "the palette, the typography, the voice"),
+    ("interface", "the shared UI shell, built with that palette"),
+    ("screen", "screens, built on that shell"),
+)
+
+
+def _tier_legend() -> str:
+    """The whole build chain, so the page shows where a non-foundation file lands.
+
+    bootstrap5.md and BRANDING_MAIN.md are not exclusive choices and so have no radio group, but
+    they do carry a tier. Without this the page shows two of five tiers and implies there are two.
+    """
+    rows = "".join(
+        f"<li><span class='ts-tier'>Tier {number} · {html.escape(name)}</span> "
+        f"{html.escape(what)}</li>"
+        for number, (name, what) in enumerate(_TIER_SUMMARY, start=1)
+    )
+    return (
+        "<details class='ts-tiers'><summary>Build order — five tiers</summary>"
+        f"<ol class='ts-tier-list'>{rows}</ol>"
+        "<p>A service declares no tier: it may be built either side of the interface tier. "
+        "Tiers repeat inside every phase; a tier is not a phase and not a block.</p></details>"
     )
 
 
@@ -2749,9 +2779,10 @@ def render_technology_stack(item: dict[str, Any]) -> str:
         "and every other foundation is built into it. Each choice publishes the package name, "
         "entry point, and test fixture that every acceptance criterion is written against.</p>"
         + foundations
+        + _tier_legend()
         + "<h2>Other technologies</h2>"
         + "<table class='ts-table'><thead><tr>"
-        + "<th>Technology</th><th>Rigging</th><th>Notes</th><th></th>"
+        + "<th>Technology Label</th><th>Rigging File</th><th>Notes</th><th></th>"
         + f"</tr></thead><tbody>{rows}</tbody></table>"
         + "<button type='button' class='ts-add' onclick='tsAddRow(this)'>+ Add technology</button>"
         + "<span class='q-save-status' aria-live='polite'></span></div>"
@@ -3922,12 +3953,16 @@ _STYLE = """
   .ts-foundation { border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px 10px;
                    display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
   .ts-foundation legend { font-size:13px; font-weight:600; color:#334155; padding:0 4px; }
-  .ts-layer { font-weight:400; font-size:11px; color:#94a3b8; text-transform:uppercase;
+  .ts-tier { font-weight:400; font-size:11px; color:#94a3b8; text-transform:uppercase;
               letter-spacing:.04em; margin-left:6px; }
   .ts-choice { display:inline-flex; align-items:center; gap:5px; font-size:13px;
                color:#1e293b; cursor:pointer; }
   .ts-choice input { margin:0; }
   .ts-choice-none span { color:#94a3b8; }
+  .ts-tiers { margin:0 0 18px; font-size:13px; color:#475569; }
+  .ts-tiers summary { cursor:pointer; color:#334155; font-weight:600; }
+  .ts-tier-list { margin:8px 0 0; padding-left:20px; }
+  .ts-tier-list li { margin:2px 0; }
   .ts-table { width:100%; border-collapse:collapse; margin:12px 0; }
   .ts-table th { text-align:left; font-size:13px; color:#475569; padding:6px 8px;
     border-bottom:1px solid #e2e8f0; }

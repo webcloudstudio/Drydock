@@ -1,7 +1,7 @@
 # FastAPI Best Practices
 
 **Version:** 20260521 V1
-**Layer:** platform
+**Tier:** platform
 **Category:** Web Server
 **Foundation:** web-server
 **Description:** FastAPI web framework patterns: app factory, routers, Pydantic models, dependency injection, templates, and testing

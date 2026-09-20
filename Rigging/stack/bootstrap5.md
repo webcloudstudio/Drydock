@@ -1,7 +1,7 @@
 # Bootstrap 5 Best Practices
 
 **Version:** 20260320 V1  
-**Layer:** interface
+**Tier:** interface
 **Category:** Frontend
 **Description:** Bootstrap 5 frontend patterns: layout, components, and form conventions
 

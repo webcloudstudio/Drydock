@@ -14,12 +14,13 @@ These technology files are **shared across all projects** in this specification 
 
 Every file that defines a **foundation** declares it in its header: `**Foundation:** <kind>` plus
 a `## Foundation Contract` section publishing the package, entry, and fixture the rest of the
-Target writes against. A Target selects exactly one file per kind. `**Layer:**` states where that
-work sits in the chain that repeats inside each phase — `language`, then `platform`, then
-`interface`, then `screen` — so a language is built before the platform built into it, and an
-interface before any screen. A file with no `**Layer:**` makes no ordering claim.
+Target writes against. A Target selects exactly one file per kind. `**Tier:**` states where that
+work sits in the chain that repeats inside each phase: 1 `language`, 2 `platform`, 3 `branding`,
+4 `interface`, 5 `screen`. A language is built before the platform built into it, the palette
+before the shell that shows it, and the shell before any screen. A file with no `**Tier:**` makes
+no ordering claim — services are untiered so they may land either side of the interface tier.
 
-| File | Maps to STACK.yaml | Foundation | Layer | Covers |
+| File | Maps to STACK.yaml | Foundation | Tier | Covers |
 |------|-------------------|------------|-------|--------|
 | `common.md` | *(always)* | — | — | Directory layout, bin/ scripts, Links.md, CLAUDE.md conventions, git hygiene, dev workflow |
 | `env_variables_and_secrets.md` | *(always)* | — | — | Secret hygiene, `.env`/`.env.example` discipline, early env validation, when not to use env vars |
@@ -71,8 +72,8 @@ interface before any screen. A file with no `**Layer:**` makes no ordering claim
 - **postgres.md** — Production PostgreSQL with connection pooling
 
 ### Frontend
-- **bootstrap5.md** — CSS framework with dark theme variant (layer `interface`: after the platform, before any screen)
-- **ui-flask.bootstrap-client.md** — Screen build reference for an already-running Flask/Bootstrap server (layer `screen`)
+- **bootstrap5.md** — CSS framework with dark theme variant (tier 4 `interface`: after the branding tier, before any screen)
+- **ui-flask.bootstrap-client.md** — Screen build reference for an already-running Flask/Bootstrap server (tier 5 `screen`)
 
 ### AWS Cloud Services
 - **aws-lambda.md** — Serverless compute

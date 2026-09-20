@@ -2429,3 +2429,24 @@ def test_approve_rejects_an_item_that_is_not_approvable(tmp_path, monkeypatch):
     with pytest.raises(quarterdeck.HTTPException) as exc:
         quarterdeck.api_approve_item("compass_edit", None)
     assert exc.value.status_code == 400
+
+
+def test_technology_stack_labels_the_columns_and_shows_the_tier_chain(tmp_path, monkeypatch):
+    """Tiers 3-5 hold no exclusive choice and so have no radio group. Without the legend the
+    page shows two of five tiers and implies there are two."""
+    quarterdeck = _load_quarterdeck()
+
+    def _missing(_path):
+        raise quarterdeck.HTTPException(status_code=404, detail="Missing file")
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", _missing)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+
+    assert "<th>Technology Label</th><th>Rigging File</th>" in rendered
+    assert "Tier 1 · language" in rendered
+    assert "Tier 2 · platform" in rendered
+    for number, name in enumerate(
+        ("language", "platform", "branding", "interface", "screen"), start=1
+    ):
+        assert f"Tier {number} · {name}" in rendered

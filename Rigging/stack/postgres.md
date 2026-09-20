@@ -1,7 +1,7 @@
 # PostgreSQL
 
 **Version:** 20260919 V3
-**Layer:** platform
+**Tier:** platform
 **Category:** Persistence
 **Foundation:** database
 **Description:** PostgreSQL as a Drydock store: what it enforces, how it differs from SQLite, and how a Target reaches it.

@@ -5,17 +5,19 @@ from __future__ import annotations
 import pytest
 
 from drydock.rigging_contract import (
+    TIER_ORDER,
     contract_section,
     declared_kind,
-    declared_layer,
+    declared_tier,
     exclusivity_conflicts,
     foundation_contracts,
     foundation_kinds,
     import_defects,
-    layer_rank,
     order_rigging,
     parse_contract,
     published_packages,
+    tier_number,
+    tier_rank,
 )
 
 _FASTAPI = """# FastAPI Best Practices
@@ -23,7 +25,7 @@ _FASTAPI = """# FastAPI Best Practices
 **Version:** 20260521 V1
 **Category:** Web Server
 **Foundation:** web-server
-**Layer:** platform
+**Tier:** platform
 **Description:** FastAPI patterns.
 
 ---
@@ -66,7 +68,7 @@ _PYTHON = """# Python Best Practices
 
 **Version:** 20260920 V4
 **Foundation:** language
-**Layer:** language
+**Tier:** language
 **Category:** Language
 **Description:** Python conventions.
 
@@ -95,7 +97,7 @@ def test_a_foundation_file_publishes_its_shape():
     assert contract.entry_callable == "create_app"
     assert contract.fixture == "web_client"
     assert contract.fixture_source == "conftest.py"
-    assert contract.layer == "platform"
+    assert contract.tier == "platform"
     assert contract.shape == "api"
 
 
@@ -131,7 +133,7 @@ def test_a_language_publishes_the_environment_shape_not_an_api():
 
     assert contract is not None
     assert contract.kind == "language"
-    assert contract.layer == "language"
+    assert contract.tier == "language"
     assert contract.shape == "environment"
     assert contract.source_root == "./"
     assert contract.test_command == "pytest -q"
@@ -145,16 +147,16 @@ def test_a_contract_completing_neither_shape_is_an_authoring_error():
         parse_contract(text, filename="python.md")
 
 
-def test_a_foundation_without_a_layer_cannot_be_ordered():
-    text = _FASTAPI.replace("**Layer:** platform\n", "")
+def test_a_foundation_without_a_tier_cannot_be_ordered():
+    text = _FASTAPI.replace("**Tier:** platform\n", "")
 
-    with pytest.raises(ValueError, match="no \\*\\*Layer:\\*\\*"):
+    with pytest.raises(ValueError, match="no \\*\\*Tier:\\*\\*"):
         parse_contract(text, filename="fastapi.md")
 
 
-def test_declared_layer_is_read_from_the_header_block():
-    assert declared_layer(_FASTAPI) == "platform"
-    assert declared_layer(_ADDITIVE) is None
+def test_declared_tier_is_read_from_the_header_block():
+    assert declared_tier(_FASTAPI) == "platform"
+    assert declared_tier(_ADDITIVE) is None
 
 
 def test_two_files_of_one_kind_conflict():
@@ -185,7 +187,7 @@ def test_every_shipped_foundation_file_publishes_a_complete_contract():
     } <= set(contracts)
     for name, contract in contracts.items():
         assert contract.kind, name
-        assert contract.layer, name
+        assert contract.tier, name
         assert contract.section.startswith("## Foundation Contract"), name
         if contract.shape == "api":
             assert contract.package and contract.entry and contract.fixture, name
@@ -206,26 +208,31 @@ def test_shipped_kinds_name_one_package_each():
     assert by_kind["language"] == {""}  # a language publishes no importable package
 
 
-# ── Layers and build order ──────────────────────────────────────────────────────
+# ── Tiers and build order ───────────────────────────────────────────────────────
 
 
-def test_the_language_layer_precedes_the_platform_built_into_it():
-    assert layer_rank("language") < layer_rank("platform") < layer_rank("interface")
-    assert layer_rank("interface") < layer_rank("screen")
+def test_the_five_tiers_are_ordered_as_the_work_is_done():
+    assert [tier_rank(name) for name in TIER_ORDER] == [0, 1, 2, 3, 4]
+    assert TIER_ORDER == ("language", "platform", "branding", "interface", "screen")
+    assert [tier_number(name) for name in TIER_ORDER] == [1, 2, 3, 4, 5]
+    assert tier_number("service") == 0
 
 
-def test_an_unranked_layer_sorts_after_every_ranked_one():
+def test_an_unranked_tier_sorts_after_every_ranked_one():
     """A file making no ordering claim must never be read as claiming to come first."""
-    assert layer_rank("") > layer_rank("screen")
-    assert layer_rank("service") > layer_rank("screen")
+    assert tier_rank("") > tier_rank("screen")
+    assert tier_rank("service") > tier_rank("screen")
 
 
-def test_shipped_rigging_orders_language_then_platform_then_interface():
-    """bootstrap5.md is the question this answers: not a foundation, but hinted after the
-    platform and before any screen."""
+def test_shipped_rigging_orders_the_whole_chain():
+    """bootstrap5.md and BRANDING_MAIN.md are the question this answers: neither is a foundation,
+    but both carry an ordering claim — the palette before the shell, the shell before a screen.
+    uv_ruff.md declares no tier and so claims nothing."""
     ordered = order_rigging([
         "ui-flask.bootstrap-client.md",
+        "uv_ruff.md",
         "bootstrap5.md",
+        "BRANDING_MAIN.md",
         "fastapi.md",
         "python.md",
     ])
@@ -233,8 +240,10 @@ def test_shipped_rigging_orders_language_then_platform_then_interface():
     assert ordered == [
         "python.md",
         "fastapi.md",
+        "BRANDING_MAIN.md",
         "bootstrap5.md",
         "ui-flask.bootstrap-client.md",
+        "uv_ruff.md",
     ]
 
 

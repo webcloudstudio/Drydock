@@ -2,7 +2,7 @@
 
 **Version:** 20260716 V2  
 **Foundation:** language
-**Layer:** language
+**Tier:** language
 **Category:** Language
 **Description:** TypeScript language conventions and patterns for specification-driven projects
 

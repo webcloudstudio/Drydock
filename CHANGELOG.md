@@ -16,12 +16,14 @@ command surface and Typed Specification contract are unstable and may change bet
   package and a fixture. A Target has exactly one language, refused in the same place two web
   servers are. A web server, a database or a CLI is built *into* the tree, the environment and the
   test runner the language foundation lays down; `fastapi.md` was never standalone.
-- 2026-09-20: **The layer chain is declared and ordered.** Every Rigging file may carry a
-  `**Layer:**` header: `language`, then `platform`, then `interface`, then `screen`. A layer is a
-  rank *inside* a phase, never a phase — the chain repeats in every phase, exactly as
-  `MANIFEST_CONTRACT.md` already described it. `bootstrap5.md` declares `interface`, which is the
-  ordering hint it needed: after the platform, before any screen, and carrying no claim at all
-  against a service. A file with no `**Layer:**` makes no ordering claim.
+- 2026-09-20: **The build chain is declared and ordered as five tiers.** Every Rigging file may
+  carry a `**Tier:**` header: 1 `language`, 2 `platform`, 3 `branding`, 4 `interface`,
+  5 `screen`. A tier is a rank *inside* a phase — never a phase, never a block — and the chain
+  repeats in every phase, exactly as `MANIFEST_CONTRACT.md` already described it. `bootstrap5.md`
+  declares `interface` and `BRANDING_MAIN.md` declares `branding`, which is the ordering these
+  needed: the palette before the shell that shows it, the shell before any screen. A file with no
+  `**Tier:**` makes no ordering claim, which is how a service stays free to land either side of
+  the interface tier.
 
 - 2026-09-20: Rigging files publish a **foundation contract**. A file that defines a foundation
   declares its kind in the header (`**Foundation:** web-server`) and its shape in a
@@ -50,11 +52,14 @@ command surface and Typed Specification contract are unstable and may change bet
   before a build call is paid for. Nothing else is judged: whether an arbitrary third-party import
   resolves is a fact about the build environment, not the Blueprint.
 - 2026-09-20: The QuarterDeck **Technology Stack** page selects foundations with one radio group
-  per kind, in build order — Language, Web Server, Database, CLI — instead of a free-text row and
+  per kind, captioned with its tier and in build order — Tier 1 Language, then Tier 2 Web Server,
+  Database and CLI — instead of a free-text row and
   a dropdown. The underlying fact is a choice, not a set, and a checkbox list invited the second
   selection `plan verify` then refuses. A Target with no rows starts on `python.md` /
   `fastapi.md` / `sqlite.md`; a Target that has rows and names no web server has decided it has
-  none, and is left alone. Non-foundation technologies keep the free-text table.
+  none, and is left alone. Non-foundation technologies keep the free-text table, whose headings
+  now read **Technology Label** and **Rigging File**, and a **Build order — five tiers** legend
+  shows where a file with no exclusive choice — `bootstrap5.md`, `BRANDING_MAIN.md` — lands.
 - 2026-09-20: `django.md` rewritten against the published contract. The Django project package
   *is* `app_server` — `app_server/settings.py`, `app_server/urls.py`, `app_server/wsgi.py` — and
   `create_app() -> WSGIHandler` wraps `get_wsgi_application()`, so a criterion written against

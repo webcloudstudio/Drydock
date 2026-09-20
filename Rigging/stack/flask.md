@@ -1,7 +1,7 @@
 # Flask Best Practices
 
 **Version:** 20260410 V2  
-**Layer:** platform
+**Tier:** platform
 **Category:** Web Server
 **Foundation:** web-server
 **Description:** Flask web framework patterns: app package layout, routes, blueprints, templates, and error handling

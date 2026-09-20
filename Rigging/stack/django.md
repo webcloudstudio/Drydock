@@ -1,7 +1,7 @@
 # Django Best Practices
 
 **Version:** 20260920 V2  
-**Layer:** platform
+**Tier:** platform
 **Category:** Web Server
 **Foundation:** web-server
 **Description:** Django web framework patterns: models, views, URLs, and admin

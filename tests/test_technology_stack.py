@@ -309,12 +309,13 @@ def test_foundation_groups_read_in_build_order():
     groups = technology_stack.foundation_groups([])
 
     assert [group["label"] for group in groups] == ["Language", "Web Server", "Database", "CLI"]
-    assert [group["layer"] for group in groups] == [
+    assert [group["tier"] for group in groups] == [
         "language",
         "platform",
         "platform",
         "platform",
     ]
+    assert [group["tier_number"] for group in groups] == [1, 2, 2, 2]
 
 
 def test_a_target_nobody_has_decided_for_gets_the_default_stack():

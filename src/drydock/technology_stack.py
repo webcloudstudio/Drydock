@@ -38,17 +38,17 @@ _APPROVED_RE = re.compile(r"^\*\*Approved:\*\*\s*(.+?)\s*$", re.MULTILINE)
 _DEFAULT_CATEGORY = "Technologies"
 
 #: Selector order, which is build order: the categories that hold foundations come first, in
-#: layer order (``rigging_contract.LAYER_ORDER``), then the additive ones. ``Frontend`` exists
+#: tier order (``rigging_contract.TIER_ORDER``), then the additive ones. ``Frontend`` exists
 #: because ``bootstrap5.md`` is not a web server — it was filed under ``Web Server`` and shown to
 #: the Commander as one, next to the three files that genuinely are.
 _CATEGORY_ORDER = [
     "Language",
     "Web Server",
     "Persistence",
+    "Branding",
     "Frontend",
     "AWS",
     "Technologies",
-    "Branding",
 ]
 _CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
@@ -531,38 +531,39 @@ def foundation_groups(entries: list[StackEntry] | None = None) -> list[dict]:
     database. Presenting them as checkboxes invites the selection that ``foundation_defects``
     then refuses, which is the wrong end of the process to find out.
 
-    Order is layer order — language first, then the platform built into it — so the page reads in
+    Order is tier order — language first, then the platform built into it — so the page reads in
     the order the work is done.
 
     ``selected`` is what the stack currently names. A stack with no rows at all is a Target
     nobody has decided for yet and takes :data:`DEFAULT_FOUNDATIONS`; a stack that has rows and
     names no web server has decided it has none, and is left alone.
     """
-    from drydock.rigging_contract import foundation_kinds, layer_rank
+    from drydock.rigging_contract import foundation_kinds, tier_number, tier_rank
 
     rows = list(entries or [])
     chosen = split_foundations(rows)[0] if rows else dict(DEFAULT_FOUNDATIONS)
     category = dict(rigging_catalog())
 
     def rank(group: tuple[str, str, list[str]]) -> tuple[int, int, str]:
-        layer, kind, options = group
-        # Two kinds in one layer carry no ordering claim against each other, so the tie-break is
+        tier, kind, options = group
+        # Two kinds in one tier carry no ordering claim against each other, so the tie-break is
         # the selector's own category order rather than an invented one.
         first = category.get(options[0], _DEFAULT_CATEGORY) if options else _DEFAULT_CATEGORY
         position = (
             _CATEGORY_ORDER.index(first) if first in _CATEGORY_ORDER else len(_CATEGORY_ORDER)
         )
-        return (layer_rank(layer), position, kind)
+        return (tier_rank(tier), position, kind)
 
     return [
         {
             "kind": kind,
-            "layer": layer,
+            "tier": tier,
+            "tier_number": tier_number(tier),
             "label": _KIND_LABELS.get(kind, kind.replace("-", " ").title()),
             "options": options,
             "selected": chosen.get(kind, ""),
         }
-        for layer, kind, options in sorted(foundation_kinds(), key=rank)
+        for tier, kind, options in sorted(foundation_kinds(), key=rank)
     ]
 
 

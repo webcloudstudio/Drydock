@@ -2,7 +2,7 @@
 
 **Version:** 20260809 V2  
 **Foundation:** language
-**Layer:** language
+**Tier:** language
 **Category:** Language
 **Description:** Go language conventions and patterns for specification-driven projects
 
