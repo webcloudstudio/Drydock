@@ -1,6 +1,7 @@
 # Command-Line Application
 
 **Version:** 20260920 V1
+**Layer:** platform
 **Category:** Technologies
 **Foundation:** cli
 **Description:** Command-line application structure: entry point, argument parsing, exit codes, cross-platform launchers, and testing without spawning a process.

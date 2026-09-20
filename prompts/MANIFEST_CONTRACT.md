@@ -171,6 +171,24 @@ ui. Commander ordering direction is input the model weighs, not an override appl
 `Phase` describes when a file is built, not the file, so it lives in the Manifest and never in a
 Blueprint header.
 
+### Layer
+
+The chain that repeats inside each phase is ordered, and each Rigging file declares its position
+with a `**Layer:**` header:
+
+| Layer | Holds | Rule |
+|---|---|---|
+| `language` | `python.md`, `go.md`, `typescript.md` | Built first. A web server, a database, or a CLI is built *into* the tree, the environment, and the test runner this lays down. |
+| `platform` | `fastapi.md`, `flask.md`, `django.md`, `sqlite.md`, `postgres.md`, `cli.md` | One file per foundation kind. Depends on the language. |
+| `interface` | `bootstrap5.md` | The shared UI shell. After the platform, before any screen; unordered against services. |
+| `screen` | `ui-flask.bootstrap-client.md` | Screens, built on a shell that already exists. |
+
+A file with no `**Layer:**` makes no ordering claim. Services are deliberately unranked: a service
+may be built before or after the interface layer.
+
+A layer is a rank inside a phase, never a phase. Each foundation is its own story; the block
+packer may put two in one block or split them, and either is correct.
+
 ### Blocks
 
 A **block** is a set of stories optimized for context: sized to amortize fixed stack-file cost

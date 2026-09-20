@@ -1,12 +1,37 @@
 # TypeScript Best Practices
 
 **Version:** 20260716 V2  
-**Category:** Technologies
+**Foundation:** language
+**Layer:** language
+**Category:** Language
 **Description:** TypeScript language conventions and patterns for specification-driven projects
 
 Technology reference for TypeScript development. Framework-agnostic — applies to any TypeScript project. This file does not change between projects.
 
 Prerequisite: `stack/common.md`
+
+---
+
+## Foundation Contract
+
+The published shape of this foundation. It is built before every other foundation: a web server,
+a database, or a CLI is built *into* this tree, this environment, and this test runner. Carried
+verbatim into `typescript_compact.md`.
+
+- source_root: src/
+- test_command: npm test
+- environment: `node_modules/`, installed from the committed lockfile
+- dependencies: `package.json`
+
+```
+project/
+  package.json            # scripts; dependencies; the package manager is pinned here
+  tsconfig.json           # strict: true; no implicit any; no unchecked indexed access
+  src/                    # application modules live here
+  tests/                  # the test suite
+```
+
+A later foundation adds modules under `src/`; it does not restructure this tree.
 
 ---
 

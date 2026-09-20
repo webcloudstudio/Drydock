@@ -10,6 +10,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-20: **Language is a foundation, and it is built first.** `python.md`, `go.md` and
+  `typescript.md` declare `**Foundation:** language` and publish an environment contract —
+  `source_root`, `test_command`, the environment, and the dependency manifest — rather than a
+  package and a fixture. A Target has exactly one language, refused in the same place two web
+  servers are. A web server, a database or a CLI is built *into* the tree, the environment and the
+  test runner the language foundation lays down; `fastapi.md` was never standalone.
+- 2026-09-20: **The layer chain is declared and ordered.** Every Rigging file may carry a
+  `**Layer:**` header: `language`, then `platform`, then `interface`, then `screen`. A layer is a
+  rank *inside* a phase, never a phase — the chain repeats in every phase, exactly as
+  `MANIFEST_CONTRACT.md` already described it. `bootstrap5.md` declares `interface`, which is the
+  ordering hint it needed: after the platform, before any screen, and carrying no claim at all
+  against a service. A file with no `**Layer:**` makes no ordering claim.
+
 - 2026-09-20: Rigging files publish a **foundation contract**. A file that defines a foundation
   declares its kind in the header (`**Foundation:** web-server`) and its shape in a
   `## Foundation Contract` section naming the package, the entry point, and the test fixture.
@@ -27,6 +40,30 @@ command surface and Typed Specification contract are unstable and may change bet
   drift in behavior.
 
 ### Changed
+
+- 2026-09-20: `drydock plan verify` refuses a criterion that imports a package no selected
+  foundation publishes — defect kind `unknown-package`, and the plan is written `unbuildable`.
+  `app_server`, `persistence` and `cli` are reserved names meaning *the selected foundation of
+  that kind*, so importing one the stack did not select raises `ModuleNotFoundError` in the
+  criterion's own frame on every run. Importing a published entry callable from any other package
+  is refused with the package it should have come from — the `app` / `marina_app` split, named
+  before a build call is paid for. Nothing else is judged: whether an arbitrary third-party import
+  resolves is a fact about the build environment, not the Blueprint.
+- 2026-09-20: The QuarterDeck **Technology Stack** page selects foundations with one radio group
+  per kind, in build order — Language, Web Server, Database, CLI — instead of a free-text row and
+  a dropdown. The underlying fact is a choice, not a set, and a checkbox list invited the second
+  selection `plan verify` then refuses. A Target with no rows starts on `python.md` /
+  `fastapi.md` / `sqlite.md`; a Target that has rows and names no web server has decided it has
+  none, and is left alone. Non-foundation technologies keep the free-text table.
+- 2026-09-20: `django.md` rewritten against the published contract. The Django project package
+  *is* `app_server` — `app_server/settings.py`, `app_server/urls.py`, `app_server/wsgi.py` — and
+  `create_app() -> WSGIHandler` wraps `get_wsgi_application()`, so a criterion written against
+  `app_server` and `web_client` runs unchanged whether the Commander selected Django, FastAPI or
+  Flask. The old `config/` package is gone and the testing section publishes `web_client` rather
+  than shadowing pytest-django's own `client` fixture.
+- 2026-09-20: `bootstrap5.md` and `ui-flask.bootstrap-client.md` moved from category `Web Server`
+  to `Frontend`. Neither is a web server; both were offered to the Commander beside the three
+  files that are.
 
 - 2026-09-20: `drydock plan verify` refuses a Technology Stack that cannot yield one foundation per
   kind, a new `foundation` defect. Two files of one kind — FastAPI and Flask — are refused, because

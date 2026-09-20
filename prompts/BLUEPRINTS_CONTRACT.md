@@ -535,6 +535,11 @@ are fixed by the technology the Commander selected, so a criterion writes them r
 inventing a package or a client of its own. Constructing one is how a Blueprint set ends up split
 between two package names and calling a framework's method on another framework's object.
 
+`app_server`, `persistence`, and `cli` are reserved: each names the selected foundation of that
+kind, whichever file the Commander selected. A criterion importing one the stack did not select,
+or importing a published entry point from any other package, is refused as `unknown-package` and
+the plan is written `unbuildable`.
+
 **A check never reads a Blueprint document.** The Blueprint is the build's *input*; the build
 directory holds the code written from it and nothing copies a specification next to that code.
 `pathlib.Path("ARCHITECTURE.md").read_text()` raises `FileNotFoundError` on every run, so no

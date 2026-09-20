@@ -1,12 +1,37 @@
 # Go Best Practices
 
 **Version:** 20260809 V2  
-**Category:** Technologies
+**Foundation:** language
+**Layer:** language
+**Category:** Language
 **Description:** Go language conventions and patterns for specification-driven projects
 
 Technology reference for Go development. Framework-agnostic — applies to any Go project. This file does not change between projects.
 
 Prerequisite: `stack/common.md`
+
+---
+
+## Foundation Contract
+
+The published shape of this foundation. It is built before every other foundation: a web server,
+a database, or a CLI is built *into* this tree, this environment, and this test runner. Carried
+verbatim into `go_compact.md`.
+
+- source_root: internal/
+- test_command: go test ./...
+- environment: the module declared in `go.mod`; no vendored toolchain
+- dependencies: `go.mod`
+
+```
+project/
+  go.mod                  # module path; the Go toolchain version
+  cmd/                    # one directory per binary, each package main
+  internal/               # application packages; not importable outside this module
+  bin/                    # launchers; each runs the toolchain, never a vendored copy
+```
+
+A later foundation adds packages under `internal/`; it does not restructure this tree.
 
 ---
 

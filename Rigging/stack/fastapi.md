@@ -1,6 +1,7 @@
 # FastAPI Best Practices
 
 **Version:** 20260521 V1
+**Layer:** platform
 **Category:** Web Server
 **Foundation:** web-server
 **Description:** FastAPI web framework patterns: app factory, routers, Pydantic models, dependency injection, templates, and testing
@@ -302,7 +303,7 @@ async def not_found(request: Request, exc):
 **Rule**: Test through `fastapi.testclient.TestClient` (httpx under the hood). Override dependencies via `app.dependency_overrides`. Fixtures live in `conftest.py`.
 
 ```python
-# tests/conftest.py
+# conftest.py
 import pytest
 from fastapi.testclient import TestClient
 from app_server.main import create_app

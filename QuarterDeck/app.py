@@ -2652,6 +2652,35 @@ def _tech_rigging_select(selected: str | None) -> str:
     return "<select class='ts-rigging'>" + "".join(options) + "</select>"
 
 
+def _foundation_fieldset(group: dict[str, Any]) -> str:
+    """One exclusive foundation choice: radios, never checkboxes.
+
+    A Target has one language, one web server, one database. A checkbox list invites the second
+    selection that ``plan verify`` then refuses — the wrong end of the process to learn it.
+    """
+    kind = str(group["kind"])
+    name = f"ts-foundation-{kind}"
+    selected = str(group.get("selected") or "")
+    options = [
+        f"<label class='ts-choice'><input type='radio' name='{html.escape(name)}' "
+        f"value='{html.escape(option)}'{' checked' if option == selected else ''}>"
+        f"<span>{html.escape(option.removesuffix('.md'))}</span></label>"
+        for option in group.get("options", [])
+    ]
+    options.append(
+        f"<label class='ts-choice ts-choice-none'><input type='radio' "
+        f"name='{html.escape(name)}' value=''{'' if selected else ' checked'}>"
+        "<span>None</span></label>"
+    )
+    return (
+        f"<fieldset class='ts-foundation' data-kind='{html.escape(kind)}'>"
+        f"<legend>{html.escape(str(group['label']))} "
+        f"<span class='ts-layer'>{html.escape(str(group['layer']))}</span></legend>"
+        + "".join(options)
+        + "</fieldset>"
+    )
+
+
 def _tech_row(technology: str = "", rigging: str | None = None, notes: str = "") -> str:
     return (
         "<tr class='ts-row'>"
@@ -2679,7 +2708,14 @@ def render_technology_stack(item: dict[str, Any]) -> str:
     except HTTPException:
         source_path = None
         entries = []
-    rows = "".join(_tech_row(e.technology, e.rigging, e.notes) for e in entries)
+    groups = technology_stack.foundation_groups(entries)
+    remaining = technology_stack.split_foundations(entries)[1] if entries else []
+    rows = "".join(_tech_row(e.technology, e.rigging, e.notes) for e in remaining)
+    foundations = (
+        "<div class='ts-foundations'>"
+        + "".join(_foundation_fieldset(group) for group in groups)
+        + "</div>"
+    )
     helper = _render_help_note(item)
     catalog = json.dumps({
         name.removesuffix(".md").lower().replace("-", "").replace("_", ""): name
@@ -2708,6 +2744,12 @@ def render_technology_stack(item: dict[str, Any]) -> str:
         + required_note
         + f"<div class='ts-editor' data-item='{html.escape(item['id'])}' "
         f"data-catalog='{html.escape(catalog)}'>"
+        + "<h2>Foundations</h2>"
+        + "<p class='q-autosave-hint'>One per row, in build order: the language is built first "
+        "and every other foundation is built into it. Each choice publishes the package name, "
+        "entry point, and test fixture that every acceptance criterion is written against.</p>"
+        + foundations
+        + "<h2>Other technologies</h2>"
         + "<table class='ts-table'><thead><tr>"
         + "<th>Technology</th><th>Rigging</th><th>Notes</th><th></th>"
         + f"</tr></thead><tbody>{rows}</tbody></table>"
@@ -3876,6 +3918,16 @@ _STYLE = """
   .q-save-status { display:inline-block; min-height:18px; margin-top:12px; font-size:13px;
                    font-weight:600; color:#16a34a; }
   .q-save-status.q-save-failed { color:#b91c1c; }
+  .ts-foundations { display:flex; flex-direction:column; gap:8px; margin:12px 0 20px; }
+  .ts-foundation { border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px 10px;
+                   display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
+  .ts-foundation legend { font-size:13px; font-weight:600; color:#334155; padding:0 4px; }
+  .ts-layer { font-weight:400; font-size:11px; color:#94a3b8; text-transform:uppercase;
+              letter-spacing:.04em; margin-left:6px; }
+  .ts-choice { display:inline-flex; align-items:center; gap:5px; font-size:13px;
+               color:#1e293b; cursor:pointer; }
+  .ts-choice input { margin:0; }
+  .ts-choice-none span { color:#94a3b8; }
   .ts-table { width:100%; border-collapse:collapse; margin:12px 0; }
   .ts-table th { text-align:left; font-size:13px; color:#475569; padding:6px 8px;
     border-bottom:1px solid #e2e8f0; }
@@ -4349,12 +4401,23 @@ def index(request: Request = None) -> str:
       const match = catalog[_tsNormalize(row.querySelector('.ts-technology').value)];
       if (match) select.value = match;
     }}
+    // Foundations lead the file, in the order they are built. A kind left on "None" emits no
+    // row at all — that is how a Target says it has no web server.
     function tsPayload(editor) {{
-      return [...editor.querySelectorAll('.ts-row')].map(row => ({{
+      const foundations = [...editor.querySelectorAll('.ts-foundation')]
+        .map(set => set.querySelector('input[type=radio]:checked'))
+        .filter(input => input && input.value)
+        .map(input => ({{
+          technology: input.value.replace(/[.]md$/, ''),
+          rigging: input.value,
+          notes: '',
+        }}));
+      const rows = [...editor.querySelectorAll('.ts-row')].map(row => ({{
         technology: row.querySelector('.ts-technology').value,
         rigging: row.querySelector('.ts-rigging').value,
         notes: row.querySelector('.ts-notes').value,
       }}));
+      return foundations.concat(rows);
     }}
     function tsAddRow(btn) {{
       const editor = _tsEditor(btn);
@@ -4409,6 +4472,9 @@ def index(request: Request = None) -> str:
         return pending;
       }};
       editor.addEventListener('ts-save', save);
+      editor.querySelectorAll('.ts-foundation input[type=radio]').forEach(input => {{
+        input.addEventListener('change', save);
+      }});
       editor.querySelectorAll('.ts-row').forEach(row => {{
         if (row.dataset.wired) return;
         row.dataset.wired = '1';

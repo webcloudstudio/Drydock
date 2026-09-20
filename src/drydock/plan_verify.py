@@ -31,6 +31,7 @@ from drydock.acceptance import (
     blueprint_read_defects,
     captures_without_reporting,
     dynamic_selector_advisory,
+    imported_modules,
     parse_programmatic_acceptance,
     regex_defects,
     selection_probe_reason,
@@ -46,6 +47,7 @@ from drydock.database_contract import (
     table_coverage_defects,
 )
 from drydock.errors import SpecificationError
+from drydock.rigging_contract import import_defects
 from drydock.story_guidance import load_guidance
 
 #: Advisories of one kind printed in full before they are rolled up into a count.
@@ -206,12 +208,22 @@ def _foundation_defects(target_dir: Path) -> list[Defect]:
     ]
 
 
+def _selected_rigging(target_dir: Path) -> list[str]:
+    """The Rigging files the Target's Technology Stack names, or ``[]`` when it has no stack."""
+    from drydock import technology_stack
+
+    if not technology_stack.path_for(target_dir).is_file():
+        return []
+    return technology_stack.stack_files(target_dir)
+
+
 def verify(target: str, target_dir: Path) -> VerifyResult:
     """Judge every acceptance criterion in the Target's Blueprint. Never writes."""
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
 
+    selected = _selected_rigging(target_dir)
     defects: list[Defect] = []
     warnings: list[str] = []
     checked_criteria = 0
@@ -252,6 +264,20 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                         path.name,
                         check.check_id,
                         "blueprint-read",
+                        "; ".join(reasons),
+                    )
+                )
+                continue
+            if selected and (reasons := import_defects(imported_modules(check.code), selected)):
+                # Raised alongside the Blueprint read for the same reason: a criterion importing
+                # a package no selected foundation publishes raises ModuleNotFoundError in its
+                # own frame on every run, so no implementation turns it green. Judged only when
+                # a Technology Stack exists — without one there is nothing to judge against.
+                defects.append(
+                    Defect(
+                        path.name,
+                        check.check_id,
+                        "unknown-package",
                         "; ".join(reasons),
                     )
                 )

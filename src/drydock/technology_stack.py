@@ -36,7 +36,20 @@ _EMPTY_CELLS = frozenset({"", "-", "—", "--", "none", "n/a"})
 _APPROVED_RE = re.compile(r"^\*\*Approved:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
 _DEFAULT_CATEGORY = "Technologies"
-_CATEGORY_ORDER = ["Web Server", "Persistence", "AWS", "Technologies", "Branding"]
+
+#: Selector order, which is build order: the categories that hold foundations come first, in
+#: layer order (``rigging_contract.LAYER_ORDER``), then the additive ones. ``Frontend`` exists
+#: because ``bootstrap5.md`` is not a web server — it was filed under ``Web Server`` and shown to
+#: the Commander as one, next to the three files that genuinely are.
+_CATEGORY_ORDER = [
+    "Language",
+    "Web Server",
+    "Persistence",
+    "Frontend",
+    "AWS",
+    "Technologies",
+    "Branding",
+]
 _CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
 #: Languages Drydock ships a persistence adapter for, in ``Rigging/database/``. A Target in one of
@@ -470,3 +483,100 @@ def selected_foundations(entries: list[StackEntry]) -> dict[str, str]:
 
     published = foundation_contracts()
     return {published[name].kind: name for name in stack_files_from(entries) if name in published}
+
+
+#: What a new Target gets when nobody has chosen yet. It is a starting point the Commander
+#: overrides in one click, not a policy: Drydock still refuses to *infer* a web server for a
+#: stack that names one and selects no file.
+DEFAULT_FOUNDATIONS = {
+    "language": "python.md",
+    "web-server": "fastapi.md",
+    "database": "sqlite.md",
+}
+
+#: Kinds whose display name is not simply the kind title-cased.
+_KIND_LABELS = {"cli": "CLI"}
+
+
+def split_foundations(
+    entries: list[StackEntry],
+) -> tuple[dict[str, str], list[StackEntry]]:
+    """Split stack rows into the foundation choices and everything else.
+
+    A row is a foundation choice when it selects a Rigging file that publishes a foundation, or
+    when it selects nothing and names a technology that would resolve to one. The second case is
+    the unanswered row ``foundation_defects`` refuses: it belongs in the exclusive selector, not
+    in the free-text table where it can only be half-answered.
+    """
+    from drydock.rigging_contract import foundation_contracts
+
+    published = foundation_contracts()
+    chosen: dict[str, str] = {}
+    remaining: list[StackEntry] = []
+    for entry in entries:
+        name = entry.rigging or (suggest_rigging(entry.technology) if not entry.rigging else None)
+        contract = published.get(name or "")
+        if contract is None:
+            remaining.append(entry)
+            continue
+        chosen.setdefault(contract.kind, entry.rigging or "")
+    return chosen, remaining
+
+
+def foundation_groups(entries: list[StackEntry] | None = None) -> list[dict]:
+    """Return one exclusive choice per foundation kind, in build order.
+
+    The selector this feeds is a set of radio groups rather than a list of checkboxes, because
+    the underlying fact is a choice and not a set: a Target has one language, one web server, one
+    database. Presenting them as checkboxes invites the selection that ``foundation_defects``
+    then refuses, which is the wrong end of the process to find out.
+
+    Order is layer order — language first, then the platform built into it — so the page reads in
+    the order the work is done.
+
+    ``selected`` is what the stack currently names. A stack with no rows at all is a Target
+    nobody has decided for yet and takes :data:`DEFAULT_FOUNDATIONS`; a stack that has rows and
+    names no web server has decided it has none, and is left alone.
+    """
+    from drydock.rigging_contract import foundation_kinds, layer_rank
+
+    rows = list(entries or [])
+    chosen = split_foundations(rows)[0] if rows else dict(DEFAULT_FOUNDATIONS)
+    category = dict(rigging_catalog())
+
+    def rank(group: tuple[str, str, list[str]]) -> tuple[int, int, str]:
+        layer, kind, options = group
+        # Two kinds in one layer carry no ordering claim against each other, so the tie-break is
+        # the selector's own category order rather than an invented one.
+        first = category.get(options[0], _DEFAULT_CATEGORY) if options else _DEFAULT_CATEGORY
+        position = (
+            _CATEGORY_ORDER.index(first) if first in _CATEGORY_ORDER else len(_CATEGORY_ORDER)
+        )
+        return (layer_rank(layer), position, kind)
+
+    return [
+        {
+            "kind": kind,
+            "layer": layer,
+            "label": _KIND_LABELS.get(kind, kind.replace("-", " ").title()),
+            "options": options,
+            "selected": chosen.get(kind, ""),
+        }
+        for layer, kind, options in sorted(foundation_kinds(), key=rank)
+    ]
+
+
+def with_foundations(entries: list[StackEntry], chosen: dict[str, str]) -> list[StackEntry]:
+    """Return ``entries`` with its foundation rows replaced by ``chosen`` (``{kind: filename}``).
+
+    Every non-foundation row survives untouched and in place, and the foundation rows are
+    re-emitted first, in build order. A kind mapped to an empty value is dropped, which is how a
+    Target says it has no web server.
+    """
+    remaining = split_foundations(entries)[1]
+    added = [
+        StackEntry(technology=name.removesuffix(".md"), rigging=name)
+        for group in foundation_groups(entries)
+        if (name := (chosen.get(group["kind"]) or "").strip())
+    ]
+    return added + remaining

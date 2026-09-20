@@ -19,7 +19,7 @@ not open individual component files.
 | `aws-lambda.md` | AWS | AWS Lambda handlers, packaging, IAM, and testing patterns. | `python.md` |
 | `aws-s3.md` | AWS | Private encrypted S3 storage and prefix-scoped sharing patterns. | `cloud-client-library.md` |
 | `aws-sqs.md` | AWS | SQS durable queue, polling, and error-handling patterns. | `aws-lambda.md` |
-| `bootstrap5.md` | Web Server | Bootstrap 5 layout, components, and form conventions. | — |
+| `bootstrap5.md` | Frontend | Bootstrap 5 layout, components, and form conventions. | — |
 | `cli.md` | Technologies | Command-line application entry point, exit codes, cross-platform launchers, and in-process testing. | `common.md`, `python.md` |
 | `cloud-client-library.md` | AWS | Encapsulated AWS library for use in applications; application dont uses boto3. | `python.md`, `persistence.md` |
 | `common.md` | Technologies | Common project layout, scripts, Git hygiene, and development workflow. | — |
@@ -28,13 +28,13 @@ not open individual component files.
 | `fastapi.md` | Web Server | FastAPI routers, dependency injection, templates, and testing patterns. | `common.md`, `python.md` |
 | `flask.md` | Web Server | Flask application factory, routes, templates, and error handling. | `common.md`, `python.md` |
 | `github-actions.md` | Technologies | GitHub Actions CI/CD with OIDC and lint/test gates. | `terraform.md`, `python.md` |
-| `go.md` | Technologies | Go module layout, errors, interfaces, concurrency, testing, and build gates. | `common.md` |
+| `go.md` | Language | Go module layout, errors, interfaces, concurrency, testing, and build gates. | `common.md` |
 | `persistence.md` | Persistence | The store boundary: relational access is generated from DATABASE.md, config, files, and services are typed classes. | `common.md` |
 | `postgres.md` | Persistence | PostgreSQL as the production store: what it enforces that SQLite does not. | `persistence.md` |
-| `python.md` | Technologies | Python conventions, typing, configuration, testing, and dependencies. | `common.md` |
+| `python.md` | Language | Python conventions, typing, configuration, testing, and dependencies. | `common.md` |
 | `sqlalchemy.md` | Persistence | SQLAlchemy 2 repositories. Superseded for Target persistence by the generated package; retained for Targets that select it deliberately. | `python.md`, `persistence.md` |
 | `sqlite.md` | Persistence | SQLite as the development and test store: what it enforces and what it silently ignores. | `persistence.md` |
 | `terraform.md` | Technologies | Layered Terraform infrastructure and remote-state patterns. | `aws-dynamodb.md`, `aws-s3.md` |
-| `typescript.md` | Technologies | TypeScript strict typing, domain modeling, and boundary validation. | `common.md` |
-| `ui-flask.bootstrap-client.md` | Web Server | Focused Flask and Bootstrap screen implementation reference. | `flask.md`, `bootstrap5.md` |
+| `typescript.md` | Language | TypeScript strict typing, domain modeling, and boundary validation. | `common.md` |
+| `ui-flask.bootstrap-client.md` | Frontend | Focused Flask and Bootstrap screen implementation reference. | `flask.md`, `bootstrap5.md` |
 | `uv_ruff.md` | Technologies | uv environments and ruff lint/format workflow. | `python.md` |

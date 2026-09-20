@@ -1,6 +1,7 @@
 # SQLite
 
 **Version:** 20260919 V3
+**Layer:** platform
 **Category:** Persistence
 **Foundation:** database
 **Description:** SQLite as a Drydock store: what it enforces, what it ignores, and how a Target reaches it.

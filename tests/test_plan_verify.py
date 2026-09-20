@@ -790,3 +790,100 @@ def test_no_stack_file_is_not_a_foundation_defect(tmp_path):
     result = verify("Demo", _target(tmp_path, FEATURE_Ok=_RUNNABLE))
 
     assert result.ok
+
+
+# ── Unknown packages ────────────────────────────────────────────────────────────
+
+_WRONG_PACKAGE = """# FEATURE: Catalog
+
+## Programmatic Acceptance
+
+=== AC catalog-list ===
+Intent: The catalog endpoint answers.
+
+from marina_app import create_app
+
+client = create_app().test_client()
+assert client.get("/catalog").status_code == 200
+=== END AC catalog-list ===
+"""
+
+_PUBLISHED_FIXTURE = """# FEATURE: Catalog
+
+## Programmatic Acceptance
+
+=== AC catalog-list ===
+Intent: The catalog endpoint answers.
+
+from app_server.main import create_app
+from fastapi.testclient import TestClient
+
+response = TestClient(create_app()).get("/catalog")
+assert response.status_code == 200
+=== END AC catalog-list ===
+"""
+
+_UNSELECTED_PACKAGE = """# FEATURE: Storage
+
+## Programmatic Acceptance
+
+=== AC rows-persist ===
+Intent: A written row reads back.
+
+import persistence
+
+with persistence.open_session() as session:
+    assert session is not None
+=== END AC rows-persist ===
+"""
+
+
+def test_a_criterion_importing_the_entry_from_the_wrong_package_is_a_defect(tmp_path):
+    """The Marina_Luna split: 98 imports of `app` against 77 of `marina_app`, every one of them
+    importing the callable the foundation publishes in `app_server`."""
+    target = _with_stack(
+        _target(tmp_path, FEATURE_Catalog=_WRONG_PACKAGE),
+        "| Python | python.md | |\n| FastAPI | fastapi.md | |\n",
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "unknown-package"
+    assert defect.check_id == "catalog-list"
+    assert "`app_server`" in defect.detail
+
+
+def test_a_criterion_importing_a_package_no_selected_foundation_publishes_is_a_defect(tmp_path):
+    """`persistence` means the selected database. With none selected it means nothing, and the
+    criterion raises ModuleNotFoundError in its own frame on every run."""
+    target = _with_stack(
+        _target(tmp_path, FEATURE_Storage=_UNSELECTED_PACKAGE),
+        "| Python | python.md | |\n| FastAPI | fastapi.md | |\n",
+    )
+
+    result = verify("Demo", target)
+
+    assert not result.ok
+    (defect,) = result.defects
+    assert defect.kind == "unknown-package"
+    assert "selects no database" in defect.detail
+
+
+def test_the_published_package_verifies_clean(tmp_path):
+    target = _with_stack(
+        _target(tmp_path, FEATURE_Catalog=_PUBLISHED_FIXTURE),
+        "| Python | python.md | |\n| FastAPI | fastapi.md | |\n",
+    )
+
+    result = verify("Demo", target)
+
+    assert result.ok
+
+
+def test_imports_are_not_judged_without_a_technology_stack(tmp_path):
+    """Without a stack there is no selection to judge against, and guessing refuses good plans."""
+    result = verify("Demo", _target(tmp_path, FEATURE_Catalog=_WRONG_PACKAGE))
+
+    assert result.ok

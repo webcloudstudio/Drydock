@@ -1,12 +1,42 @@
 # Python Best Practices
 
 **Version:** 20260716 V3  
-**Category:** Technologies
+**Foundation:** language
+**Layer:** language
+**Category:** Language
 **Description:** Python language conventions and patterns for specification-driven projects
 
 Technology reference for Python development. Framework-agnostic — applies to any Python project. This file does not change between projects.
 
 Prerequisite: `stack/common.md`
+
+---
+
+## Foundation Contract
+
+The published shape of this foundation. It is built before every other foundation: a web server,
+a database, or a CLI is built *into* this tree, this environment, and this test runner. Carried
+verbatim into `python_compact.md`.
+
+- source_root: ./
+- test_command: pytest -q
+- environment: `.venv`, created by `uv venv` and activated by every launcher in `bin/`
+- dependencies: `pyproject.toml`
+
+```
+project/
+  pyproject.toml          # [project] metadata, dependencies, tool.ruff, tool.pytest
+  .python-version         # the interpreter uv provisions
+  .venv/                  # created by `uv venv`; never committed
+  config.py               # the one typed Config; every environment variable is read here
+  run.py                  # entry point
+  tests/                  # pytest suite; conftest.py holds the published fixtures
+  bin/                    # launchers; each activates .venv before running anything
+```
+
+Each later foundation adds one package directory at the project root — `app_server/`,
+`persistence/`, `cli/` — and restructures nothing. Every launcher, every acceptance criterion,
+and every CI job runs the one `test_command` above.
 
 ---
 

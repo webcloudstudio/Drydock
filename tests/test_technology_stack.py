@@ -298,3 +298,86 @@ def test_an_undeclared_language_leaves_the_stack_undecided_rather_than_blocked(t
 
 def test_is_approved_is_false_for_a_missing_document(tmp_path):
     assert not technology_stack.is_approved(tmp_path / "absent")
+
+
+# ── Foundation selection ────────────────────────────────────────────────────────
+
+
+def test_foundation_groups_read_in_build_order():
+    """Language first: a web server or a database is built into the tree and the environment
+    only the language foundation lays down."""
+    groups = technology_stack.foundation_groups([])
+
+    assert [group["label"] for group in groups] == ["Language", "Web Server", "Database", "CLI"]
+    assert [group["layer"] for group in groups] == [
+        "language",
+        "platform",
+        "platform",
+        "platform",
+    ]
+
+
+def test_a_target_nobody_has_decided_for_gets_the_default_stack():
+    groups = {group["kind"]: group["selected"] for group in technology_stack.foundation_groups([])}
+
+    assert groups["language"] == "python.md"
+    assert groups["web-server"] == "fastapi.md"
+    assert groups["database"] == "sqlite.md"
+    assert groups["cli"] == ""
+
+
+def test_a_stack_that_names_no_web_server_has_decided_it_has_none():
+    """The default is a starting point for an undecided Target, never an override of a decision."""
+    entries = [technology_stack.StackEntry("Python", "python.md")]
+
+    groups = {
+        group["kind"]: group["selected"] for group in technology_stack.foundation_groups(entries)
+    }
+
+    assert groups["language"] == "python.md"
+    assert groups["web-server"] == ""
+
+
+def test_split_foundations_pulls_an_unanswered_foundation_row_into_the_selector():
+    """A half-answered foundation row belongs in the exclusive selector, not in the free-text
+    table where it can only stay half-answered."""
+    entries = [
+        technology_stack.StackEntry("FastAPI", None),
+        technology_stack.StackEntry("Redis", None),
+    ]
+
+    chosen, remaining = technology_stack.split_foundations(entries)
+
+    assert chosen == {"web-server": ""}
+    assert [entry.technology for entry in remaining] == ["Redis"]
+
+
+def test_with_foundations_replaces_the_choices_and_keeps_everything_else():
+    entries = [
+        technology_stack.StackEntry("FastAPI", "fastapi.md"),
+        technology_stack.StackEntry("Bootstrap 5", "bootstrap5.md"),
+        technology_stack.StackEntry("Redis", None, "cache"),
+    ]
+
+    result = technology_stack.with_foundations(
+        entries, {"language": "python.md", "web-server": "flask.md", "database": ""}
+    )
+
+    assert [(entry.technology, entry.rigging) for entry in result] == [
+        ("python", "python.md"),
+        ("flask", "flask.md"),
+        ("Bootstrap 5", "bootstrap5.md"),
+        ("Redis", None),
+    ]
+    assert result[-1].notes == "cache"
+
+
+def test_the_frontend_files_are_no_longer_offered_as_web_servers():
+    """bootstrap5.md is not a web server. It was filed under Web Server and shown to the
+    Commander next to the three files that are."""
+    groups = {group["label"]: group["options"] for group in technology_stack.rigging_groups()}
+
+    assert "bootstrap5.md" in groups["Frontend"]
+    assert "ui-flask.bootstrap-client.md" in groups["Frontend"]
+    assert groups["Web Server"] == ["django.md", "fastapi.md", "flask.md"]
+    assert groups["Language"] == ["go.md", "python.md", "typescript.md"]

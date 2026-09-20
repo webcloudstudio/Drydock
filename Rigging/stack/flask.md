@@ -1,6 +1,7 @@
 # Flask Best Practices
 
 **Version:** 20260410 V2  
+**Layer:** platform
 **Category:** Web Server
 **Foundation:** web-server
 **Description:** Flask web framework patterns: app package layout, routes, blueprints, templates, and error handling
@@ -332,7 +333,7 @@ return response
 **Rule**: Test through the Flask test client. Use fixtures for app, client, and database.
 
 ```python
-# tests/conftest.py
+# conftest.py
 import pytest
 from app_server import create_app
 from config import TestConfig

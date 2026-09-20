@@ -2015,13 +2015,55 @@ def test_technology_stack_renders_one_row_per_technology(tmp_path, monkeypatch):
 
     rendered = quarterdeck.render_technology_stack(_stack_item())
 
-    assert rendered.count("class='ts-row'") == 2
-    assert "value='FastAPI'" in rendered
+    # The foundation rows leave the table: an exclusive choice is a radio, not free text.
+    assert rendered.count("class='ts-row'") == 1
     assert "value='marina-library'" in rendered
-    assert "<option value='fastapi.md' selected>" in rendered
+    assert "<input type='radio' name='ts-foundation-web-server' value='fastapi.md' checked>" in (
+        rendered
+    )
     # A technology with no Rigging file keeps the explicit "none" option selected.
     assert f"<option value='' selected>{technology_stack.NONE_CELL}</option>" in rendered
     assert "value='Internal.'" in rendered
+
+
+def test_technology_stack_offers_each_foundation_kind_once_in_build_order(tmp_path, monkeypatch):
+    """Language first, then the platform built into it. One radio group per exclusive kind."""
+    quarterdeck = _load_quarterdeck()
+
+    def _missing(_path):
+        raise quarterdeck.HTTPException(status_code=404, detail="Missing file")
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", _missing)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+    order = [
+        rendered.index(f"data-kind='{kind}'")
+        for kind in ("language", "web-server", "database", "cli")
+    ]
+
+    assert order == sorted(order)
+    assert rendered.count("class='ts-foundation'") == 4
+    assert "type='checkbox'" not in rendered
+
+
+def test_technology_stack_preselects_the_default_for_an_undecided_target(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+
+    def _missing(_path):
+        raise quarterdeck.HTTPException(status_code=404, detail="Missing file")
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", _missing)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+
+    for kind, default in (
+        ("language", "python.md"),
+        ("web-server", "fastapi.md"),
+        ("database", "sqlite.md"),
+    ):
+        assert f"name='ts-foundation-{kind}' value='{default}' checked" in rendered
+    # Nothing is chosen for the Commander beyond the starting point: CLI stays on None.
+    assert "name='ts-foundation-cli' value='' checked" in rendered
 
 
 def test_technology_stack_renders_empty_editor_when_file_is_absent(tmp_path, monkeypatch):

@@ -1,39 +1,62 @@
-<!-- Compacted from Rigging/stack/sqlite.md sha256=d2139b3b055bd309c35d5c63161a833f7ef0bc899e7542d39fa99a7902317b5a on 2026-09-19 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/sqlite.md sha256=99cf06148c6e5e7fee5ebe5f5531b1fc0a708fddc58dc294783820ba2d288ef4 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+
+## Foundation Contract
+
+The published shape of this foundation. Drydock synthesizes the story that builds it and every
+acceptance criterion writes against these names. Carried verbatim into `sqlite_compact.md`.
+
+- package: persistence
+- entry: open_session() -> Session
+- fixture: db_session
+- fixture_source: conftest.py
+
+```python
+# conftest.py
+import pytest
+from persistence import open_session
+
+@pytest.fixture
+def db_session():
+    with open_session() as session:
+        yield session
+```
+
+A criterion calls `db_session`; it never opens a connection itself and never imports `sqlite3`.
+
+---
 
 # SQLite — Contract Surface
 
-## Persistence
+### config_key: DATABASE.md language
 
-### config_key
+Declaring `DATABASE.md` for a non-Python language fails before planning.
 
-SQLite is selected at runtime using a plain filesystem path or a `sqlite://` DSN.
+Constraints: Python is the supported language; other languages have no adapter.
 
-Constraints: The same build must support SQLite for development and testing and PostgreSQL for production through runtime DSN selection.
+### config_key: SQLite DSN
 
-### Rule: supported-language
-
-Python Targets with `DATABASE.md` use the shipped SQLite adapter; Targets declaring another language fail before planning.
-
-Constraints: Do not provide or generate a hand-written access layer for unsupported languages.
-
-### Rule: database-access
-
-Callers access generated persistence through `db.<table>.<verb>(...)`.
-
-Constraints: Do not import `sqlite3` outside the generated `persistence/` package, hold a `sqlite3.Connection` on an application object, or create or alter schema at application startup.
+SQLite accepts a plain filesystem path or a `sqlite://` DSN.
 
 ### Rule: enforced-constraints
 
-SQLite enforces `PRIMARY KEY`, `NOT NULL`, `UNIQUE`, `DEFAULT`, and `REFERENCES` when foreign-key enforcement is enabled.
+SQLite enforces `PRIMARY KEY`, `NOT NULL`, `UNIQUE`, `DEFAULT`, and `REFERENCES`.
 
-### Rule: production-validation
+Constraints: Foreign-key enforcement is enabled.
 
-SQLite does not enforce declared column lengths or strict column types.
+### Rule: unsupported-validation
 
-Constraints: Declare production column lengths and types, and do not treat passing SQLite tests as proof that those constraints hold in production.
+SQLite does not enforce column lengths or strict column types.
 
-### Rule: schema-alteration
+Constraints: Do not rely on SQLite tests to validate production column lengths or types.
 
-Schema changes are limited to `ADD COLUMN` and `RENAME`; type changes and `ADD CONSTRAINT` are unsupported.
+### Rule: schema-migrations
 
-Constraints: Build the schema once from `schema.sql` during the DATABASE build step.
+SQLite supports only `ADD COLUMN` and `RENAME` among the documented schema alterations.
+
+Constraints: Schema is built once from `schema.sql`; `DROP COLUMN` before SQLite 3.35, type changes, and `ADD CONSTRAINT` are unsupported.
+
+### Rule: persistence-access
+
+Application callers use the generated persistence package through `db.<table>.<verb>(...)`.
+
+Constraints: Do not import `sqlite3` outside `persistence/`; do not retain a `sqlite3.Connection` on application objects; do not create or alter schema at application startup.

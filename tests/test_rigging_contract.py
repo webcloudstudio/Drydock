@@ -7,9 +7,15 @@ import pytest
 from drydock.rigging_contract import (
     contract_section,
     declared_kind,
+    declared_layer,
     exclusivity_conflicts,
     foundation_contracts,
+    foundation_kinds,
+    import_defects,
+    layer_rank,
+    order_rigging,
     parse_contract,
+    published_packages,
 )
 
 _FASTAPI = """# FastAPI Best Practices
@@ -17,6 +23,7 @@ _FASTAPI = """# FastAPI Best Practices
 **Version:** 20260521 V1
 **Category:** Web Server
 **Foundation:** web-server
+**Layer:** platform
 **Description:** FastAPI patterns.
 
 ---
@@ -55,6 +62,29 @@ def test_a_file_declaring_no_foundation_publishes_no_contract():
     assert parse_contract(_ADDITIVE, filename="sqlalchemy.md") is None
 
 
+_PYTHON = """# Python Best Practices
+
+**Version:** 20260920 V4
+**Foundation:** language
+**Layer:** language
+**Category:** Language
+**Description:** Python conventions.
+
+---
+
+## Foundation Contract
+
+- source_root: ./
+- test_command: pytest -q
+
+---
+
+## 1. Configuration
+
+Prose.
+"""
+
+
 def test_a_foundation_file_publishes_its_shape():
     contract = parse_contract(_FASTAPI, filename="fastapi.md")
 
@@ -65,6 +95,8 @@ def test_a_foundation_file_publishes_its_shape():
     assert contract.entry_callable == "create_app"
     assert contract.fixture == "web_client"
     assert contract.fixture_source == "conftest.py"
+    assert contract.layer == "platform"
+    assert contract.shape == "api"
 
 
 def test_the_section_is_captured_verbatim_and_stops_at_the_next_heading():
@@ -91,6 +123,40 @@ def test_a_contract_missing_a_required_field_is_an_authoring_error():
         parse_contract(text, filename="fastapi.md")
 
 
+def test_a_language_publishes_the_environment_shape_not_an_api():
+    """A language foundation has no package to import and no client to construct. Requiring the
+    API trio of one is why `language` sat outside the foundation set while being the most
+    exclusive choice a Target makes."""
+    contract = parse_contract(_PYTHON, filename="python.md")
+
+    assert contract is not None
+    assert contract.kind == "language"
+    assert contract.layer == "language"
+    assert contract.shape == "environment"
+    assert contract.source_root == "./"
+    assert contract.test_command == "pytest -q"
+    assert contract.package == ""
+
+
+def test_a_contract_completing_neither_shape_is_an_authoring_error():
+    text = _PYTHON.replace("- test_command: pytest -q\n", "")
+
+    with pytest.raises(ValueError, match="missing: test_command"):
+        parse_contract(text, filename="python.md")
+
+
+def test_a_foundation_without_a_layer_cannot_be_ordered():
+    text = _FASTAPI.replace("**Layer:** platform\n", "")
+
+    with pytest.raises(ValueError, match="no \\*\\*Layer:\\*\\*"):
+        parse_contract(text, filename="fastapi.md")
+
+
+def test_declared_layer_is_read_from_the_header_block():
+    assert declared_layer(_FASTAPI) == "platform"
+    assert declared_layer(_ADDITIVE) is None
+
+
 def test_two_files_of_one_kind_conflict():
     """FastAPI and Flask are two application shapes in one build tree, not a richer stack."""
     assert exclusivity_conflicts(["fastapi.md", "flask.md"]) == {
@@ -106,15 +172,25 @@ def test_every_shipped_foundation_file_publishes_a_complete_contract():
     """A shipped Rigging file that declares a kind must be usable; this is the guard on authoring."""
     contracts = foundation_contracts()
 
-    assert {"fastapi.md", "flask.md", "django.md", "sqlite.md", "postgres.md", "cli.md"} <= set(
-        contracts
-    )
+    assert {
+        "fastapi.md",
+        "flask.md",
+        "django.md",
+        "sqlite.md",
+        "postgres.md",
+        "cli.md",
+        "python.md",
+        "go.md",
+        "typescript.md",
+    } <= set(contracts)
     for name, contract in contracts.items():
         assert contract.kind, name
-        assert contract.package, name
-        assert contract.entry, name
-        assert contract.fixture, name
+        assert contract.layer, name
         assert contract.section.startswith("## Foundation Contract"), name
+        if contract.shape == "api":
+            assert contract.package and contract.entry and contract.fixture, name
+        else:
+            assert contract.source_root and contract.test_command, name
 
 
 def test_shipped_kinds_name_one_package_each():
@@ -127,6 +203,101 @@ def test_shipped_kinds_name_one_package_each():
     assert by_kind["web-server"] == {"app_server"}
     assert by_kind["database"] == {"persistence"}
     assert by_kind["cli"] == {"cli"}
+    assert by_kind["language"] == {""}  # a language publishes no importable package
+
+
+# ── Layers and build order ──────────────────────────────────────────────────────
+
+
+def test_the_language_layer_precedes_the_platform_built_into_it():
+    assert layer_rank("language") < layer_rank("platform") < layer_rank("interface")
+    assert layer_rank("interface") < layer_rank("screen")
+
+
+def test_an_unranked_layer_sorts_after_every_ranked_one():
+    """A file making no ordering claim must never be read as claiming to come first."""
+    assert layer_rank("") > layer_rank("screen")
+    assert layer_rank("service") > layer_rank("screen")
+
+
+def test_shipped_rigging_orders_language_then_platform_then_interface():
+    """bootstrap5.md is the question this answers: not a foundation, but hinted after the
+    platform and before any screen."""
+    ordered = order_rigging([
+        "ui-flask.bootstrap-client.md",
+        "bootstrap5.md",
+        "fastapi.md",
+        "python.md",
+    ])
+
+    assert ordered == [
+        "python.md",
+        "fastapi.md",
+        "bootstrap5.md",
+        "ui-flask.bootstrap-client.md",
+    ]
+
+
+def test_foundation_kinds_lead_with_the_language():
+    kinds = [kind for _layer, kind, _options in foundation_kinds()]
+
+    assert kinds[0] == "language"
+    assert set(kinds[1:]) == {"web-server", "database", "cli"}
+
+
+def test_two_languages_conflict_exactly_as_two_web_servers_do():
+    assert exclusivity_conflicts(["python.md", "go.md"]) == {"language": ["go.md", "python.md"]}
+
+
+# ── Unknown packages ────────────────────────────────────────────────────────────
+
+
+def test_published_packages_are_reserved_across_every_web_server():
+    packages = published_packages()
+
+    assert {"app_server", "persistence", "cli"} <= set(packages)
+    assert {c.filename for c in packages["app_server"]} == {
+        "django.md",
+        "fastapi.md",
+        "flask.md",
+    }
+
+
+def _imports(code: str):
+    from drydock.acceptance import imported_modules
+
+    return imported_modules(code)
+
+
+def test_importing_a_package_no_selected_foundation_publishes_is_refused():
+    defects = import_defects(_imports("import persistence\n"), ["fastapi.md", "python.md"])
+
+    assert len(defects) == 1
+    assert "selects no database" in defects[0]
+
+
+def test_importing_the_entry_from_the_wrong_package_is_refused():
+    """The Marina_Luna defect exactly: 98 imports of `app`, 77 of `marina_app`, all of
+    `create_app`, against a foundation that publishes it in `app_server`."""
+    defects = import_defects(_imports("from marina_app import create_app\n"), ["fastapi.md"])
+
+    assert len(defects) == 1
+    assert "`app_server`" in defects[0]
+    assert "fastapi.md" in defects[0]
+
+
+def test_the_published_names_verify_clean():
+    code = "from app_server.main import create_app\nimport persistence\nimport json\n"
+
+    assert import_defects(_imports(code), ["fastapi.md", "sqlite.md"]) == []
+
+
+def test_an_ordinary_third_party_import_is_never_judged():
+    """Whether `requests` resolves is a fact about the build environment, not the Blueprint.
+    Guessing at it refuses working plans, which is how the retracted analyzers failed."""
+    code = "import requests\nimport pytest\nfrom mypackage.util import helper\n"
+
+    assert import_defects(_imports(code), ["fastapi.md"]) == []
 
 
 # ── Compaction splice ───────────────────────────────────────────────────────────

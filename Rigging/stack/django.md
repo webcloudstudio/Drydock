@@ -1,6 +1,7 @@
 # Django Best Practices
 
-**Version:** 20260320 V1  
+**Version:** 20260920 V2  
+**Layer:** platform
 **Category:** Web Server
 **Foundation:** web-server
 **Description:** Django web framework patterns: models, views, URLs, and admin
@@ -17,21 +18,41 @@ The published shape of this foundation. Drydock synthesizes the story that build
 acceptance criterion writes against these names. Carried verbatim into `django_compact.md`.
 
 - package: app_server
-- entry: get_wsgi_application() -> WSGIHandler
+- entry: create_app() -> WSGIHandler
 - fixture: web_client
 - fixture_source: conftest.py
 
 ```python
+# app_server/wsgi.py — the Django project package IS app_server
+import os
+from django.core.wsgi import get_wsgi_application
+from django.core.handlers.wsgi import WSGIHandler
+
+def create_app() -> WSGIHandler:
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "app_server.settings")
+    return get_wsgi_application()
+
+application = create_app()
+
 # conftest.py
 import pytest
 from django.test import Client
 
 @pytest.fixture
-def web_client() -> Client:
+def web_client(db) -> Client:
     return Client()
 ```
 
 A criterion calls `web_client`; it never constructs a client itself.
+
+Django's settings module is the real root of a Django project, so `app_server` is the settings
+package — `app_server/settings.py`, `app_server/urls.py`, `app_server/wsgi.py` — and the
+application code lives in ordinary Django apps beside it. `create_app()` exists so the entry is
+the one every web server publishes: a criterion written against `app_server` and `web_client`
+runs unchanged whether the Commander selected Django, FastAPI, or Flask.
+
+`manage.py`, `DJANGO_SETTINGS_MODULE`, and `app_server.settings` are Django's own contract and
+are not restated here. What is published is only what a later story must not invent.
 
 ---
 
@@ -42,13 +63,13 @@ A criterion calls `web_client`; it never constructs a client itself.
 ```
 project-name/
 ├── manage.py                # Django management CLI
-├── config/                  # Project settings package
+├── app_server/              # Settings package — the published foundation
 │   ├── __init__.py
 │   ├── settings.py          # Base settings
 │   ├── settings_dev.py      # Development overrides
 │   ├── settings_prod.py     # Production overrides
 │   ├── urls.py              # Root URL configuration
-│   └── wsgi.py              # WSGI entry point
+│   └── wsgi.py              # create_app() -> WSGIHandler
 ├── core/                    # Main app
 │   ├── __init__.py
 │   ├── models.py
@@ -63,8 +84,8 @@ project-name/
 ├── static/
 │   ├── css/
 │   └── js/
+├── conftest.py              # published fixtures, including web_client
 ├── tests/
-│   ├── conftest.py
 │   └── test_views.py
 ├── bin/                     # (from common.md)
 ├── data/                    # (from common.md)
@@ -73,7 +94,7 @@ project-name/
 └── CLAUDE.md
 ```
 
-**Why**: One app avoids unnecessary complexity. The `config/` package cleanly separates settings from app code.
+**Why**: One app avoids unnecessary complexity. The `app_server/` package is the settings package the foundation contract publishes.
 
 ---
 
@@ -82,7 +103,7 @@ project-name/
 **Rule**: Use a settings package with base + environment overrides. Load secrets from environment variables.
 
 ```python
-# config/settings.py (base)
+# app_server/settings.py (base)
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -130,14 +151,14 @@ TEMPLATES = [{
 ```
 
 ```python
-# config/settings_dev.py
+# app_server/settings_dev.py
 from .settings import *
 DEBUG = True
 ALLOWED_HOSTS = ['*']
 ```
 
 ```python
-# config/settings_prod.py
+# app_server/settings_prod.py
 from .settings import *
 DEBUG = False
 SECRET_KEY = os.environ['SECRET_KEY']
@@ -146,7 +167,7 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
 
 ```bash
 # .env
-DJANGO_SETTINGS_MODULE=config.settings_dev
+DJANGO_SETTINGS_MODULE=app_server.settings_dev
 SECRET_KEY=your-secret-here
 ```
 
@@ -224,7 +245,7 @@ urlpatterns = [
 ```
 
 ```python
-# config/urls.py
+# app_server/urls.py
 from django.contrib import admin
 from django.urls import path, include
 
@@ -341,15 +362,16 @@ Register in `settings.py` under `TEMPLATES[0]['OPTIONS']['context_processors']`.
 
 ## 9. Testing
 
-**Rule**: Use pytest-django with fixtures. Test through the Django test client.
+**Rule**: Use pytest-django. A criterion calls the published `web_client` fixture; it never
+constructs a client itself.
 
 ```python
-# tests/conftest.py
+# conftest.py
 import pytest
+from django.test import Client
 
 @pytest.fixture
-def client(db):
-    from django.test import Client
+def web_client(db) -> Client:
     return Client()
 ```
 
@@ -359,9 +381,9 @@ import pytest
 from core.models import Project
 
 @pytest.mark.django_db
-def test_project_list(client):
+def test_project_list(web_client):
     Project.objects.create(name='test', title='Test')
-    response = client.get('/projects/')
+    response = web_client.get('/projects/')
     assert response.status_code == 200
     assert b'Test' in response.content
 ```
@@ -369,7 +391,7 @@ def test_project_list(client):
 ```ini
 # pytest.ini
 [tool:pytest]
-DJANGO_SETTINGS_MODULE = config.settings_dev
+DJANGO_SETTINGS_MODULE = app_server.settings_dev
 ```
 
 **Why**: pytest-django handles database setup/teardown per test.
@@ -382,7 +404,7 @@ DJANGO_SETTINGS_MODULE = config.settings_dev
 
 Production checklist:
 ```python
-# config/settings_prod.py
+# app_server/settings_prod.py
 DEBUG = False
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

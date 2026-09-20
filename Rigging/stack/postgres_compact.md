@@ -1,37 +1,61 @@
-<!-- Compacted from Rigging/stack/postgres.md sha256=a8979b2b6e46fb234f59b15a91724b1e5b43720538c5ae5dca627f55019947e4 on 2026-09-19 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/postgres.md sha256=ad71aaa597c50f7d153c7aeb345d69973898dcbdad61fa42600772664b44ec50 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+
+## Foundation Contract
+
+The published shape of this foundation. Drydock synthesizes the story that builds it and every
+acceptance criterion writes against these names. Carried verbatim into `postgres_compact.md`.
+
+- package: persistence
+- entry: open_session() -> Session
+- fixture: db_session
+- fixture_source: conftest.py
+
+```python
+# conftest.py
+import pytest
+from persistence import open_session
+
+@pytest.fixture
+def db_session():
+    with open_session() as session:
+        yield session
+```
+
+A criterion calls `db_session`; it never opens a connection itself.
+
+---
 
 # PostgreSQL — Contract Surface
 
-### config: PostgreSQL DSN
+## Persistence
 
-The production database is selected by a `postgresql://` DSN supplied through the typed `Config` class and environment.
+### config_key `postgresql://` DSN
+Selects PostgreSQL as the production database engine at runtime.
 
-Constraints: Do not store credentials in the repository. Add `psycopg[binary]` to project dependencies when using PostgreSQL.
+Constraints: The DSN is supplied through the environment via the typed `Config` class; credentials must not be stored in the repository.
 
-### db.<table>.<verb>(...)
+### `db.<table>.<verb>(...)`
+Provides the generated persistence API for callers to access database tables.
 
-Callers access generated persistence operations through the `db.<table>.<verb>(...)` interface.
+Constraints: Callers must not write hand-crafted cursors, connection pools, SQL strings, parameter binding, row mapping, or `RETURNING` handling.
 
-Constraints: Do not write hand-coded cursors, connection pools, SQL strings, or access layers. The generated persistence package handles connection management, parameter binding, `RETURNING`, and row mapping.
+### Rule: postgres-dependencies
+A Python project using a production PostgreSQL DSN must declare `psycopg[binary]` as a dependency; the engine accepts `psycopg` or `psycopg2`.
 
 ### Rule: supported-language
+Only Python Targets may declare `DATABASE.md`; a Target using another language fails before planning.
 
-Python Targets use the shipped PostgreSQL adapter; Targets in other languages declaring `DATABASE.md` fail before planning.
-
-### Rule: schema-enforcement
-
-PostgreSQL enforces declared column lengths, declared types, and foreign-key creation order.
-
-Constraints: Referenced tables must be created before dependent tables. Foreign-key cycles are refused.
+### Rule: schema-order
+Referenced tables must be created before tables that cite them, and foreign-key cycles are rejected.
 
 ### Rule: schema-lifecycle
+The schema is created once during the DATABASE build step; applications must not create or alter schema at startup.
 
-The schema is built once during the DATABASE build step and is not migrated within a release.
+### Rule: type-enforcement
+PostgreSQL enforces declared column types and `VARCHAR(n)` lengths; values exceeding a declared length are rejected.
 
-### Rule: schema-changes
+### Rule: access-boundary
+`psycopg` and `psycopg2` may be imported only within the generated `persistence/` package.
 
-Across releases, widening `varchar(n)` and dropping `NOT NULL` are supported; setting `NOT NULL` scans the table.
-
-### Rule: database-boundaries
-
-PostgreSQL drivers may be imported only within the generated `persistence/` package, values must be parameter-bound rather than formatted into SQL, and applications must not create or alter schema at startup.
+### Rule: parameter-binding
+SQL values must be passed as bound parameters and never formatted directly into SQL strings.

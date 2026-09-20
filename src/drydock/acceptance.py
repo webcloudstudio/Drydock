@@ -1710,6 +1710,34 @@ def blueprint_read_defects(code: str, blueprint_dir: Path) -> tuple[str, ...]:
     return tuple(defects)
 
 
+def imported_modules(code: str) -> tuple[tuple[int, str, tuple[str, ...]], ...]:
+    """Return ``(line, module, imported names)`` for every import in a criterion.
+
+    ``import a.b`` yields ``(line, "a.b", ())``; ``from a import x, y`` yields
+    ``(line, "a", ("x", "y"))``. A relative import yields its module with the leading dots
+    dropped, because a criterion runs as a top-level script and has no package to be relative to.
+
+    The judgment lives in ``rigging_contract.import_defects``; this function only reads the text.
+    """
+    try:
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return ()
+
+    found: list[tuple[int, str, tuple[str, ...]]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.extend((node.lineno, alias.name, ()) for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            found.append((
+                node.lineno,
+                node.module or "",
+                tuple(alias.name for alias in node.names),
+            ))
+    return tuple(sorted(found))
+
+
 def staged_regex_defects(code: str, source_root: Path) -> tuple[str, ...]:
     """Return invalid regex arguments passed to a statically-known staged Python runner.
 
