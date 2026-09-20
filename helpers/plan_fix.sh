@@ -8,6 +8,7 @@
 # Usage: helpers/plan_fix.sh <Target> [extra drydock plan options...]
 #   MAX_PASSES   fix passes before giving up (default 5)
 #   FIX_MODEL    model for the fixing session (default: Claude Code's configured model)
+FIX_MODEL=opus
 set -uo pipefail
 
 if [ $# -lt 1 ]; then

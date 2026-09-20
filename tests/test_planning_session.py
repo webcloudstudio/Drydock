@@ -14,7 +14,11 @@ import pytest
 
 from drydock import artifact_blocks, technology_stack
 from drydock import planning_session as ps
-from drydock.acceptance import parse_programmatic_acceptance, parse_programmatic_acceptance_text
+from drydock.acceptance import (
+    parse_programmatic_acceptance,
+    parse_programmatic_acceptance_text,
+    unresolved_globals,
+)
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
 from drydock.plan_graph import PlannedStory
@@ -4615,6 +4619,69 @@ def test_plan_does_not_guess_an_import_its_siblings_disagree_on():
     blocks = {"FEATURE-Example.md": text}
 
     assert _normalize_standalone_imports(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_plan_binds_the_module_name_a_criterion_imports_its_factory_from():
+    """Marina_Luna: ``from app import create_app`` then ``app.test_client()``."""
+    from drydock.planning_session import _normalize_factory_bindings
+
+    blocks = {
+        "SCREEN-Example.md": (
+            "# SCREEN: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "from marina_app.factory import create_app\n\n"
+            "client = marina_app.test_client()\nassert client.get('/').status_code == 200\n"
+            "=== END AC first ===\n"
+        )
+    }
+
+    warnings = _normalize_factory_bindings(blocks)
+
+    checks = parse_programmatic_acceptance_text(blocks["SCREEN-Example.md"], source="x")
+    assert checks[0].code == (
+        "from marina_app.factory import create_app\n"
+        "marina_app = create_app()\n\n"
+        "client = marina_app.test_client()\nassert client.get('/').status_code == 200"
+    )
+    assert unresolved_globals(checks[0].code) == ()
+    assert warnings == (
+        "SCREEN-Example.md [first]: bound the name its import left undefined with "
+        "marina_app = create_app()",
+    )
+
+
+def test_plan_leaves_an_unbound_name_that_means_the_module_it_imports_from():
+    """``marina.db`` after ``from marina.db import Session`` means the module, not a session."""
+    from drydock.planning_session import _normalize_factory_bindings
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\n"
+        "from marina.db import Session\n\nassert marina.db.engine is not None\n"
+        "=== END AC first ===\n\n"
+        "=== AC second ===\nIntent: Second.\n\n"
+        "from app import create_app, seed\n\nclient = app.test_client()\nassert client\n"
+        "=== END AC second ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_factory_bindings(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_plan_does_not_call_a_standard_library_module_it_imports_a_name_from():
+    from drydock.planning_session import _normalize_factory_bindings
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\n"
+        "from pathlib import Path\n\nassert pathlib.Path('.').exists()\n"
+        "=== END AC first ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_factory_bindings(blocks) == ()
     assert blocks["FEATURE-Example.md"] == text
 
 

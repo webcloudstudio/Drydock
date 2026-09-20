@@ -8,6 +8,20 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Fixed
+
+- 2026-09-20: `drydock plan` no longer writes a plan that `drydock plan verify` refuses over a
+  criterion reading the module it imported its factory from. `from app import create_app` followed
+  by `client = app.test_client()` binds nothing named `app`, so the criterion raises `NameError`
+  before it asserts anything; the plan was written `unbuildable` and the operator paid for a repair
+  pass to recover a name the criterion's own import already determines. Plan now inserts
+  `app = create_app()` below the criterion's last import, deterministically and with a warning.
+  The rewrite is taken only where nothing else is plausible: the unbound name is not a standard
+  library module, exactly one name is imported from the module rooted at it, and no attribute read
+  of the name matches a submodule of that import — `marina.db` after `from marina.db import
+  Session` means the module and is still reported by `drydock plan verify`. In Marina_Luna this
+  repaired the four criteria that failed the plan and touched nothing else in 47 Blueprints.
+
 ### Changed
 
 - 2026-09-19: Table ownership has one rule: only a Feature owns an access pattern, and a pattern no

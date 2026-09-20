@@ -18,6 +18,7 @@ import ast
 import json
 import os
 import re
+import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -3145,6 +3146,40 @@ def _top_level_imports(code: str) -> dict[str, str]:
     return bound
 
 
+def _splice_check_code(text: str, check: ProgrammaticAcceptance, replacement: str) -> str | None:
+    """Return ``text`` with one criterion's code replaced, or ``None`` when its span is not found.
+
+    Located by the criterion's own delimiters and then by the exact code inside them, so a repair
+    rewrites that criterion and nothing else in the file — including a sibling whose code is
+    identical.
+    """
+    opening = next(
+        (
+            match
+            for match in AC_OPEN_RE.finditer(text)
+            if match.group("id").strip() == check.check_id
+        ),
+        None,
+    )
+    if opening is None:
+        return None
+    closing = next(
+        (
+            match
+            for match in AC_END_RE.finditer(text, opening.end())
+            if match.group("id").strip() == check.check_id
+        ),
+        None,
+    )
+    if closing is None:
+        return None
+    offset = text[opening.end() : closing.start()].find(check.code)
+    if offset < 0:
+        return None
+    start = opening.end() + offset
+    return text[:start] + replacement + text[start + len(check.code) :]
+
+
 def _normalize_standalone_imports(blocks: dict[str, str]) -> tuple[str, ...]:
     """Give each AC the import its sibling criteria already state for a name it reads unbound.
 
@@ -3178,30 +3213,9 @@ def _normalize_standalone_imports(blocks: dict[str, str]) -> tuple[str, ...]:
             if not added:
                 continue
             replacement = "\n".join(added) + "\n\n" + check.code
-            opening = next(
-                (
-                    match
-                    for match in AC_OPEN_RE.finditer(text)
-                    if match.group("id").strip() == check.check_id
-                ),
-                None,
-            )
-            closing = next(
-                (
-                    match
-                    for match in AC_END_RE.finditer(text, opening.end() if opening else 0)
-                    if match.group("id").strip() == check.check_id
-                ),
-                None,
-            )
-            if opening is not None and closing is not None:
-                body = text[opening.end() : closing.start()]
-                offset = body.find(check.code)
-            else:
-                offset = -1
-            if offset >= 0:
-                start = opening.end() + offset
-                text = text[:start] + replacement + text[start + len(check.code) :]
+            spliced = _splice_check_code(text, check, replacement)
+            if spliced is not None:
+                text = spliced
                 normalized.extend(
                     f"{name} [{check.check_id}]: added the required standalone import subprocess"
                     if statement == "import subprocess"
@@ -3211,6 +3225,110 @@ def _normalize_standalone_imports(blocks: dict[str, str]) -> tuple[str, ...]:
                 )
         blocks[name] = text
     return tuple(normalized)
+
+
+def _factory_bindings(code: str) -> tuple[str, ...]:
+    """Return the assignments that bind each module name a criterion imports from and then reads.
+
+    ``from app import create_app`` followed by ``client = app.test_client()`` is one slip with one
+    reading: the criterion imported the factory it needs and then reached for a name the import
+    never bound. The module object would not answer ``test_client`` even if it were imported, so
+    ``app = create_app()`` is the only construction the criterion can have meant, and it is the
+    construction its sibling criteria in the same Blueprint already write.
+
+    Taken only where nothing else is plausible: the unbound name is not a standard library module,
+    exactly one name is imported from the module rooted at it, and no attribute read of that name
+    matches a submodule of the import — ``marina.db`` after ``from marina.db import Session`` means
+    the module, not the session, and is left for ``plan verify`` to report.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return ()
+    bindings: list[str] = []
+    for missing in unresolved_globals(code):
+        if missing in sys.stdlib_module_names:
+            continue
+        imported: set[str] = set()
+        submodules: set[str] = set()
+        for node in tree.body:
+            if not isinstance(node, ast.ImportFrom) or node.level != 0 or not node.module:
+                continue
+            path = node.module.split(".")
+            if path[0] != missing:
+                continue
+            submodules.update(path[1:])
+            imported.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+        if len(imported) != 1:
+            continue
+        if any(
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == missing
+            and node.attr in submodules
+            for node in ast.walk(tree)
+        ):
+            continue
+        bindings.append(f"{missing} = {next(iter(imported))}()")
+    return tuple(bindings)
+
+
+def _normalize_factory_bindings(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Bind, after its imports, each name a criterion imports a factory from and then reads.
+
+    Runs after :func:`_normalize_standalone_imports`, whose additions can supply the import this
+    reading is drawn from. The assignment goes below the criterion's last import rather than above
+    its code, because the name it calls is bound by that import.
+    """
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            continue
+        text = blocks[name]
+        for check in checks:
+            if not (bindings := _factory_bindings(check.code)):
+                continue
+            replacement = _with_bindings_after_imports(check.code, bindings)
+            if replacement is None:
+                continue
+            spliced = _splice_check_code(text, check, replacement)
+            if spliced is None:
+                continue
+            text = spliced
+            normalized.extend(
+                f"{name} [{check.check_id}]: bound the name its import left undefined with "
+                f"{binding}"
+                for binding in bindings
+            )
+        blocks[name] = text
+    return tuple(normalized)
+
+
+def _with_bindings_after_imports(code: str, bindings: Sequence[str]) -> str | None:
+    """Return ``code`` with ``bindings`` inserted below its last top-level import."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+    last = max(
+        (
+            node.end_lineno or node.lineno
+            for node in tree.body
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+        ),
+        default=0,
+    )
+    if not last:
+        return None
+    lines = code.splitlines(keepends=True)
+    prefix = "".join(lines[:last])
+    if not prefix.endswith("\n"):
+        prefix += "\n"
+    return prefix + "".join(f"{binding}\n" for binding in bindings) + "".join(lines[last:])
 
 
 #: The plan-create output contract, measured deterministically by :mod:`drydock.plan_shape`.
@@ -3612,7 +3730,9 @@ def _validate_plan_output(
         + _normalize_database_owners(blocks)
         + _normalize_database_interfaces(blocks)
     )
-    standalone_import_warnings = _normalize_standalone_imports(blocks)
+    standalone_import_warnings = _normalize_standalone_imports(
+        blocks
+    ) + _normalize_factory_bindings(blocks)
     escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
     malformed_warnings = tuple(
