@@ -50,9 +50,9 @@ Drydock imports specifications for your project in any format.
 
 Drydock turns this material into **Blueprints**, the authoritative living definition of your software product. `drydock plan` writes the **Blueprints** and a **Manifest** (graph database) that tracks build order, runnable work, and incremental rebuild scope.
 
-**Blueprints** represent the smallest **building block** of your software. Drydock groups related **building blocks** into **blocks**: atomic build steps that combine the **Blueprints** with **Rigging**. **Rigging** is enterprise business rules, technology rules, stack guidance, and branding. It gives your software common behavior and style.
+**Blueprints** represent the smallest **building block** of your software. Drydock groups related **building blocks** into **blocks**. A **block** is an atomic build step that combines the **Blueprints** with **Rigging**. **Rigging** is enterprise business rules, technology rules, stack guidance, and branding. It gives your software common behavior and style.
 
-Drydock uses test-driven development: each **building block** carries acceptance criteria that must pass before the next step.
+Drydock uses test-driven development. Each **building block** carries acceptance criteria that must pass before the next step.
 
 The process builds maintainable software. Users edit specifications or add change tickets, run `drydock refit`, and rebuild normally.
 
@@ -96,7 +96,7 @@ flowchart LR
 | **Crew** | The LLM agents that perform the work. |
 | **Building Block** | A story representing the smallest buildable specification. |
 | **Block** | A group of **Manifest** stories built as one unit. |
-| **Tier** | A **Rigging** file's or story's rank in the build order. |
+| **Tier** | A Bluprint's build order. |
 
 ## The drydock CLI
 
@@ -130,7 +130,7 @@ drydock run quarterdeck MyApp       # review the Manifest
 
 ### I — Implement
 
-Build until the **Manifest** is complete:
+Build until the **Manifest** is complete.
 
 ```bash
 n=1
@@ -149,7 +149,7 @@ done
 drydock status MyApp --check        # Manifest complete
 ```
 
-Score the result:
+Score the result.
 
 ```bash
 drydock score ac MyApp              # story acceptance
@@ -189,7 +189,7 @@ flowchart LR
 **Prerequisites**
 
 - Python 3.11 or later
-- A subscription-authenticated CLI: `claude` (Anthropic) or `codex` (OpenAI), or the token-billed `gemini` (Google).
+- A subscription-authenticated CLI, `claude` (Anthropic) or `codex` (OpenAI), or the token-billed `gemini` (Google).
 
 **Install**
 
@@ -198,7 +198,7 @@ uv tool install drydock-sdd
 # or: pipx install drydock-sdd
 ```
 
-Note: `uv tool` and `pipx` place `drydock` on `$PATH` automatically.
+`uv tool` and `pipx` place `drydock` on `$PATH` automatically.
 
 **Configure the workspace**
 
@@ -215,7 +215,7 @@ drydock config set drydock_build_directory "$PROJECTS"
 drydock init <Target>
 ```
 
-The resulting layout:
+The resulting layout is shown below.
 
 ```text
 $PROJECTS/
@@ -258,7 +258,7 @@ gates that report whether the project has work to do. Neither calls an LLM or wr
 | `drydock_model` | Default model |
 | `drydock_effort` | Reasoning effort |
 | `drydock_build_escalate_model` | Model for the final repair attempt |
-| `llm_provider` | LLM CLI: `claude`, `codex`, or `gemini` |
+| `llm_provider` | LLM CLI (`claude`, `codex`, or `gemini`) |
 | `codex_sandbox` | Codex OS sandbox policy |
 | `prompt_warn_tokens` | Prompt size that warns |
 | `prompt_error_tokens` | Prompt size that fails |
@@ -371,7 +371,7 @@ reruns `drydock analyze` until the blockers clear. `SEA_TRIALS.md` captures proj
 ### Epic Decomposition 
 
 Drydock decomposes source material into **Blueprints** by project type. A web application decomposes
-by route: stories build the routes and the screens, and a screen can use multiple routes. Other
+by route. Stories build the routes and the screens, and a screen can use multiple routes. Other
 system types decompose as follows.
 
 | System Type | Methodology |
@@ -438,7 +438,7 @@ file or story with no tier is tier 6.
 | 5 | `screen-foundation` | The screen idiom. |
 | 6 | `application` | Every service and every screen. |
 
-Multiple tiers are generally not built together: their context is not duplicated, so combining them
+Multiple tiers are generally not built together. Their context is not duplicated, so combining them
 yields no context savings.
 
 #### Database Encapsulation
@@ -466,11 +466,11 @@ Implement builds the **Blueprints** using the **Manifest**.
 The **Manifest** is the build plan. It groups similar **building blocks** into **blocks** by token
 count to maximize context savings, and orders stories by dependencies.
 
-The **Commander** reviews `MANIFEST.md` in the **QuarterDeck** to set build direction and instructions:
+The **Commander** reviews `MANIFEST.md` in the **QuarterDeck** to set build direction and instructions.
 
-* reorder stories so important or testable steps run first
-* regroup stories so one agent runs them
-* review **Blueprint** programmatic and user acceptance
+* Reorder stories so important or testable steps run first
+* Regroup stories so one agent runs them
+* Review **Blueprint** programmatic and user acceptance
 
 ### drydock build
 
@@ -484,7 +484,7 @@ drydock build status <Target>
 `drydock build` converts **Blueprints** to code, executing ready **blocks** from `MANIFEST.md` in order.
 
 Each **building block** is checked against its deterministic acceptance criteria. A **block**
-completes only when all pass. `drydock build` self-repairs: it diagnoses and fixes failed **blocks**,
+completes only when all pass. `drydock build` self-repairs. It diagnoses and fixes failed **blocks**,
 then resumes.
 
 A failed **block** gets a configurable number of repair passes (default 6). Repair stops after two
@@ -515,7 +515,7 @@ done
 `drydock diagnose` writes a diagnostic report and recommends **Blueprint** changes. `--apply` updates
 the **Blueprints** and invalidates their build graph, so the build self-repairs and continues.
 
-The **QuarterDeck** surfaces these decisions. Review is generally pro forma: `drydock diagnose` knows
+The **QuarterDeck** surfaces these decisions. Review is generally pro forma because `drydock diagnose` knows
 your intent from your **Compass** files.
 
 ```mermaid
@@ -582,7 +582,7 @@ drydock document assemble readme <Target>
 `drydock document <Target>` runs `generate`, then `assemble`.
 `drydock document assemble readme` regenerates the built project's `README.md`.
 
-Configuration lives in `$DRYDOCK_WORKSPACE/targets/<Target>/documentation.yaml`:
+Configuration lives in `$DRYDOCK_WORKSPACE/targets/<Target>/documentation.yaml`.
 
 ```yaml
 theme: slate
@@ -720,8 +720,8 @@ screens follow the Agile methodology and are documented in `QuarterDeck/README.m
 
 | Artifact | Purpose |
 |---|---|
-| **Commanders Chair** | Default view: mission and current state |
-| **Soundings** | Acceptance checklist: each capability, its state, and evidence |
+| **Commanders Chair** | Default view. Shows the mission and current state. |
+| **Soundings** | Acceptance checklist. Shows each capability, its state, and evidence. |
 | **Sea Trials** | Objectives and success criteria for delivery |
 | **COMPASS Files** | Persistent **Commander** guidance |
 
@@ -740,7 +740,7 @@ Each technology the application uses should have a **Rigging** file. The **Comma
 The **Rigging** shipped with Drydock is the Author's build rules. Organizations should supply their
 own stack, branding, and best-practice files.
 
-**Business rules.** `BUSINESS_RULES.md` defines agent behavior: git workflow, project layout, script
+**Business rules.** `BUSINESS_RULES.md` defines agent behavior. It covers git workflow, project layout, script
 conventions, and error handling. Its compact derivative, `BUSINESS_RULES_compact.md`, is injected into
 the **Target** `AGENTS.md`. The full source stays in `Rigging/`.
 
@@ -820,4 +820,4 @@ codex exec \
     --model <model> -
 ```
 
-`codex_sandbox` sets the OS sandbox: `danger-full-access` (default), `workspace-write`, or `read-only`.
+`codex_sandbox` sets the OS sandbox to `danger-full-access` (default), `workspace-write`, or `read-only`.
