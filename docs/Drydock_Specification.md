@@ -424,6 +424,27 @@ writes the build graph (`MANIFEST.md`).
 | `ARCHITECTURE.md`,<br> `DATABASE.md`,<br> `FEATURE-{Name}.md`,<br> `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Blueprints |
 | `MANIFEST.md` | Target root | Build plan |
 
+### Database Encapsulation
+
+**`DATABASE.md` enforces data access encapsulation.**
+
+Application code never calls the database directly. Every table, config store, file store, and
+external service is accessed through a typed Python class. Route and business code calls
+`db.items.get(id)`, never raw SQL.
+
+A code review that finds raw SQL, `os.environ` reads, `open()` on application data, or a cloud SDK
+import outside its encapsulation class fails.
+
+**Typed class library pattern.** `DATABASE.md` specifies the schema and the Python classes that
+encapsulate it. Each table maps to a typed `@dataclass` row. One `Database` class owns the
+connection and session lifecycle and exposes only named methods; callers never receive a cursor or
+row tuple. Methods raise domain exceptions (`ItemNotFound`, `StorageError`), not driver exceptions.
+The `Database` class is created once at startup and passed by dependency injection.
+
+`DATABASE_compact.md` holds only class names, method signatures, types, and one-line summaries. Only
+the story that `implements: DATABASE.md` receives the full file; other steps receive the compact
+form.
+
 ## SAIL Phase 3 — Implement: Building The Software
 
 Builds the Blueprints using the Manifest.
@@ -922,17 +943,11 @@ define one; in that case, do not import branding.
 ### Compaction
 
 Compaction creates `<file>_compact.md` from `<file>.md`: the callable surface, with no explanatory
-detail.
+detail. The story that builds a capability uses the full file; later stories use the compact file.
+The build graph selects which, and `drydock build` creates compact files as needed.
 
-The story that builds a capability may need the full file; later stories use the compact file. The
-build graph selects full or compact automatically, and `drydock build` creates compact files as
-needed.
-
-`drydock plan` warns when a source is newer than its compact file. Recompact it, which may trigger a
-rebuild, or `touch` the compact file to keep it.
-
-`--all` also refreshes Drydock's own Rigging compacts. Files with no callable surface are skipped and
-marked in the file name.
+`drydock plan` warns when a source is newer than its compact file. Recompact it, or `touch` the
+compact file to keep it. Files with no callable surface are skipped.
 
 ### Commands
 
@@ -946,31 +961,22 @@ drydock rigging update <Target> [--dry-run]
 drydock rigging verify <Target>
 ```
 
-| Flag | Effect |
-|------|--------|
-| `--all` | Also refresh Drydock's own `Rigging/` compacts |
-| `--force` | Skip the freshness check; recompact every file |
-| `--include-file <file.md>` | Add a file (repeatable) |
-| `--exclude-file <file.md>` | Drop a discovered file (repeatable) |
-| `--include-dir <dir>` | Add all Markdown under a directory (repeatable) |
-
+`drydock rigging compact` recompacts stale files. `--all` includes Drydock's own Rigging, `--force`
+recompacts every file, and the include and exclude options adjust the file set.
 `drydock rigging update` injects `BUSINESS_RULES_compact.md` and standard templates into the Target
-`AGENTS.md` idempotently; `--dry-run` previews without writing. `drydock rigging verify` checks
-Rigging compliance.
+`AGENTS.md`; `--dry-run` previews. `drydock rigging verify` checks Rigging compliance.
 
 ## Drydock Security
 
-Drydock checks dependency legitimacy during build to limit hallucinated or suspicious package names.
+Drydock scopes LLM work to `$DRYDOCK_WORKSPACE` and `$DRYDOCK_BUILD_DIRECTORY`. Each provider CLI
+runs headless in an isolated home that holds only its credentials, so the agent reads none of the
+user's settings, rules, memories, plugins, or history.
 
-Drydock trusts imported material and **WILL** run it. Encapsulate it with Docker or bwrap
-(bubblewrap) to guard against poor or malicious specifications. Drydock needs access only to
-`$DRYDOCK_BUILD_DIRECTORY` and `$DRYDOCK_WORKSPACE`.
+Drydock trusts imported material and **WILL** run it. Run Drydock in Docker or bwrap (bubblewrap),
+exposing only those two directories, to guard against poor or malicious specifications. Build checks
+dependency legitimacy to limit hallucinated package names.
 
-### Claude Security Details
-
-Drydock runs the Claude CLI headless in an isolated home, `~/.drydock/claude-home`, seeded only with
-subscription credentials. The agent reads none of the user's settings, plugins, MCP servers, history,
-or state.
+### Claude
 
 ```bash
 HOME=~/.drydock/claude-home CLAUDE_CONFIG_DIR=~/.drydock/claude-home \
@@ -983,19 +989,9 @@ claude -p \
     --model <model>
 ```
 
-| Flag | Effect |
-|---|---|
-| `-p` | Print mode: one prompt in, one response out |
-| `--verbose` | Full event detail for the execution log |
-| `--safe-mode` | No CLAUDE.md/AGENTS.md discovery, auto-memory, hooks, plugins, or MCP servers |
-| `--output-format stream-json` | Structured JSON events for logging |
-| `--include-partial-messages` | Stream token deltas to the console |
-| `--dangerously-skip-permissions` | Run unattended; text-only commands pass `--tools "" --strict-mcp-config` instead |
-| `--model <model>` | Configured model |
+`--safe-mode` disables CLAUDE.md and AGENTS.md discovery, memory, hooks, plugins, and MCP servers.
 
-### Codex Security Details
-
-Drydock isolates Codex's configuration and identity, not its command execution.
+### Codex
 
 ```bash
 CODEX_HOME=/tmp/drydock-codex-home-XXXX \
@@ -1010,41 +1006,4 @@ codex exec \
     --model <model> -
 ```
 
-| Flag | Effect |
-|---|---|
-| `CODEX_HOME=<dir>` | Temporary home seeded only with `auth.json`; no user config, rules, memories, or history |
-| `--ignore-user-config` | Skip `$CODEX_HOME/config.toml` |
-| `--ignore-rules` | Skip user and project `.rules` |
-| `--ephemeral` | No persisted session state |
-| `--sandbox <codex_sandbox>` | OS sandbox policy from `codex_sandbox` |
-| `--cd <build_dir>` | Working root |
-| `--json` | Structured event output |
-| `--output-last-message <output_file>` | Capture the final message |
-| `--model <model>` | Runtime model |
-| `-` | Read the prompt from stdin |
-
-Codex runs model-generated commands in the invoking shell. `codex_sandbox` is `danger-full-access`
-(default, no OS confinement), `workspace-write`, or `read-only`. Non-default modes require the
-platform sandbox helper (`codex-linux-sandbox` on Linux) and fail fast without it. Hardened
-deployments run Drydock in a container that exposes only the workspace and build directories.
-
-## Database Encapsulation
-
-**`DATABASE.md` enforces data access encapsulation.**
-
-Application code never calls the database directly. Every table, config store, file store, and
-external service is accessed through a typed Python class. Route and business code calls
-`db.items.get(id)`, never raw SQL.
-
-A code review that finds raw SQL, `os.environ` reads, `open()` on application data, or a cloud SDK
-import outside its encapsulation class fails.
-
-**Typed class library pattern.** `DATABASE.md` specifies the schema and the Python classes that
-encapsulate it. Each table maps to a typed `@dataclass` row. One `Database` class owns the
-connection and session lifecycle and exposes only named methods; callers never receive a cursor or
-row tuple. Methods raise domain exceptions (`ItemNotFound`, `StorageError`), not driver exceptions.
-The `Database` class is created once at startup and passed by dependency injection.
-
-`DATABASE_compact.md` holds only class names, method signatures, types, and one-line summaries. Only
-the story that `implements: DATABASE.md` receives the full file; other steps receive the compact
-form.
+`codex_sandbox` sets the OS sandbox: `danger-full-access` (default), `workspace-write`, or `read-only`.
