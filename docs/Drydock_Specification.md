@@ -501,6 +501,37 @@ diagnose and fix failed blocks and then resume.
 Failed block get a configurable (default 6) number of  repair passes. 
 Repair stops after two consecutive passes without progress, or at the pass limit.
 
+**The build loop**
+
+The analysis stage decomposes your epic and inputs, the plan stage grooms the stories and adds
+acceptance criteria, and the build stage iterates the stories and builds them. `drydock diagnose` is
+authorized to fix your specifications and correct prior step errors so the build can be retried.
+Decisions are shown in the QuarterDeck.
+
+```bash
+n=1
+max=5
+while drydock status "$PROJECT" --ready
+do
+    echo "************************"
+    echo "* RUNNING BUILD ATTEMPT $n"
+    echo "************************"
+    drydock build "$PROJECT" $OPTS || drydock diagnose "$PROJECT" --apply
+    n=$((n+1))
+    if [ "$n" -ge "$max" ]
+    then
+        echo "hit $max build iterations - aborting"
+        exit 1
+    fi
+done
+```
+
+`drydock diagnose` writes a diagnostic report and recommends Blueprint changes. `--apply` updates the
+Blueprints and invalidates their build graph, so the build self-repairs and continues.
+
+The QuarterDeck surfaces these decisions for review. Review is generally pro forma: `drydock diagnose`
+knows your intent because your Compass files state it.
+
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
