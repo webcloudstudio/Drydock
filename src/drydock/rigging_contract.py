@@ -163,6 +163,25 @@ class FoundationContract:
         return self.entry.split("(", 1)[0].strip()
 
     @property
+    def entry_module(self) -> str:
+        """The module the entry callable is imported from, as the contract's own example imports it.
+
+        ``app_server.main`` for FastAPI, ``app_server`` for Flask. The package alone is not enough:
+        ``from app_server import create_app`` passes the import gate and then fails on every run
+        wherever the package does not re-export the factory. Falls back to ``package`` when the
+        section shows no import of the callable.
+        """
+        if not (self.package and self.entry_callable):
+            return self.package
+        match = re.search(
+            rf"^\s*from\s+({re.escape(self.package)}(?:\.\w+)*)\s+import\s+[^\n]*"
+            rf"\b{re.escape(self.entry_callable)}\b",
+            self.section,
+            re.MULTILINE,
+        )
+        return match.group(1) if match else self.package
+
+    @property
     def shape(self) -> str:
         """``api`` when the foundation publishes an importable package, else ``environment``."""
         return "api" if self.package else "environment"
@@ -421,6 +440,35 @@ def published_packages() -> dict[str, list[FoundationContract]]:
     return packages
 
 
+def _live_packages(selected: Iterable[str]) -> dict[str, FoundationContract]:
+    """Return ``{package: contract}`` for the foundations ``selected`` names."""
+    chosen = set(selected)
+    return {
+        contract.package: contract
+        for contract in foundation_contracts().values()
+        if contract.filename in chosen and contract.package
+    }
+
+
+def entry_owners(selected: Iterable[str]) -> dict[str, FoundationContract]:
+    """Return ``{entry callable: contract}`` for the foundations ``selected`` names.
+
+    ``create_app`` maps to the selected web server. The name is decidable, so a criterion that
+    imports it from anywhere else is corrected by Plan rather than refused by ``plan verify``.
+    """
+    return {
+        contract.entry_callable: contract
+        for contract in _live_packages(selected).values()
+        if contract.entry_callable
+    }
+
+
+def selected_contract_sections(selected: Iterable[str]) -> list[str]:
+    """Return the verbatim ``## Foundation Contract`` section of each selected foundation."""
+    published = foundation_contracts()
+    return [published[name].section for name in selected if name in published]
+
+
 def import_defects(
     imports: Iterable[tuple[int, str, tuple[str, ...]]],
     selected: Iterable[str],
@@ -442,15 +490,8 @@ def import_defects(
     build environment, not about the Blueprint, and guessing at it would refuse working plans.
     """
     published = published_packages()
-    chosen = {name for name in selected}
-    live = {
-        contract.package: contract
-        for contract in foundation_contracts().values()
-        if contract.filename in chosen and contract.package
-    }
-    entry_owner = {
-        contract.entry_callable: contract for contract in live.values() if contract.entry_callable
-    }
+    live = _live_packages(selected)
+    entry_owner = entry_owners(selected)
 
     defects: list[str] = []
     for line, module, names in imports:

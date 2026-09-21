@@ -128,6 +128,11 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
+from drydock.rigging_contract import (
+    FoundationContract,
+    entry_owners,
+    selected_contract_sections,
+)
 from drydock.source_material import SourceMaterialFile, discover_source_material
 from drydock.source_roles import parse_source_roles, promote_imported_sources
 from drydock.standard_artifacts import ensure_standard_artifacts, render_console
@@ -1624,9 +1629,17 @@ def _assemble_prompt_assembly(
         text = technology_stack.load_text(target_dir)
         if not text.strip():
             return []
+        # The contract of each selected foundation travels with the stack that selects it. A
+        # criterion writes against the package it names; without it the author invents one, and
+        # Marina_Luna split 153 criteria between `app` and `marina_app`.
+        selected = technology_stack.stack_files(target_dir)
+        content = "\n\n".join([
+            text.strip(),
+            *(section.strip() for section in selected_contract_sections(selected)),
+        ])
         return _managed_doc_parts(
             filename=technology_stack.FILENAME,
-            content=text.strip(),
+            content=content,
             content_role="technology stack",
             path=technology_stack.path_for(target_dir),
         )
@@ -3331,6 +3344,91 @@ def _with_bindings_after_imports(code: str, bindings: Sequence[str]) -> str | No
     return prefix + "".join(f"{binding}\n" for binding in bindings) + "".join(lines[last:])
 
 
+def _selected_rigging(target_dir: Path) -> list[str]:
+    """The Rigging files the Target's Technology Stack names, or ``[]`` when it has no stack."""
+    if not technology_stack.path_for(target_dir).is_file():
+        return []
+    return technology_stack.stack_files(target_dir)
+
+
+def _foundation_import_rewrites(
+    code: str, owners: Mapping[str, FoundationContract]
+) -> tuple[str, tuple[tuple[str, str, str], ...]] | None:
+    """Return ``code`` importing each published entry callable from the foundation that owns it.
+
+    ``from marina_app import create_app`` on a FastAPI Target has found the right symbol under an
+    invented name; the selected web server publishes it in ``app_server.main`` and nowhere else.
+    Rewritten only where the statement imports that one name, so a sibling name it also imports
+    from the invented package is left for ``plan verify`` rather than silently dropped. Returns
+    ``(code, ((callable, old module, new module), ...))``, or ``None`` when nothing changes.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+    lines = code.splitlines(keepends=True)
+    changes: list[tuple[str, str, str]] = []
+    nodes = sorted(
+        (node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)),
+        key=lambda node: node.lineno,
+        reverse=True,
+    )
+    for node in nodes:
+        if node.level != 0 or not node.module or len(node.names) != 1:
+            continue
+        alias = node.names[0]
+        owner = owners.get(alias.name)
+        if owner is None or node.module.split(".", 1)[0] == owner.package:
+            continue
+        start, end = node.lineno - 1, (node.end_lineno or node.lineno) - 1
+        indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
+        bound = f" as {alias.asname}" if alias.asname else ""
+        newline = "\n" if lines[end].endswith("\n") else ""
+        lines[start : end + 1] = [
+            f"{indent}from {owner.entry_module} import {alias.name}{bound}{newline}"
+        ]
+        changes.append((alias.name, node.module, owner.entry_module))
+    if not changes:
+        return None
+    return "".join(lines), tuple(reversed(changes))
+
+
+def _normalize_foundation_imports(
+    blocks: dict[str, str], selected: Sequence[str]
+) -> tuple[str, ...]:
+    """Import each published entry callable from the package its selected foundation publishes.
+
+    Runs after :func:`_normalize_factory_bindings`, which reads the invented module name to bind
+    the instance the criterion meant; rewriting the import first would hide that name from it.
+    """
+    owners = entry_owners(selected)
+    if not owners:
+        return ()
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            continue
+        text = blocks[name]
+        for check in checks:
+            if (rewritten := _foundation_import_rewrites(check.code, owners)) is None:
+                continue
+            spliced = _splice_check_code(text, check, rewritten[0])
+            if spliced is None:
+                continue
+            text = spliced
+            normalized.extend(
+                f"{name} [{check.check_id}]: imported `{symbol}` from `{new}`, where the "
+                f"{owners[symbol].kind} foundation publishes it, instead of `{old}`"
+                for symbol, old, new in rewritten[1]
+            )
+        blocks[name] = text
+    return tuple(normalized)
+
+
 #: The plan-create output contract, measured deterministically by :mod:`drydock.plan_shape`.
 #: Shape conformance is a checker, not an instruction: the prompt no longer asks the model to
 #: verify its own delimiters and block completeness, because that verification is free and
@@ -3731,9 +3829,11 @@ def _validate_plan_output(
         + _normalize_database_owners(blocks)
         + _normalize_database_interfaces(blocks)
     )
-    standalone_import_warnings = _normalize_standalone_imports(
-        blocks
-    ) + _normalize_factory_bindings(blocks)
+    standalone_import_warnings = (
+        _normalize_standalone_imports(blocks)
+        + _normalize_factory_bindings(blocks)
+        + _normalize_foundation_imports(blocks, _selected_rigging(blueprint_dir.parent))
+    )
     escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
     malformed_warnings = tuple(

@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260919 V19
+version: 20260921 V20
 ---
 
 ## Overview
@@ -580,7 +580,7 @@ and a suite of hundreds of cases then reports its progress as a single bit.
 === AC health-check ===
 Intent: The health endpoint returns an OK response.
 
-from app import create_app
+from app_server import create_app
 
 client = create_app().test_client()
 response = client.get("/health")

@@ -335,6 +335,13 @@ def test_importing_the_entry_from_the_wrong_package_is_refused():
     assert "fastapi.md" in defects[0]
 
 
+def test_the_entry_module_is_the_one_the_contract_imports_from():
+    contracts = foundation_contracts()
+
+    assert contracts["fastapi.md"].entry_module == "app_server.main"
+    assert contracts["flask.md"].entry_module == "app_server"
+
+
 def test_the_published_names_verify_clean():
     code = "from app_server.main import create_app\nimport persistence\nimport json\n"
 

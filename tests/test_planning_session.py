@@ -1647,6 +1647,10 @@ def test_technology_stack_is_injected_into_the_plan_prompt(tmp_path):
     assert technology_stack.FILENAME in prompt
     assert "fastapi.md" in prompt
     assert "marina-library" in prompt
+    # The selected web server's contract travels with the stack, so the author writes the
+    # package it names instead of inventing one.
+    assert "## Foundation Contract" in prompt
+    assert "- package: app_server" in prompt
 
 
 def test_unanswered_required_analyze_decision_blocks_before_llm(tmp_path):
@@ -4682,6 +4686,75 @@ def test_plan_does_not_call_a_standard_library_module_it_imports_a_name_from():
     blocks = {"FEATURE-Example.md": text}
 
     assert _normalize_factory_bindings(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_plan_imports_the_entry_callable_from_the_selected_foundation():
+    """Marina_Luna: 153 criteria imported ``create_app`` from ``app`` or ``marina_app``."""
+    from drydock.planning_session import _normalize_foundation_imports
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "from marina_app import create_app\n\nassert create_app()\n"
+            "=== END AC first ===\n\n"
+            "=== AC second ===\nIntent: Second.\n\n"
+            "from app import create_app as factory\n\nassert factory()\n"
+            "=== END AC second ===\n"
+        )
+    }
+
+    warnings = _normalize_foundation_imports(blocks, ["python.md", "fastapi.md"])
+
+    checks = parse_programmatic_acceptance_text(blocks["FEATURE-Example.md"], source="x")
+    assert [check.code for check in checks] == [
+        "from app_server.main import create_app\n\nassert create_app()",
+        "from app_server.main import create_app as factory\n\nassert factory()",
+    ]
+    assert warnings == (
+        "FEATURE-Example.md [first]: imported `create_app` from `app_server.main`, where the "
+        "web-server foundation publishes it, instead of `marina_app`",
+        "FEATURE-Example.md [second]: imported `create_app` from `app_server.main`, where the "
+        "web-server foundation publishes it, instead of `app`",
+    )
+
+
+def test_plan_follows_the_rewrite_to_the_module_each_foundation_publishes():
+    from drydock.planning_session import _normalize_foundation_imports
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "from app import create_app\n\nassert create_app()\n"
+            "=== END AC first ===\n"
+        )
+    }
+
+    _normalize_foundation_imports(blocks, ["flask.md"])
+
+    checks = parse_programmatic_acceptance_text(blocks["FEATURE-Example.md"], source="x")
+    assert checks[0].code.startswith("from app_server import create_app\n")
+
+
+def test_plan_leaves_foundation_imports_it_cannot_rewrite_whole():
+    """A sibling name from the invented package would be dropped; ``plan verify`` reports it."""
+    from drydock.planning_session import _normalize_foundation_imports
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\n"
+        "from marina_app import create_app, Settings\n\nassert create_app(Settings())\n"
+        "=== END AC first ===\n\n"
+        "=== AC second ===\nIntent: Second.\n\n"
+        "from app_server.main import create_app\n\nassert create_app()\n"
+        "=== END AC second ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_foundation_imports(blocks, ["fastapi.md"]) == ()
+    assert _normalize_foundation_imports(blocks, ["python.md"]) == ()
     assert blocks["FEATURE-Example.md"] == text
 
 

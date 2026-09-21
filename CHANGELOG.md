@@ -107,6 +107,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-21: **`drydock plan` writes criteria against the selected foundation's package.** The
+  `unknown-package` gate added with Foundation Contracts refused every criterion importing
+  `create_app` from an invented package, but nothing gave the author the package name: the plan
+  prompt carried the stack table without the contracts, and the Blueprints Contract example still
+  wrote `from app import create_app`. Marina_Luna lost a plan to 153 such criteria. The selected
+  foundations' `## Foundation Contract` sections now accompany `TECHNOLOGY_STACK.md` in the plan
+  prompt, the example imports from `app_server`, and Plan rewrites a lone import of a published
+  entry callable to the module the contract names (`app_server.main` for FastAPI), reporting each
+  rewrite. An import that also takes other names from the invented package is left for
+  `plan verify`.
 - 2026-09-20: `drydock plan verify` refuses a criterion that reads a Blueprint document, a new
   `blueprint-read` defect. Acceptance runs with the build directory as its working directory and
   the Blueprint is an input to the build, so `pathlib.Path("ARCHITECTURE.md").read_text()` raises
