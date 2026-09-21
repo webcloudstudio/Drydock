@@ -4758,6 +4758,63 @@ def test_plan_leaves_foundation_imports_it_cannot_rewrite_whole():
     assert blocks["FEATURE-Example.md"] == text
 
 
+def test_plan_replaces_a_hand_built_client_with_the_published_one():
+    """Marina_Luna wrote ``client = create_app().test_client()`` 96 times on FastAPI."""
+    from drydock.planning_session import (
+        _normalize_foundation_imports,
+        _normalize_published_clients,
+    )
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "import json\nfrom marina_app import create_app\n\n"
+            "client = create_app().test_client()\nassert client.get('/').status_code == 200\n"
+            "=== END AC first ===\n\n"
+            "=== AC second ===\nIntent: Second.\n\n"
+            "from app_server.main import create_app\n\n"
+            "assert create_app()\nclient = create_app().test_client()\nassert client\n"
+            "=== END AC second ===\n"
+        )
+    }
+
+    _normalize_foundation_imports(blocks, ["fastapi.md"])
+    warnings = _normalize_published_clients(blocks, ["fastapi.md"])
+
+    checks = parse_programmatic_acceptance_text(blocks["FEATURE-Example.md"], source="x")
+    assert checks[0].code == (
+        "import json\nfrom app_server.testing import web_client\n\n"
+        "client = web_client()\nassert client.get('/').status_code == 200"
+    )
+    # The entry is still read, so its import stays and the published one joins it.
+    assert checks[1].code == (
+        "from app_server.main import create_app\nfrom app_server.testing import web_client\n\n"
+        "assert create_app()\nclient = web_client()\nassert client"
+    )
+    assert warnings == (
+        "FEATURE-Example.md [first]: replaced `create_app().test_client()` with the published "
+        "`web_client()`",
+        "FEATURE-Example.md [second]: replaced `create_app().test_client()` with the published "
+        "`web_client()`",
+    )
+
+
+def test_plan_leaves_clients_alone_without_a_selected_web_server():
+    from drydock.planning_session import _normalize_published_clients
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\n"
+        "from app import create_app\n\nclient = create_app().test_client()\nassert client\n"
+        "=== END AC first ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_published_clients(blocks, ["python.md"]) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
 def test_plan_closes_acceptance_blocks_whose_terminator_the_model_dropped():
     """The habit this exists for cost a real jq run ten LLM calls and wrote nothing."""
     from drydock.planning_session import _normalize_unterminated_acceptance_blocks

@@ -20,25 +20,33 @@ acceptance criterion writes against these names. Carried verbatim into `flask_co
 - package: app_server
 - entry: create_app() -> Flask
 - fixture: web_client
-- fixture_source: conftest.py
+- fixture_source: app_server/testing.py
 
 ```python
 # app_server/__init__.py
 def create_app() -> Flask:
     ...
 
-# conftest.py
-import pytest
+# app_server/testing.py
 from app_server import create_app
 
-@pytest.fixture
 def web_client():
     app = create_app()
     app.config["TESTING"] = True
     return app.test_client()
+
+# conftest.py
+import pytest
+from app_server import testing
+
+@pytest.fixture
+def web_client():
+    return testing.web_client()
 ```
 
-A criterion calls `web_client`; it never constructs a client itself.
+A criterion imports `web_client` from `app_server.testing` and calls it — `client = web_client()` —
+which runs the built application in-process without pytest. The pytest suite receives the same
+client through the `conftest.py` fixture. Neither constructs a client of its own.
 
 ---
 

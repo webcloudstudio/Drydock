@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/flask.md sha256=c021661ed8c80ac2228f3346a3bca56afe38ef3be955c36c5ed6eed8fc6c85d9 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/flask.md sha256=270adfabc0c1105b52da20a12c8c3d096e031dec56c46a6825893b8ab12af871 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -8,29 +8,35 @@ acceptance criterion writes against these names. Carried verbatim into `flask_co
 - package: app_server
 - entry: create_app() -> Flask
 - fixture: web_client
-- fixture_source: conftest.py
+- fixture_source: app_server/testing.py
 
 ```python
 # app_server/__init__.py
 def create_app() -> Flask:
     ...
 
-# conftest.py
-import pytest
+# app_server/testing.py
 from app_server import create_app
 
-@pytest.fixture
 def web_client():
     app = create_app()
     app.config["TESTING"] = True
     return app.test_client()
+
+# conftest.py
+import pytest
+from app_server import testing
+
+@pytest.fixture
+def web_client():
+    return testing.web_client()
 ```
 
-A criterion calls `web_client`; it never constructs a client itself.
+A criterion imports `web_client` from `app_server.testing` and calls it — `client = web_client()` —
+which runs the built application in-process without pytest. The pytest suite receives the same
+client through the `conftest.py` fixture. Neither constructs a client of its own.
 
 ---
-
-# Flask Best Practices — Contract Surface
 
 ## Application
 

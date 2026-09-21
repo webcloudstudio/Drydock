@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/django.md sha256=ceb954a32ba7dc639a3a1bcb739a72474e31d1cc91d5aa0592d4d07f65cb7986 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/django.md sha256=f20a6883b31343897b71b55bff52887d63bbd88703129c729798bcc153d2f07c on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -8,7 +8,7 @@ acceptance criterion writes against these names. Carried verbatim into `django_c
 - package: app_server
 - entry: create_app() -> WSGIHandler
 - fixture: web_client
-- fixture_source: conftest.py
+- fixture_source: app_server/testing.py
 
 ```python
 # app_server/wsgi.py — the Django project package IS app_server
@@ -22,16 +22,28 @@ def create_app() -> WSGIHandler:
 
 application = create_app()
 
-# conftest.py
-import pytest
+# app_server/testing.py
+import os
+import django
 from django.test import Client
 
-@pytest.fixture
-def web_client(db) -> Client:
+def web_client() -> Client:
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "app_server.settings")
+    django.setup()
     return Client()
+
+# conftest.py
+import pytest
+from app_server import testing
+
+@pytest.fixture
+def web_client(db):
+    return testing.web_client()
 ```
 
-A criterion calls `web_client`; it never constructs a client itself.
+A criterion imports `web_client` from `app_server.testing` and calls it — `client = web_client()` —
+which runs the built application in-process without pytest. The pytest suite receives the same
+client through the `conftest.py` fixture. Neither constructs a client of its own.
 
 Django's settings module is the real root of a Django project, so `app_server` is the settings
 package — `app_server/settings.py`, `app_server/urls.py`, `app_server/wsgi.py` — and the
@@ -43,8 +55,6 @@ runs unchanged whether the Commander selected Django, FastAPI, or Flask.
 are not restated here. What is published is only what a later story must not invent.
 
 ---
-
-# Django Best Practices — Contract Surface
 
 ## Configuration
 

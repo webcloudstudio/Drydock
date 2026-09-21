@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/fastapi.md sha256=485be8fc2c9aa5b7c0e29116feea585fb230cf375ea54abe53c3471e6c0be4dc on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/fastapi.md sha256=743fb36c32c13f3750c8e4845d9695c4ceb1ee026452540b0990cfc746437470 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -8,29 +8,35 @@ acceptance criterion writes against these names. Carried verbatim into `fastapi_
 - package: app_server
 - entry: create_app() -> FastAPI
 - fixture: web_client
-- fixture_source: conftest.py
+- fixture_source: app_server/testing.py
 
 ```python
 # app_server/main.py
 def create_app() -> FastAPI:
     ...
 
-# conftest.py
-import pytest
+# app_server/testing.py
 from fastapi.testclient import TestClient
 from app_server.main import create_app
 
-@pytest.fixture
 def web_client() -> TestClient:
     return TestClient(create_app())
+
+# conftest.py
+import pytest
+from app_server import testing
+
+@pytest.fixture
+def web_client():
+    return testing.web_client()
 ```
 
-A criterion calls `web_client`; it never constructs a client itself and never calls
-`create_app().test_client()`, which is Flask's API and does not exist on a FastAPI application.
+A criterion imports `web_client` from `app_server.testing` and calls it — `client = web_client()` —
+which runs the built application in-process without pytest. The pytest suite receives the same
+client through the `conftest.py` fixture. Neither constructs a client of its own. A criterion never calls `create_app().test_client()`, which
+is Flask's API and does not exist on a FastAPI application.
 
 ---
-
-# FastAPI Best Practices — Contract Surface
 
 ## Application
 

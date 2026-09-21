@@ -3429,6 +3429,87 @@ def _normalize_foundation_imports(
     return tuple(normalized)
 
 
+def _published_client_rewrite(
+    code: str, owners: Mapping[str, FoundationContract]
+) -> tuple[str, str, str] | None:
+    """Return ``(code, old, new)`` with a hand-built client replaced by the published callable.
+
+    ``create_app().test_client()`` is Flask's API; on FastAPI it raises ``AttributeError`` and on
+    every stack it bypasses the client the foundation publishes. The replacement is fixed by the
+    contract — ``web_client()`` from ``app_server.testing`` — so it is made here rather than paid
+    for in a repair pass. The entry import is dropped when nothing else reads the entry.
+    """
+    for entry, owner in owners.items():
+        if not owner.fixture:
+            continue
+        old = f"{entry}().test_client()"
+        pattern = re.compile(rf"(?<![\w.]){re.escape(entry)}\(\)\.test_client\(\)")
+        if not pattern.search(code):
+            continue
+        rewritten = pattern.sub(f"{owner.fixture}()", code)
+        try:
+            tree = ast.parse(rewritten)
+        except SyntaxError:
+            return None
+        statement = f"from {owner.fixture_module} import {owner.fixture}"
+        lines = rewritten.splitlines(keepends=True)
+        still_read = any(isinstance(node, ast.Name) and node.id == entry for node in ast.walk(tree))
+        entry_import = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, ast.ImportFrom)
+                and [alias.name for alias in node.names] == [entry]
+                and node.names[0].asname is None
+            ),
+            None,
+        )
+        if entry_import is not None and not still_read:
+            start, end = entry_import.lineno - 1, (entry_import.end_lineno or entry_import.lineno)
+            lines[start:end] = [f"{statement}\n"]
+            rewritten = "".join(lines)
+        else:
+            placed = _with_bindings_after_imports(rewritten, (statement,))
+            rewritten = placed if placed is not None else f"{statement}\n{rewritten}"
+        return rewritten, old, f"{owner.fixture}()"
+    return None
+
+
+def _normalize_published_clients(
+    blocks: dict[str, str], selected: Sequence[str]
+) -> tuple[str, ...]:
+    """Replace each hand-built client with the one the selected foundation publishes.
+
+    Runs after :func:`_normalize_foundation_imports`, so the entry import it removes is already
+    the published one.
+    """
+    owners = entry_owners(selected)
+    if not owners:
+        return ()
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            continue
+        text = blocks[name]
+        for check in checks:
+            if (rewritten := _published_client_rewrite(check.code, owners)) is None:
+                continue
+            spliced = _splice_check_code(text, check, rewritten[0])
+            if spliced is None:
+                continue
+            text = spliced
+            normalized.append(
+                f"{name} [{check.check_id}]: replaced `{rewritten[1]}` with the published "
+                f"`{rewritten[2]}`"
+            )
+        blocks[name] = text
+    return tuple(normalized)
+
+
 #: The plan-create output contract, measured deterministically by :mod:`drydock.plan_shape`.
 #: Shape conformance is a checker, not an instruction: the prompt no longer asks the model to
 #: verify its own delimiters and block completeness, because that verification is free and
@@ -3829,10 +3910,12 @@ def _validate_plan_output(
         + _normalize_database_owners(blocks)
         + _normalize_database_interfaces(blocks)
     )
+    selected_rigging = _selected_rigging(blueprint_dir.parent)
     standalone_import_warnings = (
         _normalize_standalone_imports(blocks)
         + _normalize_factory_bindings(blocks)
-        + _normalize_foundation_imports(blocks, _selected_rigging(blueprint_dir.parent))
+        + _normalize_foundation_imports(blocks, selected_rigging)
+        + _normalize_published_clients(blocks, selected_rigging)
     )
     escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)

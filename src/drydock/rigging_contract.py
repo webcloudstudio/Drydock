@@ -18,7 +18,7 @@ and the shape it builds in a ``## Foundation Contract`` section::
     - package: app_server
     - entry: create_app() -> FastAPI
     - fixture: web_client
-    - fixture_source: conftest.py
+    - fixture_source: app_server/testing.py
 
 Two facts follow from the declaration. A foundation kind is exclusive — one web server, one
 database, one CLI — so selecting FastAPI and Flask is a refusal rather than a merge. And the
@@ -146,10 +146,12 @@ class FoundationContract:
     package: str = ""
     #: Entry contract, e.g. ``create_app() -> FastAPI``. Empty for a language.
     entry: str = ""
-    #: Fixture name criteria call rather than constructing a client themselves.
+    #: Callable criteria call rather than constructing a client themselves, e.g. ``web_client``.
     fixture: str = ""
-    #: Where the fixture lives in the build tree. Defaults to pytest's conventional home.
-    fixture_source: str = "conftest.py"
+    #: Module file the callable lives in, e.g. ``app_server/testing.py``. A plain function rather
+    #: than a pytest fixture, because a criterion runs as a script; ``conftest.py`` wraps the same
+    #: function for the pytest suite. Defaults to ``<package>/testing.py``.
+    fixture_source: str = ""
     #: Directory the language foundation puts application code in, e.g. ``src/``.
     source_root: str = ""
     #: Command the language foundation makes the suite runnable by, e.g. ``pytest -q``.
@@ -161,6 +163,14 @@ class FoundationContract:
     def entry_callable(self) -> str:
         """The bare callable name in ``entry``, e.g. ``create_app``. Empty when there is none."""
         return self.entry.split("(", 1)[0].strip()
+
+    @property
+    def fixture_module(self) -> str:
+        """The importable module the fixture callable lives in, e.g. ``app_server.testing``."""
+        if not self.package:
+            return ""
+        source = self.fixture_source or f"{self.package}/testing.py"
+        return source.removesuffix(".py").replace("/", ".")
 
     @property
     def entry_module(self) -> str:
@@ -292,7 +302,7 @@ def parse_contract(text: str, *, filename: str) -> FoundationContract | None:
         package=fields.get("package", ""),
         entry=fields.get("entry", ""),
         fixture=fields.get("fixture", ""),
-        fixture_source=fields.get("fixture_source", "conftest.py"),
+        fixture_source=fields.get("fixture_source", ""),
         source_root=fields.get("source_root", ""),
         test_command=fields.get("test_command", ""),
         section=section,

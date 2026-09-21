@@ -17,7 +17,7 @@ import sys
 import tempfile
 import tokenize
 import warnings
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path, PurePosixPath
@@ -100,6 +100,12 @@ UNVERIFIED_FAILURE_PREFIX = "unverified acceptance"
 # A check that died inside its own snippet rather than inside the code under test. No
 # implementation can turn it green, so a repair pass on it is wasted.
 MALFORMED_FAILURE_PREFIX = "malformed check"
+
+# A criterion importing a foundation package the build directory does not contain. The application
+# it exercises is not built, so it is not run: the verdict is FAIL, stated in one line instead of a
+# traceback from inside the application's own test machinery. Deliberately absent from
+# TERMINAL_FAILURE_PREFIXES — building the package is exactly the work a build pass does.
+UNBUILT_FOUNDATION_FAILURE_PREFIX = "foundation not built"
 
 #: Every failure prefix that names a fault in the check rather than in the code under test. A
 #: repair pass rewrites the implementation, never the criterion or the machine it runs on, so no
@@ -2275,6 +2281,51 @@ def all_programmatic_acceptance(
     return tuple(checks)
 
 
+def _foundation_packages() -> dict[str, str]:
+    """Return ``{package: "the <kind> foundation (<file>)"}`` for every published foundation."""
+    from drydock.rigging_contract import published_packages
+
+    try:
+        published = published_packages()
+    except (OSError, ValueError):
+        return {}
+    return {
+        package: f"the {contracts[0].kind} foundation ({', '.join(c.filename for c in contracts)})"
+        for package, contracts in published.items()
+    }
+
+
+def _unbuilt_foundation_failure(
+    code: str, build_dir: Path, packages: Mapping[str, str]
+) -> str | None:
+    """Return the failure for a criterion whose foundation package is absent, else ``None``.
+
+    Decided before the criterion runs. ``from app_server.testing import web_client`` against a
+    build directory with no ``app_server/`` can only raise ``ModuleNotFoundError``, and a
+    criterion that runs the application's pytest suite would fail inside pytest's collection
+    instead — neither says what is wrong as plainly as naming the package that was never built.
+    """
+    missing: list[str] = []
+    for _line, module, _names in imported_modules(code):
+        root = module.split(".", 1)[0]
+        if root not in packages or root in missing:
+            continue
+        if (build_dir / root).is_dir() or (build_dir / f"{root}.py").is_file():
+            continue
+        missing.append(root)
+    if not missing:
+        return None
+    return (
+        f"{UNBUILT_FOUNDATION_FAILURE_PREFIX}: "
+        + "; ".join(
+            f"`{root}` is the package {packages[root]} builds, and the build directory has no "
+            f"`{root}/`"
+            for root in missing
+        )
+        + ". The criterion exercises the built application, so it was not run."
+    )
+
+
 def run_programmatic_acceptance(
     checks: tuple[ProgrammaticAcceptance, ...],
     *,
@@ -2331,7 +2382,28 @@ def run_programmatic_acceptance(
     }
     limit_mb = get_sandbox_mem_limit_mb()
     preexec = child_limits(limit_mb)
+    packages = _foundation_packages()
     for index, check in enumerate(checks, start=1):
+        if unbuilt := _unbuilt_foundation_failure(check.code, build_dir, packages):
+            results.append(
+                AcceptanceRunResult(
+                    check_id=check.check_id,
+                    source=check.source,
+                    intent=check.intent,
+                    passed=False,
+                    return_code=None,
+                    stdout="",
+                    stderr="",
+                    error=unbuilt,
+                    interpreter=str(environment.interpreter),
+                    provisioning_result=environment.provisioning_result,
+                    # The miss is a fact about the build, not about a re-typed expectation.
+                    binding=True,
+                )
+            )
+            if on_item is not None:
+                on_item(check, index, len(checks), False)
+            continue
         # Run from a real file, never ``python -c``: a ``-c`` traceback reports
         # ``File "<string>", line N`` with no source text, so a failing assertion names
         # neither the assertion nor the expectation it asserted. Written to a file, the

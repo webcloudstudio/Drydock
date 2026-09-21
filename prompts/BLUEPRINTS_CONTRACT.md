@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260921 V20
+version: 20260921 V21
 ---
 
 ## Overview
@@ -528,12 +528,25 @@ and no execution order. A snippet that reads a name another snippet bound raises
 every run — it reports UNVERIFIED rather than failing the build, which means it verifies nothing
 and buys nothing. Each snippet imports what it uses and binds every name it reads.
 
-**A check calls the foundation's published fixture; it never constructs a client.** The Rigging
-file for the Target's web server, database and CLI publishes a `## Foundation Contract` naming the
-package, the entry point, and the fixture — `web_client`, `db_session`, `cli_runner`. Those names
-are fixed by the technology the Commander selected, so a criterion writes them rather than
-inventing a package or a client of its own. Constructing one is how a Blueprint set ends up split
-between two package names and calling a framework's method on another framework's object.
+**A check exercises the built application through the client its foundation publishes.** The
+Rigging file for the Target's web server, database and CLI publishes a `## Foundation Contract`
+naming the package, the entry point, and the client callable — `web_client`, `db_session`,
+`cli_runner` — a plain function in `<package>/testing.py`. A check imports it from there and calls
+it: `from app_server.testing import web_client`, then `client = web_client()`. That runs the
+application the build wrote, in-process, without pytest; the pytest suite receives the same
+callable through `conftest.py`. The names are fixed by the technology the Commander selected, so a
+criterion writes them rather than inventing a package or constructing a client of its own.
+Constructing one is how a Blueprint set ends up split between two package names and calling a
+framework's method on another framework's object.
+
+A check may also run the application's own pytest suite through the language foundation's
+`test_command`. It imports the foundation package before it does, so against an application that
+is not built it fails as `foundation not built` rather than inside pytest. A suite run is never a
+story's only proof: the builder writes those tests, so at least one check asserts behavior the
+Blueprint states.
+
+A check importing a foundation package the build directory does not contain is not run and fails
+as `foundation not built`. That is the expected red before the foundation story builds it.
 
 `app_server`, `persistence`, and `cli` are reserved: each names the selected foundation of that
 kind, whichever file the Commander selected. A criterion importing one the stack did not select,
@@ -580,12 +593,11 @@ and a suite of hundreds of cases then reports its progress as a single bit.
 === AC health-check ===
 Intent: The health endpoint returns an OK response.
 
-from app_server import create_app
+from app_server.testing import web_client
 
-client = create_app().test_client()
+client = web_client()
 response = client.get("/health")
 assert response.status_code == 200
-assert response.get_json()["status"] == "ok"
 === END AC health-check ===
 
 === AC suite-conformance ===

@@ -61,6 +61,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-21: **Foundation clients are plain functions criteria call against the built
+  application.** A Programmatic Acceptance criterion runs as a standalone script, so the pytest
+  fixtures the Foundation Contracts published (`web_client`, `db_session`, `cli_runner`) could not
+  be called from one. Each contract in `fastapi.md`, `flask.md`, `django.md`, `sqlite.md`,
+  `postgres.md` and `cli.md` now publishes the callable in `<package>/testing.py`
+  (`fixture_source`), and `conftest.py` wraps the same function for the pytest suite. A criterion
+  writes `from app_server.testing import web_client` and exercises the application in-process; it
+  may also run the application's pytest suite, importing the foundation package first. Plan
+  rewrites `create_app().test_client()` to the published `web_client()` and reports each rewrite.
+- 2026-09-21: **A criterion against an unbuilt foundation fails cleanly.** Acceptance no longer
+  runs a criterion that imports a foundation package (`app_server`, `persistence`, `cli`) the
+  build directory does not contain. The result is FAIL with the error `foundation not built`,
+  naming the package and the Rigging file that builds it, instead of a `ModuleNotFoundError`
+  traceback or a pytest collection error. It is not a terminal failure: building the package is
+  the build's work.
+
 - 2026-09-20: `drydock plan verify` refuses a criterion that imports a package no selected
   foundation publishes — defect kind `unknown-package`, and the plan is written `unbuildable`.
   `app_server`, `persistence` and `cli` are reserved names meaning *the selected foundation of

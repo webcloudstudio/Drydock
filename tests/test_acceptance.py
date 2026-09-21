@@ -378,6 +378,42 @@ def _run_one(code: str, tmp_path: Path):
     )[0]
 
 
+def test_a_criterion_against_an_unbuilt_foundation_fails_cleanly_without_running(tmp_path):
+    """No ``app_server/`` means no application: FAIL in one line, no traceback, no pytest."""
+    from drydock.acceptance import UNBUILT_FOUNDATION_FAILURE_PREFIX, is_terminal_check_failure
+
+    marker = tmp_path / "ran"
+    result = _run_one(
+        "import pathlib\n"
+        f"pathlib.Path({str(marker)!r}).write_text('ran')\n"
+        "from app_server.testing import web_client\n"
+        "assert web_client().get('/health').status_code == 200\n",
+        tmp_path,
+    )
+
+    assert not result.passed
+    assert result.outcome == "FAIL"
+    assert result.error.startswith(UNBUILT_FOUNDATION_FAILURE_PREFIX)
+    assert "`app_server`" in result.error and "web-server foundation" in result.error
+    assert result.stderr == ""
+    assert not marker.exists()
+    # Building the package is the build's job, so the failure stays repairable.
+    assert not is_terminal_check_failure(result.error)
+
+
+def test_a_criterion_against_a_built_foundation_runs(tmp_path):
+    package = tmp_path / "app_server"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "testing.py").write_text("def web_client():\n    return 'client'\n")
+
+    result = _run_one(
+        "from app_server.testing import web_client\nassert web_client() == 'client'\n", tmp_path
+    )
+
+    assert result.passed, result.stderr
+
+
 def test_failing_assertion_reports_its_source_line(tmp_path):
     result = _run_one('value = 1\nassert value == 2, "value drifted"', tmp_path)
     assert not result.passed

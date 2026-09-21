@@ -20,32 +20,37 @@ acceptance criterion writes against these names. Carried verbatim into `cli_comp
 - package: cli
 - entry: main(argv: list[str] | None = None) -> int
 - fixture: cli_runner
-- fixture_source: conftest.py
+- fixture_source: cli/testing.py
 
 ```python
 # cli/__init__.py
 def main(argv: list[str] | None = None) -> int:
     ...
 
+# cli/testing.py
+import contextlib
+import io
+from cli import main
+
+def cli_runner(*args: str) -> tuple[int, str, str]:
+    """Return (exit_code, stdout, stderr) without spawning a process."""
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = main(list(args))
+    return code, out.getvalue(), err.getvalue()
+
 # conftest.py
 import pytest
-from cli import main
+from cli import testing
 
 @pytest.fixture
 def cli_runner():
-    def run(*args: str) -> tuple[int, str, str]:
-        """Return (exit_code, stdout, stderr) without spawning a process."""
-        import contextlib, io
-        out, err = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = main(list(args))
-        return code, out.getvalue(), err.getvalue()
-    return run
+    return testing.cli_runner
 ```
 
-A criterion calls `cli_runner("status", "--json")` and asserts on the returned tuple. It does not
-call `subprocess.run`, which measures the installed console script and the shell rather than the
-code the story wrote.
+A criterion imports `cli_runner` from `cli.testing`, calls `cli_runner("status", "--json")`, and
+asserts on the returned tuple. It does not call `subprocess.run`, which measures the installed
+console script and the shell rather than the code the story wrote.
 
 ---
 

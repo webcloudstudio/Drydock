@@ -20,20 +20,32 @@ acceptance criterion writes against these names. Carried verbatim into `sqlite_c
 - package: persistence
 - entry: open_session() -> Session
 - fixture: db_session
-- fixture_source: conftest.py
+- fixture_source: persistence/testing.py
 
 ```python
-# conftest.py
-import pytest
+# persistence/testing.py
+from contextlib import contextmanager
 from persistence import open_session
 
-@pytest.fixture
+@contextmanager
 def db_session():
     with open_session() as session:
         yield session
+
+# conftest.py
+import pytest
+from persistence import testing
+
+@pytest.fixture
+def db_session():
+    with testing.db_session() as session:
+        yield session
 ```
 
-A criterion calls `db_session`; it never opens a connection itself and never imports `sqlite3`.
+A criterion imports `db_session` from `persistence.testing` and uses it as a context manager —
+`with db_session() as session:` — against the built database layer, without pytest. The pytest
+suite receives the same session through the `conftest.py` fixture. Neither opens a connection
+of its own, and a criterion never imports `sqlite3`.
 
 ---
 

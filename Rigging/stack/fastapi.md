@@ -20,25 +20,33 @@ acceptance criterion writes against these names. Carried verbatim into `fastapi_
 - package: app_server
 - entry: create_app() -> FastAPI
 - fixture: web_client
-- fixture_source: conftest.py
+- fixture_source: app_server/testing.py
 
 ```python
 # app_server/main.py
 def create_app() -> FastAPI:
     ...
 
-# conftest.py
-import pytest
+# app_server/testing.py
 from fastapi.testclient import TestClient
 from app_server.main import create_app
 
-@pytest.fixture
 def web_client() -> TestClient:
     return TestClient(create_app())
+
+# conftest.py
+import pytest
+from app_server import testing
+
+@pytest.fixture
+def web_client():
+    return testing.web_client()
 ```
 
-A criterion calls `web_client`; it never constructs a client itself and never calls
-`create_app().test_client()`, which is Flask's API and does not exist on a FastAPI application.
+A criterion imports `web_client` from `app_server.testing` and calls it — `client = web_client()` —
+which runs the built application in-process without pytest. The pytest suite receives the same
+client through the `conftest.py` fixture. Neither constructs a client of its own. A criterion never calls `create_app().test_client()`, which
+is Flask's API and does not exist on a FastAPI application.
 
 ---
 

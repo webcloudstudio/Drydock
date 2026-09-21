@@ -40,7 +40,7 @@ _FASTAPI = """# FastAPI Best Practices
 - package: app_server
 - entry: create_app() -> FastAPI
 - fixture: web_client
-- fixture_source: conftest.py
+- fixture_source: app_server/testing.py
 
 ```python
 def create_app() -> FastAPI: ...
@@ -101,7 +101,7 @@ def test_a_foundation_file_publishes_its_shape():
     assert contract.entry == "create_app() -> FastAPI"
     assert contract.entry_callable == "create_app"
     assert contract.fixture == "web_client"
-    assert contract.fixture_source == "conftest.py"
+    assert contract.fixture_module == "app_server.testing"
     assert contract.tier == "platform"
     assert contract.shape == "api"
 
@@ -340,6 +340,15 @@ def test_the_entry_module_is_the_one_the_contract_imports_from():
 
     assert contracts["fastapi.md"].entry_module == "app_server.main"
     assert contracts["flask.md"].entry_module == "app_server"
+
+
+def test_every_published_fixture_is_a_callable_in_its_package_testing_module():
+    """A criterion runs as a script, so the fixture it calls cannot be a pytest fixture."""
+    for contract in foundation_contracts().values():
+        if contract.package:
+            assert contract.fixture_module == f"{contract.package}.testing", contract.filename
+            assert f"# {contract.package}/testing.py" in contract.section, contract.filename
+            assert f"def {contract.fixture}(" in contract.section, contract.filename
 
 
 def test_the_published_names_verify_clean():
