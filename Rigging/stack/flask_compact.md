@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/flask.md sha256=5c0bdd0cb6c625d038bcab69f701d293d4f814b5c294ee4d10cf54867a3f5bd2 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/flask.md sha256=c021661ed8c80ac2228f3346a3bca56afe38ef3be955c36c5ed6eed8fc6c85d9 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -34,112 +34,101 @@ A criterion calls `web_client`; it never constructs a client itself.
 
 ## Application
 
-### create_app
-
-Creates and configures a Flask application.
+### create_app(config)
+Creates and returns a configured Flask application.
 
 | Input | Type | Required |
 |---|---|---|
-| `config` | configuration object or `None` | No |
+| `config` | configuration object or import path | No; defaults to `config.DevConfig` |
 
-Returns: configured Flask application.
+Returns: Flask application with database, blueprints, error handlers, startup validation, and context processors registered.
 
-Constraints: Must load real configuration even when overrides are supplied; initialize the database; register blueprints, error handlers, and startup validation; remain thread-safe for request handling.
-
-### run.py
-
-Provides an importable application entry point and runs the server only when executed directly.
-
-Constraints: Calls `load_dotenv()` before `create_app()`; reads `APP_PORT` with default `5001`; must not start a server on import.
+Constraints: Must load the real configuration even when overrides are supplied; extensions and shared objects must be thread-safe; `SECRET_KEY` must come from environment configuration and must not be hardcoded or defaulted in production.
 
 ### Rule: application-layout
+Application code resides in the `app_server/` package; `run.py` is the entry point, `config.py` remains at the project root, and templates/static files reside under `app_server/`.
 
-Constraints: Application Python files live under `app_server/`; root contains `run.py` and `config.py`; `app_server/__init__.py` exposes `create_app()`; templates and static assets live under `app_server/`.
+Constraints: `ops.py` contains Flask-independent business logic; `db.py` provides database initialization and `get_db()`; `run.py` must be importable without starting the server.
 
-### config_key
+### Rule: environment-loading
+`.env` values are loaded before `create_app()` executes.
 
-`SECRET_KEY` configures Flask sessions and flash messages.
+Constraints: `SECRET_KEY` is required; production debug mode is disabled.
 
-Constraints: Required; read from the environment; never hardcoded or defaulted in production.
+### APP_PORT
+Controls the development server port.
 
-### config_key
-
-`FLASK_DEBUG` controls debug mode.
-
-Constraints: Enabled only in development; production value is `0`.
-
-### config_key
-
-`APP_PORT` controls the development server port.
-
-Constraints: Defaults to `5001`.
+Returns: Integer port value; default is `5001`.
 
 ## Routes
 
 ### GET /projects
+Renders the projects page using all projects returned by business logic.
 
-Renders the projects page with project data.
-
-Returns: Rendered `projects.html` template with `projects`.
+Returns: `projects.html` with a `projects` template value.
 
 ### POST /api/project/<int:project_id>/start
-
 Starts the specified project service.
 
 | Input | Type | Required |
 |---|---|---|
 | `project_id` | integer path parameter | Yes |
 
-Returns: JSON object containing `status` and `pid`.
+Returns: JSON result from the service operation.
 
 ### POST /api/project/<int:project_id>/toggle
-
-Toggles the specified project status.
+Toggles a project's status and returns its updated row.
 
 | Input | Type | Required |
 |---|---|---|
 | `project_id` | integer path parameter | Yes |
 
-Returns: Rendered `types/_project_row.html` fragment containing the updated project.
+Returns: Rendered `types/_project_row.html` fragment.
 
 ### GET /health
-
 Verifies database connectivity.
 
-Returns: JSON `{"status": "ok"}` with status `200`, or JSON `{"status": "error", "detail": string}` with status `500`.
+Returns:
 
-### Rule: route-handling
+| Condition | Response | Status |
+|---|---|---:|
+| Database query succeeds | `{"status": "ok"}` | 200 |
+| Database query fails | `{"status": "error", "detail": "<error>"}` | 500 |
 
-Constraints: API routes return JSON or HTML fragments as specified; page routes return rendered templates; handlers parse requests, delegate business logic, and return responses; handlers contain no SQL, file I/O, subprocess calls, or complex logic.
+### Rule: route-responses
+API routes return JSON, page routes return rendered HTML, and route handlers delegate business logic instead of containing SQL, file I/O, subprocess calls, or complex logic.
 
-## Errors
+## Error Handling
 
-### Rule: error-response
+### Rule: http-errors
+Registers handlers for 404, 500, and unhandled exceptions.
 
-Handles HTTP 404 and 500 errors.
+Constraints: API paths beginning with `/api/` return JSON errors; page paths return `404.html` or `500.html`; responses must not expose stack traces.
 
-Returns: API paths receive JSON `{"error": "Not found"}` or `{"error": "Internal server error"}` with the corresponding status; non-API paths receive `404.html` or `500.html`; stack traces are not exposed.
+Returns:
 
-### Rule: unhandled-exception
+| Error | API response | Page response |
+|---|---|---|
+| 404 | `{"error": "Not found"}`, status 404 | `404.html`, status 404 |
+| 500 or unhandled exception | `{"error": "Internal server error"}`, status 500 | `500.html`, status 500 |
 
-Constraints: Unhandled exceptions are logged and return `500.html` with status `500`.
+## Templates and Navigation
 
-## Template Contracts
+### Rule: template-contract
+All pages extend `base.html`; partials use `_` prefixes; type-specific partials reside under `templates/types/`; static assets use `url_for('static', filename=...)`; auto-escaping remains enabled.
 
-### context_processor
-
-Injects global template data.
+### inject_globals()
+Provides global template data.
 
 Returns:
 
 | Field | Type | Default |
 |---|---|---|
-| `app_name` | string | `"My App"` |
-| `running_count` | integer | — |
+| `app_name` | string | `APP_NAME` or `"My App"` |
+| `running_count` | value | result of running-count operation |
 
-### inject_nav
-
-Injects navigation zones into all templates.
+### inject_nav()
+Provides navigation zones to all templates.
 
 Returns:
 
@@ -150,37 +139,34 @@ Returns:
 | `cta_label` | string or `None` | `None` |
 | `cta_url` | string | `/` |
 
-Constraints: Navigation content comes from project UI specification; the CTA is omitted when `cta_label` is `None`.
+Constraints: `cta_label=None` hides the CTA; navigation content is supplied by project UI configuration rather than hardcoded template content.
 
-### Rule: template-structure
-
-Constraints: All pages extend `base.html`; partials begin with `_`; type-specific partials reside under `templates/types/`; static assets use `url_for('static', filename=...)`; Jinja auto-escaping remains enabled; templates contain no Python logic.
+## HTMX
 
 ### Rule: htmx-fragments
+Dynamic endpoints return HTML fragments suitable for HTMX swaps.
 
-Constraints: HTMX endpoints return HTML fragments; cross-component updates use the `HX-Trigger` response header; out-of-band fragments use `hx-swap-oob="true"`.
+Constraints: Cross-component updates use the `HX-Trigger` response header; out-of-band fragments use `hx-swap-oob="true"`.
 
 ## Security
 
-### Rule: input-validation
-
-Constraints: Validate every form input for length, type, and allowed values; use `secure_filename()` for uploaded files.
+### Rule: secure-input
+All input is validated for length, type, and allowed values; uploaded filenames use Werkzeug `secure_filename()`.
 
 ### Rule: secure-headers
+Responses include `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY`.
 
-Responses include:
+### Rule: production-safety
+Jinja2 auto-escaping remains enabled, production debug mode is disabled, and `SECRET_KEY` is environment-provided.
 
-| Header | Value |
-|---|---|
-| `X-Content-Type-Options` | `nosniff` |
-| `X-Frame-Options` | `DENY` |
+## Execution and Testing
 
-### Rule: thread-safety
+### Rule: server-entrypoint
+The development server runs on `APP_PORT`, defaulting to `5001`; production WSGI invocation uses `app_server:create_app()`.
 
-Constraints: Objects created during application construction and used by views must be thread-safe; database connections are owned per request thread.
+Constraints: Startup-only work is guarded against Werkzeug's debug reloader executing it twice.
 
-## Testing
+### Rule: test-client
+Tests use Flask's test client with application, client, and database fixtures.
 
-### Rule: flask-test-client
-
-Constraints: Tests use Flask’s test client and fixtures for the application, client, and database; route tests verify status codes, response content types, rendered content, and HTMX behavior.
+Constraints: Route tests verify status codes, JSON content types, rendered content, and HTMX responses without requiring a running server.

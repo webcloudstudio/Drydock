@@ -1,130 +1,152 @@
-<!-- Compacted from Rigging/stack/persistence.md sha256=e8b2ce6c978be9e777153690fbcdb9fb3cb59e2d63f6e442b5220a17480dfbe5 on 2026-09-19 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/persistence.md sha256=e8b2ce6c978be9e777153690fbcdb9fb3cb59e2d63f6e442b5220a17480dfbe5 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # Persistence & Service Encapsulation — Contract Surface
 
-## Relational Persistence
+## Relational stores
 
 ### function open_database
-Opens the generated database package using a runtime DSN.
+Opens a database selected at runtime from the configured DSN.
 
 | Input | Type | Required |
 |---|---|---|
-| `database_url` | DSN string | Yes |
+| `dsn` | string | yes |
 
-Returns a `Database` instance.
+Returns a `Database` instance with one attribute per declared table.
 
-Constraints: Runtime engine selection is based on the DSN; callers use synchronous, single-threaded semantics and do not manage connections, locking, or schema creation.
+Constraints: Callers use synchronous methods and share one instance. Returned rows are frozen dataclasses or `None`; list operations return lists of rows. Schema is applied once during the DATABASE build step and never at application startup.
 
-### Database.table.operation
-Executes a declared repository operation for a generated table.
+### Database.<table>.<verb>
+Executes a declared repository operation for a table.
 
 | Input | Type | Required |
 |---|---|---|
-| Declared operation keyword arguments | Operation-specific | As declared in `DATABASE.md` |
+| Declared operation keyword arguments | Per `DATABASE.md` `Input:` fields | Per declaration |
 
-Returns the operation-specific result. Table attributes and verbs exist only when declared in `DATABASE.md`; undeclared verbs raise `UnknownOperation` naming the granted operations.
+Returns the operation’s declared result.
 
-### Rule: generated-persistence
-The `persistence/` package and `schema.sql` are generated from `DATABASE.md`; callers must not add repositories, DAOs, ORM models, connection/session factories, migrations, raw SQL, or direct database-driver imports.
-
-Constraints: `schema.sql` is applied once during the DATABASE build step; application startup must not create or alter schema.
+Constraints: Only verbs declared in `DATABASE.md` are available. Undeclared verbs raise `UnknownOperation` naming the granted operations. No other arguments or access paths are accepted.
 
 ## Configuration
 
+### Config
+Provides typed application configuration loaded from the environment.
+
+| Field | Type | Required |
+|---|---|---|
+| `secret_key` | string | yes |
+| `database_path` | string | no; defaults to `data/app.db` |
+| `port` | integer | no; defaults to `5001` |
+| `debug` | boolean | no; true only when `APP_DEBUG` equals `"1"` |
+
 ### Config.load
-Loads and validates environment configuration once at startup.
+Reads and validates configuration once at startup.
 
-Returns a frozen `Config` with:
+Returns a frozen `Config`.
 
-| Field | Type | Source | Default |
-|---|---|---|---|
-| `secret_key` | `str` | `SECRET_KEY` | Required |
-| `database_path` | `str` | `DATABASE_PATH` | `data/app.db` |
-| `port` | `int` | `APP_PORT` | `5001` |
-| `debug` | `bool` | `APP_DEBUG == "1"` | `False` |
+Constraints: `SECRET_KEY` is required. Malformed typed values fail at startup. Missing required environment variables raise `RuntimeError`. No other code reads `os.environ`. No environment-specific subclasses exist.
 
-Constraints: Missing required variables raise `RuntimeError`; malformed typed values fail at startup. No other code reads `os.environ`, and no environment-specific subclasses are used.
-
-## File Storage
+## Files
 
 ### FileStore.__init__
 Creates a file store rooted at a directory.
 
 | Input | Type | Required |
 |---|---|---|
-| `root` | `str` | Yes |
+| `root` | string | yes |
 
 ### FileStore.read
-Reads an application file as UTF-8 text.
+Reads an application file by name.
 
 | Input | Type | Required |
 |---|---|---|
-| `name` | `str` | Yes |
+| `name` | string | yes |
 
-Returns the file contents as `str`.
+Returns the file contents as a string.
 
 ### FileStore.write
-Writes UTF-8 text to an application file.
+Writes string data to an application file by name.
 
 | Input | Type | Required |
 |---|---|---|
-| `name` | `str` | Yes |
-| `data` | `str` | Yes |
+| `name` | string | yes |
+| `data` | string | yes |
 
 Returns `None`.
 
 ### FileStore.list
-Lists matching file names in the store root.
+Lists files matching a pattern.
 
 | Input | Type | Required |
 |---|---|---|
-| `pattern` | `str` | No; defaults to `"*"` |
+| `pattern` | string | no; defaults to `"*"` |
 
-Returns `list[str]`.
+Returns a list of file-name strings.
 
-Constraints: Path-traversal validation and atomic writes are enforced by `FileStore`; callers must not build application paths or call `open()` or `shutil` directly.
+Constraints: Callers do not construct paths or call `open()` or `shutil` directly. Path-traversal validation and atomic writes are enforced by `FileStore`.
 
-## External Services
+## External services
 
 ### ServiceClient.__init__
-Initializes a service wrapper with a backend handle and named logger.
+Creates a service wrapper base with a backend handle and named logger.
 
 | Input | Type | Required |
 |---|---|---|
-| `backend` | Backend handle | Yes |
-| `name` | `str \| None` | No |
+| `backend` | backend handle | yes |
+| `name` | string or `None` | no; defaults to the subclass name |
 
 ### ServiceClient._guard
-Executes a backend operation, logs failures, and re-raises exceptions.
+Executes a backend operation with uniform exception logging.
 
 | Input | Type | Required |
 |---|---|---|
-| `op` | Callable | Yes |
-| `*args`, `**kwargs` | Operation arguments | As required by `op` |
+| `op` | callable | yes |
+| `*args` | any | no |
+| `**kwargs` | any | no |
 
-Returns the operation result.
+Returns the callable’s result. Logs the service name and re-raises any exception.
 
 ### MessageBus.publish
-Publishes a payload to a topic through the wrapped transport.
+Publishes a payload to a topic through the wrapped backend.
 
 | Input | Type | Required |
 |---|---|---|
-| `topic` | `str` | Yes |
-| `payload` | `dict` | Yes |
+| `topic` | string | yes |
+| `payload` | dictionary | yes |
 
-Returns a `str` message identifier.
+Returns a string message identifier.
 
 ### MessageBus.subscribe
 Registers a handler for a topic.
 
 | Input | Type | Required |
 |---|---|---|
-| `topic` | `str` | Yes |
-| `handler` | Callable | Yes |
+| `topic` | string | yes |
+| `handler` | callable | yes |
 
 Returns `None`.
 
-### Rule: service-encapsulation
-Every external-service wrapper extends `ServiceClient`, exposes typed methods, and never exposes its SDK client.
+Constraints: External-service wrappers extend `ServiceClient`, expose typed methods, and never expose the SDK client. Cloud SDK imports remain inside their wrappers.
 
-Constraints: Application code must not import cloud SDKs or access external services outside their typed wrappers.
+## Access rules
+
+### Rule: typed-persistence-boundary
+All persistence and external-service access goes through typed encapsulation classes.
+
+Constraints: Route, feature, and business-logic code must not execute raw SQL, read `os.environ`, open application files, or import cloud SDKs.
+
+### Rule: generated-relational-package
+The relational persistence package is generated from `DATABASE.md`.
+
+Constraints: Do not hand-write repositories, DAOs, ORM models, connection helpers, session factories, or migrations. Do not edit `persistence/`; change `DATABASE.md` and rebuild.
+
+### Rule: database-engine-selection
+SQLite and PostgreSQL engines are available in every build and selected at runtime from the DSN.
+
+### Rule: startup-schema
+Application startup must not create or alter the database schema.
+
+### Rule: wrapper-inheritance
+Every external-service wrapper extends `ServiceClient`.
+
+### Rule: declared-operation-surface
+Downstream code depends only on operations declared in `DATABASE.md`, not on the underlying schema.

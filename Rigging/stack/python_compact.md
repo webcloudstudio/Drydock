@@ -1,118 +1,131 @@
-<!-- Compacted from Rigging/stack/python.md sha256=194fbdfb4f91c311b92e36438861e4db5e1d8fd338ef12a22925d5195bce53e0 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/python.md sha256=fae6705fe87b7e1483892f5a7253af9e5902908ff062e481ca80b220598bd11f on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+
+## Foundation Contract
+
+The published shape of this foundation. It is built before every other foundation: a web server,
+a database, or a CLI is built *into* this tree, this environment, and this test runner. Carried
+verbatim into `python_compact.md`.
+
+- source_root: ./
+- test_command: pytest -q
+- environment: `.venv`, created by `uv venv` and activated by every launcher in `bin/`
+- dependencies: `pyproject.toml`
+
+```
+project/
+  pyproject.toml          # [project] metadata, dependencies, tool.ruff, tool.pytest
+  .python-version         # the interpreter uv provisions
+  .venv/                  # created by `uv venv`; never committed
+  config.py               # the one typed Config; every environment variable is read here
+  run.py                  # entry point
+  tests/                  # pytest suite; conftest.py holds the published fixtures
+  bin/                    # launchers; each activates .venv before running anything
+```
+
+Each later foundation adds one package directory at the project root — `app_server/`,
+`persistence/`, `cli/` — and restructures nothing. Every launcher, every acceptance criterion,
+and every CI job runs the one `test_command` above.
+
+---
 
 # Python Best Practices — Contract Surface
 
 ## Configuration
 
+### Config
+A frozen typed configuration schema loads application settings from the environment.
+
+| Field | Type | Required |
+|---|---|---|
+| `secret_key` | `str` | Yes |
+| `database_path` | `str` | No; defaults to `data/app.db` |
+| `port` | `int` | No; defaults to `5001` |
+| `debug` | `bool` | No; enabled when `APP_DEBUG=1` |
+
+Constraints: `.env.example` lists every configuration variable with dummy values; `.env` is not committed. Environment access occurs only through `Config`. Missing required variables raise `RuntimeError` naming the variable. Configuration uses one class across environments.
+
 ### Config.load
+Loads and validates a `Config` instance from environment variables.
 
-Loads typed application configuration from `.env` and environment variables.
+Returns: `Config`.
 
-| Field | Source | Required | Type | Default |
-|---|---|---:|---|---|
-| `secret_key` | `SECRET_KEY` | Yes | `str` | — |
-| `database_path` | `DATABASE_PATH` | No | `str` | `data/app.db` |
-| `port` | `APP_PORT` | No | `int` | `5001` |
-| `debug` | `APP_DEBUG` | No | `bool` | `False` |
+Constraints: `SECRET_KEY` is required. `APP_PORT` must parse as an integer. `.env` is loaded before configuration is read.
 
-Returns a frozen `Config` instance.
+## Typed Interfaces
 
-Constraints: Missing required variables raise `RuntimeError` naming the variable. `config.py` calls `load_dotenv()` at import. All environment access goes through this class. `.env.example` lists every read variable with dummy values; `.env` is not committed.
+### User
+Represents a user crossing a module boundary.
 
-### Rule: dependency-management
+| Field | Type |
+|---|---|
+| `id` | `int` |
+| `email` | `str` |
+| `roles` | `list[str]` |
 
-Use `uv` with committed `pyproject.toml` and `uv.lock`; runtime dependencies belong in project dependencies and development tools in the `dev` extra.
-
-Constraints: Use `uv venv`, `uv add`, `uv pip install`, `uv sync`, and `uv sync --frozen`; do not use bare `pip` or `python -m venv`.
-
-## Public Interfaces
+Constraints: Boundary data uses named typed structures rather than implicit dictionaries, tuples, or `Any`.
 
 ### load_users
-
 Loads users from a database.
 
-| Parameter | Type | Default |
-|---|---|---:|
-| `db` | `Database` | — |
-| `limit` | `int \| None` | `None` |
+| Parameter | Type |
+|---|---|
+| `db` | `Database` |
+| `limit` | `int \| None` |
 
-Returns `list[User]`.
+Returns: `list[User]`.
 
 ### to_response
-
-Converts a typed `User` into a typed `UserResponse`.
+Converts a typed user into a response schema.
 
 | Parameter | Type |
 |---|---|
 | `user` | `User` |
 
-Returns `UserResponse`.
+Returns: `UserResponse`.
 
-### Rule: typed-boundaries
+## Logging
 
-Public functions, methods, and class attributes have modern type hints. Data crossing module or process boundaries uses named typed structures such as frozen dataclasses, `TypedDict`, or Pydantic models.
+### setup_logging
+Configures application logging with formatted console and file handlers.
 
-Constraints: Do not use bare dictionaries, implicit-shape tuples, `Any`, `typing.List`, `Optional`, or `Union` at boundaries.
+| Parameter | Type |
+|---|---|
+| `level` | unspecified optional level |
 
-## Startup
+Constraints: Use Python `logging` with named loggers; application modules must not use `print()`. Startup logging includes timestamp, logger name, severity, and message.
+
+## Validation
 
 ### validate_startup
-
-Validates database connectivity after configuration loading.
+Validates database connectivity during application startup.
 
 | Parameter | Type |
 |---|---|
 | `config` | `Config` |
 | `db` | `Database` |
 
-Constraints: Database health validation must confirm connectivity; startup failure raises `RuntimeError` identifying the database error. Required environment variables are validated by `Config.load()`.
+Returns: None.
 
-## Logging
+Constraints: Database health validation executes a connectivity check. Failure raises `RuntimeError` identifying the database error.
 
-### setup_logging
+### Rule: public-typing
+All public functions, methods, and class attributes have modern type hints.
 
-Configures named logging with timestamped console and file handlers.
-
-| Parameter | Type | Default |
-|---|---|---:|
-| `level` | unspecified | `DEBUG` when debug mode is enabled, otherwise `INFO` |
-
-Constraints: Use Python’s `logging` module and named loggers; application code must not use `print()`.
-
-## Testing
-
-### Rule: pytest-suite
-
-Every Python project includes a complete pytest suite with isolated test state.
-
-Constraints: Provide `tests/conftest.py` with `app`, `client`, and fresh in-memory `db` fixtures. Provide `tests/test_smoke.py` covering app creation, `GET /health` returning `200` and `{"status": "ok"}`, and `GET /` returning `200`. Provide `tests/test_routes.py` with one test per registered route. Provide `tests/test_db.py` when a `DATABASE.md` exists, covering tables, round trips, and foreign-key enforcement. Configure `pytest.ini` with `testpaths = tests` and `addopts = -v`.
-
-## Security
+Constraints: Use built-in generics and `X | None`; avoid `typing.List`, `Optional`, and `Union`.
 
 ### Rule: input-validation
+All user input is validated for type and length.
 
-Validate all user input, use parameterized database queries, and never trust client data.
+Constraints: Database queries are parameterized; user-provided file paths use `secure_filename()`; stack traces are not exposed to users.
 
-Constraints: Use `?` query placeholders, `secure_filename()` for user-derived paths, length and type validation, environment-loaded production secrets, and no exposed stack traces.
+### Rule: testing
+Every Python project includes a complete pytest suite with isolated test state.
 
-## Environment
+Constraints: Required fixtures include `app`, `client`, and `db`. Smoke tests cover app creation, `GET /health` returning `200` and `{"status": "ok"}`, and `GET /` returning `200`. Route tests cover every registered route with valid payloads and required HTMX headers.
 
-### Rule: environment-separation
+## Dependencies
 
-Use the same typed `Config` for distinct development, test, and production `.env` files.
+### pyproject.toml
+Defines runtime and development dependencies and project tooling.
 
-Constraints: Production never runs with debug enabled. Test configuration uses `APP_DEBUG=0` and `DATABASE_PATH=:memory:`.
-
-## Project Contract
-
-### Rule: startup-configuration
-
-The application starts from a clean shell using `.env` and `Config` defaults as its complete configuration.
-
-### Rule: static-verification
-
-Run a suitable type checker when practical alongside Ruff and pytest.
-
-### Rule: project-layout
-
-Python web projects provide `app.py`, `routes.py`, `models.py`, `db.py`, `ops.py`, `config.py`, `templates/`, `static/`, `tests/`, `bin/`, `data/`, `pyproject.toml`, `uv.lock`, `.env`, and `.gitignore`.
+Constraints: Use `uv` for environment and dependency management. Commit `pyproject.toml` and `uv.lock`; do not commit `.venv/`. Runtime dependencies include `python-dotenv`; development dependencies include `pytest`, `ruff`, and `mypy`. Minimum Python version is `3.11`.

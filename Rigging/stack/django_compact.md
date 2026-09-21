@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/django.md sha256=75b6d326913d4b4be756bf4f39395e547102931dceedff4a3017dedaf993550d on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/django.md sha256=ceb954a32ba7dc639a3a1bcb739a72474e31d1cc91d5aa0592d4d07f65cb7986 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -6,21 +6,41 @@ The published shape of this foundation. Drydock synthesizes the story that build
 acceptance criterion writes against these names. Carried verbatim into `django_compact.md`.
 
 - package: app_server
-- entry: get_wsgi_application() -> WSGIHandler
+- entry: create_app() -> WSGIHandler
 - fixture: web_client
 - fixture_source: conftest.py
 
 ```python
+# app_server/wsgi.py — the Django project package IS app_server
+import os
+from django.core.wsgi import get_wsgi_application
+from django.core.handlers.wsgi import WSGIHandler
+
+def create_app() -> WSGIHandler:
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "app_server.settings")
+    return get_wsgi_application()
+
+application = create_app()
+
 # conftest.py
 import pytest
 from django.test import Client
 
 @pytest.fixture
-def web_client() -> Client:
+def web_client(db) -> Client:
     return Client()
 ```
 
 A criterion calls `web_client`; it never constructs a client itself.
+
+Django's settings module is the real root of a Django project, so `app_server` is the settings
+package — `app_server/settings.py`, `app_server/urls.py`, `app_server/wsgi.py` — and the
+application code lives in ordinary Django apps beside it. `create_app()` exists so the entry is
+the one every web server publishes: a criterion written against `app_server` and `web_client`
+runs unchanged whether the Commander selected Django, FastAPI, or Flask.
+
+`manage.py`, `DJANGO_SETTINGS_MODULE`, and `app_server.settings` are Django's own contract and
+are not restated here. What is published is only what a later story must not invent.
 
 ---
 
@@ -28,126 +48,109 @@ A criterion calls `web_client`; it never constructs a client itself.
 
 ## Configuration
 
-### config_key
+### `DJANGO_SETTINGS_MODULE`
 
-Django settings must use a base settings module with development and production overrides selected through `DJANGO_SETTINGS_MODULE`.
+Selects the active Django settings module.
 
-| Key | Contract |
+| Value | Behavior |
 |---|---|
-| `SECRET_KEY` | Reads from the environment; production requires it to be present. |
-| `DEBUG` | `False` by default and in production; `True` in development. |
-| `ALLOWED_HOSTS` | Empty by default, `['*']` in development, and environment-derived in production. |
-| `INSTALLED_APPS` | Includes Django admin, auth, contenttypes, sessions, messages, staticfiles, and `core`. |
-| `DATABASES['default']` | Uses SQLite at `data/db.sqlite3`. |
-| `STATIC_URL` | `/static/`. |
-| `STATICFILES_DIRS` | Includes the project `static/` directory. |
-| `TEMPLATES[0].DIRS` | Includes the project `templates/` directory. |
-| `TEMPLATES[0].APP_DIRS` | `True`. |
-| `TEMPLATES[0].OPTIONS.context_processors` | Includes Django debug, request, auth, messages, and `core.context_processors.global_context`. |
+| `app_server.settings_dev` | Enables `DEBUG` and permits all hosts. |
+| `app_server.settings_prod` | Disables `DEBUG`, requires `SECRET_KEY`, and reads comma-separated `ALLOWED_HOSTS`. |
 
-Constraints: Secrets are loaded from environment variables. `.env` may define `DJANGO_SETTINGS_MODULE` and `SECRET_KEY`.
+Constraints: Production secrets must come from environment variables.
 
-### Rule: project-layout
+### `SECRET_KEY`
 
-The project provides `manage.py`, a `config` settings package, a `core` app, `templates/`, `static/`, `tests/`, `data/`, `requirements.txt`, and environment configuration.
+Provides Django's secret key.
+
+Constraints: Production configuration must read `SECRET_KEY` from the environment and must not use a fallback.
+
+### `ALLOWED_HOSTS`
+
+Provides production allowed hosts as a comma-separated environment value.
+
+### `INSTALLED_APPS`
+
+Must include Django admin, auth, content types, sessions, messages, staticfiles, and `core`.
+
+### `DATABASES.default`
+
+Uses SQLite at `data/db.sqlite3`.
+
+### `STATIC_URL`
+
+Must be `/static/`.
+
+### `TEMPLATES[0]`
+
+Must use Django templates with `DIRS` containing `templates`, `APP_DIRS=True`, and the debug, request, auth, messages, and `core.context_processors.global_context` context processors.
 
 ## Models
 
-### TimestampMixin
+### `TimestampMixin`
 
-Provides `created_at` and `updated_at` timestamp fields.
+Provides automatically managed `created_at` and `updated_at` datetime fields.
 
-| Field | Type | Behavior |
-|---|---|---|
-| `created_at` | `DateTimeField` | Automatically set on creation. |
-| `updated_at` | `DateTimeField` | Automatically updated on save. |
-
-Constraints: The mixin is abstract and is applied to models requiring timestamps.
-
-### Project
+### `Project`
 
 Represents a project record.
 
-| Field | Type | Constraints / Default |
+| Field | Type | Constraints |
 |---|---|---|
 | `name` | `CharField` | Maximum 200 characters; unique. |
 | `title` | `CharField` | Maximum 200 characters. |
 | `description` | `TextField` | Blank allowed; default `''`. |
 | `project_type` | `CharField` | Maximum 50 characters; default `'software'`. |
 | `status` | `CharField` | Maximum 50 characters; default `'active'`. |
-| `extra` | `JSONField` | Blank allowed; default empty object. |
+| `extra` | `JSONField` | Blank allowed; default `{}`. |
 | `created_at` | `DateTimeField` | Automatically set on creation. |
 | `updated_at` | `DateTimeField` | Automatically updated on save. |
 
-Constraints: Default ordering is `project_type`, then `title`. String conversion returns `title`.
+Returns: String representation equal to `title`.
+
+Constraints: Models must use Django's ORM and include creation and update timestamps.
 
 ## HTTP Routes
 
-### GET /projects/
+### `GET /projects/`
 
-Renders the project list page with all projects in the template context under `projects`.
+Renders the project list page using `core/project_list.html` with a `projects` context value containing all projects.
 
-### POST /api/project/<int:pk>/start/
+### `POST /api/project/<int:pk>/start/`
 
-Starts the selected project service and returns the operation result as JSON.
+Starts the project service identified by its primary key and returns the operation result as JSON.
 
-| Parameter | Type | Required |
-|---|---|---|
-| `pk` | Integer path parameter | Yes |
+| Parameter | Type |
+|---|---|
+| `pk` | Integer path parameter |
 
-Returns: JSON containing the result of `start_service(project)`.
+Returns: JSON result from the project-start operation.
 
-Constraints: Non-POST requests return JSON `{"error": "Method not allowed"}` with status `405`. A nonexistent project returns Django’s not-found response.
+Constraints: Non-`POST` requests return `{"error": "Method not allowed"}` with HTTP status `405`; an unknown project returns HTTP `404`.
 
-### POST /toggle/<int:pk>/
+### `POST <configured-toggle-route>`
 
-Toggles a project’s status between `active` and `inactive`.
+Toggles a project's status between `active` and `inactive`.
 
-| Parameter | Type | Required |
-|---|---|---|
-| `pk` | Integer path parameter | Yes |
+| Parameter | Type |
+|---|---|
+| `pk` | Integer path parameter |
 
-Returns: HTMX requests render `core/_project_row.html` with `project`; other requests redirect to `core:project-list`.
+Returns: For HTMX requests, renders `core/_project_row.html` with the updated project; otherwise redirects to `core:project-list`.
 
-Constraints: The route is referenced by the HTMX URL name `core:toggle`. The project is persisted after toggling.
-
-### Rule: root-url-configuration
-
-The root URL configuration exposes `/admin/` through Django admin and includes the `core` routes at `/`.
-
-Constraints: The `core` URL configuration uses `app_name = 'core'`; route names include `project-list` and `api-start`.
+Constraints: HTMX detection requires `django-htmx` middleware. The toggle control uses `hx-post`, `hx-swap="outerHTML"`, and `hx-target="closest tr"`.
 
 ## Templates
 
-### Rule: template-structure
+### `base.html`
 
-All pages extend `base.html`; app templates reside under `templates/<app_name>/`; partials use a leading underscore.
+Provides the common page structure and static stylesheet loading.
 
-Constraints: Static assets use `{% load static %}` and `{% static %}`. Auto-escaping remains enabled.
-
-### Rule: base-template
-
-`base.html` provides `title`, `head`, `content`, and `scripts` blocks, includes `_nav.html`, and loads `static/css/style.css`.
-
-## Migrations
-
-### Rule: migration-management
-
-Every model change requires `makemigrations`; generated migrations are reviewed and committed.
-
-Constraints: Applied migrations are never manually edited. Migration names use `--name` when clarity is needed.
-
-## HTMX
-
-### Rule: htmx-integration
-
-HTMX support requires `django-htmx` in installed applications and middleware.
-
-Constraints: HTMX requests are detected through `request.htmx`. Toggle responses render a partial with `hx-swap="outerHTML"` and target the closest table row.
+Constraints: All pages extend `base.html`; application templates reside under `templates/<app_name>/`; partials begin with `_`; static assets use `{% load static %}` and `{% static %}`; auto-escaping remains enabled.
 
 ## Context
 
-### global_context
+### `global_context`
 
 Provides global template variables.
 
@@ -156,73 +159,42 @@ Returns:
 | Key | Value |
 |---|---|
 | `running_count` | Count of projects whose status is `running`. |
-| `app_name` | `'My App'`. |
+| `app_name` | Application name string. |
 
-Constraints: The processor is registered in the template context processors.
+Constraints: Register the processor in `TEMPLATES[0]['OPTIONS']['context_processors']`.
 
 ## Testing
 
-### Rule: pytest-django
+### `web_client`
 
-Tests use pytest-django and the Django test client with `DJANGO_SETTINGS_MODULE=config.settings_dev`.
+Provides a Django test client fixture backed by the database fixture.
 
-### client
+Returns: `django.test.Client`.
 
-Provides a Django test client fixture requiring the `db` fixture.
+Constraints: pytest-django tests use the published `web_client` fixture and do not construct clients directly. `DJANGO_SETTINGS_MODULE` must be `app_server.settings_dev`.
 
-Constraints: Database-dependent tests use `pytest.mark.django_db`.
+## Validation Rules
 
-## Security
+### Rule: migrations
+
+All model changes require reviewed Django migrations.
+
+Constraints: Run `makemigrations` after model changes, review generated files, commit migration files, never manually edit applied migrations, and use `--name` for descriptive migration names.
 
 ### Rule: production-security
 
-Production settings must disable debug mode and enable Django security protections.
+Production settings must disable debugging and enable Django deployment protections.
 
-| Setting | Required value |
-|---|---|
-| `DEBUG` | `False` |
-| `SECURE_BROWSER_XSS_FILTER` | `True` |
-| `SECURE_CONTENT_TYPE_NOSNIFF` | `True` |
-| `SESSION_COOKIE_SECURE` | `True` |
-| `CSRF_COOKIE_SECURE` | `True` |
+Constraints: Set `DEBUG=False`, `SECURE_BROWSER_XSS_FILTER=True`, `SECURE_CONTENT_TYPE_NOSNIFF=True`, `SESSION_COOKIE_SECURE=True`, and `CSRF_COOKIE_SECURE=True`; run `python manage.py check --deploy`.
 
-Constraints: `python manage.py check --deploy` must be used to validate deployment configuration.
+### Rule: admin-registration
 
-## Admin
+All models must be registered in Django admin.
 
-### ProjectAdmin
+Constraints: `ProjectAdmin` displays `title`, `project_type`, `status`, and `created_at`; filters by `project_type` and `status`; searches `title` and `name`; and makes `created_at` and `updated_at` read-only.
 
-Registers `Project` with Django admin.
+### Rule: standard-scripts
 
-| Option | Value |
-|---|---|
-| `list_display` | `title`, `project_type`, `status`, `created_at` |
-| `list_filter` | `project_type`, `status` |
-| `search_fields` | `title`, `name` |
-| `readonly_fields` | `created_at`, `updated_at` |
+Django projects provide standard scripts for service start, stop, migrations, tests, shell access, and static collection.
 
-## Operations
-
-### bin/start.sh
-
-Starts Django’s development server on `0.0.0.0:8000`.
-
-### bin/stop.sh
-
-Stops processes matching `manage.py runserver`; reports when no process is found.
-
-### bin/migrate.sh
-
-Runs `makemigrations` followed by `migrate`.
-
-### bin/test.sh
-
-Runs `python -m pytest tests/ -v`.
-
-### bin/shell.sh
-
-Opens the Django management shell.
-
-### bin/collectstatic.sh
-
-Runs `python manage.py collectstatic --noinput`.
+Constraints: Start binds `0.0.0.0:8000`; migration runs `makemigrations` then `migrate`; tests run `python -m pytest tests/ -v`; static collection runs `collectstatic --noinput`.
