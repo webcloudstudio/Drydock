@@ -6391,3 +6391,48 @@ def test_a_pattern_without_dtos_is_completed_before_the_persistence_gate():
     assert len(warnings) == 1 and "FEATURE-EXAMPLE-001" in warnings[0]
     assert ps._database_contract_defects(blocks) == ()
     assert ps._database_table_defects(blocks) == ()
+
+
+_UNMASKED_SCREEN_DEFECT = ps.SpecificationError(
+    "Plan integrity check failed:\n"
+    "  github-screen: SCREEN-SETUP-GITHUB.md: Programmatic Acceptance never calls route(s) "
+    "GET /api/setup/github/accounts/connect/{flow_id} — a SCREEN's assertions must call every "
+    "route it provides or consumes"
+)
+
+
+def test_a_pass_that_clears_its_files_buys_budget_for_the_defect_it_unmasked():
+    """Marina_Luna: three passes repaired DATABASE.md; the third succeeded and exposed a SCREEN
+    route-coverage defect that validation had masked. The run failed with no pass left for it."""
+    blocks = {"DATABASE.md": "", "SCREEN-SETUP-GITHUB.md": ""}
+
+    budget = ps._extended_repair_budget(
+        3, 3, ("DATABASE.md",), _UNMASKED_SCREEN_DEFECT, blocks, batch_size=5, floor=3
+    )
+
+    assert budget == 6
+    assert ps._repairable_artifact_names(blocks, str(_UNMASKED_SCREEN_DEFECT)) == (
+        "SCREEN-SETUP-GITHUB.md",
+    )
+
+
+def test_a_pass_that_leaves_its_own_file_defective_buys_no_budget():
+    blocks = {"DATABASE.md": "", "SCREEN-SETUP-GITHUB.md": ""}
+    still_broken = ps.SpecificationError("DATABASE.md: table `tags` has no access pattern")
+
+    assert (
+        ps._extended_repair_budget(
+            3, 2, ("DATABASE.md",), still_broken, blocks, batch_size=5, floor=3
+        )
+        == 3
+    )
+
+
+def test_unmasked_defects_cannot_extend_the_budget_past_its_ceiling():
+    blocks = {"DATABASE.md": "", "SCREEN-SETUP-GITHUB.md": ""}
+
+    budget = ps._extended_repair_budget(
+        8, 8, ("DATABASE.md",), _UNMASKED_SCREEN_DEFECT, blocks, batch_size=5, floor=3
+    )
+
+    assert budget == 3 * ps._REPAIR_BUDGET_CEILING_FACTOR

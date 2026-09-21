@@ -4679,6 +4679,43 @@ def _next_repair_chunk(
     return None
 
 
+def _repair_cited_names(exc: Exception, blocks: Mapping[str, str]) -> frozenset[str]:
+    """Every emitted artifact a validation exception still holds against the plan."""
+    defects: tuple[tuple[str, MalformedAcceptance], ...] = getattr(exc, "defects", ())
+    if defects:
+        return frozenset(defect.source for _, defect in defects if defect.source in blocks)
+    return frozenset(_repairable_artifact_names(blocks, str(exc)))
+
+
+def _extended_repair_budget(
+    budget: int,
+    spent: int,
+    repaired: Sequence[str],
+    next_exc: Exception,
+    blocks: Mapping[str, str],
+    *,
+    batch_size: int,
+    floor: int,
+) -> int:
+    """Return the pass budget after a pass whose re-validation still failed.
+
+    Validation is staged: a defect in one artifact can mask a defect in another until the first
+    is fixed. A pass that clears every file it repaired has made progress, and the defect it
+    unmasked in other files gets its own budget. Marina_Luna spent all three passes on
+    DATABASE.md; the third pass fixed it and exposed a SCREEN route-coverage defect no pass was
+    left to repair. The ceiling bounds a loop that keeps unmasking.
+    """
+    cited = _repair_cited_names(next_exc, blocks)
+    if not cited or cited & set(repaired):
+        return budget
+    ceiling = floor * _REPAIR_BUDGET_CEILING_FACTOR
+    return min(ceiling, max(budget, spent + _repair_pass_budget(next_exc, batch_size, floor)))
+
+
+#: Multiple of the configured repair count that no chain of progressing passes may exceed.
+_REPAIR_BUDGET_CEILING_FACTOR = 3
+
+
 def _repair_pass_budget(exc: Exception, batch_size: int, floor: int) -> int:
     """Return how many repair passes are needed to reach every chunk ``_next_repair_chunk`` yields.
 
@@ -6208,7 +6245,9 @@ def create_plan(
                 pass_budget = _repair_pass_budget(
                     repair_exc, _PLAN_BLUEPRINT_BATCH_SIZE, continue_attempts
                 )
-                for repair_pass in range(1, pass_budget + 1):
+                repair_pass = 0
+                while repair_pass < pass_budget:
+                    repair_pass += 1
                     chunk = _next_repair_chunk(
                         repair_exc, repaired_blocks, _PLAN_BLUEPRINT_BATCH_SIZE
                     )
@@ -6287,6 +6326,15 @@ def create_plan(
                             )
                         except Exception as next_exc:
                             repair_exc = next_exc
+                            pass_budget = _extended_repair_budget(
+                                pass_budget,
+                                repair_pass,
+                                names,
+                                next_exc,
+                                repaired_blocks,
+                                batch_size=_PLAN_BLUEPRINT_BATCH_SIZE,
+                                floor=continue_attempts,
+                            )
                             continue
                         blocks = candidate_blocks
                         result = repair_result
