@@ -56,7 +56,7 @@ Drydock uses test driven develiopment - each building block contains acceptance 
 
 The process builds maintainable software.  Users can edit specifications or add change tickets, run `drydock refit`, and rebuild normally.
 
-Quality is verified deterministically with a variety of `drydock score` commands.  These let the Commander understand the quality of the output softwre. based on programmatic acceptance criteria. Project Quality is
+Quality is verified deterministically with a variety of `drydock score` commands.  These let the Commander understand the quality of the output softwre. based on programmatic acceptance criteria. 
 
 The  Quarterdeck is a dedicated web console enabling the Commander to understand and guide the build.  Blockers, decisions, questionaires, and build progress are all available in the Quarterdeck.
 
@@ -282,7 +282,7 @@ drydock status <Target> --check   # 0 complete, 2 blocked
 The Analyze phase turns imported source material into an Analysis for review, then into an executable Manifest for build.
 
 1. `drydock import` brings source material into the Drydock workspace.
-2. `drydock score spec` (optional scores your imported specifications.
+2. `drydock score spec` (optional) scores your imported specifications.
 3. `drydock analyze` derives stories, acceptance milestones, blockers, questions
 4. `drydock run quarterdeck` starts web server for Commander review
 5. `drydock plan` creates Blueprint files and the Manifest.
@@ -374,26 +374,19 @@ Imported source files must be UTF-8. A file that fails UTF-8 decoding is not ana
 
 The most important guard is `BLOCKERS.md`. If `BLOCKERS.md` exists, the Commander edits it and reruns `drydock analyze` until the blockers are cleared. `SEA_TRIALS.md` captures project success criteria. 
 
-| Quality | Meaning |
-|---|---|
-| `Blocked` | One or more blockers prevent planning from proceeding |
-| `Questions` | Planning may proceed, but open questions remain |
-| `Ready` | No blockers remain |
-
 ### Specification Decomposition Methodology
 
-Decomposition depends on the project type. A web application decomposes by route: one story builds
-the route and a second builds the screen that uses it. A screen can use multiple routes.
+Drydock decomposes source material into blueprints based on project type. For example, a web application will decomposes by route with stories that building the routes and stories building the screens. A screen can use multiple routes.
 
-Other applications decompose by other interface points:
+Other applications decompose using different methods.
 
-| System shape | Interface points named in `Provides` / `Consumes` |
+| System Type | Methodology |
 |---|---|
 | Web application | HTTP routes — `GET /catalog` |
-| CLI tool | Commands and sub-verbs — `drydock plan` |
-| Library or package | Public API symbols — `Database.items.get` |
-| Data pipeline | Datasets, tables, and files produced and consumed |
-| Event-driven system | Topics, queues, and event types |
+| CLI tool | Commands and sub-verbs |
+| Library or package | Public API contract — `Database.items.get` |
+| Data pipeline | Datasets, tables, process, inputs, and outputs |
+| Event-driven | Topics, queues, and event types |
 
 ### Agile Story Refinement with drydock run quarterdeck
 
@@ -404,26 +397,20 @@ Other applications decompose by other interface points:
 
 `drydock run quarterdeck` starts the web console. It is your helm. Navigate to the listed host and port.
 
-At this stage the QuarterDeck shows the artifacts, blockers, questions, questionnaires, and activity
-to review. Answer blockers and adjust Compass guidance before `drydock plan`.
+The QuarterDeck shows status, blockers, questionaires, decisions, and activity with interactive screens that the Commander can use to approve or respond.
 
-Edit questionnaires and `BLOCKERS.md` directly or in the QuarterDeck. `drydock analyze` uses the
-responses on its next run.
+THe commander must define the technology stack in the quarterdeck by selecting available Rigging.  Rigging is required to build and use each component technology.
 
 ### drydock plan
 
-`drydock plan` converts the reviewed analysis into Typed Specification files under `blueprint/` and
-writes `MANIFEST.md`, the build graph. The Manifest records build order, the runnable frontier, and
-the work to revisit after change.
-
-`drydock plan` rejects a plan that selects two Rigging files of one foundation kind, or a criterion
-that imports a package no selected foundation publishes.
+`drydock plan` converts the reviewed analysis into blueprints which are stored under `<Target>/blueprint/` and
+writes the build graph (`MANIFEST.md`). 
 
 **Input files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `sources/*` | `blueprint/` | Imported sources, reformatted into Typed Specifications |
+| `sources/*` | `blueprint/` | Imported sources |
 | `ANALYSIS.md` | Target root | Reviewed analysis |
 | `PLAN_COMPASS.md` | Target root | Planning and grouping guidance |
 | `COMPASS.md` | Target root | Project guidance |
@@ -434,17 +421,12 @@ that imports a package no selected foundation publishes.
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `ARCHITECTURE.md`,<br> `DATABASE.md`,<br> `FEATURE-{Name}.md`,<br> `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files |
+| `ARCHITECTURE.md`,<br> `DATABASE.md`,<br> `FEATURE-{Name}.md`,<br> `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Blueprints |
 | `MANIFEST.md` | Target root | Build plan |
 
-**Replan behavior**
+## SAIL Phase 3 — Implement: Building The Software
 
-`drydock plan` is rerun-safe. It preserves reviewed work, rebuilds artifacts whose inputs changed,
-and never overwrites Compass files.
-
-## SAIL Phase 3 — Implement: Sailing the Frontier
-
-Implement the Blueprint using the Manifest.
+Builds the Blueprints using the Manifest.
 
 * `drydock build status <Target>` shows the build steps.
 * `drydock build <Target>` runs them.
@@ -481,9 +463,9 @@ drydock rigging update <Target> [--dry-run]
 drydock rigging verify <Target>
 ```
 
-### Agile Build Planning with drydock run quarterdeck
+### Build Planning with The Quarterdeck
 
-Review `MANIFEST.md` in the QuarterDeck to set build direction and instructions.
+The Commander can review `MANIFEST.md` in the QuarterDeck to set build direction and instructions.
 
 The Manifest is the final plan. It groups similar steps to reduce context and orders stories
 Foundation → Data and Persistence → Features → User Interface. Each step shows its estimated counts.
@@ -510,19 +492,14 @@ done
 
 ### drydock build
 
-`drydock build` converts Blueprints to code. It executes the ready frontier of `MANIFEST.md` one
-block of stories at a time. `drydock plan` groups the blocks; the Commander sets grouping and order
-in the QuarterDeck. Each story is checked against its deterministic acceptance criteria, and a block
-advances only when they pass. A failed block resumes in place on the next build with its partial
-work and failing checks.
+`drydock build` converts Blueprints to code. It executes ready blocks from the `MANIFEST.md` in order.
 
-A feature repair implements its failed stories and reruns acceptance for them and their verified
-siblings. A regression reopens the sibling as `closed/failed`.
+Each building block or story is checked against its deterministic acceptance criteria and the 
+block is only marked completed when all pass.  `drydock build` self repairs and will attempt to
+diagnose and fix failed blocks and then resume.
 
-Each attempt that reaches the acceptance gate prints an acceptance summary. A failed block gets up to
-six repair passes. A pass progresses when more criteria pass with no regression, or when the passing
-set is unchanged and a case tally improves with none regressing. Repair stops after two consecutive
-passes without progress, or at the pass limit.
+Failed block get a configurable (default 6) number of  repair passes. 
+Repair stops after two consecutive passes without progress, or at the pass limit.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -606,71 +583,26 @@ drydock score <Target>
 `drydock score` audits specifications, verifies acceptance, reports build evidence, and evaluates
 release readiness.
 
-`drydock score spec` writes `SPECIFICATION_SCORECARD.md` and prints it. Findings are advisory. It
-reads only `blueprint/sources/`, modifies no sources, creates no Blueprints, and does not gate
-`drydock analyze`.
+| Command | Behavior |
+|---|---|
+| `score spec` | Advisory findings on imported sources; writes `SPECIFICATION_SCORECARD.md` |
+| `score ac` | Verifies every acceptance criterion, with no LLM; writes `SOUNDINGS.md` |
+| `score build` | Reports repairs, tokens, and cache hit rate |
+| `score release` | Runs the acceptance gate, then an LLM judges `SEA_TRIALS.md` |
+| `score report` | Publishes the build receipt to `drydock_receipt/index.html` |
+| `score drydock` | Advisory assessment of Drydock; writes `docs/drydock_planning/` |
+| `score <Target>` | Summarizes the last run of each score |
 
-The Commander scans checkmarks in the QuarterDeck instead of granting approvals.
+`score ac` marks each criterion `✓ PASS`, `✗ FAIL`, `~ PREPASSED`, or `— UNVERIFIED`; a vacuous
+proof is `UNVERIFIED`. `--step <id>` verifies one feature or story without updating `SOUNDINGS.md`.
+`--full` prints untruncated failures.
 
-`drydock score ac` verifies every Programmatic Acceptance assertion deterministically, with no LLM
-call, and writes `SOUNDINGS.md` with a timestamp and a status of `✓ PASS`, `✗ FAIL`,
-`~ PREPASSED`, or `— UNVERIFIED`. A vacuous proof — an empty body, a constant assertion, or a
-self-comparison — is demoted to `UNVERIFIED`.
+`score spec`, `score ac`, `score build`, and `score release` regenerate `SCORECARD.md`, stamping
+their verdict and timestamp.
 
-`--step <id>` verifies one feature or story, by id or name. It prints each result with its Blueprint
-source and failure detail and leaves `SOUNDINGS.md` and `SCORECARD.md` unchanged. `--full` prints
-untruncated failures.
-
-`drydock score release` runs the acceptance gate, then an LLM judges the `SEA_TRIALS.md` criteria
-(EARS notation) and reports the release verdict.
-
-`drydock score build` prints a deterministic report of repairs, tokens, and cache hit rate from build
-evidence and LLM logs. It exits nonzero when there is no build evidence or a block is unverified.
-
-`drydock score report` publishes the build evidence to `drydock_receipt/index.html`. It is
-deterministic and runs nothing.
-
-`drydock score drydock` performs an advisory assessment of Drydock and writes ranked feature files to `docs/drydock_planning/`.
-
-`score spec`, whole-target `score ac`, `score build`, and `score release` each regenerate
-`SCORECARD.md` from `PROJECT_STATUS.jsonl` and their own evidence, stamping their section with the
-command, verdict, and timestamp. A command with no evidence shows as not yet run.
-
-`drydock score <Target>` is read-only. It summarizes when each score last ran, whether it passed, and
-where its output is.
-
-A `measurement` criterion runs `Command:`, a literal argv, from the build directory and compares the
-result to `Target:` with `Operator:`. `Extract:` is a regular expression whose first capture group
-reads the value from standard output; without it, the command prints
-`{"value": <number>, "unit": "<unit>"}`. With `Extract:`, a non-zero exit is a result, not a
-failure. A `Command:` with an unresolved `<placeholder>` is rejected.
-
-**Input files**
-
-| Artifact | Location | Purpose |
-|---|---|---|
-| `blueprint/sources/**/*` | Target Blueprint | Imported sources (`score spec`) |
-| `evidence/*.md` | Target root | Build and repair evidence (`score build`) |
-| `logs/llm.jsonl` | Workspace | LLM usage (`score build`) |
-| Drydock specification, prompts, implementation, and Rigging | Drydock repository | Methodology inputs (`score drydock`) |
-| `MANIFEST.md` | Target root | Acceptance criteria and their stories |
-| `SEA_TRIALS.md` | Target root | Project criteria and measurements |
-| `blueprint/*.md` | Target Blueprint | Programmatic Acceptance proofs |
-| Built application | Configured build directory | Proof subject |
-| `PROJECT_STATUS.jsonl` | Target root | Score run history |
-| `DECISIONS.json` | Target root | Decisions for the release retrospective |
-| `SCORECARD.md` | Target root | Receipt evidence (`score report`) |
-
-**Output files**
-
-| Artifact | Location | Purpose |
-|---|---|---|
-| `SPECIFICATION_SCORECARD.md` | Target root | Advisory findings (`score spec`) |
-| Terminal report | Terminal | Post-build report (`score build`) |
-| `docs/drydock_planning/` | Drydock repository | Ranked feature files (`score drydock`) |
-| `SOUNDINGS.md` | Target root | Per-criterion status (whole-target `score ac`) |
-| `SCORECARD.md` | Target root | Retrospective, stamped per command |
-| `drydock_receipt/` | Target root | Published receipt (`score report`) |
+A `measurement` criterion runs `Command:` in the build directory and compares its value to `Target:`
+using `Operator:`. `Extract:` is a regular expression that reads the value from standard output;
+without it, the command prints `{"value": <number>, "unit": "<unit>"}`.
 
 **Exit codes**
 
