@@ -15,10 +15,16 @@ These technology files are **shared across all projects** in this specification 
 Every file that defines a **foundation** declares it in its header: `**Foundation:** <kind>` plus
 a `## Foundation Contract` section publishing the package, entry, and fixture the rest of the
 Target writes against. A Target selects exactly one file per kind. `**Tier:**` states where that
-work sits in the chain that repeats inside each phase: 1 `language`, 2 `platform`, 3 `branding`,
-4 `interface`, 5 `screen`. A language is built before the platform built into it, the palette
-before the shell that shows it, and the shell before any screen. A file with no `**Tier:**` makes
-no ordering claim — services are untiered so they may land either side of the interface tier.
+work sits in the chain that repeats inside each phase.
+
+Tiers 1 to 5 are the foundation: 1 `language`, 2 `platform` — sub-ordered 2.1 `database`,
+2.2 `web-server`, 2.3 `cli` — 3 `branding`, 4 `interface`, 5 `screen-foundation`. A language is
+built before the platform built into it, the palette before the shell that shows it, and the
+shell before the screen idiom built on it.
+
+Tier 6 is `application`: every service and screen the Blueprints describe. It has no internal
+order, and a file with no `**Tier:**` belongs to it — which is how a service stays free to land
+either side of the interface tier.
 
 | File | Maps to STACK.yaml | Foundation | Tier | Covers |
 |------|-------------------|------------|-------|--------|
@@ -73,7 +79,7 @@ no ordering claim — services are untiered so they may land either side of the 
 
 ### Frontend
 - **bootstrap5.md** — CSS framework with dark theme variant (tier 4 `interface`: after the branding tier, before any screen)
-- **ui-flask.bootstrap-client.md** — Screen build reference for an already-running Flask/Bootstrap server (tier 5 `screen`)
+- **ui-flask.bootstrap-client.md** — Screen build reference for an already-running Flask/Bootstrap server (tier 5 `screen-foundation`)
 
 ### AWS Cloud Services
 - **aws-lambda.md** — Serverless compute

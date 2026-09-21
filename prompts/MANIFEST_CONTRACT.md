@@ -176,19 +176,30 @@ Blueprint header.
 The chain that repeats inside each phase is ordered, and each Rigging file declares its position
 with a `**Tier:**` header. A tier is a rank inside a phase — never a phase, never a block.
 
+Tiers 1 to 5 are the foundation. Each holds at most one selected file per kind, each publishes a
+contract, and each is built into the one before it.
+
 | Tier | Name | Builds | Holds |
 |---|---|---|---|
 | 1 | `language` | The tree, the environment, the test runner everything else is built into. | `python.md`, `go.md`, `typescript.md` |
-| 2 | `platform` | The one web server, the one database, the one CLI, built into that tree. | `fastapi.md`, `flask.md`, `django.md`, `sqlite.md`, `postgres.md`, `cli.md` |
+| 2.1 | `platform` · database | The one database, built into that tree. | `sqlite.md`, `postgres.md` |
+| 2.2 | `platform` · web server | The one web server. | `fastapi.md`, `flask.md`, `django.md` |
+| 2.3 | `platform` · CLI | The one command-line entry point. | `cli.md` |
 | 3 | `branding` | The palette, the typography, the voice. | `BRANDING_MAIN.md`, `BRANDING_WEBSITE.md`, `BRANDING_DOCUMENTATION.md` |
 | 4 | `interface` | The shared UI shell, built with that palette. | `bootstrap5.md` |
-| 5 | `screen` | Screens, built on that shell. | `ui-flask.bootstrap-client.md` |
+| 5 | `screen-foundation` | The screen idiom, built on that shell. | `ui-flask.bootstrap-client.md` |
 
-A file with no `**Tier:**` makes no ordering claim. Services are deliberately untiered: a service
-may be built either side of the interface tier.
+Tier 2's three kinds are independent — none is built into another — so 2.1, 2.2 and 2.3 order by
+what imports what: a web server and a CLI import persistence, and persistence imports neither.
 
-Each foundation is its own story. The block packer may put two in one block or split them across
-blocks, and either is correct.
+Tier 6 is `application`: every service and every screen the Blueprints describe. It publishes no
+contract and has no internal order — a service and a screen are ranked against each other by
+`depends:` alone. A file or story with no `**Tier:**` belongs to tier 6, which is how a service
+stays free to land either side of the interface tier.
+
+Each foundation is its own story. Ordering the tiers forbids nothing: two tiers may legally share
+a block, and what keeps them apart is that they share no context, so the packer finds no saving
+in merging them. The tiers state what is built into what; `depends:` enforces it.
 
 ### Blocks
 

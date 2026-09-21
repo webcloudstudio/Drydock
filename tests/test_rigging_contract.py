@@ -5,7 +5,10 @@ from __future__ import annotations
 import pytest
 
 from drydock.rigging_contract import (
+    APPLICATION_TIER,
+    PLATFORM_ORDER,
     TIER_ORDER,
+    chain_rank,
     contract_section,
     declared_kind,
     declared_tier,
@@ -16,6 +19,8 @@ from drydock.rigging_contract import (
     order_rigging,
     parse_contract,
     published_packages,
+    sub_rank,
+    tier_label,
     tier_number,
     tier_rank,
 )
@@ -211,17 +216,52 @@ def test_shipped_kinds_name_one_package_each():
 # ── Tiers and build order ───────────────────────────────────────────────────────
 
 
-def test_the_five_tiers_are_ordered_as_the_work_is_done():
-    assert [tier_rank(name) for name in TIER_ORDER] == [0, 1, 2, 3, 4]
-    assert TIER_ORDER == ("language", "platform", "branding", "interface", "screen")
-    assert [tier_number(name) for name in TIER_ORDER] == [1, 2, 3, 4, 5]
-    assert tier_number("service") == 0
+def test_the_six_tiers_are_ordered_as_the_work_is_done():
+    assert [tier_rank(name) for name in TIER_ORDER] == [0, 1, 2, 3, 4, 5]
+    assert TIER_ORDER == (
+        "language",
+        "platform",
+        "branding",
+        "interface",
+        "screen-foundation",
+        "application",
+    )
+    assert [tier_number(name) for name in TIER_ORDER] == [1, 2, 3, 4, 5, 6]
 
 
-def test_an_unranked_tier_sorts_after_every_ranked_one():
-    """A file making no ordering claim must never be read as claiming to come first."""
-    assert tier_rank("") > tier_rank("screen")
-    assert tier_rank("service") > tier_rank("screen")
+def test_the_application_tier_is_where_an_undeclared_tier_lands():
+    """Declaring no tier is not a missing answer: it is tier 6, claiming no order against peers."""
+    assert tier_rank("") == tier_rank(APPLICATION_TIER)
+    assert tier_rank("service") == tier_rank(APPLICATION_TIER)
+    assert tier_number("") == 6
+    assert tier_rank("") > tier_rank("screen-foundation")
+
+
+def test_tier_two_sub_orders_its_three_independent_kinds():
+    """Neither of the three is built into another, so the order is by what imports what."""
+    assert PLATFORM_ORDER == ("database", "web-server", "cli")
+    assert [sub_rank(kind) for kind in PLATFORM_ORDER] == [1, 2, 3]
+    assert sub_rank("language") == 0
+    assert tier_label("platform", "database") == "2.1"
+    assert tier_label("platform", "cli") == "2.3"
+    assert tier_label("language", "language") == "1"
+    assert tier_label("") == "6"
+
+
+def test_chain_rank_orders_the_whole_foundation():
+    chain = [
+        chain_rank("language", "language"),
+        chain_rank("platform", "database"),
+        chain_rank("platform", "web-server"),
+        chain_rank("platform", "cli"),
+        chain_rank("branding", "branding"),
+        chain_rank("interface", "interface"),
+        chain_rank("screen-foundation", "screen-foundation"),
+        chain_rank("", ""),
+    ]
+
+    assert chain == sorted(chain)
+    assert len(set(chain)) == len(chain)
 
 
 def test_shipped_rigging_orders_the_whole_chain():

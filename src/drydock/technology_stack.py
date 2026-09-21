@@ -531,34 +531,28 @@ def foundation_groups(entries: list[StackEntry] | None = None) -> list[dict]:
     database. Presenting them as checkboxes invites the selection that ``foundation_defects``
     then refuses, which is the wrong end of the process to find out.
 
-    Order is tier order — language first, then the platform built into it — so the page reads in
-    the order the work is done.
+    Order is tier order — language first, then the platform built into it, and inside the platform
+    tier the sub-order ``2.1``/``2.2``/``2.3`` — so the page reads in the order the work is done.
 
     ``selected`` is what the stack currently names. A stack with no rows at all is a Target
     nobody has decided for yet and takes :data:`DEFAULT_FOUNDATIONS`; a stack that has rows and
     names no web server has decided it has none, and is left alone.
     """
-    from drydock.rigging_contract import foundation_kinds, tier_number, tier_rank
+    from drydock.rigging_contract import chain_rank, foundation_kinds, tier_label, tier_number
 
     rows = list(entries or [])
     chosen = split_foundations(rows)[0] if rows else dict(DEFAULT_FOUNDATIONS)
-    category = dict(rigging_catalog())
 
     def rank(group: tuple[str, str, list[str]]) -> tuple[int, int, str]:
-        tier, kind, options = group
-        # Two kinds in one tier carry no ordering claim against each other, so the tie-break is
-        # the selector's own category order rather than an invented one.
-        first = category.get(options[0], _DEFAULT_CATEGORY) if options else _DEFAULT_CATEGORY
-        position = (
-            _CATEGORY_ORDER.index(first) if first in _CATEGORY_ORDER else len(_CATEGORY_ORDER)
-        )
-        return (tier_rank(tier), position, kind)
+        tier, kind, _ = group
+        return (*chain_rank(tier, kind), kind)
 
     return [
         {
             "kind": kind,
             "tier": tier,
             "tier_number": tier_number(tier),
+            "tier_label": tier_label(tier, kind),
             "label": _KIND_LABELS.get(kind, kind.replace("-", " ").title()),
             "options": options,
             "selected": chosen.get(kind, ""),

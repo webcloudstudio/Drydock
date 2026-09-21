@@ -2027,7 +2027,8 @@ def test_technology_stack_renders_one_row_per_technology(tmp_path, monkeypatch):
 
 
 def test_technology_stack_offers_each_foundation_kind_once_in_build_order(tmp_path, monkeypatch):
-    """Language first, then the platform built into it. One radio group per exclusive kind."""
+    """Language first, then the platform built into it in tier-2 sub-order — database, web
+    server, CLI. One radio group per exclusive kind."""
     quarterdeck = _load_quarterdeck()
 
     def _missing(_path):
@@ -2038,7 +2039,7 @@ def test_technology_stack_offers_each_foundation_kind_once_in_build_order(tmp_pa
     rendered = quarterdeck.render_technology_stack(_stack_item())
     order = [
         rendered.index(f"data-kind='{kind}'")
-        for kind in ("language", "web-server", "database", "cli")
+        for kind in ("language", "database", "web-server", "cli")
     ]
 
     assert order == sorted(order)
@@ -2432,8 +2433,8 @@ def test_approve_rejects_an_item_that_is_not_approvable(tmp_path, monkeypatch):
 
 
 def test_technology_stack_labels_the_columns_and_shows_the_tier_chain(tmp_path, monkeypatch):
-    """Tiers 3-5 hold no exclusive choice and so have no radio group. Without the legend the
-    page shows two of five tiers and implies there are two."""
+    """Tiers 3-6 hold no exclusive choice and so have no radio group. Without the legend the
+    page shows two of six tiers and implies there are two."""
     quarterdeck = _load_quarterdeck()
 
     def _missing(_path):
@@ -2445,8 +2446,16 @@ def test_technology_stack_labels_the_columns_and_shows_the_tier_chain(tmp_path, 
 
     assert "<th>Technology Label</th><th>Rigging File</th>" in rendered
     assert "Tier 1 · language" in rendered
-    assert "Tier 2 · platform" in rendered
-    for number, name in enumerate(
-        ("language", "platform", "branding", "interface", "screen"), start=1
+    assert "Tier 2.1 · platform" in rendered
+    assert "Tier 2.2 · platform" in rendered
+    for number, name in (
+        ("1", "language"),
+        ("2.1", "database"),
+        ("2.2", "web server"),
+        ("2.3", "cli"),
+        ("3", "branding"),
+        ("4", "interface"),
+        ("5", "screen foundation"),
+        ("6", "application"),
     ):
         assert f"Tier {number} · {name}" in rendered

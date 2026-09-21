@@ -418,9 +418,11 @@ Declare, per story:
   It is not the tier chain: the tiers repeat inside each phase rather than running once across
   the project. Weigh Commander ordering direction as input when assigning it.
 - Inside a phase, `depends` carries the tier chain each story's `stack:` files declare —
-  `language`, `platform`, `branding`, `interface`, `screen`, per `MANIFEST_CONTRACT.md`. A story
-  building on `bootstrap5.md` depends on the language, platform, and branding work and precedes
-  every screen story; it carries no ordering claim against a service.
+  `language`, `platform` (sub-ordered database, web server, CLI), `branding`, `interface`,
+  `screen-foundation`, then `application`, per `MANIFEST_CONTRACT.md`. A story building on
+  `bootstrap5.md` depends on the language, platform, and branding work and precedes every screen
+  story; it carries no ordering claim against a service. Services and screens are tier 6
+  `application`: they are ordered against each other by `depends:` alone, never by tier.
 - `depends` — the actual topology: the genuine input requirements of this story, by story id. A
   `feature` story depends on its member stories.
 - `provides` / `consumes` — what this story defines and calls, comma-separated

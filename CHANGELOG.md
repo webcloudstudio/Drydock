@@ -16,14 +16,21 @@ command surface and Typed Specification contract are unstable and may change bet
   package and a fixture. A Target has exactly one language, refused in the same place two web
   servers are. A web server, a database or a CLI is built *into* the tree, the environment and the
   test runner the language foundation lays down; `fastapi.md` was never standalone.
-- 2026-09-20: **The build chain is declared and ordered as five tiers.** Every Rigging file may
-  carry a `**Tier:**` header: 1 `language`, 2 `platform`, 3 `branding`, 4 `interface`,
-  5 `screen`. A tier is a rank *inside* a phase — never a phase, never a block — and the chain
-  repeats in every phase, exactly as `MANIFEST_CONTRACT.md` already described it. `bootstrap5.md`
-  declares `interface` and `BRANDING_MAIN.md` declares `branding`, which is the ordering these
-  needed: the palette before the shell that shows it, the shell before any screen. A file with no
-  `**Tier:**` makes no ordering claim, which is how a service stays free to land either side of
-  the interface tier.
+- 2026-09-20: **The build chain is declared and ordered as six tiers.** Every Rigging file may
+  carry a `**Tier:**` header. Tiers 1 to 5 are the foundation: 1 `language`, 2 `platform` —
+  sub-ordered 2.1 `database`, 2.2 `web-server`, 2.3 `cli` — 3 `branding`, 4 `interface`,
+  5 `screen-foundation`. Each holds at most one selected file per kind, publishes a contract, and
+  is built into the tier before it: the palette before the shell that shows it, the shell before
+  the screen idiom built on it. Tier 2's three kinds are independent, so they order by what
+  imports what — a web server and a CLI import persistence, and persistence imports neither.
+  Tier 6 is `application`: every service and every screen the Blueprints describe, with no
+  internal order, ranked against each other by `depends:` alone. A file or story with no
+  `**Tier:**` belongs to tier 6, which is how a service stays free to land either side of the
+  interface tier. A tier is a rank *inside* a phase — never a phase, never a block — and the
+  chain repeats in every phase, exactly as `MANIFEST_CONTRACT.md` already described it. Ordering
+  the tiers forbids no block composition: two tiers may legally share a block, and what keeps
+  unrelated work apart is that it shares no context, so the block packer finds no saving in
+  merging it.
 
 - 2026-09-20: Rigging files publish a **foundation contract**. A file that defines a foundation
   declares its kind in the header (`**Foundation:** web-server`) and its shape in a
@@ -52,14 +59,15 @@ command surface and Typed Specification contract are unstable and may change bet
   before a build call is paid for. Nothing else is judged: whether an arbitrary third-party import
   resolves is a fact about the build environment, not the Blueprint.
 - 2026-09-20: The QuarterDeck **Technology Stack** page selects foundations with one radio group
-  per kind, captioned with its tier and in build order — Tier 1 Language, then Tier 2 Web Server,
-  Database and CLI — instead of a free-text row and
+  per kind, captioned with its tier and in build order — Tier 1 Language, then Tier 2.1 Database,
+  2.2 Web Server and 2.3 CLI — instead of a free-text row and
   a dropdown. The underlying fact is a choice, not a set, and a checkbox list invited the second
   selection `plan verify` then refuses. A Target with no rows starts on `python.md` /
   `fastapi.md` / `sqlite.md`; a Target that has rows and names no web server has decided it has
   none, and is left alone. Non-foundation technologies keep the free-text table, whose headings
-  now read **Technology Label** and **Rigging File**, and a **Build order — five tiers** legend
-  shows where a file with no exclusive choice — `bootstrap5.md`, `BRANDING_MAIN.md` — lands.
+  now read **Technology Label** and **Rigging File**, and a **Build order — six tiers** legend
+  shows where a file with no exclusive choice — `bootstrap5.md`, `BRANDING_MAIN.md` — lands, and
+  that tier 6 holds every service and screen.
 - 2026-09-20: `django.md` rewritten against the published contract. The Django project package
   *is* `app_server` — `app_server/settings.py`, `app_server/urls.py`, `app_server/wsgi.py` — and
   `create_app() -> WSGIHandler` wraps `get_wsgi_application()`, so a criterion written against

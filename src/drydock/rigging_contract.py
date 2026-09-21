@@ -32,14 +32,21 @@ A foundation also declares which tier it is built in::
 
     **Tier:** language
 
-The tiers are the chain ``MANIFEST_CONTRACT.md`` already names — foundational, database, service,
-ui — repeating inside each phase rather than running once across the project. A tier is therefore
-a rank within a phase, never a phase, and never a block. The ranks are ordered because the work
-is: a language foundation lays the directory tree, the environment, and the test runner that a
-web server or a database foundation is then built into, so ``fastapi.md`` cannot build before
+A tier is a rank within a phase, never a phase and never a block; the chain repeats in every
+phase. Tiers 1–5 are the foundation and they are ordered because the work is: a language
+foundation lays the directory tree, the environment, and the test runner that a database, a web
+server, or a CLI foundation is then built into, so ``fastapi.md`` cannot build before
 ``python.md`` has. The palette and the voice are settled before the shell that shows them, and
-the shell before any screen — so a screen is never built against a look nobody has chosen.
-Services declare no tier at all, which is how they stay free to land either side of the shell.
+the shell before the screen idiom built on it — so a screen is never built against a look nobody
+has chosen. Tier 2 sub-orders its three independent kinds ``2.1``/``2.2``/``2.3``.
+
+Tier 6 is the application — the services and screens the Blueprints describe. It is one tier with
+no internal order, and a file or story declaring no tier belongs to it. That is how a service
+stays free to land either side of the interface tier: it makes no claim, and none is inferred.
+
+Ordering the chain is not a prohibition. Two tiers may legally share a build block; what keeps
+them apart is that they share no context, so the block packer finds no saving in merging them.
+The tiers say what is built into what, and ``depends:`` enforces it.
 
 Two contract shapes exist, because two kinds of foundation publish two different things. A
 platform foundation publishes an importable API: the package a criterion imports, the entry that
@@ -52,7 +59,7 @@ a Target makes.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -74,23 +81,43 @@ _CONTRACT_RE = re.compile(
 
 _FIELD_RE = re.compile(r"^-[ \t]+(?P<key>[a-z_]+):[ \t]*(?P<value>.+?)[ \t]*$", re.MULTILINE)
 
-#: The header field naming the tier a Rigging file's work belongs to. Absent means the file
-#: carries no ordering claim: ``uv_ruff.md`` is read wherever Python is, and a service story is
-#: unordered against the interface tier by design.
+#: The header field naming the tier a Rigging file's work belongs to. Absent means the file is
+#: application work and carries no ordering claim: ``uv_ruff.md`` is read wherever Python is, and
+#: a service story is unordered against the interface tier by design.
 TIER_HEADER = re.compile(r"^\*\*Tier:\*\*[ \t]*(?P<tier>.+?)[ \t]*$", re.MULTILINE)
 
 #: The tiers in build order, numbered from 1. A tier is a position inside a phase, never a phase
 #: and never a block: the chain repeats in every phase.
 #:
-#: 1. ``language``  — the tree, the environment, the test runner everything else is built into
-#: 2. ``platform``  — the one web server, the one database, the one CLI, built into that tree
-#: 3. ``branding``  — the palette, the typography, the voice
-#: 4. ``interface`` — the shared UI shell, built with that palette
-#: 5. ``screen``    — screens, built on that shell
+#: Tiers 1–5 are the foundation. Each holds at most one selected Rigging file per kind, each
+#: publishes a contract, and each is built into the one before it:
 #:
-#: Services appear nowhere. They are deliberately unordered against ``interface``, which is the
-#: one ordering claim the chain does not make.
-TIER_ORDER = ("language", "platform", "branding", "interface", "screen")
+#: 1. ``language``          — the tree, the environment, the test runner
+#: 2. ``platform``          — the one database, the one web server, the one CLI
+#: 3. ``branding``          — the palette, the typography, the voice
+#: 4. ``interface``         — the shared UI shell, built with that palette
+#: 5. ``screen-foundation`` — the screen idiom, built on that shell
+#:
+#: Tier 6 is the application: every service and every screen the Blueprints describe. It holds no
+#: foundation, publishes no contract, and carries no internal order — a service and a screen are
+#: ranked against each other by ``depends:`` alone, never by tier.
+TIER_ORDER = (
+    "language",
+    "platform",
+    "branding",
+    "interface",
+    "screen-foundation",
+    "application",
+)
+
+#: The tier every story and every Rigging file that declares none belongs to. Declaring no tier
+#: and declaring ``application`` are the same statement: this makes no ordering claim.
+APPLICATION_TIER = "application"
+
+#: Sub-order inside tier 2, rendered ``2.1``/``2.2``/``2.3``. The three platform kinds are
+#: independent — none is built into another — so the order is by what imports what: a web server
+#: and a CLI both import persistence, and persistence imports neither.
+PLATFORM_ORDER = ("database", "web-server", "cli")
 
 #: What a platform foundation publishes: the name a criterion imports, the callable that builds
 #: it, and the fixture that hands it over. A foundation that cannot name all three is not a
@@ -147,24 +174,51 @@ class FoundationContract:
 
     @property
     def tier_number(self) -> int:
-        """The tier's 1-based number, or ``0`` when it makes no ordering claim."""
+        """The tier's 1-based number. A foundation declaring no tier is an authoring error."""
         return tier_number(self.tier)
+
+    @property
+    def tier_label(self) -> str:
+        """The displayed tier, dotted inside tier 2 — ``1`` for a language, ``2.2`` for a web."""
+        return tier_label(self.tier, self.kind)
 
 
 def tier_rank(tier: str) -> int:
-    """Rank a tier in the chain. An unnamed or unknown tier sorts after every ranked tier.
+    """Rank a tier in the chain. An unnamed or unknown tier ranks as the application tier.
 
-    Sorting an unranked tier last rather than first is the safe default: a file making no
-    ordering claim must never be read as claiming to come before one that does.
+    Declaring no tier is not a missing answer, it is the answer: the file makes no ordering claim
+    and therefore belongs to tier 6, after every foundation. Ranking it last rather than first is
+    also the safe reading — a file claiming nothing must never be taken to claim precedence.
     """
     name = (tier or "").strip().lower()
-    return TIER_ORDER.index(name) if name in TIER_ORDER else len(TIER_ORDER)
+    return TIER_ORDER.index(name) if name in TIER_ORDER else TIER_ORDER.index(APPLICATION_TIER)
 
 
 def tier_number(tier: str) -> int:
-    """Return the tier's 1-based number for display, or ``0`` when it is unranked."""
-    name = (tier or "").strip().lower()
-    return TIER_ORDER.index(name) + 1 if name in TIER_ORDER else 0
+    """Return the tier's 1-based number for display. An unnamed tier is the application tier."""
+    return tier_rank(tier) + 1
+
+
+def sub_rank(kind: str) -> int:
+    """Rank a foundation kind inside its tier. Only tier 2 orders its kinds; every other is ``0``.
+
+    A kind outside :data:`PLATFORM_ORDER` sorts first within its tier, which is correct for the
+    tiers that hold exactly one kind and makes no claim where there is nothing to claim.
+    """
+    name = (kind or "").strip().lower()
+    return PLATFORM_ORDER.index(name) + 1 if name in PLATFORM_ORDER else 0
+
+
+def chain_rank(tier: str, kind: str = "") -> tuple[int, int]:
+    """Return the sort key placing one foundation in the build chain: ``(tier, sub-tier)``."""
+    return (tier_rank(tier), sub_rank(kind))
+
+
+def tier_label(tier: str, kind: str = "") -> str:
+    """Return the displayed tier number, dotted inside tier 2 — ``1``, ``2.1``, ``6``."""
+    major = tier_number(tier)
+    minor = sub_rank(kind)
+    return f"{major}.{minor}" if minor else str(major)
 
 
 def declared_kind(text: str) -> str | None:
@@ -285,8 +339,10 @@ def exclusivity_conflicts(selected: list[str]) -> dict[str, list[str]]:
 # ── Tier ordering ───────────────────────────────────────────────────────────────
 
 
-def tier_for(name: str, stack_dir: Path | None = None) -> str:
-    """Return the tier the Rigging file ``name`` declares, or ``""`` when it declares none.
+def _header_field(
+    name: str, reader: Callable[[str], str | None], stack_dir: Path | None = None
+) -> str:
+    """Return one header field of the Rigging file ``name``, or ``""`` when it is unreadable.
 
     Branding files sit at ``Rigging/`` rather than ``Rigging/stack/``, so both are searched.
     """
@@ -298,26 +354,43 @@ def tier_for(name: str, stack_dir: Path | None = None) -> str:
             text = (root / name).read_text(encoding="utf-8")
         except OSError:
             continue
-        return declared_tier(text) or ""
+        return reader(text) or ""
     return ""
 
 
+def tier_for(name: str, stack_dir: Path | None = None) -> str:
+    """Return the tier the Rigging file ``name`` declares, or ``""`` when it declares none."""
+    return _header_field(name, declared_tier, stack_dir)
+
+
+def kind_for(name: str, stack_dir: Path | None = None) -> str:
+    """Return the foundation kind the Rigging file ``name`` declares, or ``""`` when it is none."""
+    return _header_field(name, declared_kind, stack_dir)
+
+
 def order_rigging(names: Iterable[str], stack_dir: Path | None = None) -> list[str]:
-    """Return ``names`` in build order: by tier rank, then alphabetically.
+    """Return ``names`` in build order: by tier, then sub-tier, then alphabetically.
 
     ``bootstrap5.md`` declares the ``interface`` tier, so it sorts after the platform and the
-    branding files and before every screen file, and carries no claim at all against a service —
-    the chain deliberately ranks no service tier.
+    branding files and before the screen foundation. A file declaring no tier is application
+    work and sorts last, carrying no claim against any other application file.
     """
     ordered = list(names)
-    return sorted(ordered, key=lambda name: (tier_rank(tier_for(name, stack_dir)), name))
+    return sorted(
+        ordered,
+        key=lambda name: (
+            *chain_rank(tier_for(name, stack_dir), kind_for(name, stack_dir)),
+            name,
+        ),
+    )
 
 
 def foundation_kinds() -> list[tuple[str, str, list[str]]]:
     """Return ``(tier, kind, candidate filenames)`` for every foundation kind, in build order.
 
     The order is the one the Commander chooses in and the one Drydock builds in: a language
-    before the platform built into it. QuarterDeck renders this directly.
+    before the platform built into it, and inside the platform tier the sub-order of
+    :data:`PLATFORM_ORDER`. QuarterDeck renders this directly.
     """
     by_kind: dict[str, list[str]] = {}
     tiers: dict[str, str] = {}
@@ -327,7 +400,7 @@ def foundation_kinds() -> list[tuple[str, str, list[str]]]:
     return [
         (tiers[kind], kind, sorted(names))
         for kind, names in sorted(
-            by_kind.items(), key=lambda item: (tier_rank(tiers[item[0]]), item[0])
+            by_kind.items(), key=lambda item: (*chain_rank(tiers[item[0]], item[0]), item[0])
         )
     ]
 

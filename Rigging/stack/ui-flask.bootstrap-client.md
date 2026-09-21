@@ -1,6 +1,6 @@
 # Flask + Bootstrap 5 — Screen Build Reference
 
-**Tier:** screen
+**Tier:** screen-foundation
 **Category:** Frontend
 
 Condensed patterns for building screens on an already-running Flask/Bootstrap server.

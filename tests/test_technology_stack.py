@@ -305,10 +305,11 @@ def test_is_approved_is_false_for_a_missing_document(tmp_path):
 
 def test_foundation_groups_read_in_build_order():
     """Language first: a web server or a database is built into the tree and the environment
-    only the language foundation lays down."""
+    only the language foundation lays down. Inside tier 2 the three kinds sub-order 2.1/2.2/2.3
+    by what imports what — a web server and a CLI import persistence, and it imports neither."""
     groups = technology_stack.foundation_groups([])
 
-    assert [group["label"] for group in groups] == ["Language", "Web Server", "Database", "CLI"]
+    assert [group["label"] for group in groups] == ["Language", "Database", "Web Server", "CLI"]
     assert [group["tier"] for group in groups] == [
         "language",
         "platform",
@@ -316,6 +317,7 @@ def test_foundation_groups_read_in_build_order():
         "platform",
     ]
     assert [group["tier_number"] for group in groups] == [1, 2, 2, 2]
+    assert [group["tier_label"] for group in groups] == ["1", "2.1", "2.2", "2.3"]
 
 
 def test_a_target_nobody_has_decided_for_gets_the_default_stack():
