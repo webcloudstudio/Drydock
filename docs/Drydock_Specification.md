@@ -604,14 +604,6 @@ A `measurement` criterion runs `Command:` in the build directory and compares it
 using `Operator:`. `Extract:` is a regular expression that reads the value from standard output;
 without it, the command prints `{"value": <number>, "unit": "<unit>"}`.
 
-**Exit codes**
-
-| Code | Meaning |
-|---:|---|
-| `0` | Scoring completes; `score spec` and `score drydock` findings are advisory |
-| `1` | Scoring fails, or the Target fails the evaluated gate |
-| `2` | Invalid syntax |
-
 ### drydock document
 
 ```text
@@ -752,8 +744,6 @@ Imported sources and change tickets are never patched.
 
 `drydock diagnose` makes one LLM call and never edits Drydock's own source.
 
-**Exit codes.** `0` no live failure; `1` findings or an incomplete diagnosis; `2` usage error.
-
 ### drydock refit
 
 `drydock refit <Target>` reconciles the applied Blueprint state with the current change inputs. It
@@ -800,8 +790,6 @@ ticket and affects only database implementation or migration work. An Access Pat
 `compatibility: data` affects only database migration and implementation; `compatibility: unchanged`
 records the change without resetting work. Each database change has its own ticket and migration
 record.
-
-**Exit codes.** `0` success or no-op; `1` an ambiguous, conflicting, unassignable, or unincorporated change, or a commit failure; `2` usage error.
 
 ## Directory Layout
 
