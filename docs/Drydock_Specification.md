@@ -674,31 +674,6 @@ sections:
 `sections:` sets the navigation order. CLI flags override configuration. Themes are `slate`,
 `harbor`, and `paper`.
 
-**Input files**
-
-| Artifact | Location | Purpose |
-|---|---|---|
-| `documentation.yaml` | Target workspace root | Sections, order, and theme |
-| Typed Specification files | Target workspace `blueprint/` | Documentation source |
-| `MANIFEST.md` | Target workspace root | Build structure |
-| `METADATA.md` | Target workspace root | Target metadata |
-| `DOC-*.md` | Target build `docs/` | Markdown for `assemble` |
-
-**Output files**
-
-| Artifact | Location | Purpose |
-|---|---|---|
-| `DOC-OVERVIEW.md` | Target build `docs/` | Overview |
-| `DOC-FEATURES.md` | Target build `docs/` | Features |
-| `DOC-SCREENS.md` | Target build `docs/` | Screens and UI |
-| `DOC-ARCHITECTURE.md` | Target build `docs/` | Architecture |
-| `DOC-SCHEMA.md` | Target build `docs/` | Data schema (optional) |
-| `DOC-FLOWS.md` | Target build `docs/` | Workflows (optional) |
-| `DOC-PIPELINE.md` | Target build `docs/` | Delivery pipeline (optional) |
-| `DOC-SIGNALS.md` | Target build `docs/` | Signals and telemetry (optional) |
-| `index.html` | Target build `docs/` | Documentation site |
-| `styles/spec.css` | Target build `docs/` | Site theme CSS |
-
 ### drydock publish
 
 ```text
@@ -777,50 +752,26 @@ Imported sources and change tickets are never patched.
 
 ### drydock refit
 
-`drydock refit <Target>` reconciles the applied Blueprint state with the current change inputs. It
-writes normalized change tickets, updates `MANIFEST.md`, and marks affected built work for rebuild.
-It does not modify Blueprints.
+`drydock refit <Target>` maps changes into the Manifest. It writes normalized change tickets,
+updates `MANIFEST.md`, and resets affected built work. It does not modify Blueprints.
 
-Change inputs are Jira or other tickets, plain-English ticket files, direct Blueprint edits, and
-Feature-ticket Blueprint comments. Direct edits are detected against the Blueprint snapshot recorded
-in the Manifest; Git history is not required.
+Changes are tickets (Jira or plain English), direct Blueprint edits, and Feature-ticket Blueprint
+comments. Edits are detected against the Blueprint snapshot in the Manifest.
 
-Refit reads tickets from, and writes normalized tickets to, `change_ticket_directory` (default
-`targets/<Target>/blueprint/changes/`). A source ticket or direct edit may produce several
-normalized tickets; a Feature-ticket comment produces one.
+Tickets are read from and written to `change_ticket_directory` (default `blueprint/changes/`). Each
+normalized ticket amends exactly one Blueprint, section, story, or database Access Pattern. A ticket
+that cannot be incorporated is listed in `BLOCKERS.md`, and Refit fails.
 
-Refit matches each source ticket to the current Blueprint or a detected edit, using an explicit
-target, Jira metadata, the ticket text, and the Blueprint content, and links inputs that describe the
-same change. Each normalized ticket amends exactly one Blueprint, section, story, or named database
-Access Pattern. A ticket that cannot be matched, normalized, and incorporated is listed under
-`Unincorporated Change Tickets` in `BLOCKERS.md`, and Refit exits `1`.
+A normalized ticket has typed front matter (`kind`, `operation`, `compatibility`, `create_dtm`,
+`source_dtm`, `parent`) and the sections `## Change`, `## Contract Delta`, `## Source Evidence`,
+`## Acceptance Conditions`, and `## Impact`.
 
-Each normalized change ticket uses typed front matter followed by Markdown sections.
+Refit resets only built work a ticket affects; unbuilt work builds from the current requirement.
+Updates are atomic, and Refit commits every artifact it writes to the Target repository.
 
-`create_dtm` is when Refit created the ticket; `source_dtm` is the source's time. `parent` optionally
-names the upstream ticket or change group.
-
-`kind` is one of `blueprint`, `contract`, `database-private`, `database-access-pattern`, `database-data`, or `documentation`. `operation` is one of `add`, `change`, or `remove`. `compatibility` is required for `database-access-pattern` tickets and is one of `unchanged`, `data`, or `rebuild`.
-
-`## Change` states the end state. `## Contract Delta` states the exact added, changed, or removed
-behavior, field, interface, Access Pattern, schema element, or migration. `## Source Evidence` holds
-the source text or a before-and-after Blueprint fragment. `## Acceptance Conditions` states what the
-rebuilt work must satisfy. `## Impact` names the owner, the impacted and downstream work, and the
-unaffected work.
-
-Refit resets only built work a ticket affects; unbuilt work builds from the current requirement. The
-build receives the current Blueprint and the tickets for its work.
-
-Refit applies Manifest and ticket updates atomically; a failed reconciliation applies nothing. It
-commits every artifact it writes to the Target Git repository, including `BLOCKERS.md` after an
-error. A failed commit is an operational error.
-
-In `DATABASE.md`, a Schema or Migration change creates a `database-private` or `database-data`
-ticket and affects only database implementation or migration work. An Access Pattern change with
-`compatibility: rebuild` affects its owner, the Features that cite it, and their dependents;
-`compatibility: data` affects only database migration and implementation; `compatibility: unchanged`
-records the change without resetting work. Each database change has its own ticket and migration
-record.
+A `DATABASE.md` Schema or Migration change affects only database work. An Access Pattern change
+declares `compatibility`: `rebuild` also rebuilds the Features that cite it, `data` affects only
+database work, and `unchanged` resets nothing.
 
 ## Directory Layout
 
