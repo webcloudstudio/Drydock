@@ -107,60 +107,6 @@ drydock <verb> [<sub-verb>] [arguments] [--options]
 
 Each project's `<Target>` uses a Workspace of `$DRYDOCK_WORKSPACE/targets/<Target>` and builds to `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
 
-```text
-usage: drydock [-h] [--version] [--debug] [--no-diagnose] [--glyphs <tier>]
-               [--ascii] [--unicode] [--model <model>]
-               [--llm-provider <provider>] [--effort <level>]
-               <command> ...
-
-Drydock — governed Blueprint-driven software delivery.
-Copyright (c) 2026 Web Cloud Studio. All rights reserved.
-
-positional arguments:
-  <command>
-    config              Show or set Drydock configuration.
-    init                Initialize a target workspace.
-    uat                 Build known project fixtures unattended in isolated
-                        run directories.
-    status              Show project status and orientation.
-    diagnose            Diagnose the last run, identify the root cause, and
-                        propose repairs.
-    validate            Validate a Blueprint's Typed Specification.
-    document            Generate and assemble Blueprint documentation.
-    publish             Render frontmatter Markdown into publishable HTML.
-    rigging             Manage Drydock Rigging.
-    plan                Create, verify, or repair an executable plan.
-    build               Build or inspect build state.
-    score               Audit specifications, verify acceptance, and judge
-                        release readiness. With a bare <Target>, summarize
-                        what those scores last reported.
-    refit               Conform change tickets in blueprint/changes/ to the
-                        build process and update the manifest.
-    analyze             Decompose imported sources into stories, blockers, and
-                        acceptance milestones.
-    run                 Start a Drydock service.
-    import              Reverse-engineer a project into a Blueprint.
-
-options:
-  -h, --help            show this help message and exit
-  --version             show program's version number and exit
-  --debug               Show detailed command output, DEBUG log messages, LLM
-                        execution diagnostics, and full tracebacks.
-  --no-diagnose         Do not call the LLM to diagnose an opaque failure.
-  --glyphs <tier>       Override console detection: emoji (✓), text (✓), ascii
-                        (v), or auto (default).
-  --ascii               Override console detection: render plain ASCII.
-  --unicode             Override console detection: keep Unicode glyphs.
-  --model <model>       LLM model (default: DRYDOCK_MODEL env/config). Selects
-                        the provider.
-  --llm-provider <provider>
-                        Override LLM provider. Optional: a recognized --model
-                        selects its own provider.
-  --effort <level>      Override reasoning effort (low|medium|high|xhigh|max;
-                        default: the command's declared effort or
-                        DRYDOCK_EFFORT env/config).
-```
-
 ## End-to-End Command Flow
 
 A Target runs from source material to a scored release and through subsequent change with the
@@ -425,8 +371,6 @@ The most important guard is `BLOCKERS.md`. If `BLOCKERS.md` exists, the Commande
 | `Ready` | No blockers remain |
 
 ### Specification Decomposition Methodology
-
-This structure populates `Provides`, `Consumes`, and `Depends On`.
 
 Decomposing to features and stories is done by type of project - For example a web applications decomposes by routes
 with one story to build function creating the route and a second story that built the screen that uses the route (screens can have multiple routes).
@@ -853,35 +797,7 @@ Refit reads ticket input from the Target-relative `change_ticket_directory` conf
 
 Before normalization, Refit matches each source ticket to the current Blueprint state or a detected direct Blueprint change. It uses an explicit target when supplied, applicable Jira metadata, the ticket text, and the current Blueprint content. Refit links inputs that describe the same change. Each normalized ticket has one best Blueprint home and amends exactly one Blueprint, section, story, or named database Access Pattern. A source ticket that cannot be matched, normalized, and incorporated into the resulting build is recorded under `Unincorporated Change Tickets` in `BLOCKERS.md`, reported to the Commander, and causes Refit to exit with code `1`.
 
-Each normalized change ticket uses typed front matter followed by these Markdown sections:
-
-```markdown
----
-id: TICKET-...
-subject: Create-order response includes order status
-description: FEATURE-ORDER-001 returns status to its Feature caller.
-create_dtm: 2026-09-12T14:32:18-04:00
-source_dtm: 2026-09-12T14:30:00-04:00
-parent: JIRA-123
-source: jira
-source_ref: JIRA-123
-amends: FEATURE-ORDER.md#Database-Interface
-kind: database-access-pattern
-operation: change
-status: pending
-compatibility: rebuild
----
-
-## Change
-
-## Contract Delta
-
-## Source Evidence
-
-## Acceptance Conditions
-
-## Impact
-```
+Each normalized change ticket uses typed front matter followed by Markdown sections.
 
 `create_dtm` is the time Refit created the normalized ticket. `source_dtm` preserves the source ticket, file, comment, or Blueprint-change time. `parent` is optional and identifies the upstream ticket or related change group.
 
@@ -978,47 +894,6 @@ All block types use the same four states:
 | `implemented` | Legacy work done state, waiting to be reconciled |
 | `closed/verified` | Passed or accepted |
 | `closed/failed` | Failed or rejected |
-
-### Worked Example
-
-```markdown
-# MANIFEST: MyProject
-updated:     2026-06-08T12:00:00
-plan_hash:   abc123456789
-
-## spike 1: Select parser
-id:           select-parser
-parent:       import-feature
-summary:      Compare supported parsers.
-context:      FEATURE-IMPORT.md
-question:     Which parser should the project use?
-finding:
-state:        pending
-
-## story 1: Foundation
-id:           foundation
-summary:      Build persistence and directory layout.
-implements:   DATABASE.md, ARCHITECTURE.md
-stack:        common.md, python.md, sqlite.md
-rules:        CLAUDE_RULES.md
-state:        pending
-
-## ac 1: system starts
-id:           system-starts
-parent:       foundation
-summary:      Service starts and responds on health.
-kind:         smoke
-check:        test -f bin/start.sh && curl -sf http://localhost:${PORT}/health
-state:        pending
-
-## story 2: Import documents
-id:           import-documents
-parent:       import-feature
-summary:      Implement the accepted import workflow.
-implements:   FEATURE-IMPORT.md
-depends:      select-parser, foundation
-state:        pending
-```
 
 ## The QuarterDeck — Agile Development Console
 
