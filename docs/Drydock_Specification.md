@@ -984,60 +984,6 @@ This determines build order.  `MANIFEST.md` contains story required context and 
 The Manifest controls the build.  Ordering is important because the Commander will want to prioritize some work over other. Grouping
 is important to save context when building similar blueprints.
 
-Each Manifest contains four block types:
-
-- `feature` optionally groups substantial workflows and owns feature-level acceptance
-- `story` builds something. A Drydock story is an enriched Spec Kit task: it has states,
-  `depends:`, Blueprint acceptance, and prompt-assembly fields.
-- `spike` answers a question. Results feed future iterations
-- `ac` is a legacy block type retained for existing Manifests. Durable acceptance lives in the Blueprint.
-
-### Plan Header
-
-```markdown
-# MANIFEST: {ProjectName}
-updated:     2026-06-08T12:00:00
-plan_hash:   abc123456789
-applied_specs: |
-  DATABASE.md sha256=<content_sha256> commit=<file_commit_sha> applied_by=foundation applied_at=2026-06-26T14:22:00Z
-```
-
-Manifest contains the build-state provenance required to detect stale previously applied Blueprint Specifications.
-
-`applied_specs` records one line per Blueprint Specification file that has been applied by a
-successful story or spike. The path is relative to `blueprint/`. `sha256` is the authoritative
-dirty signal. `commit` is the latest git commit that touched that file, or `-` when unavailable.
-`applied_by` identifies the story or spike that last applied the file. `applied_at` is the UTC
-application timestamp.
-
-### Story Blocks
-
-```markdown
-## story N: {Name}
-id:           foundation
-parent:       feature-catalog
-summary:      One-line description.
-implements:   DATABASE.md, FEATURE-CATALOG.md
-context:      ARCHITECTURE.md
-stack:        common.md, python.md, sqlite.md
-rules:        CLAUDE_RULES.md
-accepts:      st-foundation, st-catalog
-instructions: |
-  Build persistence and the catalog service.
-depends:      select-parser
-state:        pending
-evidence:     evidence/<id>.md
-scope:        blueprint | target | both
-```
-
-`implements:` is the spec files this story uses. `context:` is read-only support context.
-`parent:` is optional. It is used for arbitrary hierarchy and QuarterDeck display. Builds are
-rules-based on block type. `scope:` declares whether a story changes the Blueprint, target
-software, or both.
-`accepts:` lists stable `SEA_TRIALS.md` IDs implemented by the story. Every required technical or
-behavioral Sea Trial is referenced by an implementing story or a Blueprint Programmatic Acceptance
-proof. Guardrails require no story or proof reference.  Unknown references and missing required coverage invalidate a generated plan.
-
 ### Grouping Blocks
 
 Blocks group stories. Phase, story type, and screen or non-screen work kind are grouping boundaries. Two stories group only when the context they share exceeds `block_min_savings`, and only within the block token target and acceptance-criteria ceiling. Tier is not a grouping boundary.
@@ -1047,42 +993,6 @@ child story or spike inside the same feature, that dependency is internal sequen
 block the feature from running. A feature can run only when every dependency outside the feature is
 `closed/verified`. A feature closes only after all required child stories, spikes, and feature-level
 `ac` blocks are `closed/verified`.
-
-### Spike Blocks
-
-```markdown
-## spike N: {Name}
-id:           select-parser
-summary:      One-line description.
-context:      FEATURE-IMPORT.md
-question:     Which parser satisfies the Blueprint?
-parent:       feature-import
-finding:      ← text answer written here by the agent
-depends:      foundation
-state:        pending
-evidence:     evidence/<id>.md
-```
-
-### Acceptance Check Blocks
-
-```markdown
-## ac N: {Name}
-id:           system-starts
-parent:       foundation
-summary:      One-line description.
-kind:         smoke | assertion
-check:        test -f bin/start.sh && curl -sf http://localhost:${PORT}/health
-depends:
-state:        pending
-evidence:     evidence/<id>.md
-```
-
-`ac` blocks are supported for legacy Manifests and exceptional orchestration checks. Blueprint
-`Programmatic Acceptance` is the normal source of durable acceptance.
-
-An `ac` block's `depends:` may name its own parent story only; the build engine drops any
-cross-story `ac` dependency on read. Acceptance checks are out of the build-ordering stream:
-they are never positioned among steps, only run after their parent story builds.
 
 ### Block States
 
@@ -1094,45 +1004,6 @@ All block types use the same four states:
 | `implemented` | Legacy work done state, waiting to be reconciled |
 | `closed/verified` | Passed or accepted |
 | `closed/failed` | Failed or rejected |
-
-### Execution Rules
-
-A build block can run only when every external dependency in `depends:` is `closed/verified`.
-Dependencies between stories or spikes inside the same grouping block are internal build-agent
-sequencing and do not split the build block. A standalone `story` or `spike` is a one-step build
-block. A grouped feature is a multi-step build block containing its pending child stories and
-spikes. A build block with an unverified external dependency blocks build execution and reports the
-blocking dependency.
-
-Legacy `ac` blocks are reconciled by the build engine or QuarterDeck. They are not the normal
-acceptance authority for new plans.
-
-A `story` or `spike` becomes `closed/verified` after the build agent succeeds, files are written,
-and Blueprint `Programmatic Acceptance` passes after the build.
-
-Drydock may run the same `Programmatic Acceptance` before the build as an observation. A proof that
-already passes is recorded as `GREEN (prepassed)` or `GREEN (vacuous)`. This does not block the build.
-
-The story and the deterministic tests that prove its acceptance are written in the same build
-step. The Blueprint's `Programmatic Acceptance` is the story's Definition of Done — declared
-before the build and human-owned. The build authors the executable tests that satisfy it and may
-add finer coverage, but never removes or weakens a declared acceptance assertion.
-
-`closed/failed` is not terminal. The product owner reopens failed work from the QuarterDeck —
-revising the block's instructions, acceptance, or scope interactively — and the decision writer
-returns it to `pending` with the revision recorded. The decision writer is the only mutator of
-Manifest block state; recovery never requires hand-editing `MANIFEST.md`.
-
-Guardrails and `Programmatic Acceptance` embedded in the Specification files are evaluated as part
-of story build verification. `Programmatic Acceptance` is deterministic and non-agentic. Drydock
-may run it before the build as an observation and runs it after the build as the acceptance gate.
-
-A story that fails post-build `Programmatic Acceptance` becomes `closed/failed`. A story whose proof
-passes before the build is marked as weak evidence and does not fail for that reason alone. A story
-that fails build records a single-line
-`finding:` with the failure reason, surfaced on the Build Compass. `User Acceptance` entries are
-Commander review signals and do not block ordinary downstream build unless modeled as explicit
-dependencies.
 
 ### Worked Example
 
@@ -1326,46 +1197,6 @@ Drydock isolates Codex's configuration and identity — not its command executio
  - trailing - — Codex reads the fully assembled Drydock prompt from stdin.
 
 Execution sandbox. The codex provider executes model-generated commands in the invoking shell. codex_sandbox selects the OS sandbox policy: danger-full-access (default, no OS confinement), workspace-write, or read-only. Non-default modes require the platform sandbox helper (codex-linux-sandbox on Linux) and fail fast when it is absent. Drydock does not require an external encapsulation layer; hardened deployments confine execution by running Drydock inside a container that exposes only the workspace and target directories.
-
-### Specification File Format
-
-Every authored Specification file except `METADATA.md` and `README.md` opens with a typed heading
-and header table, followed by body sections specific to the file type, and ends with three common
-terminal sections. `drydock plan` computes `Depends On`, `Provides`, and the SCREEN-specific
-`Consumes` — do not edit these manually.
-
-```markdown
-# {FileType}: {ObjectName}
-
-| Field       | Value |
-|-------------|-------|
-| Version     | 20260608 V1                    ← YYYYMMDD V<n>; increment on every write |
-| Description | One sentence summary. |
-| Route       | /catalog                       ← SCREEN only; required; the URL this screen serves |
-| Consumes    | GET /catalog/items             ← SCREEN only; routes called; computed by drydock plan (optional) |
-| Nav Order   | 3                              ← SCREEN only; integer presentation order (optional) |
-| Depends On  | ARCHITECTURE.md, GET /catalog  ← file or route; computed by drydock plan |
-| Provides    | GET /catalog, POST /catalog   ← routes this file exposes; computed by drydock plan |
-| Build Order | 2                             ← integer; assigned by drydock plan when useful |
-
-{body sections specific to the file type}
-
-## Programmatic Acceptance
-← Executable Python assertions. Each check has a stable heading, intent text, and a fenced `python` block.
-← `Sea Trials: st-id, st-id` between the heading and fence binds the proof to project acceptance IDs.
-← `Suite: full` between the heading and fence declares that the check runs the complete test suite. One terminal verification story carries it; every other check is bounded to its story.
-
-## User Acceptance
-← Commander-observed checks that cannot be honestly automated.
-
-## Guardrails
-← Permanent negative assertions. Guard against model hallucination, not spec omission.
-
-## Open Questions
-← Unresolved decisions that must be answered before this file can be fully implemented.
-```
-
-A SCREEN file referencing a route not listed in any FEATURE `Provides` field is an error.
 
 ## Database Encapsulation
 
