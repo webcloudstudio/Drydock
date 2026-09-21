@@ -94,6 +94,10 @@ flowchart LR
 | Proof integrity | Static analysis that demotes a vacuous or tautological acceptance proof to UNVERIFIED, so a passing test cannot lift the score without actually proving behavior. |
 | Sea Trials | Product-level objectives and proof-of-delivery criteria. |
 | Refit | Change process that maps updates into the manifest. |
+| Crew | The LLM agents that perform the work. |
+| Block | A group of Manifest stories built as one unit. |
+| Spike | A Manifest block that answers a question; its finding feeds later work. |
+| Tier | A Rigging file's rank in the build chain. |
 
 ## The drydock CLI
 
@@ -160,9 +164,7 @@ options:
 ## End-to-End Command Flow
 
 A Target runs from source material to a scored release and through subsequent change with the
-following commands. This is the Target build order that `drydock uat` executes in its isolated
-run workspace. UAT also seeds its kit inputs after `init`, runs its declared full test command
-from the delivered application directory before scoring, and retains the evidence for every step.
+following commands.
 
 ```bash
 # ── S ── SET UP ──────────────────────────────────────────────────────────
@@ -179,31 +181,23 @@ drydock run quarterdeck MyApp                 # Review and edit the Manifest, de
 
 # ── I ── IMPLEMENT ───────────────────────────────────────────────────────
 n=1; max=5
-while drydock status "$PROJECT" --ready; do
+while drydock status MyApp --ready; do
   echo "************************"
   echo "* RUNNING BUILD ATTEMPT $n"
   echo "************************"
-  drydock build "$PROJECT" $OPTS || drydock diagnose "$PROJECT" --apply || true
+  drydock build MyApp $OPTS || drydock diagnose MyApp --apply || true
   n=$((n+1)); [ "$n" -ge "$max" ] && { echo "hit $max build iterations — aborting"; exit 1; }
 done
 drydock status MyApp --check                  # Confirm that the Manifest is complete.
 
-# UAT executes its fixture's declared full test command here, from the delivered application directory.
-drydock score ac MyApp                        # Run LLM acceptance review.
+drydock score ac MyApp                        # Verify story acceptance.
 drydock score build MyApp                     # Score the build evidence.
 drydock score release MyApp                   # Apply the release gate.
 
 # ── L ── LOOP ────────────────────────────────────────────────────────────
 # After a Blueprint edit, ticket, or Feature-ticket comment, refit and repeat the build loop.
 drydock refit MyApp                           # Reconcile Blueprint changes and change tickets.
-n=1; max=5
-while drydock status "$PROJECT" --ready; do
-  echo "************************"
-  echo "* RUNNING BUILD ATTEMPT $n"
-  echo "************************"
-  drydock build "$PROJECT" $OPTS || drydock diagnose "$PROJECT" --apply || true
-  n=$((n+1)); [ "$n" -ge "$max" ] && { echo "hit $max build iterations — aborting"; exit 1; }
-done
+# Repeat the IMPLEMENT build loop.
 ```
 
 ## SAIL Phase 1 — Set Up: Laying the Keel
@@ -469,21 +463,6 @@ The QuarterDeck calls out blockers and action items and gives the Commander a si
 `drydock plan` converts the reviewed analysis into Typed Specification files under `blueprint/`, writes `MANIFEST.md`.
 `MANIFEST.md` is the build graph plan. It records dependency-aware build order, the runnable frontier, and the work that must be revisited after change.
 
-Every Rigging file declares a tier in a `**Tier:**` header. Tiers 1 to 5 are the foundation. Each is built into the tier before it, and a Target selects at most one Rigging file per kind within them. Tier 6 is the application.
-
-| Tier | Name | Builds |
-|---|---|---|
-| 1 | `language` | The tree, the environment, the test runner. |
-| 2.1 | `platform` | The one database. |
-| 2.2 | `platform` | The one web server. |
-| 2.3 | `platform` | The one command-line entry point. |
-| 3 | `branding` | The palette, the typography, the voice. |
-| 4 | `interface` | The shared UI shell. |
-| 5 | `screen-foundation` | The screen idiom. |
-| 6 | `application` | Every service and every screen. |
-
-A tier is a rank inside a phase. The chain repeats in every phase. Tier 6 has no internal order; its stories are ordered by `depends` alone. A Rigging file or story that declares no tier is tier 6.
-
 `drydock plan` refuses a plan that selects two Rigging files of one foundation kind, and a criterion that imports a package no selected foundation publishes.
 
 **Input files**
@@ -522,13 +501,8 @@ Implement the Blueprint using the Manifest
 ```text
 drydock build <Target> [--continue] [--repair-attempts <n>] [--escalate-model <model>] [--build-dir <path>]
 drydock build <Target> [--step <id|name>] [--story <id|name>] [--ungate] [--reset] [--dry-run] [--show-prompt] [--normalize-order] [--build-dir <path>] [--repair-attempts <n>] [--escalate-model <model>]
-drydock build <Target> --step <STEP> [--reset] [--build-dir <path>]
-drydock build <Target> --story <STORY> [--reset] [--build-dir <path>]
-drydock build <Target> --reset [--build-dir <path>]
-drydock build <Target> --dry-run [--show-prompt] [--build-dir <path>]
-drydock build <Target> --normalize-order [--build-dir <path>]
 drydock build status <Target>
-drydock score ac <Target> [--step <id>]
+drydock score ac <Target> [--step <id>] [--full]
 drydock score release <Target>
 
 drydock document generate <Target> [--model <model>]
@@ -597,22 +571,6 @@ flowchart LR
   BUILD --> TARGET(["Working Software"]):::dir
 ```
 
-**Input files**
-
-| Artifact | Location | Purpose |
-|---|---|---|
-| `COMPASS.md` | Target root | Always Injected |
-| `MANIFEST.md` | Target root | Executable build plan and dependency graph |
-| `ARCHITECTURE.md`, `DATABASE.md`,<br> `FEATURE-{Name}.md`, <br>`SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files consumed for the current build step or phase |
-| Imported sources | `blueprint/sources/` | Assets the Analysis marks `stage` are copied into the build directory |
-
-**Output files**
-
-| Artifact | Location | Purpose |
-|---|---|---|
-| Built application files | `<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
-| Staged build assets | `<Target>/sources/` | Imported test corpora, harnesses, and fixtures the build executes |
-
 `drydock build <Target>` executes the dependency-ready frontier and writes the application into `$DRYDOCK_BUILD_DIRECTORY/<Target>`. 
 
 Before the frontier runs, `drydock build` stages every imported source the Analysis marks build
@@ -637,18 +595,32 @@ restored; `drydock score` reports a modified staged asset as a release blocker.
 
 Before executing work, `drydock build` checks previously applied Blueprint files for drift. If they have changed, the build stops and directs the Commander to run `drydock refit`.
 
+**Input files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| `COMPASS.md` | Target root | Always Injected |
+| `MANIFEST.md` | Target root | Executable build plan and dependency graph |
+| `ARCHITECTURE.md`, `DATABASE.md`,<br> `FEATURE-{Name}.md`, <br>`SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files consumed for the current build step or phase |
+| Imported sources | `blueprint/sources/` | Assets the Analysis marks `stage` are copied into the build directory |
+
+**Output files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| Built application files | `<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
+| Staged build assets | `<Target>/sources/` | Imported test corpora, harnesses, and fixtures the build executes |
+
 Build status can be viewed on the Manifest page in the quarterdeck or with `drydock build status`.
 
 ### drydock build status
 
-`drydock build status` reads `MANIFEST.md` and the runtime logs and reports the state of the plan.
-
 ```text
 drydock build status <Target>   # print per-block state and current runnable frontier
 ```
-### drydock score
 
-`drydock score` audits specifications, reports build evidence, verifies acceptance, and evaluates release readiness.
+`drydock build status` reads `MANIFEST.md` and the runtime logs and reports the state of the plan.
+### drydock score
 
 ```text
 drydock score spec <Target>
@@ -660,7 +632,9 @@ drydock score drydock
 drydock score <Target>
 ```
 
-It writes `SPECIFICATION_SCORECARD.md` atomically and prints identical content to the terminal.
+`drydock score` audits specifications, reports build evidence, verifies acceptance, and evaluates release readiness.
+
+`drydock score spec` writes `SPECIFICATION_SCORECARD.md` atomically and prints identical content to the terminal.
 Findings are advisory. The command does not modify imported sources, create Blueprints, ask product
 questions, gate Analyze, or evaluate files outside `blueprint/sources/`.
 
@@ -739,14 +713,14 @@ is rejected.
 
 ### drydock document
 
-`drydock document` creates Target documentation from the Target Blueprint.
-
 ```text
 drydock document generate <Target> [--model <model>]
 drydock document assemble <Target> [--theme <theme>]
 drydock document <Target> [--model <model>] [--theme <theme>]
 drydock document assemble readme <Target>
 ```
+
+`drydock document` creates Target documentation from the Target Blueprint.
 
 `drydock document generate <Target>` reads the Target Blueprint files and documentation configuration to create project
 documentation in `$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/`. It creates Markdown.
@@ -807,12 +781,12 @@ Supported theme names are `slate`, `harbor`, and `paper`.
 
 ### drydock publish
 
+```text
+drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--flatten] [--pdf] [--pdf-output <Output.pdf>]
+```
+
 Drydock publish converts arbitrary Markdown into HTML or PDF. It uses front matter for the first section.
 Use it for white papers and other published artifacts. 
-
-```text
-drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
-```
 
 `drydock publish` deterministically renders a frontmatter Markdown document into publishable HTML. It uses document frontmatter for title, author, studio, cover text, theme, and other formatting. It does not call an LLM. Supported themes are `sail`, `slate`, and `paper`.
 
@@ -947,7 +921,7 @@ $DRYDOCK_WORKSPACE/                       # explicit config/env or Git top-level
         ├── COMPASS.md                    # project guidance: intent, constraints, guardrails
         ├── MANIFEST.md                   # the executable Manifest
         ├── PLAN_COMPASS.md
-        ├── SCORECARD.md                  # seven-dimension quality + drift scores
+        ├── SCORECARD.md                  # score retrospective, stamped per command
         ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
         ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
         │
@@ -1090,10 +1064,25 @@ in the project.
 Three layers govern agent behavior: business rules, technology stack rules, and branding.
 
 **Business rules.** `BUSINESS_RULES.md` defines how agents must behave — git workflow, project
-layout, script conventions, error handling. It is injected into AGENTS.md in the <Target> receive a compacted derivative
+layout, script conventions, error handling. It is injected into the <Target> `AGENTS.md` as a compacted derivative
 `BUSINESS_RULES_compact.md`; the full source stays in `Rigging/`.
 
 **Stack rules.** `Rigging/stack/` holds one file per technology, prescriptive and standalone.
+
+Every Rigging file declares a tier in a `**Tier:**` header. Tiers 1 to 5 are the foundation. Each is built into the tier before it, and a Target selects at most one Rigging file per kind within them. Tier 6 is the application.
+
+| Tier | Name | Builds |
+|---|---|---|
+| 1 | `language` | The tree, the environment, the test runner. |
+| 2.1 | `platform` | The one database. |
+| 2.2 | `platform` | The one web server. |
+| 2.3 | `platform` | The one command-line entry point. |
+| 3 | `branding` | The palette, the typography, the voice. |
+| 4 | `interface` | The shared UI shell. |
+| 5 | `screen-foundation` | The screen idiom. |
+| 6 | `application` | Every service and every screen. |
+
+A tier is a rank inside a phase. The chain repeats in every phase. Tier 6 has no internal order; its stories are ordered by `depends` alone. A Rigging file or story that declares no tier is tier 6.
 
 **Branding.** `BRANDING_MAIN.md` defines the master palette, typography, and design philosophy.
 Per-medium files (`BRANDING_DOCUMENTATION.md`, `BRANDING_WHITEPAPERS.md`, `BRANDING_WEBSITE.md`)
@@ -1115,7 +1104,7 @@ When needed, `drydock build` will automatically create compacted files.
 `drydock plan` warns when a source is newer than its derivative.  You should recompact those files.  This may entail a rebuild.  To control
 this you can `touch` the files to change the compacted file create time to later than the main file. 
 
-Drydock track compaction.  Rerun with `--all` to refresh all compaction including Drydock's own Rigging compacts. 
+Drydock tracks compaction.  Rerun with `--all` to refresh all compaction including Drydock's own Rigging compacts. 
 Files without a callable surface are skipped and that is marked in the file name. 
 
 ### Commands
@@ -1141,8 +1130,6 @@ drydock rigging verify <Target>
 `drydock rigging update` injects `BUSINESS_RULES_compact.md` and standard templates into the target project's `AGENTS.md` in an idempotent manner. `--dry-run` previews those changes without writing files. `drydock rigging verify` checks target compliance with the Rigging contract.
 
 ## Drydock Security
-
-This section explains drydock security.  
 
 Drydock also applies a dependency legitimacy guardrail during build to reduce hallucinated or suspicious package-name supply-chain exposure.
 
@@ -1196,7 +1183,7 @@ Drydock isolates Codex's configuration and identity — not its command executio
  - --model <model> — selects the runtime model.
  - trailing - — Codex reads the fully assembled Drydock prompt from stdin.
 
-Execution sandbox. The codex provider executes model-generated commands in the invoking shell. codex_sandbox selects the OS sandbox policy: danger-full-access (default, no OS confinement), workspace-write, or read-only. Non-default modes require the platform sandbox helper (codex-linux-sandbox on Linux) and fail fast when it is absent. Drydock does not require an external encapsulation layer; hardened deployments confine execution by running Drydock inside a container that exposes only the workspace and target directories.
+Execution sandbox. The codex provider executes model-generated commands in the invoking shell. codex_sandbox selects the OS sandbox policy: danger-full-access (default, no OS confinement), workspace-write, or read-only. Non-default modes require the platform sandbox helper (codex-linux-sandbox on Linux) and fail fast when it is absent. Hardened deployments confine execution by running Drydock inside a container that exposes only the workspace and target directories.
 
 ## Database Encapsulation
 
@@ -1205,11 +1192,6 @@ Execution sandbox. The codex provider executes model-generated commands in the i
 No application code calls the database directly. Every table, config store, file store, and external
 service is accessed through a typed Python class. Route and business-logic code calls
 `db.items.get(id)` — never raw SQL.
-
-This eliminates a class of subtle bugs. A schema change — a timezone-aware datetime field replacing
-a naive one, for example — requires changing only the encapsulation class. Downstream code depends
-on the interface, not the storage detail, so nothing else breaks. Without the boundary, the same
-change propagates silently to every callsite.
 
 A code review that finds raw SQL, `os.environ` reads, `open()` on application data, or a cloud SDK
 import outside its encapsulation class fails.
