@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-20: **The block packer declines a merge that saves nothing worth having.** Merge
+  candidates were ranked by shared-context savings alone, so any overlap above zero was worth
+  taking and two stories sharing nothing but a compacted language file grouped for a few hundred
+  tokens — a saving nobody can spend, bought by widening the context one model call must hold.
+  The new `block_min_savings` configuration key sets the least shared context that justifies a
+  merge, in tokens, and defaults to `1000`. `0` restores the prior behavior. Grouping is
+  otherwise unchanged and still bounded by the block token target and the acceptance-criteria
+  ceiling; no block composition is forbidden, including two tiers in one block. The floor applies
+  wherever the shared optimizer runs, so `drydock plan` and a `normalize` edit of a computed
+  `MANIFEST.md` group identically.
+
 - 2026-09-20: **Language is a foundation, and it is built first.** `python.md`, `go.md` and
   `typescript.md` declare `**Foundation:** language` and publish an environment contract —
   `source_root`, `test_command`, the environment, and the dependency manifest — rather than a

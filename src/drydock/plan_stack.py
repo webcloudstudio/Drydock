@@ -28,6 +28,7 @@ from pathlib import Path
 
 from drydock import technology_stack
 from drydock.build import PROMPT_WARN_TOKENS, resolve_warn_tokens
+from drydock.errors import ConfigurationError
 from drydock.paths import get_stack_dir
 from drydock.prompt_assembly import estimate_tokens
 
@@ -56,6 +57,20 @@ def block_target_tokens() -> int:
 
 #: Prior spelling. Tokens measure a block, never a story.
 story_budget_tokens = block_target_tokens
+
+
+def block_min_savings() -> int:
+    """Return the configured minimum shared context, in tokens, that justifies a block merge.
+
+    Resolves ``block_min_savings``. Blocking is a read-only optimization pass, so an unusable
+    setting downgrades to the built-in default rather than refusing to plan.
+    """
+    from drydock.config import DEFAULT_BLOCK_MIN_SAVINGS, get_block_min_savings
+
+    try:
+        return get_block_min_savings()
+    except ConfigurationError:
+        return DEFAULT_BLOCK_MIN_SAVINGS
 
 
 @dataclass(frozen=True)

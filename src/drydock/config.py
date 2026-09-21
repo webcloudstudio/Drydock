@@ -32,6 +32,7 @@ _KEY_MAP = {
     "repair_stall_limit": "DRYDOCK_REPAIR_STALL_LIMIT",
     "max_output_tokens": "DRYDOCK_MAX_OUTPUT_TOKENS",
     "haiku_thinking_tokens": "DRYDOCK_HAIKU_THINKING_TOKENS",
+    "block_min_savings": "DRYDOCK_BLOCK_MIN_SAVINGS",
 }
 
 #: Keys whose value is a plain count, with the smallest value each accepts and the wording used
@@ -62,6 +63,10 @@ _NUMERIC_BOUND_KEYS = {
         0,
         "a non-negative integer count of thinking tokens (0 disables Haiku thinking)",
     ),
+    "DRYDOCK_BLOCK_MIN_SAVINGS": (
+        0,
+        "a non-negative integer count of tokens (0 merges on any saving at all)",
+    ),
 }
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -78,6 +83,9 @@ DEFAULT_PROMPT_WARN_TOKENS = 50_000
 # The red light to ``PROMPT_WARN_TOKENS``' yellow. The warn threshold is advisory and a
 # legitimate specification trips it routinely, so only this one is a genuine ceiling.
 DEFAULT_PROMPT_ERROR_TOKENS = 120_000
+# The least shared context that justifies merging two stories into one build block. Below it
+# the merge buys nothing and costs the model a wider context to hold, so the packer declines.
+DEFAULT_BLOCK_MIN_SAVINGS = 1_000
 DEFAULT_QUARTERDECK_PORT = 8080
 DEFAULT_REPAIR_ATTEMPTS = 6
 MAX_CONSECUTIVE_REPAIR_STALLS = 2
@@ -359,6 +367,23 @@ def get_prompt_warn_tokens() -> int:
     return tokens
 
 
+def get_block_min_savings() -> int:
+    """Return the configured minimum shared context, in tokens, that justifies a block merge.
+
+    ``0`` restores the prior behavior: any saving above zero merges.
+    """
+    value, _source = _get("DRYDOCK_BLOCK_MIN_SAVINGS", str(DEFAULT_BLOCK_MIN_SAVINGS))
+    try:
+        tokens = int(value or DEFAULT_BLOCK_MIN_SAVINGS)
+    except ValueError:
+        tokens = -1
+    if tokens < 0:
+        raise ConfigurationError(
+            f"Invalid block_min_savings: {value!r}\n  Expected a non-negative integer (tokens)."
+        )
+    return tokens
+
+
 def get_prompt_error_tokens() -> int:
     value, _source = _get("PROMPT_ERROR_TOKENS", str(DEFAULT_PROMPT_ERROR_TOKENS))
     try:
@@ -543,6 +568,11 @@ def config_show() -> list[tuple[str, str, str]]:
         ("codex_sandbox", "DRYDOCK_CODEX_SANDBOX", DEFAULT_CODEX_SANDBOX),
         ("prompt_warn_tokens", "PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS)),
         ("prompt_error_tokens", "PROMPT_ERROR_TOKENS", str(DEFAULT_PROMPT_ERROR_TOKENS)),
+        (
+            "block_min_savings",
+            "DRYDOCK_BLOCK_MIN_SAVINGS",
+            str(DEFAULT_BLOCK_MIN_SAVINGS),
+        ),
         ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),
         ("diagnose", "DRYDOCK_DIAGNOSE", "true"),
         (

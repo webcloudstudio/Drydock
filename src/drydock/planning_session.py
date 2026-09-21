@@ -3396,7 +3396,7 @@ def _compute_schedule(
     """
     from drydock.config import get_prompt_error_tokens
     from drydock.plan_graph import compute_plan
-    from drydock.plan_stack import block_target_tokens, resolve_stack_set
+    from drydock.plan_stack import block_min_savings, block_target_tokens, resolve_stack_set
 
     resolved = resolve_stack_set(name for story in declared for name in story.stack)
 
@@ -3496,6 +3496,7 @@ def _compute_schedule(
         declared,
         target_tokens=block_target_tokens(),
         limit_tokens=get_prompt_error_tokens(),
+        min_savings=block_min_savings(),
         size_fn=lambda story: block_size_fn((story,)),
         acceptance_count_fn=acceptance_count_fn,
         block_size_fn=block_size_fn,

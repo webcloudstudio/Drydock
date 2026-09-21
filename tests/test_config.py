@@ -589,6 +589,21 @@ class TestExecutionBounds:
         assert get_max_output_tokens() == 128_000
         assert get_haiku_thinking_tokens() == 16_000
 
+    def test_the_block_merge_floor_defaults_to_a_thousand_tokens(self, monkeypatch, tmp_path):
+        """Below the floor a merge saves nothing spendable and widens one model call's context."""
+        from drydock.config import get_block_min_savings
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.delenv("DRYDOCK_BLOCK_MIN_SAVINGS", raising=False)
+        assert get_block_min_savings() == 1_000
+
+    def test_a_zero_block_merge_floor_is_allowed(self, monkeypatch):
+        """Zero is a legitimate setting: merge on any saving at all, as Drydock did before."""
+        from drydock.config import get_block_min_savings
+
+        monkeypatch.setenv("DRYDOCK_BLOCK_MIN_SAVINGS", "0")
+        assert get_block_min_savings() == 0
+
     def test_zero_disables_haiku_thinking_but_not_the_output_limit(self, monkeypatch):
         from drydock.config import get_haiku_thinking_tokens, get_max_output_tokens
 
@@ -610,6 +625,11 @@ class TestExecutionBounds:
                 "get_haiku_thinking_tokens",
                 "haiku_thinking_tokens",
             ),
+            (
+                "DRYDOCK_BLOCK_MIN_SAVINGS",
+                "get_block_min_savings",
+                "block_min_savings",
+            ),
         ],
     )
     def test_a_malformed_value_names_the_key_the_operator_typed(
@@ -627,6 +647,7 @@ class TestExecutionBounds:
             ("DRYDOCK_CAPTURE_OUTPUT_LIMIT", "get_capture_output_limit_mb"),
             ("DRYDOCK_REPAIR_ATTEMPTS", "get_repair_attempts"),
             ("DRYDOCK_SANDBOX_MEM_LIMIT", "get_sandbox_mem_limit_mb"),
+            ("DRYDOCK_BLOCK_MIN_SAVINGS", "get_block_min_savings"),
         ],
     )
     def test_a_negative_value_is_refused(self, monkeypatch, env_var, getter_name):
@@ -657,6 +678,7 @@ class TestSettingExecutionBounds:
             ("sandbox_mem_limit", "8192"),
             ("max_output_tokens", "64000"),
             ("haiku_thinking_tokens", "8000"),
+            ("block_min_savings", "2500"),
         ],
     )
     def test_a_bound_round_trips_through_the_config_file(self, isolated_config, key, value):

@@ -736,8 +736,60 @@ def test_apply_edit_normalize_persists(tmp_path):
 
 
 def test_computed_manifest_normalization_uses_shared_build_block_optimizer(tmp_path):
+    """Both stories share one stack file, so the merge saves that file's assembled cost and
+    clears ``block_min_savings``. Two stories sharing nothing would stay in separate blocks."""
     from drydock.build_plan import parse_build_plan
     from drydock.manifest_edit import optimize_build_blocks
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "FEATURE-A.md").write_text("A\n", encoding="utf-8")
+    (blueprint / "FEATURE-B.md").write_text("B\n", encoding="utf-8")
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(
+        """# MANIFEST: Demo
+state: approved
+blocks: 2
+
+## story 1: A
+id: a
+type: service
+phase: 1
+block: 1
+implements: FEATURE-A.md
+stack: python.md
+state: pending
+
+## story 2: B
+id: b
+type: service
+phase: 1
+block: 2
+implements: FEATURE-B.md
+stack: python.md
+state: pending
+""",
+        encoding="utf-8",
+    )
+
+    result = apply_edit(path, "normalize")
+
+    assert result["changed"] is True
+    plan = parse_build_plan(path)
+    assert [block.block for block in plan.blocks if block.block_type in {"story", "spike"}] == [
+        1,
+        1,
+    ]
+    assert optimize_build_blocks(path) is False
+
+    with pytest.raises(SpecificationError, match="Python-owned"):
+        apply_edit(path, "add_feature", name="Manual Group")
+
+
+def test_normalization_leaves_stories_that_share_nothing_in_separate_blocks(tmp_path):
+    """The converse: no shared stack file, no shared specification, nothing to amortize. The
+    merge would save less than ``block_min_savings`` and buy a wider context for one model call."""
+    from drydock.build_plan import parse_build_plan
 
     blueprint = tmp_path / "blueprint"
     blueprint.mkdir()
@@ -770,15 +822,10 @@ state: pending
         encoding="utf-8",
     )
 
-    result = apply_edit(path, "normalize")
+    apply_edit(path, "normalize")
 
-    assert result["changed"] is True
     plan = parse_build_plan(path)
     assert [block.block for block in plan.blocks if block.block_type in {"story", "spike"}] == [
         1,
-        1,
+        2,
     ]
-    assert optimize_build_blocks(path) is False
-
-    with pytest.raises(SpecificationError, match="Python-owned"):
-        apply_edit(path, "add_feature", name="Manual Group")

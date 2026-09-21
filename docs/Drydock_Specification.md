@@ -357,6 +357,7 @@ drydock status <Target> --check   # 0 complete, 2 blocked
 | `drydock_model` | Default model name passed to the configured subscription-authenticated CLI. |
 | `llm_provider` | Subscription CLI provider: `claude` or `codex`. |
 | `prompt_warn_tokens` | Prompt-size warning threshold in tokens. |
+| `block_min_savings` | Least shared context, in tokens, that justifies grouping two stories into one block. Defaults to `1000`. `0` groups on any saving. |
 | `quarterdeck_port` | Default QuarterDeck service port. |
 
 ### drydock init
@@ -511,6 +512,23 @@ The QuarterDeck calls out blockers and action items and gives the Commander a si
 
 `drydock plan` converts the reviewed analysis into Typed Specification files under `blueprint/`, writes `MANIFEST.md`.
 `MANIFEST.md` is the build graph plan. It records dependency-aware build order, the runnable frontier, and the work that must be revisited after change.
+
+Every Rigging file declares a tier in a `**Tier:**` header. Tiers 1 to 5 are the foundation. Each is built into the tier before it, and a Target selects at most one Rigging file per kind within them. Tier 6 is the application.
+
+| Tier | Name | Builds |
+|---|---|---|
+| 1 | `language` | The tree, the environment, the test runner. |
+| 2.1 | `platform` | The one database. |
+| 2.2 | `platform` | The one web server. |
+| 2.3 | `platform` | The one command-line entry point. |
+| 3 | `branding` | The palette, the typography, the voice. |
+| 4 | `interface` | The shared UI shell. |
+| 5 | `screen-foundation` | The screen idiom. |
+| 6 | `application` | Every service and every screen. |
+
+A tier is a rank inside a phase. The chain repeats in every phase. Tier 6 has no internal order; its stories are ordered by `depends` alone. A Rigging file or story that declares no tier is tier 6.
+
+`drydock plan` refuses a plan that selects two Rigging files of one foundation kind, and a criterion that imports a package no selected foundation publishes.
 
 **Input files**
 
@@ -1122,7 +1140,9 @@ proof. Guardrails require no story or proof reference.  Unknown references and m
 
 ### Grouping Blocks
 
-Blocks group stories. Build execution uses the grouping block as the atomic build unit: if a pending child story or spike depends on another
+Blocks group stories. Phase, story type, and screen or non-screen work kind are grouping boundaries. Two stories group only when the context they share exceeds `block_min_savings`, and only within the block token target and acceptance-criteria ceiling. Tier is not a grouping boundary.
+
+Build execution uses the grouping block as the atomic build unit: if a pending child story or spike depends on another
 child story or spike inside the same feature, that dependency is internal sequencing and does not
 block the feature from running. A feature can run only when every dependency outside the feature is
 `closed/verified`. A feature closes only after all required child stories, spikes, and feature-level
