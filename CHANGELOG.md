@@ -123,6 +123,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-21: **`drydock plan` derives omitted access-pattern DTOs from `## Schema`.** A
+  `DATABASE.md` pattern whose Repository operation names one declared table and one verb
+  (`get`, `list`, `create`, `update`, `delete`) now receives any missing `Input:`/`Output:` table
+  from that table's columns before the persistence gate runs; a warning names each completed
+  pattern. Previously a repair pass that added patterns to cover uncited tables but omitted their
+  DTO tables failed the plan with `requires Input and Output tables`. Patterns with invalid
+  operations or undeclared tables still fail the gate.
 - 2026-09-21: **`drydock plan` writes criteria against the selected foundation's package.** The
   `unknown-package` gate added with Foundation Contracts refused every criterion importing
   `create_app` from an invented package, but nothing gave the author the package name: the plan
