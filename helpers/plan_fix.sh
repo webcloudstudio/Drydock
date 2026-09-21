@@ -10,6 +10,7 @@
 #   FIX_MODEL    model for the fixing session (default: Claude Code's configured model)
 FIX_MODEL=opus
 set -uo pipefail
+set -x
 
 if [ $# -lt 1 ]; then
 	echo "usage: $0 <Target> [drydock plan options...]" >&2
