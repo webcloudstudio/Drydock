@@ -72,6 +72,7 @@ from drydock.database_contract import (
     DatabaseUse,
     database_contract_defects,
     declared_owners,
+    derive_missing_dtos,
     legal_owner,
     parse_database_contract,
     parse_database_interface,
@@ -3020,6 +3021,25 @@ def _normalize_database_access_values(blocks: dict[str, str]) -> tuple[str, ...]
     return tuple(normalized)
 
 
+def _normalize_database_dtos(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Derive the Input/Output tables a pattern omits from the schema table it names.
+
+    Run before ``_normalize_database_interfaces``, which renders citations from these DTOs.
+    """
+    database_text = blocks.get(DATABASE_BLOCK)
+    if not database_text:
+        return ()
+    rewritten, completed = derive_missing_dtos(database_text)
+    if not completed:
+        return ()
+    blocks[DATABASE_BLOCK] = rewritten
+    return tuple(
+        f"{DATABASE_BLOCK}: {identifier} declared no Input/Output tables; derived them from the "
+        "schema table its Repository operation names"
+        for identifier in completed
+    )
+
+
 def _normalize_database_owners(blocks: dict[str, str]) -> tuple[str, ...]:
     """Point an `| Owner |` cell that names no Feature in this plan at ``DATABASE.md``.
 
@@ -3907,6 +3927,7 @@ def _validate_plan_output(
         _normalize_unterminated_acceptance_blocks(blocks)
         + _normalize_fused_acceptance_boundaries(blocks)
         + _normalize_database_access_values(blocks)
+        + _normalize_database_dtos(blocks)
         + _normalize_database_owners(blocks)
         + _normalize_database_interfaces(blocks)
     )

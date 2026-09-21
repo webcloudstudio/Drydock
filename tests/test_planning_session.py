@@ -6369,3 +6369,25 @@ def test_an_idless_end_marker_is_a_terminator_not_a_missing_one():
     assert _normalize_unterminated_acceptance_blocks(blocks) == ()
     assert _normalize_fused_acceptance_boundaries(blocks)
     assert "=== END AC only ===\n\n## Guardrails" in blocks["FEATURE-Example.md"]
+
+
+def test_a_pattern_without_dtos_is_completed_before_the_persistence_gate():
+    """Marina_Luna: fifteen repair-added patterns omitted their DTO tables and the gate ended the
+    run. The schema table fixes them, so normalization writes them and the gate sees none."""
+    database = (
+        "# DATABASE: Accounts\n\n## Access Patterns\n\n"
+        "### FEATURE-EXAMPLE-001 — Read account\n"
+        "| Field | Value |\n|-------|-------|\n| Owner | FEATURE-Example.md |\n"
+        "| Access | read |\n| Repository operation | `accounts.get` |\n"
+        "| Compatibility | unchanged |\n\n"
+        "## Schema\n\n## `accounts`\n\n| Field | Type | Notes |\n|---|---|---|\n"
+        "| id | INTEGER PK | |\n| login | TEXT NOT NULL | |\n"
+    )
+    blocks = {"DATABASE.md": database, "FEATURE-Example.md": "# FEATURE: Example\n"}
+    assert ps._database_contract_defects(blocks)
+
+    warnings = ps._normalize_database_dtos(blocks)
+
+    assert len(warnings) == 1 and "FEATURE-EXAMPLE-001" in warnings[0]
+    assert ps._database_contract_defects(blocks) == ()
+    assert ps._database_table_defects(blocks) == ()

@@ -802,6 +802,110 @@ def rewrite_illegal_owners(
     return text.replace(patterns, rewritten, 1), tuple(sorted(set(changes)))
 
 
+def _dto_name(table: str) -> str:
+    return "".join(part.capitalize() for part in table.split("_") if part)
+
+
+def _derived_dtos(
+    table: SQLiteTable, verb: str
+) -> dict[str, tuple[str, tuple[tuple[str, str, bool], ...]]]:
+    """The Input and Output a ``<table>.<verb>`` operation carries, read from the table alone.
+
+    Keyed operations (``get``, ``update``, ``delete``) take the primary key, or every column when
+    the table declares none. ``create`` takes the non-key columns, required where the schema
+    says ``NOT NULL`` with no default. Every verb but ``delete`` returns the row.
+    """
+    columns = table.columns
+    keys = tuple(column for column in columns if column.primary_key) or columns
+    row = tuple((column.name, column.sql_type, False) for column in columns)
+    key = tuple((column.name, column.sql_type, True) for column in keys)
+    base = _dto_name(table.name)
+    if verb == "list":
+        inputs: tuple[str, tuple[tuple[str, str, bool], ...]] = (f"{base}Query", ())
+    elif verb == "create":
+        inputs = (
+            f"{base}Create",
+            tuple(
+                (column.name, column.sql_type, column.not_null and column.default is None)
+                for column in columns
+                if not column.primary_key
+            ),
+        )
+    elif verb == "update":
+        inputs = (
+            f"{base}Update",
+            key
+            + tuple(
+                (column.name, column.sql_type, False) for column in columns if column not in keys
+            ),
+        )
+    else:
+        inputs = (f"{base}Key", key)
+    output = (f"{base}Key", key) if verb == "delete" else (f"{base}Row", row)
+    return {"Input": inputs, "Output": output}
+
+
+def _render_dto(label: str, name: str, fields: tuple[tuple[str, str, bool], ...]) -> str:
+    rows = "".join(
+        f"| {field} | {kind} | {'yes' if required else 'no'} |\n"
+        for field, kind, required in fields
+    )
+    return f"{label}: `{name}`\n| Field | Type | Required |\n|-------|------|----------|\n{rows}"
+
+
+def derive_missing_dtos(text: str, *, source: str = "DATABASE.md") -> tuple[str, tuple[str, ...]]:
+    """Write the Input/Output tables a pattern omits when its schema table determines them.
+
+    A pattern whose Repository operation names one declared table and one closed verb fixes its
+    DTOs: the fields are that table's columns. Nothing is left for a model to decide, and the
+    repair loop proved it cannot be relied on to do it — a Marina_Luna repair pass asked to reach
+    fifteen uncited tables added fifteen patterns with no DTO tables, and the run ended on its
+    last pass. A pattern whose operation is invalid or names an undeclared table is left alone for
+    the gate to report. Returns the text and the identifiers that were completed.
+    """
+    try:
+        tables = {table.name: table for table in sqlite_schema_tables(text, source=source)}
+    except SpecificationError:
+        return text, ()
+    section = _section(text, "Access Patterns")
+    matches = list(_H3_RE.finditer(section))
+    if not tables or not matches:
+        return text, ()
+    completed: list[str] = []
+    pieces = [section[: matches[0].start()]]
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(section)
+        block = section[match.start() : end]
+        present = {found.group(1) for found in _INPUT_OUTPUT_RE.finditer(block)}
+        operation = (
+            {key.casefold(): value for key, value in _rows(block)}
+            .get("repository operation", "")
+            .strip()
+            .strip("`")
+            .strip()
+        )
+        table_name, _, verb = operation.partition(".")
+        if (
+            {"Input", "Output"} <= present
+            or not _REPOSITORY_OPERATION_RE.fullmatch(operation)
+            or table_name not in tables
+        ):
+            pieces.append(block)
+            continue
+        dtos = _derived_dtos(tables[table_name], verb)
+        additions = "\n".join(
+            _render_dto(label, *dtos[label])
+            for label in ("Input", "Output")
+            if label not in present
+        )
+        trailing = block[len(block.rstrip()) :] or "\n"
+        pieces.append(block.rstrip() + "\n\n" + additions.rstrip("\n") + trailing)
+        completed.append(match.group(1))
+    if not completed:
+        return text, ()
+    return text.replace(section, "".join(pieces), 1), tuple(completed)
+
+
 def declared_owners(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
     """Return every ``| Owner |`` value in ``## Access Patterns``, whether or not it parses.
 

@@ -5,7 +5,9 @@ import pytest
 from drydock.database_contract import (
     changed_operation_ids_since,
     create_ticket_migration_records,
+    database_contract_defects,
     database_operation_fingerprints,
+    derive_missing_dtos,
     derived_indexes,
     mark_migrations_built,
     migration_records,
@@ -656,3 +658,84 @@ def test_the_rendered_schema_creates_tables_and_indexes_on_sqlite():
 
     assert "tickets_project_id_idx" in indexes
     assert "tickets_status_idx" in indexes
+
+
+_BARE_PATTERNS = """# DATABASE: Accounts
+
+## Access Patterns
+
+### FEATURE-GITHUB-001 — Update accounts
+| Field | Value |
+|-------|-------|
+| Owner | FEATURE-GITHUB.md |
+| Access | read-write |
+| Repository operation | `git_accounts.update` |
+| Compatibility | data |
+
+### FEATURE-GITHUB-002 — Add accounts
+| Field | Value |
+|-------|-------|
+| Owner | FEATURE-GITHUB.md |
+| Access | write |
+| Repository operation | `git_accounts.create` |
+| Compatibility | data |
+
+### FEATURE-GITHUB-003 — List accounts
+| Field | Value |
+|-------|-------|
+| Owner | FEATURE-GITHUB.md |
+| Access | read |
+| Repository operation | `git_accounts.list` |
+| Compatibility | unchanged |
+
+Input: `AccountQuery`
+| Field | Type |
+|-------|------|
+| login | TEXT |
+
+## Schema
+
+## `git_accounts`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| id | INTEGER PK | |
+| login | TEXT NOT NULL | |
+| verified_at | TEXT | |
+"""
+
+
+def test_missing_dtos_are_derived_from_the_schema_table():
+    """Marina_Luna: a repair pass told to reach fifteen uncited tables added fifteen patterns with
+    no DTO tables, and the run died on its last pass. The table fixes the DTOs; code writes them."""
+    assert len(database_contract_defects(_BARE_PATTERNS)) == 3
+
+    text, completed = derive_missing_dtos(_BARE_PATTERNS)
+
+    assert completed == ("FEATURE-GITHUB-001", "FEATURE-GITHUB-002", "FEATURE-GITHUB-003")
+    assert database_contract_defects(text) == ()
+    patterns = parse_database_contract(text).by_id()
+    update, create, listing = (patterns[f"FEATURE-GITHUB-00{n}"] for n in (1, 2, 3))
+    assert update.input_name == "GitAccountsUpdate"
+    assert [(f.name, f.required) for f in update.inputs] == [
+        ("id", True),
+        ("login", False),
+        ("verified_at", False),
+    ]
+    assert [(f.name, f.required) for f in create.inputs] == [
+        ("login", True),
+        ("verified_at", False),
+    ]
+    assert [f.name for f in update.outputs] == ["id", "login", "verified_at"]
+    # A declared DTO is kept; only the missing half is derived.
+    assert listing.input_name == "AccountQuery" and listing.output_name == "GitAccountsRow"
+    assert derive_missing_dtos(text) == (text, ())
+
+
+def test_dtos_are_not_invented_for_an_undeclared_table():
+    text = _BARE_PATTERNS.replace("`git_accounts.update`", "`ghosts.update`")
+
+    derived, completed = derive_missing_dtos(text)
+
+    assert "FEATURE-GITHUB-001" not in completed
+    assert "requires Input and Output tables" in "".join(database_contract_defects(derived))
