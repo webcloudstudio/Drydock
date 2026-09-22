@@ -851,7 +851,30 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+def cmd_refit_add(args: argparse.Namespace) -> int:
+    from drydock.config import require_target_dir
+    from drydock.project_status import void_above
+    from drydock.refit_ticket import add_ticket
+
+    target_dir = require_target_dir(args.Target)
+    blueprint, source = args.refit_add
+    if source == "-":
+        text = sys.stdin.read()
+    else:
+        path = Path(source).expanduser()
+        if not path.is_file():
+            raise UsageError(f"Ticket file not found: {source}")
+        text = path.read_text(encoding="utf-8")
+    added = add_ticket(target_dir, blueprint, text)
+    void_above(target_dir, "PLAN REPAIRED")
+    print(f"Ticket {added.path.stem} created")
+    print("Manifest updated")
+    return 0
+
+
 def cmd_refit(args: argparse.Namespace) -> int:
+    if getattr(args, "refit_add", None):
+        return cmd_refit_add(args)
     from drydock.config import get_model, get_workspace, require_target_dir
     from drydock.refit import RefitItem, refit_target
 
@@ -3865,6 +3888,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_llm_override_flags(p_iter)
     p_iter.add_argument("Target", metavar="<Target>")
+    p_iter.add_argument(
+        "--add",
+        dest="refit_add",
+        nargs=2,
+        default=None,
+        metavar=("<Blueprint>", "<File>"),
+        help=(
+            "Append the next REFIT ticket for <Blueprint> from <File> ('-' reads stdin) and "
+            "update the Manifest. Also spelled: drydock refit add <Target> <Blueprint> <File>."
+        ),
+    )
 
     # ── analyze ───────────────────────────────────────────────────────────────
     p_analyze = sub.add_parser(
@@ -5235,6 +5269,19 @@ def _normalize_uat_verbs(argv: list[str]) -> list[str]:
     return ["uat", argv[2], "--uat-verb", argv[1], *argv[3:]]
 
 
+def _normalize_refit_verbs(argv: list[str]) -> list[str]:
+    """``refit add <Target> <Blueprint> <File>`` becomes ``refit <Target> --add <Blueprint> <File>``.
+
+    ``refit`` keeps its compact ``drydock refit <Target>`` invocation, so the sub-verb normalizes
+    before argparse the same way the UAT verbs do.
+    """
+    if len(argv) < 2 or argv[0] != "refit" or argv[1] != "add":
+        return argv
+    if len(argv) < 5:
+        return ["refit", *argv[2:3], "--add", *argv[3:]]
+    return ["refit", argv[2], "--add", argv[3], argv[4], *argv[5:]]
+
+
 def main(argv: list[str] | None = None) -> None:
     from drydock.console import configure_stdio
 
@@ -5250,7 +5297,7 @@ def main(argv: list[str] | None = None) -> None:
         # their rejections need the same clean usage report the parsed commands get.
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(2)
-    normalized_argv = _normalize_uat_verbs(normalized_argv)
+    normalized_argv = _normalize_refit_verbs(_normalize_uat_verbs(normalized_argv))
     args = parser.parse_args(normalized_argv)
     for key, value in global_overrides.items():
         if key == "debug":

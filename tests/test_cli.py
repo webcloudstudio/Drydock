@@ -2628,6 +2628,32 @@ class TestRefit:
         assert "--sources" not in combined
         assert "--relineage" not in combined
 
+    def test_add_writes_ticket_and_updates_manifest(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        target = tmp_path / "targets" / "MyProject"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "blueprint" / "SCREEN-HOME.md").write_text("# Screen: Home\n", encoding="utf-8")
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: MyProject\nstate: approved\n\n## story 1: Home\nid: home\n"
+            "summary: Home\nphase: 1\nblock: 1\nimplements: SCREEN-HOME.md\n"
+            "state: closed/verified\n",
+            encoding="utf-8",
+        )
+        body = tmp_path / "body.md"
+        body.write_text("# Rename button\n\n## User Acceptance\n\n- The button reads Go.\n")
+        rc, out, err = run_cli("refit", "add", "MyProject", "SCREEN-HOME", str(body))
+        assert rc == 0, out + err
+        assert "Ticket SCREEN-HOME_refit_001 created" in out
+        assert "Manifest updated" in out
+        assert (target / "blueprint" / "SCREEN-HOME_refit_001.md").is_file()
+        assert "implements: SCREEN-HOME_refit_001.md" in (target / "MANIFEST.md").read_text()
+
+    def test_add_missing_file_exits_2(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        (tmp_path / "targets" / "MyProject" / "blueprint").mkdir(parents=True)
+        rc, out, err = run_cli("refit", "add", "MyProject", "SCREEN-HOME", str(tmp_path / "no.md"))
+        assert rc == 2
+
 
 class TestDocumentAssemble:
     """drydock document assemble renders Target DOC files."""

@@ -1,16 +1,16 @@
 ---
-name: apply-refit
-description: Surface impl:unimplemented (code) and spec:approved (doc) items from a refit notes file as a selectable list, then implement the chosen ones. Invoke with "/apply-refit <subject>" (e.g. "/apply-refit analyze" or a feature name). Use when the user is ready to implement decisions captured in a /refit (thinkthrough) notes file. Trigger: "/apply-refit", "/apply-notes", "apply refit for <X>", "apply notes for <X>", "implement from notes".
+name: ddk-think-apply
+description: Surface impl:unimplemented (code) and spec:approved (doc) items from a think notes file as a selectable list, then implement the chosen ones. Invoke with "/ddk-think-apply <subject>" (e.g. "/ddk-think-apply analyze" or a feature name). Use when the user is ready to implement decisions captured in a /ddk-think notes file. Trigger: "/ddk-think-apply", "apply notes for <X>", "implement from notes".
 version: 2.0.0
 ---
 
-# apply-refit — implement decisions from a refit notes file
+# ddk-think-apply — implement decisions from a think notes file
 
 Read the notes file for the given subject, surface all flagged items as a selectable
 numbered list, wait for the user to choose, then implement the selected items.
 
-The argument after `/apply-refit` is the subject. Resolve the notes file the same way as
-`/refit`: `targets/<Target>/notes_<feature>.md` when the subject is a feature of a
+The argument after `/ddk-think-apply` is the subject. Resolve the notes file the same way as
+`/ddk-think`: `targets/<Target>/notes_<feature>.md` when the subject is a feature of a
 Drydock-managed project (`$DRYDOCK_WORKSPACE/targets/<Target>/`), otherwise
 `notes/notes_<subject>.md`.
 

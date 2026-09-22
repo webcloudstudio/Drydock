@@ -10,6 +10,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-09-22: **`drydock refit add` appends a REFIT ticket from plain text, and `/ddk-refit` drives
+  it from chat.** `drydock refit add <Target> <Blueprint> <File>` writes
+  `blueprint/<Blueprint>_refit_<NNN>.md` and appends one `pending` Manifest story. The filename is
+  the ticket's identity: the number fixes order and parent, so a later ticket overrules an earlier
+  one and the Blueprint. The story depends on the previous ticket's story, or on every story
+  implementing the Blueprint for `001`, inherits the Blueprint story's stack, and sets
+  `acceptance: yes` when the ticket carries `=== AC` blocks. Any authored Blueprint accepts
+  tickets. The command never builds. The shipped `/ddk-refit` skill writes a change as acceptance
+  criteria in the Blueprint's own form and calls the command. It is now the only skill Drydock
+  ships; `drydock init` installs it. The design-discussion skills are renamed `/ddk-think` and
+  `/ddk-think-apply`, and `/drydock-uat` becomes `/ddk-uat`. All three stay in the repository.
+
 - 2026-09-20: **The block packer declines a merge that saves nothing worth having.** Merge
   candidates were ranked by shared-context savings alone, so any overlap above zero was worth
   taking and two stories sharing nothing but a compacted language file grouped for a few hundred

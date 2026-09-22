@@ -50,7 +50,7 @@ Drydock/
   bin/               Source-tree launchers; no business logic
   docs/              Authoritative specification and documentation
   logs/              Drydock logs, prompts, and full run history
-  notes/             Refit-skill working notes; injected by that skill only, not read by code
+  notes/             `/ddk-think` working notes; injected by that skill only, not read by code
   uat/               Published UAT evidence; written only by Ed's `drydock uat` runs (see UAT Evidence)
   dist/              Build artifacts; not committed
   targets/<PROJECT>  Generated Target workspace; see Data Locations
@@ -172,7 +172,7 @@ One shape, first established by `drydock rigging compact`:
 `notes/notes_<command>.md` holds the working notes for one command. Each carries a
 `## Process Definition` section directly below its metadata table. That section is the agent's:
 write it, keep it current, and do not ask before updating it. Everything else in the file belongs
-to its authors — propose changes to those sections in chat rather than editing them. `/refit`
+to its authors — propose changes to those sections in chat rather than editing them. `/ddk-think`
 updates `## Process Definition` the same way, without seeking approval for it.
 
 `## Process Definition` states how the command works now and why, so the next session does not

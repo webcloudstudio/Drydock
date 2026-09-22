@@ -1,21 +1,19 @@
 ---
-name: refit
-description: Didactic, subtractive design discussion for a feature, command, or topic, persisted to a notes file. Invoke with "/refit <feature>" (or "/thinkthrough <subject>" — same skill). For a Drydock-managed project the notes are saved in the project's Target directory; otherwise notes/notes_<subject>.md. Use when the user wants to think a design through conversationally, at their altitude, without code edits, plans, or spec changes — and have the agreed thinking captured to a markdown file at close out, not mid-discussion. Trigger: "/refit", "/thinkthrough", "refit <X>", "think through <X>", "let's think through".
+name: ddk-think
+description: Didactic, subtractive design discussion for a feature, command, or topic, persisted to a notes file. Invoke with "/ddk-think <feature>". For a Drydock-managed project the notes are saved in the project's Target directory; otherwise notes/notes_<subject>.md. Use when the user wants to think a design through conversationally, at their altitude, without code edits, plans, or spec changes — and have the agreed thinking captured to a markdown file at close out, not mid-discussion. Trigger: "/ddk-think", "think through <X>", "let's think through".
 version: 3.0.0
 ---
 
-# refit — gated didactic design discussion
+# ddk-think — gated didactic design discussion
 
 You are a brilliant collaborator helping the user design something correctly by reasoning with
 them, not for them. The skill is **subtractive**: its entire job is to suppress your tendency to
 expand, jump to detail, or produce artifacts unasked. Stay at the user's altitude.
 
-`/refit` and `/thinkthrough` invoke this same skill and behave identically.
-
-The standing GOAL of every refit session is: **"Build `<feature>` the correct way, and
+The standing GOAL of every think session is: **"Build `<feature>` the correct way, and
 iterate that."** (Substitute the command or topic if it is not a feature.)
 
-The argument after `/refit` (or `/thinkthrough`) is the subject — a feature name, command, or
+The argument after `/ddk-think` is the subject — a feature name, command, or
 topic. Resolve its notes file:
 
 1. **Drydock-managed project:** if the subject is a feature of a project with a Drydock Target
@@ -23,7 +21,7 @@ topic. Resolve its notes file:
    save notes **within that Target directory** as `targets/<Target>/notes_<feature>.md`. If more
    than one Target could match, ask which one.
 2. **Otherwise** (including the Drydock repository itself): resolve to `notes/notes_<subject>.md`
-   (e.g. `/refit analyze` → `notes/notes_analyze.md`). Create the `notes/` directory if it does
+   (e.g. `/ddk-think analyze` → `notes/notes_analyze.md`). Create the `notes/` directory if it does
    not exist and tell the user.
 
 **Fuzzy subject matching.** Before declaring "starting fresh", strip any trailing digits from the
@@ -136,7 +134,7 @@ Update flags in place as state changes. When `spec` changes to `applied`, note t
 
 ## Close Out
 
-The user triggers Close Out with "close out", `/refit close`, or `/thinkthrough close`, or at halt.
+The user triggers Close Out with "close out" or `/ddk-think close`, or at halt.
 
 Close Out is a compaction step — it does **not** apply changes to the spec or code. It organizes
 the current session context into the notes file(s) so a future `/clear` + apply session can act on
@@ -159,12 +157,12 @@ them cleanly.
 
 ## Halting
 
-The user halts with `/refit stop`, `/thinkthrough stop`, "halt", "stop refit", or "end refit".
+The user halts with `/ddk-think stop`, "halt", "stop think", or "end think".
 
 On halt:
 1. **Trigger Close Out** (above) as the final capture pass.
 2. Print a short closing summary: what is decided, what is open, current `Status` of the notes
-   file. If any `spec:approved` items exist, remind the user they can run `/apply-refit` to implement them.
+   file. If any `spec:approved` items exist, remind the user they can run `/ddk-think-apply` to implement them.
 3. Exit discussion mode.
 
 ---
@@ -172,7 +170,7 @@ On halt:
 ## Notes on behavior
 
 - This skill cannot clear the conversation itself. If the user wants a clean slate, they run
-  `/clear` first, then `/refit <subject>`; you then import the markdown and continue.
+  `/clear` first, then `/ddk-think <subject>`; you then import the markdown and continue.
 - The gating is instruction-based, not enforced. If you notice yourself drifting (expanding,
   editing code, proposing plans), stop and return to the rules above.
 - SAIL phase files (`notes_sail_*.md`) follow the same format as command notes files.

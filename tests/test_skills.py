@@ -7,10 +7,23 @@ from pathlib import Path
 from drydock.skills import AGENT_SKILLS_DIRS, sync_skills
 
 
-def test_shipped_drydock_uat_skill_loads_versioned_diagnostic_prompt():
-    skill = Path("Rigging/skills/drydock-uat/SKILL.md").read_text(encoding="utf-8")
+def test_only_ddk_refit_ships():
+    shipped = sorted(p.name for p in Path("Rigging/skills").iterdir() if (p / "SKILL.md").is_file())
+    assert shipped == ["ddk-refit"]
 
-    assert "name: drydock-uat" in skill
+
+def test_shipped_ddk_refit_skill_writes_tickets_through_refit_add_and_never_builds():
+    skill = Path("Rigging/skills/ddk-refit/SKILL.md").read_text(encoding="utf-8")
+
+    assert "name: ddk-refit" in skill
+    assert "drydock refit add <Target> <Blueprint> <file>" in skill
+    assert "do not run `drydock build`" in skill
+
+
+def test_repository_ddk_uat_skill_loads_versioned_diagnostic_prompt():
+    skill = Path(".agents/skills/ddk-uat/SKILL.md").read_text(encoding="utf-8")
+
+    assert "name: ddk-uat" in skill
     assert "load_prompt('uat_diagnostic')" in skill
     assert "do not reconstruct the prompt from memory" in skill
     assert "Do not edit files or rerun the UAT" in skill

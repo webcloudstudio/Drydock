@@ -1,6 +1,6 @@
 ---
-name: drydock-uat
-description: Diagnose a failed, degraded, or contradictory Drydock UAT run by loading and executing Drydock's current versioned UAT diagnostic prompt. Invoke with "/drydock-uat TARGET" or "$drydock-uat TARGET" after a UAT run, including after clearing conversation context.
+name: ddk-uat
+description: Diagnose a failed, degraded, or contradictory Drydock UAT run by loading and executing Drydock's current versioned UAT diagnostic prompt. Invoke with "/ddk-uat TARGET" or "$ddk-uat TARGET" after a UAT run, including after clearing conversation context.
 metadata:
   version: "1.0.0"
 ---
