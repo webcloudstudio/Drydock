@@ -352,7 +352,6 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock config set <key> <value>",
         "drydock init <Target>",
         "drydock status [<Target>]",
-        "drydock validate <Target> [--verbose]",
         "drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]",
         "drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>",
         "drydock analyze <Target>",
