@@ -17,7 +17,7 @@ sail_lead:
   - The LLM is your agile and test driven best practices team.
   - The QuarterDeck web server enables communication with your team
   - Your Compass guides the build
-  - The Drydock process is simple and obvious
+  - Builds with ultra low end models
 ideas:
   - title: "**S** — Setup and Install Drydock"
     sub_list:
@@ -48,17 +48,17 @@ The user is the **Commander**, who owns the product direction, reviews the work,
 
 Drydock imports specifications for your project in any format.
 
-Drydock turns this material into **Blueprints**, the authoritative living definition of your software product. `drydock plan` writes the **Blueprints** and a **Manifest** (graph database) that tracks build order, runnable work, and incremental rebuild scope.
+Drydock turns this material into **Blueprints**, the authoritative definition of your software product. `drydock plan` writes the **Blueprints** and a **Manifest** (graph database) that tracks build order, runnable work, and incremental build scope.
 
-**Blueprints** represent the smallest **building block** of your software. Drydock groups related **building blocks** into **blocks**. A **block** is an atomic build step that combines the **Blueprints** with **Rigging**. **Rigging** is enterprise business rules, technology rules, stack guidance, and branding. It gives your software common behavior and style.
+**Blueprints** represent the smallest **building block** of your software. Blueprints are agile stories with a full definition of done and Acceptance Criteria. Drydock groups related **building blocks** into **blocks**. A **block** combines **Blueprints** with **Rigging**. Blocks are deterministically optimized for context.  **Rigging** is enterprise business rules, technology rules, stack guidance, and branding so they provide common behavior and style.
 
-Drydock uses test-driven development. Each **building block** carries acceptance criteria that must pass before the next step.
+Drydock uses test-driven development. Each **building block** carries acceptance criteria that must pass before the next step.  This lets the process use low level models to create working software.  The process can create working software for large projects for which frontier models will lose the thread and perform poorly.
 
-The process builds maintainable software. Users edit specifications or add change tickets, run `drydock refit`, and rebuild normally.
+The process is geared towards quick revision and long term maintainance of your software. At the start of the project, drydock lets you quickly iterate and get your project 'correct' and once you have production quality software, drydock enables a full maintenance cycle.  Users can either edit specifications, add change tickets, or provide comments on their blueprints and `drydock refit` will manage the process to create new stories and blueprints which let you rebuild quickly and cleanly.
 
-`drydock score` commands verify quality deterministically against programmatic acceptance criteria, so the **Commander** knows the quality of the output software.
+`drydock score` verifies software quality against a variety of metrics.  It can test programmatic acceptance criteria and it can test project intent so the **Commander** can know the quality of the build.
 
-The **QuarterDeck** is a web console where the **Commander** understands and guides the build. It shows blockers, decisions, questionnaires, and build progress.
+The **QuarterDeck** is a simple yet flexible web console enabling the **Commander** to understand and guides the build. It shows blockers, decisions, questionnaires, and build progress.  The quarterdeck provides full agile tooling such as a kanban board and a log of decisions and activities.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -89,8 +89,8 @@ flowchart LR
 | **Frontier** | The set of **Manifest** blocks that are runnable now. |
 | **QuarterDeck** | The web review console between the **Commander** and the LLM process. |
 | **Compass** | Persistent project guidance used by Drydock commands. |
-| **Rigging** | Shared branding, stack rules, templates, and compact context derivatives. |
-| **Soundings** | The per-story acceptance-criterion verification board. |
+| **Rigging** | Shared branding, technology rules, business rules, and their compact context derivatives. |
+| **Soundings** | Blueprint acceptance-criterion summary and verification. |
 | **Sea Trials** | Product-level objectives and proof-of-delivery criteria. |
 | **Refit** | Change process that maps updates into the **Manifest**. |
 | **Crew** | The LLM agents that perform the work. |
@@ -104,11 +104,7 @@ flowchart LR
 drydock <verb> [<sub-verb>] [arguments] [--options]
 ```
 
-Each **Target** has a workspace at `$DRYDOCK_WORKSPACE/targets/<Target>` and builds to `$DRYDOCK_BUILD_DIRECTORY/<Target>`. LLM actions are scoped to these directories.
-
-## End-to-End Command Flow
-
-A **Target** runs from source material to a scored release, then through change, with these commands.
+LLM actions are scoped to the workspace at `$DRYDOCK_WORKSPACE/targets/<Target>` and software in `$DRYDOCK_BUILD_DIRECTORY/<Target>`. 
 
 ### S — Set Up
 
@@ -123,30 +119,23 @@ drydock import MyApp ./notes        # load specifications
 drydock analyze MyApp               # stories, questions, blockers
 drydock run quarterdeck MyApp       # review and answer
 drydock plan MyApp                  # Blueprints and Manifest
-drydock plan verify MyApp           # check acceptance criteria run
-                                    # on failure: drydock plan repair MyApp
-drydock run quarterdeck MyApp       # review the Manifest
 ```
 
 ### I — Implement
 
-Build until the **Manifest** is complete.
-
 ```bash
-n=1
-max=5
+n=1; max=5
 while drydock status MyApp --ready
 do
     echo "*** BUILD ATTEMPT $n ***"
     drydock build MyApp || drydock diagnose MyApp --apply || true
     n=$((n+1))
-    if [ "$n" -ge "$max" ]
-    then
+    if [ "$n" -ge "$max" ]; then
         echo "hit $max build attempts - aborting"
         exit 1
     fi
 done
-drydock status MyApp --check        # Manifest complete
+drydock status MyApp --check        
 ```
 
 Score the result.
@@ -160,14 +149,12 @@ drydock score release MyApp         # release gate
 ### L — Loop
 
 ```bash
-drydock refit MyApp                 # map changes into the Manifest
-                                    # then rerun the build loop
+drydock refit MyApp                 # map changes into the Manifest- rerun the build 
 ```
 
 ## SAIL Phase 1 — Set Up: Laying the Keel
 
-Install Drydock, configure runtime defaults, and create a workspace for a **Target**.
-Process environment variables override values in Drydock's user-scoped `.env`.
+Install Drydock, configure runtime defaults, and create a workspace for each **Target**. 
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -238,13 +225,11 @@ drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 
 ### drydock status
 
-`drydock status` shows the status of every initialized project. `drydock status <Target>` shows one **Target**.
-
-`drydock status <Target> --check` and `drydock status <Target> --ready` are deterministic pipeline
-gates that report whether the project has work to do. Neither calls an LLM or writes files.
-
-`--check` reports the terminal state
-`--ready` is the build-loop guard.
+```text
+`drydock status` shows the status of a project. 
+`drydock status <Target> --check` ` reports the terminal state (for batch)
+`drydock status <Target> --ready` reports whether the project has work to do (for batch)
+```
 
 ### drydock config
 
@@ -258,7 +243,6 @@ gates that report whether the project has work to do. Neither calls an LLM or wr
 | `drydock_model` | Default model |
 | `drydock_effort` | Reasoning effort |
 | `drydock_build_escalate_model` | Model for the final repair attempt |
-| `llm_provider` | LLM CLI (`claude`, `codex`, or `gemini`) |
 | `codex_sandbox` | Codex OS sandbox policy |
 | `prompt_warn_tokens` | Prompt size that warns |
 | `prompt_error_tokens` | Prompt size that fails |
@@ -270,21 +254,16 @@ gates that report whether the project has work to do. Neither calls an LLM or wr
 | `repair_attempts` | Repair passes per failed block |
 | `repair_stall_limit` | Passes without progress before repair stops |
 | `max_output_tokens` | Output tokens per response |
-| `haiku_thinking_tokens` | Haiku thinking budget |
+| `haiku_thinking_tokens` | Haiku thinking budget - Required for haiku builds. |
 
 ### drydock init
 
-`drydock init <Target>` creates the **Target** workspace under `$DRYDOCK_WORKSPACE/targets/`. `--display-name` sets a human-readable project name. `--description` seeds the one-line project summary in **Target** metadata.
+`drydock init <Target>` creates `$DRYDOCK_WORKSPACE/targets/<Target>`. 
+
+`--display-name` sets a human-readable project name. 
+`--description` seeds the one-line project summary in **Target** metadata.
 
 ## SAIL Phase 2 — Agile Analyze: Charting the Course
-
-Analyze turns imported source material into an Analysis for review, then into an executable **Manifest** for build.
-
-1. `drydock import` brings source material into the Drydock workspace.
-2. `drydock score spec` (optional) scores your imported specifications.
-3. `drydock analyze` derives stories, acceptance milestones, blockers, and questions.
-4. `drydock run quarterdeck` starts the web server for **Commander** review.
-5. `drydock plan` creates the **Blueprint** files and the **Manifest**.
 
 ### Analyze Commands
 
@@ -317,11 +296,15 @@ flowchart LR
   PLANCREATE --> MANIFEST{{"MANIFEST.md"}}:::md
 ```
 
+1. `drydock import` brings source material into the Drydock workspace.
+2. `drydock score spec` (optional) scores your imported specifications.
+3. `drydock analyze` derives stories, acceptance milestones, blockers, and questions.
+4. `drydock run quarterdeck` starts the web server for **Commander** review.
+5. `drydock plan` creates the **Blueprint** files and the **Manifest**.
+
 ### drydock import
 
-`drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>` is the intake step.
-It copies external source material into the **Target** workspace for analysis. Compass imports write
-`COMPASS.md` at the **Target** root.
+`drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>` copies your source material into the **Target** workspace. Your guidance and intent is set with --compass which writes `COMPASS.md`.
 
 ```text
 drydock import <Target> <Source File> --format markdown
@@ -331,76 +314,41 @@ drydock import <Target> <Source> --format compass [--force]   # --force replaces
 drydock import <Target> --update
 ```
 
-`--update` refreshes the imported snapshot from the recorded source root and records a new source
-version
+`--update` refreshes the imported snapshot from the recorded source root and records a new source version
 
 Imported source files must be UTF-8. a file that fails UTF-8 decoding is not analyzed.
 
 ### drydock score spec
 
-`drydock score spec <Target>` diagnoses potential specification errors.
+`drydock score spec <Target>` diagnoses potential specification errors.  This optional step attempts to find specification errors before you start.
 
 ### drydock analyze
 
 `drydock analyze` decomposes imported source material into stories, questionnaires, and blockers.
-
-**Input files**
-
-| Artifact | Location | Purpose |
-|---|---|---|
-| `sources/*` | `blueprint/` | Read-only imported source material |
-| `*COMPASS.md` | Target root | Project guidance and intent |
-| `ANALYZE_COMPASS.md` | Target root | Guidance for `drydock analyze` |
-| `BLOCKERS.md` | Target root | Identified blockers (from prior runs) |
-| `questionnaires/*.json` | `QuarterDeck/` | Persistent questionnaires created by `drydock analyze` |
-
-**Output files**
-
-| Artifact | Location | Purpose |
-|---|---|---|
-| `BLOCKERS.md` | Target root | Questions on blockers the LLM found. Existence implies blockers. Edit to resolve them. |
-| `ANALYSIS.md` | Target root | Decomposition, story list, blockers, questions, and recommendations |
-| `SEA_TRIALS.md` | Target root | Project acceptance criteria and release objectives |
-| `COMPASS.md` | Target root | Created if absent. Constitution/Intent. |
-| `questionnaires/*.json` | `QuarterDeck/` | **Commander** questionnaires |
-| `commanders_chair.html` | `QuarterDeck/` | Summary view |
-
-`BLOCKERS.md` halts the build. The **Commander** edits it (manually or in the **QuarterDeck**) and
-reruns `drydock analyze` until the blockers clear. `SEA_TRIALS.md` captures project success criteria.
+`BLOCKERS.md` halts the build so if blockers exist, the **Commander** must edit (manually or in the **QuarterDeck**) and
+rerun `drydock analyze` until the blockers clear. `SEA_TRIALS.md` captures project success criteria for end of cycle project grading.
 
 ### Epic Decomposition 
 
-Drydock decomposes source material into **Blueprints** by project type. A web application decomposes
-by route. Stories build the routes and the screens, and a screen can use multiple routes. Other
-system types decompose as follows.
+Drydock decomposes source material into **Blueprints** by project type. For example, a web application decomposes by route and screens. Other system types decompose as follows.
 
 | System Type | Methodology |
 |---|---|
-| Web application | HTTP routes — `GET /catalog` |
+| Web application | HTTP routes and web screens |
 | CLI tool | Commands and sub-verbs |
-| Library or package | Public API contract — `Database.items.get` |
+| Library or package | Public API contract — e.g. `Database.items.get` |
 | Data pipeline | Datasets, tables, process, inputs, and outputs |
 | Event-driven | Topics, queues, and event types |
 
 ### Story Refinement 
 
-> **Definition — QuarterDeck**
->
-> The **QuarterDeck** is a web console that renders the LLM's Markdown output. The **Commander** uses
-> it to communicate with the **Crew**.
+`drydock run quarterdeck` starts the web console at the listed host and port.  The **QuarterDeck** shows status, blockers, questionnaires, decisions, and activity on interactive screens where the **Commander** approves or responds.
 
-`drydock run quarterdeck` starts the web console, your helm, at the listed host and port.
-
-The **QuarterDeck** shows status, blockers, questionnaires, decisions, and activity on interactive
-screens where the **Commander** approves or responds.
-
-The **Commander** defines the technology stack in the **QuarterDeck** by selecting **Rigging**, which
-is required to build and use each component technology.
+The **Commander** defines the technology stack in the **QuarterDeck** by selecting **Rigging** files.  Rigging is required to build and use each component technology. A small set of rigging is provided for this open source project so if you are building in other languages and with other technologies, please provide an update with a pull request to the drydock source.
 
 ### drydock plan
 
-`drydock plan` converts the reviewed analysis into **Blueprints** under `<Target>/blueprint/` and
-writes the build graph (`MANIFEST.md`).
+`drydock plan` converts the analysis into **Blueprints** stored in `<Target>/blueprint/` and will writes the optimized build graph (`MANIFEST.md`).
 
 **Input files**
 
@@ -422,35 +370,23 @@ writes the build graph (`MANIFEST.md`).
 
 #### Build Order by Tier
 
-`drydock plan` orders the build by **Tier**, in the order below. Tiers 1 to 5 are the foundation,
-each building on the tier before it. Tier 6 is the application. Every **Rigging** file declares a
-`**Tier:**` header, and a **Target** selects at most one **Rigging** file per kind. A **Rigging**
-file or story with no tier is tier 6.
+`drydock plan` orders the build by **Tier**.  We separate tiers to optimize context.  Generally blueprints within a tier do not share context with blueprints in other tiers.  The context optimization algorithm is deterministic and if context is not duplicated there is no savings, so combining blueprints in one step will yield no optimization.
 
 | Tier | Name | Builds |
 |---|---|---|
 | 1 | `language` | The tree, the environment, the test runner. |
-| 2.1 | `platform` | The one database. |
-| 2.2 | `platform` | The one web server. |
-| 2.3 | `platform` | The one command-line entry point. |
+| 2.1 | `platform - database` | The one database/persistence. |
+| 2.2 | `platform - web server` | The one web server. |
+| 2.3 | `platform - cli` | The command-line entry point. |
 | 3 | `branding` | The palette, the typography, the voice. |
 | 4 | `interface` | The shared UI shell. |
 | 5 | `screen-foundation` | The screen idiom. |
 | 6 | `application` | Every service and every screen. |
 
-Multiple tiers are generally not built together. Their context is not duplicated, so combining them
-yields no context savings.
-
-#### Database Encapsulation
-
-**`DATABASE.md` enforces data access encapsulation.**
-
-Application code never calls the database directly. It reaches every table, config store, file
-store, and external service through a typed Python class. Route and business code calls
-`db.items.get(id)`, never raw SQL.
-
-A code review fails on raw SQL, `os.environ` reads, `open()` on application data, or a cloud SDK
-import outside its encapsulation class.
+`DATABASE.md` enforces data access encapsulation as a mechanism so that changes to the database or persistence layer do not 
+invalidate all downstream blueprints.  Application code does not call the database directly and instead uses reaches 
+persistence through every a typed class library. Downstream objects call this library which means they do not need to 
+be rebuilt unless the contract changes. 
 
 ## SAIL Phase 3 — Implement: Building The Software
 
@@ -463,14 +399,15 @@ Implement builds the **Blueprints** using the **Manifest**.
 
 ### The Manifest
 
-The **Manifest** is the build plan. It groups similar **building blocks** into **blocks** by token
-count to maximize context savings, and orders stories by dependencies.
+The **Manifest** is the build graph and build plan. It is optimized deterministically so it will group similar **building blocks** into **blocks** such that token count is minimized. **Blocks** are ordered.
 
-The **Commander** reviews `MANIFEST.md` in the **QuarterDeck** to set build direction and instructions.
+The **QuarterDeck** lets the **Commander**:
 
 * Reorder stories so important or testable steps run first
 * Regroup stories so one agent runs them
 * Review **Blueprint** programmatic and user acceptance
+* See a Kanban board of progress
+* Manage changes via the **Refit** process
 
 ### drydock build
 
@@ -483,18 +420,12 @@ drydock build status <Target>
 
 `drydock build` converts **Blueprints** to code, executing ready **blocks** from `MANIFEST.md` in order.
 
-Each **building block** is checked against its deterministic acceptance criteria. A **block**
-completes only when all pass. `drydock build` self-repairs. It diagnoses and fixes failed **blocks**,
-then resumes.
-
-A failed **block** gets a configurable number of repair passes (default 6). Repair stops after two
-consecutive passes without progress, or at the pass limit.
+Each **building block** is checked against its deterministic acceptance criteria. A **block** completes only when all pass. `drydock build` self-repairs. It diagnoses and fixes failed **blocks**, then resumes.  A failed **block** gets a configurable number of repair passes. Repair stops after two consecutive passes without progress, or at the pass limit.
 
 **The build loop**
 
-Analyze decomposes your epic and inputs, plan grooms the stories and adds acceptance criteria, and
-build iterates the stories and builds them. `drydock diagnose` may fix your specifications and
-correct prior-step errors so the build can retry. Decisions appear in the **QuarterDeck**.
+The Build is self repairing.  `drydock diagnose` identifies problems with the prior build step and may update blueprints to
+correct identified errors. The llm is authorized to make these decisions which will show in the **QuarterDeck**.  Because the LLM is non-deterministic, this self repair process finds and fixes issues which do not require human intervention.  The diagnose command will stop on serious errors or misspecification.
 
 ```bash
 n=1
@@ -535,15 +466,13 @@ flowchart LR
 ```
 
 `drydock build <Target>` writes the application to `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
-`build_dir:` in `METADATA.md` overrides the location.
 
 | Flag | Effect |
 |---|---|
 | `--reset` | Discard prior work |
 | `--repair-attempts <n>` | Repair passes after a failed block (default 6) |
 
-Before building, `drydock build` checks applied **Blueprint** files for changes and possibly 
-directs the **Commander** to `drydock refit`.
+Before building, `drydock build` checks applied **Blueprint** files for changes and possibly directs the **Commander** to `drydock refit`.
 
 ### drydock score
 
@@ -556,8 +485,7 @@ drydock score report <Target>
 drydock score <Target>
 ```
 
-`drydock score` audits specifications, verifies acceptance, reports build evidence, and evaluates
-release readiness.
+`drydock score` audits specifications, verifies acceptance, reports build evidence, and evaluates release readiness.
 
 | Command | Behavior |
 |---|---|
@@ -606,8 +534,7 @@ drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--flatten]
                 [--pdf] [--pdf-output <Output.pdf>]
 ```
 
-`drydock publish` deterministically renders a front-matter Markdown document to HTML without an LLM.
-Front matter sets the title, author, studio, cover text, theme, and formatting.
+`drydock publish` deterministically renders a front-matter Markdown document to HTML and pdf.  Front matter sets the title, author, studio, cover text, theme, and formatting.
 
 `--flatten` publishes each H1 and H2 section as a separate page with navigation.
 `--pdf` renders a PDF with the local browser.
@@ -619,8 +546,7 @@ drydock publish docs/Drydock_Specification.md --output dist/Drydock_Whitepaper.h
 
 ## SAIL Phase 4 — Loop: The Refit
 
-A **Refit** updates the **Manifest** from **Blueprint** changes and change tickets, creating new nodes
-for a normal build.
+A **Refit** updates the **Manifest** from **Blueprint** changes and change tickets, creating new nodes for a normal build.
 
 ### Build Commands
 
@@ -645,18 +571,16 @@ flowchart LR
 
   CHANGE(["Changed Blueprints"]):::dir --> REFIT["refit"]:::script
   Ticket(["Change Ticket"]):::dir --> REFIT
-  Comment(["Feature-ticket Blueprint Comment"]):::md --> REFIT
-  REFIT --> SPECOUT(["Normalized Change Tickets"]):::md
+  Comment(["Blueprint Comment"]):::dir --> REFIT
+  REFIT --> SPECOUT(["Drydock Change Blueprints"]):::md
   REFIT --> SOFTWARE(["Updated Manifest"]):::output
 ```
 
 ### drydock diagnose
 
-`drydock diagnose` writes a report explaining failed builds and authorizes the LLM to create
-**Blueprint** diffs that let the next build proceed.
+`drydock diagnose` writes a report explaining failed builds and authorizes the LLM to create **Blueprint** diffs that let the next build proceed.
 
-The report contains Root Cause, Details, Commander Feedback Requested, and a Repair Proposal.
-Commander Feedback Requested lists the next steps and asks how to proceed.
+The report contains Root Cause, Details, Commander Feedback Requested, and a Repair Proposal.  Commander Feedback Requested lists the next steps and asks how to proceed.
 
 `--apply` applies the diffs and records decisions in `DECISIONS.json`.
 
@@ -677,7 +601,6 @@ $DRYDOCK_WORKSPACE/
 └── targets/
     └── <Target>/                         # one per project
         ├── METADATA.md                   # identity
-        ├── README.md                     
         ├── ANALYSIS.md                   # output of analyze 
         ├── ANALYZE_COMPASS.md
         ├── BLOCKERS.md
@@ -704,7 +627,7 @@ $DRYDOCK_BUILD_DIRECTORY/
 
 `drydock plan` creates the build graph in `MANIFEST.md`, which the **Commander** manages in the
 **QuarterDeck**. The **Manifest** groups **building blocks** into **blocks**, sets build order, and
-tracks context and build status.
+tracks context and build status. **Building blocks** are deterministically optimized for context. 
 
 ### Grouping Blocks
 
@@ -732,13 +655,11 @@ screens follow the Agile methodology and are documented in `QuarterDeck/README.m
 
 ## Drydock Rigging — Software Governance
 
-**Rigging** is the enterprise rules governing application behavior.
-
-Each technology the application uses should have a **Rigging** file. The **Commander** selects
-**Rigging** in the **QuarterDeck** Technology Rules questionnaire.
-
-The **Rigging** shipped with Drydock is the Author's build rules. Organizations should supply their
+**Rigging** is the enterprise rules governing application behavior.  The **Rigging** shipped with Drydock is the Author's build rules. Organizations should supply their
 own stack, branding, and best-practice files.
+
+Each technology the application uses should have a **Rigging** file. The **Commander** selects **Rigging** in the **QuarterDeck** Technology Rules questionnaire.
+
 
 **Business rules.** `BUSINESS_RULES.md` defines agent behavior. It covers git workflow, project layout, script
 conventions, and error handling. Its compact derivative, `BUSINESS_RULES_compact.md`, is injected into
@@ -790,7 +711,7 @@ Drydock trusts imported material and **WILL** run it. This **can** cause unscope
 if the specifications explicitly say to do something bad. Run Drydock in Docker or bwrap
 (bubblewrap) for further scoping in enterprise or production use.
 
-### Claude
+### Claude Security
 
 ```bash
 HOME=~/.drydock/claude-home CLAUDE_CONFIG_DIR=~/.drydock/claude-home \
@@ -805,7 +726,7 @@ claude -p \
 
 `--safe-mode` disables CLAUDE.md and AGENTS.md discovery, memory, hooks, plugins, and MCP servers.
 
-### Codex
+### Codex Security
 
 ```bash
 CODEX_HOME=/tmp/drydock-codex-home-XXXX \
