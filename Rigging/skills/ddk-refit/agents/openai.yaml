@@ -1,0 +1,4 @@
+interface:
+  display_name: "Drydock Refit"
+  short_description: "Turn a plain-text change into REFIT tickets"
+  default_prompt: "Use $ddk-refit to record this change for <Target>: <change text>"

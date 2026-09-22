@@ -1,12 +1,12 @@
 ---
 name: ddk-refit
-description: Turn a plain-text change request for a built Drydock Target into REFIT tickets (blueprint/<Blueprint>_refit_<NNN>.md) and update the Manifest. Invoke with "/ddk-refit <Target> <change text>". One-shot; never builds. Trigger: "/ddk-refit".
-version: 1.0.0
+description: Turn a plain-text change request for a built Drydock Target into REFIT tickets (blueprint/<Blueprint>_refit_<NNN>.md) and update the Manifest. Invoke with "/ddk-refit <Target> <change text>" (Claude Code) or "$ddk-refit <Target> <change text>" (Codex). One-shot; never builds. Trigger: "/ddk-refit", "$ddk-refit".
+version: 1.1.0
 ---
 
 # ddk-refit — plain text to REFIT tickets
 
-`/ddk-refit <Target> <change text>` records a change to a built Target as REFIT tickets and
+`/ddk-refit <Target> <change text>` (`$ddk-refit` in Codex) records a change to a built Target as REFIT tickets and
 stops. The user runs `drydock build <Target>` when ready. This skill never builds.
 
 ## Terms

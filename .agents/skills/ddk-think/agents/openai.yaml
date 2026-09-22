@@ -1,0 +1,4 @@
+interface:
+  display_name: "Drydock Think"
+  short_description: "Gated design discussion saved to a notes file"
+  default_prompt: "Use $ddk-think to think through <subject>."

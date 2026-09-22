@@ -1,0 +1,4 @@
+interface:
+  display_name: "Drydock Think Apply"
+  short_description: "Implement decisions from a notes file"
+  default_prompt: "Use $ddk-think-apply to implement notes for <subject>."

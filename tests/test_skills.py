@@ -20,6 +20,16 @@ def test_shipped_ddk_refit_skill_writes_tickets_through_refit_add_and_never_buil
     assert "do not run `drydock build`" in skill
 
 
+def test_every_ddk_skill_serves_claude_and_codex_from_one_definition():
+    roots = [Path("Rigging/skills"), Path(".agents/skills")]
+    skills = [p for root in roots for p in root.iterdir() if (p / "SKILL.md").is_file()]
+    assert {p.name for p in skills} >= {"ddk-refit", "ddk-think", "ddk-think-apply", "ddk-uat"}
+    for skill in skills:
+        text = (skill / "SKILL.md").read_text(encoding="utf-8")
+        assert f"name: {skill.name}" in text
+        assert f"${skill.name}" in (skill / "agents" / "openai.yaml").read_text(encoding="utf-8")
+
+
 def test_repository_ddk_uat_skill_loads_versioned_diagnostic_prompt():
     skill = Path(".agents/skills/ddk-uat/SKILL.md").read_text(encoding="utf-8")
 
