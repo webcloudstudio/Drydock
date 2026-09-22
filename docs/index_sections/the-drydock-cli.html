@@ -10,14 +10,17 @@
 :root {
   --ink: #17212b; --muted: #5b6875; --paper: #f8fafb; --panel: #ffffff;
   --navy: #123047; --green: #0a7650; --line: #d6dee4; --code: #eef3f5; --pre-bg: #f0f1f3;
+  --pre-ink: #17212b;
 }
 body.theme-slate {
   --ink: #26313d; --muted: #647180; --paper: #f4f6f8; --panel: #ffffff;
   --navy: #17212b; --green: #2cb67d; --line: #d7dee5; --code: #e8edf2; --pre-bg: #202a34;
+  --pre-ink: #7fdcb0;
 }
 body.theme-paper {
   --ink: #2e312d; --muted: #6a6f68; --paper: #fbfbf8; --panel: #ffffff;
   --navy: #2f3430; --green: #427a5b; --line: #dfe3dd; --code: #eceee9; --pre-bg: #f0f2ed;
+  --pre-ink: #2e312d;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--paper); color: var(--ink);
@@ -92,10 +95,10 @@ h1 .h1-sub { display: block; font-size: 22px; font-weight: 600; color: var(--mut
 #content p { margin: 6px 0 10px; }
 #content table { border-collapse: collapse; display: block; overflow-x: auto; width: 100%; margin: 8px 0; }
 #content th, #content td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
-#content th { background: var(--pre-bg); color: var(--ink); font-size: 13px; }
+#content th { background: var(--pre-bg); color: var(--pre-ink); font-size: 13px; }
 #content td { font-size: 13px; }
 #content code { background: var(--code); border-radius: 3px; padding: 1px 4px; font-size: 13px; }
-#content pre { background: var(--pre-bg); color: var(--ink); overflow-x: auto;
+#content pre { background: var(--pre-bg); color: var(--pre-ink); overflow-x: auto;
   padding: 10px 14px; margin: 6px 0 12px; border-left: 3px solid var(--line); font-size: 13px; }
 #content pre code { background: transparent; padding: 0; font-size: inherit; }
 #content blockquote { border-left: 4px solid var(--green); background: var(--paper);
@@ -245,7 +248,7 @@ header, footer {
 <div class="flat-brand-subtitle">The Complete Drydock Documentation</div>
 </div>
 <div class="flat-toc-title">Table of Contents</div>
-<nav class="flat-toc"><a href="introduction.html">Introduction</a><a href="what-is-drydock.html">What is Drydock</a><a href="drydock-features.html">Drydock Features</a><a class="active" href="the-drydock-cli.html">The drydock CLI</a><a href="end-to-end-command-flow.html">End-to-End Command Flow</a><a href="sail-phase-1-set-up-laying-the-keel.html">SAIL Phase 1<br>Set Up: Laying the Keel</a><a href="sail-phase-2-agile-analyze-charting-the-course.html">SAIL Phase 2<br>Agile Analyze: Charting the Course</a><a href="sail-phase-3-implement-sailing-the-frontier.html">SAIL Phase 3<br>Implement: Sailing the Frontier</a><a href="sail-phase-4-loop-the-refit.html">SAIL Phase 4<br>Loop: The Refit</a><a href="artifact-i-o-matrix.html">Artifact I/O Matrix</a><a href="directory-layout.html">Directory Layout</a><a href="the-manifest-graph-database.html">The Manifest Graph Database</a><a href="the-quarterdeck-agile-development-console.html">The QuarterDeck<br>Agile Development Console</a><a href="drydock-rigging-portfolio-governance.html">Drydock Rigging<br>Portfolio Governance</a><a href="drydock-document-project-documentation.html">Drydock Document<br>Project Documentation</a><a href="drydock-security.html">Drydock Security</a><a href="database-encapsulation.html">Database Encapsulation</a></nav>
+<nav class="flat-toc"><a href="introduction.html">Introduction</a><a href="what-is-drydock.html">What is Drydock</a><a class="active" href="the-drydock-cli.html">The drydock CLI</a><a href="sail-phase-1-set-up-laying-the-keel.html">SAIL Phase 1<br>Set Up: Laying the Keel</a><a href="sail-phase-2-agile-analyze-charting-the-course.html">SAIL Phase 2<br>Agile Analyze: Charting the Course</a><a href="sail-phase-3-implement-building-the-software.html">SAIL Phase 3<br>Implement: Building The Software</a><a href="sail-phase-4-loop-the-refit.html">SAIL Phase 4<br>Loop: The Refit</a><a href="directory-layout.html">Directory Layout</a><a href="the-manifest-graph-database.html">The Manifest Graph Database</a><a href="the-quarterdeck-agile-development-console.html">The QuarterDeck<br>Agile Development Console</a><a href="drydock-rigging-software-governance.html">Drydock Rigging<br>Software Governance</a><a href="drydock-security.html">Drydock Security</a></nav>
 </aside>
 <main>
 <section class="cover">
@@ -263,7 +266,7 @@ header, footer {
 </main>
 <footer>Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.</footer>
 <script>
-const BODY = "## The drydock CLI\n\n```text\ndrydock <verb> [<sub-verb>] [arguments] [--options]\n```\n\nEach project's `<Target>` uses a Workspace of `$DRYDOCK_WORKSPACE/targets/<Target>` and builds to `$DRYDOCK_BUILD_DIRECTORY/<Target>`.\n\n```text\nusage: drydock [-h] [--version] [--debug] <command> ...\n\nDrydock \u2014 governed Blueprint-driven software delivery.\nCopyright (c) 2026 Web Cloud Studio. All rights reserved.\n\npositional arguments:\n  <command>\n    config    Show or set Drydock configuration.\n    init      Initialize a target workspace.\n    status    Show project status and orientation.\n    validate  Validate a Blueprint's Typed Specification.\n    document  Generate project documentation from Blueprints\n    publish   Render frontmatter Markdown into publishable HTML.\n    rigging   Manage Drydock Rigging.\n    plan      Create the Manifest and Blueprints\n    build     Build or inspect build state.\n    refit     Update Blueprint and target software together.\n    analyze   Decompose imported sources into stories, blockers, and acceptance milestones.\n    run       Start a Drydock service.\n    import    Copy your Specifications into the workspace.\n    score     Evaluate acceptance and release readiness.\n\noptions:\n  -h, --help  show this help message and exit\n  --version   show program's version number and exit\n  --debug     Show full traceback on unexpected errors.\n```";
+const BODY = "## The drydock CLI\n\n```text\ndrydock <verb> [<sub-verb>] [arguments] [--options]\n```\n\nLLM actions are scoped to the workspace at `$DRYDOCK_WORKSPACE/targets/<Target>` and software in `$DRYDOCK_BUILD_DIRECTORY/<Target>`. \n\n### S \u2014 Set Up\n\n```bash\ndrydock init MyApp                  # create the workspace\n```\n\n### A \u2014 Analyze and Plan\n\n```bash\ndrydock import MyApp ./notes        # load specifications\ndrydock analyze MyApp               # stories, questions, blockers\ndrydock run quarterdeck MyApp       # review and answer\ndrydock plan MyApp                  # Blueprints and Manifest\n```\n\n### I \u2014 Implement\n\n```bash\nn=1; max=5\nwhile drydock status MyApp --ready\ndo\n    echo \"*** BUILD ATTEMPT $n ***\"\n    drydock build MyApp || drydock diagnose MyApp --apply || true\n    n=$((n+1))\n    if [ \"$n\" -ge \"$max\" ]; then\n        echo \"hit $max build attempts - aborting\"\n        exit 1\n    fi\ndone\ndrydock status MyApp --check        \n```\n\nScore the result.\n\n```bash\ndrydock score ac MyApp              # story acceptance\ndrydock score build MyApp           # build evidence\ndrydock score release MyApp         # release gate\n```\n\n### L \u2014 Loop\n\n```bash\ndrydock refit MyApp                 # map changes into the Manifest- rerun the build \n```";
 marked.setOptions({ gfm: true, breaks: false });
 const content = document.getElementById("content");
 content.innerHTML = marked.parse(BODY);

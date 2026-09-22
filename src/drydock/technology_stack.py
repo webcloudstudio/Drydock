@@ -36,11 +36,29 @@ _EMPTY_CELLS = frozenset({"", "-", "—", "--", "none", "n/a"})
 _APPROVED_RE = re.compile(r"^\*\*Approved:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
 _DEFAULT_CATEGORY = "Technologies"
-_CATEGORY_ORDER = ["Web Server", "Persistence", "AWS", "Technologies", "Branding"]
+
+#: Selector order, which is build order: the categories that hold foundations come first, in
+#: tier order (``rigging_contract.TIER_ORDER``), then the additive ones. ``Frontend`` exists
+#: because ``bootstrap5.md`` is not a web server — it was filed under ``Web Server`` and shown to
+#: the Commander as one, next to the three files that genuinely are.
+_CATEGORY_ORDER = [
+    "Language",
+    "Web Server",
+    "Persistence",
+    "Branding",
+    "Frontend",
+    "AWS",
+    "Technologies",
+]
 _CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
-#: Relational persistence in a Python Target has one governed implementation path.
-_PYTHON_RELATIONAL_RIGGING = ("sqlalchemy.md", "alembic.md")
+#: Languages Drydock ships a persistence adapter for, in ``Rigging/database/``. A Target in one of
+#: these gets its persistence package generated from ``DATABASE.md``; the build writes callers, not
+#: a repository, so no ORM or migration-framework selection is required of the Commander.
+PERSISTENCE_LANGUAGES = ("python",)
+#: Implementation languages a Target may declare. A Target declaring none leaves the stack
+#: undecided, which Plan resolves from the sources rather than gating on.
+_LANGUAGES = ("python", "go", "typescript", "javascript", "java", "rust", "c", "c++", "ruby")
 
 _PREAMBLE = (
     "Technology decisions of record for this Target. One row per technology, naming the",
@@ -277,7 +295,7 @@ def is_approved(target_dir: Path) -> bool:
     An absent file is not approved: the stack is an outstanding action until the
     Commander either edits and approves it or approves it as proposed.
     """
-    return approved_on(target_dir) is not None and not missing_required_rigging(target_dir)
+    return approved_on(target_dir) is not None and unsupported_persistence(target_dir) is None
 
 
 def approve(target_dir: Path, when: str | None = None) -> Path:
@@ -287,10 +305,12 @@ def approve(target_dir: Path, when: str | None = None) -> Path:
     canonically. Approving an already approved stack re-dates it.
     """
     entries = load(target_dir)
-    missing = missing_required_rigging(target_dir, entries)
-    if missing:
+    unsupported = unsupported_persistence(target_dir, entries)
+    if unsupported:
         raise ValueError(
-            "Python relational persistence requires Rigging selection: " + ", ".join(missing)
+            f"Drydock ships no persistence adapter for {unsupported}. Targets with a DATABASE.md "
+            f"are limited to {', '.join(PERSISTENCE_LANGUAGES)}; add an adapter to "
+            "Rigging/database/ to support another."
         )
     return write(target_dir, entries, when or date.today().isoformat())
 
@@ -309,23 +329,35 @@ def stack_files(target_dir: Path) -> list[str]:
     return stack_files_from(load(target_dir))
 
 
-def required_rigging(target_dir: Path, entries: list[StackEntry] | None = None) -> tuple[str, ...]:
-    """Return mandatory Rigging files for the Target's declared architecture."""
+def declared_language(target_dir: Path, entries: list[StackEntry] | None = None) -> str | None:
+    """The Target's implementation language, or ``None`` when the stack names none."""
     rows = load(target_dir) if entries is None else entries
-    python_declared = any(
-        _normalize(row.technology) == "python" or row.rigging == "python.md" for row in rows
-    )
-    has_database = (target_dir / "blueprint" / "DATABASE.md").is_file()
-    return _PYTHON_RELATIONAL_RIGGING if python_declared and has_database else ()
+    for row in rows:
+        normalized = _normalize(row.technology)
+        if normalized in _LANGUAGES:
+            return normalized
+        if row.rigging and row.rigging.removesuffix(".md") in _LANGUAGES:
+            return row.rigging.removesuffix(".md")
+    return None
 
 
-def missing_required_rigging(
+def unsupported_persistence(
     target_dir: Path, entries: list[StackEntry] | None = None
-) -> tuple[str, ...]:
-    """Return required files absent from the Commander's stack selection."""
+) -> str | None:
+    """The declared language when it has a ``DATABASE.md`` and Drydock ships no adapter for it.
+
+    Drydock generates the persistence package from the declaration, so a Target declares storage
+    only in a language it can be generated for. Returning the language rather than silently
+    returning nothing is the point: the previous check was keyed on Python, so a Go Target with a
+    database was never gated at all and reached a build that had no persistence layer to write.
+    """
     rows = load(target_dir) if entries is None else entries
-    selected = set(stack_files_from(rows))
-    return tuple(name for name in required_rigging(target_dir, rows) if name not in selected)
+    if not (target_dir / "blueprint" / "DATABASE.md").is_file():
+        return None
+    language = declared_language(target_dir, rows)
+    if language is None or language in PERSISTENCE_LANGUAGES:
+        return None
+    return language
 
 
 # ── Seeding and migration ───────────────────────────────────────────────────────
@@ -397,3 +429,149 @@ def ensure_technology_stack(
     written = write(target_dir, rows)
     _archive_legacy_questionnaire(target_dir)
     return written
+
+
+# ── Foundation selection ────────────────────────────────────────────────────────
+
+
+def foundation_defects(entries: list[StackEntry]) -> list[str]:
+    """Return the reasons this stack cannot produce a coherent set of foundations.
+
+    Two questions, both answerable from the Commander's own decisions of record.
+
+    *Unanswered*: a row names a technology whose Rigging file publishes a foundation, and the
+    Commander left the Rigging cell blank. Drydock will not choose a web server on the operator's
+    behalf — one cannot be built without someone identifying which one — so the plan stops and the
+    row is named.
+
+    *Doubled*: two selected files publish the same foundation kind. FastAPI and Flask are not a
+    richer stack; they are two application shapes in one build tree, and every acceptance criterion
+    then coin-flips between them.
+    """
+    from drydock.rigging_contract import foundation_contracts
+
+    published = foundation_contracts()
+    defects: list[str] = []
+
+    for entry in entries:
+        if entry.rigging:
+            continue
+        suggested = suggest_rigging(entry.technology)
+        if suggested and (contract := published.get(suggested)) is not None:
+            defects.append(
+                f"{entry.technology}: names a {contract.kind} but selects no Rigging file; "
+                f"set the Rigging column to {suggested} or remove the row"
+            )
+
+    by_kind: dict[str, list[str]] = {}
+    for name in stack_files_from(entries):
+        if (contract := published.get(name)) is not None:
+            by_kind.setdefault(contract.kind, []).append(name)
+    for kind, names in sorted(by_kind.items()):
+        if len(names) > 1:
+            defects.append(
+                f"{kind}: {len(names)} selected ({', '.join(sorted(names))}); "
+                f"a Target has exactly one {kind}"
+            )
+
+    return defects
+
+
+def selected_foundations(entries: list[StackEntry]) -> dict[str, str]:
+    """Return ``{kind: rigging filename}`` for each foundation this stack selects."""
+    from drydock.rigging_contract import foundation_contracts
+
+    published = foundation_contracts()
+    return {published[name].kind: name for name in stack_files_from(entries) if name in published}
+
+
+#: What a new Target gets when nobody has chosen yet. It is a starting point the Commander
+#: overrides in one click, not a policy: Drydock still refuses to *infer* a web server for a
+#: stack that names one and selects no file.
+DEFAULT_FOUNDATIONS = {
+    "language": "python.md",
+    "web-server": "fastapi.md",
+    "database": "sqlite.md",
+}
+
+#: Kinds whose display name is not simply the kind title-cased.
+_KIND_LABELS = {"cli": "CLI"}
+
+
+def split_foundations(
+    entries: list[StackEntry],
+) -> tuple[dict[str, str], list[StackEntry]]:
+    """Split stack rows into the foundation choices and everything else.
+
+    A row is a foundation choice when it selects a Rigging file that publishes a foundation, or
+    when it selects nothing and names a technology that would resolve to one. The second case is
+    the unanswered row ``foundation_defects`` refuses: it belongs in the exclusive selector, not
+    in the free-text table where it can only be half-answered.
+    """
+    from drydock.rigging_contract import foundation_contracts
+
+    published = foundation_contracts()
+    chosen: dict[str, str] = {}
+    remaining: list[StackEntry] = []
+    for entry in entries:
+        name = entry.rigging or (suggest_rigging(entry.technology) if not entry.rigging else None)
+        contract = published.get(name or "")
+        if contract is None:
+            remaining.append(entry)
+            continue
+        chosen.setdefault(contract.kind, entry.rigging or "")
+    return chosen, remaining
+
+
+def foundation_groups(entries: list[StackEntry] | None = None) -> list[dict]:
+    """Return one exclusive choice per foundation kind, in build order.
+
+    The selector this feeds is a set of radio groups rather than a list of checkboxes, because
+    the underlying fact is a choice and not a set: a Target has one language, one web server, one
+    database. Presenting them as checkboxes invites the selection that ``foundation_defects``
+    then refuses, which is the wrong end of the process to find out.
+
+    Order is tier order — language first, then the platform built into it, and inside the platform
+    tier the sub-order ``2.1``/``2.2``/``2.3`` — so the page reads in the order the work is done.
+
+    ``selected`` is what the stack currently names. A stack with no rows at all is a Target
+    nobody has decided for yet and takes :data:`DEFAULT_FOUNDATIONS`; a stack that has rows and
+    names no web server has decided it has none, and is left alone.
+    """
+    from drydock.rigging_contract import chain_rank, foundation_kinds, tier_label, tier_number
+
+    rows = list(entries or [])
+    chosen = split_foundations(rows)[0] if rows else dict(DEFAULT_FOUNDATIONS)
+
+    def rank(group: tuple[str, str, list[str]]) -> tuple[int, int, str]:
+        tier, kind, _ = group
+        return (*chain_rank(tier, kind), kind)
+
+    return [
+        {
+            "kind": kind,
+            "tier": tier,
+            "tier_number": tier_number(tier),
+            "tier_label": tier_label(tier, kind),
+            "label": _KIND_LABELS.get(kind, kind.replace("-", " ").title()),
+            "options": options,
+            "selected": chosen.get(kind, ""),
+        }
+        for tier, kind, options in sorted(foundation_kinds(), key=rank)
+    ]
+
+
+def with_foundations(entries: list[StackEntry], chosen: dict[str, str]) -> list[StackEntry]:
+    """Return ``entries`` with its foundation rows replaced by ``chosen`` (``{kind: filename}``).
+
+    Every non-foundation row survives untouched and in place, and the foundation rows are
+    re-emitted first, in build order. A kind mapped to an empty value is dropped, which is how a
+    Target says it has no web server.
+    """
+    remaining = split_foundations(entries)[1]
+    added = [
+        StackEntry(technology=name.removesuffix(".md"), rigging=name)
+        for group in foundation_groups(entries)
+        if (name := (chosen.get(group["kind"]) or "").strip())
+    ]
+    return added + remaining

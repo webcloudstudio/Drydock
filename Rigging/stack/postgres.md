@@ -1,220 +1,96 @@
-# PostgreSQL Best Practices
+# PostgreSQL
 
-**Version:** 20260909 V2
+**Version:** 20260919 V3
+**Tier:** platform
 **Category:** Persistence
-**Description:** PostgreSQL database patterns: schema, queries, and connection management
+**Foundation:** database
+**Description:** PostgreSQL as a Drydock store: what it enforces, how it differs from SQLite, and how a Target reaches it.
 
-Technology reference for PostgreSQL in Python applications. This file does not change between projects.
+Technology reference. This file does not change between projects.
 
-Prerequisites: `stack/python.md`
-
-**SQLAlchemy override**: Python relational Targets use SQLAlchemy 2 repositories and Alembic.
-The direct `psycopg2` examples below are driver background only; builders do not expose cursors or
-write raw SQL outside persistence implementations and Alembic revisions.
+Prerequisite: `stack/persistence.md`
 
 ---
 
-## Connection Setup
+## Foundation Contract
 
-**Rule**: Use `psycopg2` with connection pooling. Store connection string in environment variable.
+The published shape of this foundation. Drydock synthesizes the story that builds it and every
+acceptance criterion writes against these names. Carried verbatim into `postgres_compact.md`.
 
-```python
-import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from psycopg2.pool import SimpleConnectionPool
-
-DATABASE_URL = os.environ['DATABASE_URL']
-
-pool = SimpleConnectionPool(minconn=1, maxconn=10, dsn=DATABASE_URL)
-
-def get_db():
-    conn = pool.getconn()
-    conn.autocommit = False
-    return conn
-
-def release_db(conn):
-    pool.putconn(conn)
-```
-
-### With Context Manager
+- package: persistence
+- entry: open_session() -> Session
+- fixture: db_session
+- fixture_source: persistence/testing.py
 
 ```python
+# persistence/testing.py
 from contextlib import contextmanager
+from persistence import open_session
 
 @contextmanager
-def db_connection():
-    conn = pool.getconn()
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        pool.putconn(conn)
+def db_session():
+    with open_session() as session:
+        yield session
+
+# conftest.py
+import pytest
+from persistence import testing
+
+@pytest.fixture
+def db_session():
+    with testing.db_session() as session:
+        yield session
 ```
 
-**Why**: Connection pooling avoids overhead. Context manager ensures proper commit/rollback.
+A criterion imports `db_session` from `persistence.testing` and uses it as a context manager —
+`with db_session() as session:` — against the built database layer, without pytest. The pytest
+suite receives the same session through the `conftest.py` fixture. Neither opens a connection
+of its own.
 
 ---
 
-## Schema Design
+## You do not write the access layer
 
-**Rule**: Use native types (TIMESTAMP, BOOLEAN, JSONB). Use JSONB for extensible fields.
+Drydock generates the persistence package from `DATABASE.md` and copies the PostgreSQL engine in
+unchanged. Connection handling, parameter binding, `RETURNING`, and row mapping all live there. A
+hand-written cursor, connection pool, or SQL string is a review failure.
 
-```sql
-CREATE TABLE IF NOT EXISTS items (
-    id          SERIAL PRIMARY KEY,
-    name        TEXT UNIQUE NOT NULL,
-    status      TEXT DEFAULT 'active',
-    extra       JSONB DEFAULT '{}',
-    created_at  TIMESTAMP DEFAULT NOW(),
-    updated_at  TIMESTAMP DEFAULT NOW()
-);
+**By language**
 
-CREATE OR REPLACE FUNCTION update_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+| Language | Adapter | What the build writes |
+|---|---|---|
+| Python | `Rigging/database/postgres.py`, shipped | callers only — `db.<table>.<verb>(...)` |
+| anything else | none yet | nothing; a Target declaring a `DATABASE.md` in another language fails before planning |
 
-CREATE TRIGGER items_updated
-    BEFORE UPDATE ON items
-    FOR EACH ROW
-    EXECUTE FUNCTION update_timestamp();
-```
+The Python engine imports its DB-API driver lazily and accepts `psycopg` or `psycopg2`. Add
+`psycopg[binary]` to the project's dependencies when the production DSN is PostgreSQL.
 
-### JSONB Queries
+## Role
 
-```sql
-SELECT * FROM items WHERE extra->>'tech_stack' = 'flask';
-UPDATE items SET extra = jsonb_set(extra, '{port}', '8080') WHERE id = 1;
-SELECT * FROM items WHERE extra ? 'workflow';
-```
+PostgreSQL is the production engine. It is selected at runtime from a `postgresql://` DSN; the
+same build runs SQLite in development and test.
 
-**Why**: JSONB is indexable and queryable unlike plain TEXT JSON.
+## What it enforces that SQLite does not
 
----
+- **Column length.** `VARCHAR(n)` is real. A value longer than `n` is rejected.
+- **Types.** A column accepts only its declared type.
+- **Creation order.** A referenced table must exist before the table citing it. Drydock emits
+  `CREATE TABLE` in dependency order for this reason, and refuses a foreign-key cycle.
 
-## Queries
+Because of the first two, a green SQLite test is not evidence about lengths or types. Treat
+PostgreSQL as the authority on both.
 
-**Rule**: Always use parameterized queries with `%s` placeholders. Never interpolate.
+## Schema changes
 
-```python
-# CORRECT
-cursor = db.execute('SELECT * FROM items WHERE id = %s', (item_id,))
+Within a release the schema is built once, at the DATABASE build step, and never migrated.
+Across releases PostgreSQL does support the changes that matter: `ALTER TABLE … ALTER COLUMN …
+TYPE varchar(n)` widens without a table rewrite, and `DROP NOT NULL` is instant while
+`SET NOT NULL` scans the table.
 
-# NEVER
-db.execute(f"SELECT * FROM items WHERE id = {item_id}")
-```
+## Guardrails
 
-### Helper Patterns
-
-```python
-def query(sql, params=(), one=False):
-    with db_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql, params)
-            if one:
-                return cur.fetchone()
-            return cur.fetchall()
-
-def execute(sql, params=()):
-    with db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            if cur.description:
-                return cur.fetchone()
-            return cur.rowcount
-```
-
----
-
-## Migrations
-
-**Rule**: Use numbered migration files. Track applied migrations in a table.
-
-```
-migrations/
-├── 001_initial_schema.sql
-├── 002_add_priority_column.sql
-└── 003_create_audit_table.sql
-```
-
-```python
-def run_migrations(db):
-    db.execute('''
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-            version INTEGER PRIMARY KEY,
-            applied_at TIMESTAMP DEFAULT NOW()
-        )
-    ''')
-    db.commit()
-
-    applied = {r[0] for r in db.execute('SELECT version FROM schema_migrations').fetchall()}
-
-    migration_files = sorted(glob.glob('migrations/*.sql'))
-    for f in migration_files:
-        version = int(os.path.basename(f).split('_')[0])
-        if version not in applied:
-            with open(f) as sql_file:
-                db.execute(sql_file.read())
-            db.execute('INSERT INTO schema_migrations (version) VALUES (%s)', (version,))
-            db.commit()
-            logger.info('Applied migration %s', f)
-```
-
-**Why**: Numbered files are auditable, version-controlled, reproducible.
-
----
-
-## Indexing
-
-**Rule**: Index columns in WHERE, JOIN, ORDER BY. Use partial indexes for filtered queries.
-
-```sql
-CREATE INDEX idx_items_status ON items(status);
-CREATE INDEX idx_items_active ON items(status) WHERE status = 'active';
-CREATE INDEX idx_items_tech ON items USING GIN (extra);
-```
-
----
-
-## Backup
-
-**Rule**: Use `pg_dump` for logical backups. Schedule via bin/ scripts.
-
-```bash
-#!/bin/bash
-# CommandCenter Operation
-# Name: Database Backup
-# Type: batch
-
-set -euo pipefail
-TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
-BACKUP_DIR="data/backups"
-mkdir -p "$BACKUP_DIR"
-
-pg_dump "$DATABASE_URL" > "$BACKUP_DIR/backup_${TIMESTAMP}.sql" 2>&1
-
-# Keep last 7 backups
-ls -t "$BACKUP_DIR"/backup_*.sql | tail -n +8 | xargs -r rm
-```
-
----
-
-## When to Use PostgreSQL Over SQLite
-
-| Need | Use PostgreSQL |
-|------|---------------|
-| Multiple concurrent writers | Yes |
-| Multi-server deployment | Yes |
-| Full-text search | Yes |
-| JSONB with indexing | Yes |
-| Dataset > 1GB | Yes |
-| Complex queries (CTEs, window functions) | Yes |
-
-For single-server tools, prefer SQLite (see `stack/sqlite.md`).
+- Never import `psycopg` or `psycopg2` outside the generated `persistence/` package.
+- Never build SQL by formatting values into a string; the engine binds parameters.
+- Never create or alter schema at application startup.
+- Never store credentials in the repository; the DSN comes from the environment through the typed
+  `Config` class.

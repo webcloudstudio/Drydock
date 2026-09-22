@@ -1,139 +1,164 @@
-<!-- Compacted from cloud-client-library.md on 2026-06-22 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/cloud-client-library.md sha256=0c7e6a43b9b2ae9164a644af2dd2b68ebbdf7b85c847cd3e032ab6cdd3b2eee5 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
-# Cloud Client Library — Usage Surface
+# Cloud Client Library Best Practices — Contract Surface
 
-## Configuration
+## Cloud boundary
 
-### CLOUD_ORG
-Environment variable that sets the tenant/org identifier resolved by `CloudClient()`.
+### Rule: single-cloud-boundary
+Project and platform code access cloud capabilities only through `CloudClient` and never import `boto3`, construct AWS clients, build DynamoDB keys, sign requests, or store API Gateway URLs.
 
-Returns: N/A — read at construction time.
-
-### CLOUD_API_ENDPOINT
-Environment variable that sets the API Gateway base URL resolved by `CloudClient()`.
-
-Returns: N/A — read at construction time.
-
-### PROJECT_SLUG
-Environment variable that sets the calling project slug resolved by `CloudClient()`.
-
-Returns: N/A — read at construction time.
-
-### AWS_PROFILE
-Environment variable that selects the boto3 credential profile for SigV4 signing.
-
-Returns: N/A — read at construction time.
-
-## Client
+## Client API
 
 ### CloudClient
-Constructs the cloud client, resolving org, profile, and endpoint from environment variables.
+Provides resource clients for catalog, reporting, queues, and file sharing.
 
-`Returns: CloudClient — instance exposing `.catalog`, `.report`, `.queue`, `.share` sub-clients`
+Returns:
 
-## Catalog
+| Attribute | Type |
+|---|---|
+| `catalog` | `CatalogClient` |
+| `report` | `ReportClient` |
+| `queue` | `QueueClient` |
+| `share` | `ShareClient` |
 
 ### CatalogClient.publish
-Publishes project metadata and capabilities to the catalog.
+Publishes project metadata and capabilities.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| project_meta | dict | yes | Project-level metadata |
-| capabilities | list[dict] | yes | List of capability descriptors |
+| Parameter | Type |
+|---|---|
+| `project_meta` | `dict` |
+| `capabilities` | `list[dict]` |
 
-`Returns: None`
+Returns: `None`.
 
 ### CatalogClient.read
-Reads the catalog, returning the whole org tree or a single project subtree.
+Reads the whole organization tree or one project subtree.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| project | str \| None | no | Project slug; omit for the full org tree |
+| Parameter | Type |
+|---|---|
+| `project` | `str \| None` |
 
-`Returns: dict — org tree or project subtree`
+Returns: `dict`.
 
 ### CatalogClient.read_capabilities
 Reads capabilities, optionally filtered by tags.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| tags | list[str] \| None | no | Tags to filter by; omit for all capabilities |
+| Parameter | Type |
+|---|---|
+| `tags` | `list[str] \| None` |
 
-`Returns: list[dict] — matching capability records`
-
-## Report
+Returns: `list[dict]`.
 
 ### ReportClient.heartbeat
-Posts a heartbeat signal; best-effort, never raises on transport error.
+Reports a workload heartbeat as best-effort telemetry.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| state | str | yes | One of: `OK`, `WARNING`, `ERROR`, `CRITICAL` |
-| message | str | no | Human-readable detail; defaults to `""` |
+| Parameter | Type | Required |
+|---|---|---|
+| `state` | `str` | Yes |
+| `message` | `str` | No; defaults to `""` |
 
-`Returns: None`
+Returns: `None`.
+
+Constraints: `state` is one of `OK`, `WARNING`, `ERROR`, or `CRITICAL`. Transport errors are swallowed and never raised.
 
 ### ReportClient.event
-Posts a structured event; best-effort, never raises on transport error.
+Reports a severity-level event as best-effort telemetry.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| severity | str | yes | One of: `INFORMATION`, `WARNING`, `ERROR`, `CRITICAL` |
-| message | str | yes | Human-readable detail |
+| Parameter | Type |
+|---|---|
+| `severity` | `str` |
+| `message` | `str` |
 
-`Returns: None`
+Returns: `None`.
 
-## Queue
+Constraints: `severity` is one of `INFORMATION`, `WARNING`, `ERROR`, or `CRITICAL`. Transport errors are swallowed and never raised.
 
 ### QueueClient.submit
-Submits a job to an async queue.
+Submits a payload to an asynchronous queue.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| queue | str | yes | Queue name |
-| service | str | yes | Target service name |
-| tool | str | yes | Tool to invoke |
-| payload | dict | yes | Job payload |
-| priority | str | no | `"normal"` (default) or other priority value |
+| Parameter | Type | Required |
+|---|---|---|
+| `queue` | `str` | Yes |
+| `service` | `str` | Yes |
+| `tool` | `str` | Yes |
+| `payload` | `dict` | Yes |
+| `priority` | `str` | No; defaults to `"normal"` |
 
-`Returns: str — job/message identifier`
+Returns: `str`.
 
 ### QueueClient.drain
-Drains a queue locally and returns message counts.
+Drains queued work locally.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| queue | str \| None | no | Queue name; omit to drain all queues |
+| Parameter | Type |
+|---|---|
+| `queue` | `str \| None` |
 
-`Returns: dict — counts of drained messages`
-
-## Share
+Returns: `dict` containing drain counts.
 
 ### ShareClient.put
-Uploads a local file to object storage.
+Uploads a local file to the object/file share.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| local_path | str | yes | Filesystem path of the file to upload |
-| key | str \| None | no | Storage key; derived from filename if omitted |
+| Parameter | Type |
+|---|---|
+| `local_path` | `str` |
+| `key` | `str \| None` |
 
-`Returns: str — share key for the uploaded object`
+Returns: `str` share key.
 
 ### ShareClient.get
-Downloads an object from object storage to a local destination.
+Downloads a shared file to a destination.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| key | str | yes | Share key of the object to retrieve |
-| dest | str | yes | Local filesystem path to write the file |
+| Parameter | Type |
+|---|---|
+| `key` | `str` |
+| `dest` | `str` |
 
-`Returns: None`
+Returns: `None`.
 
 ### ShareClient.list
-Lists objects in object storage, optionally filtered by key prefix.
+Lists shared files, optionally filtered by prefix.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| prefix | str \| None | no | Key prefix to filter by; omit for all objects |
+| Parameter | Type |
+|---|---|
+| `prefix` | `str \| None` |
 
-`Returns: list[dict] — object descriptors`
+Returns: `list[dict]`.
+
+## Configuration and authentication
+
+### CLOUD_ORG
+Identifies the tenant or organization.
+
+### CLOUD_API_ENDPOINT
+Provides the API Gateway base URL.
+
+### PROJECT_SLUG
+Identifies the calling project.
+
+### AWS_PROFILE
+Selects the AWS profile used for credential resolution.
+
+### Rule: environment-configuration
+`CloudClient()` resolves organization, API endpoint, project slug, and AWS identity from the workstation environment; these values must not be hardcoded.
+
+### Rule: sigv4-authentication
+Requests use the resolved AWS identity with SigV4 for the `execute-api` service and do not use a separate API key.
+
+## Errors and reliability
+
+### Rule: typed-data-operation-errors
+`catalog.*`, `queue.*`, and `share.*` raise `CloudAuthError`, `CloudNotFound`, or `CloudTransportError` when operations fail.
+
+### Rule: retry-policy
+All network calls retry with exponential backoff and jitter.
+
+## Distribution
+
+### Rule: pinned-consumer-dependency
+Consumers install the independently versioned library as a pinned git dependency, for example `cloud-client @ git+https://github.com/{org}/cloud-client.git@v0.2.0`.
+
+### Rule: semantic-versioning
+Breaking API changes require a major version increment, and each release is tagged.
+
+### Rule: library-quality
+The library repository provides `pyproject.toml`, uses `uv`, passes `ruff`, and ships a pytest suite backed by local DynamoDB/SQS mocks.

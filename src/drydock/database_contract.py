@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 import subprocess
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -19,20 +19,60 @@ from drydock.errors import SpecificationError
 
 _SECTION_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 _H3_RE = re.compile(r"^###\s+([A-Z][A-Z0-9-]*-\d{3})\s+—\s+(.+?)\s*$", re.MULTILINE)
+#: One ``| Owner | <name> |`` row, split so the cell is replaceable without touching the table.
+_OWNER_CELL_RE = re.compile(
+    r"(?P<head>^\|\s*Owner\s*\|)(?P<owner>[^|\n]*)(?P<tail>\|)", re.MULTILINE
+)
 _TABLE_ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$")
 _INPUT_OUTPUT_RE = re.compile(r"^(Input|Output):\s*(.+?)\s*$", re.MULTILINE)
 _INTERFACE_RE = re.compile(
     r"^\s*-\s+`(?P<id>[A-Z][A-Z0-9-]*-\d{3})`\s+—\s+"
-    r"(?P<access>read|write)\s*:\s*.*?\s+-\s+supplies:\s*(?P<input>.*?)"
+    r"(?P<access>read-write|read|write)\s*:\s*.*?\s+-\s+supplies:\s*(?P<input>.*?)"
     r"\s+-\s+returns:\s*(?P<output>.*?)\s*$",
     re.MULTILINE | re.IGNORECASE,
+)
+_INTERFACE_BULLET_RE = re.compile(r"^\s*-\s+\S")
+#: A Blueprint that reaches no repository still often writes the heading, because a Screen that
+#: delegates persistence to a Feature is saying something true about itself. Without a declared
+#: form for that, the only way to say it is prose, and prose in this section is indistinguishable
+#: from a citation the author got wrong. ``- None`` makes the empty claim writable.
+_INTERFACE_NONE_RE = re.compile(r"^\s*-\s+none\b", re.IGNORECASE)
+#: Quoted verbatim in the parse failure. The repair loop is handed the message and nothing else,
+#: so a message that names the defect without showing the accepted form cannot be repaired: five
+#: passes of ``malformed ## Database Interface entry`` returned the same prose five times.
+_INTERFACE_FORM = (
+    "each entry is one line "
+    "``- `FEATURE-DOMAIN-001` — read: <operation> - supplies: `a`, `b` - returns: `c`, `d``, "
+    "and a Blueprint that reaches no repository declares ``- None — <why>.``"
 )
 _MIGRATION_FILE_RE = re.compile(
     r"^MIGRATION-(?:(?P<ticket>TICKET-\d+)-)?(?P<scope>[A-Z][A-Z0-9-]*(?:-\d{3})?)\.md$"
 )
 _OPERATION_ID_RE = re.compile(r"\b([A-Z][A-Z0-9-]*-\d{3})\b")
 _COMPATIBILITY = frozenset({"unchanged", "data", "rebuild"})
+#: Declared access levels. ``read-write`` exists because a repository surface is often genuinely
+#: both — ``settings.get``/``set``/``delete`` is one operation set, and forcing it apart invents a
+#: split the declaration never intended. A citation may claim less than the pattern grants but
+#: never more, so ``_ACCESS_GRANTS`` maps each declared level to the citations it admits.
+_ACCESS_GRANTS = {
+    "read": frozenset({"read"}),
+    "write": frozenset({"write"}),
+    "read-write": frozenset({"read", "write", "read-write"}),
+}
 _MIGRATION_STATES = frozenset({"planned", "built", "applied"})
+#: A repository operation names one table and one verb. The cell is the only place the
+#: declaration says which table a pattern reaches, so its shape is load-bearing rather than
+#: cosmetic: table coverage — every declared table reached by some pattern — is decided from
+#: these prefixes. Free text here makes that check guess, and a check that guesses about
+#: persistence is worse than no check at all.
+#:
+#: The verb is a closed set because the generated persistence layer builds the statement rather
+#: than carrying SQL text. A builder for five shapes is small and testable; one for an open verb
+#: set is a SQL generator, which is the thing this design exists to avoid.
+_REPOSITORY_VERBS = ("get", "list", "create", "update", "delete")
+_REPOSITORY_OPERATION_RE = re.compile(
+    r"^[a-z][a-z0-9_]*\.(?:" + "|".join(_REPOSITORY_VERBS) + r")$"
+)
 
 
 @dataclass(frozen=True)
@@ -53,6 +93,12 @@ class AccessPattern:
     inputs: tuple[Field, ...]
     output_name: str
     outputs: tuple[Field, ...]
+    operations: tuple[str, ...] = ()
+
+    @property
+    def tables(self) -> frozenset[str]:
+        """Tables this pattern reaches, read from the prefix of each repository operation."""
+        return frozenset(operation.split(".", 1)[0] for operation in self.operations)
 
 
 @dataclass(frozen=True)
@@ -64,15 +110,167 @@ class DatabaseContract:
 
 
 @dataclass(frozen=True)
+class ColumnSpec:
+    """One column's declared type and constraints, parsed from its ``| Field | Type |`` row."""
+
+    name: str
+    sql_type: str
+    primary_key: bool = False
+    not_null: bool = False
+    unique: bool = False
+    default: str | None = None
+    references: tuple[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class TableConstraint:
+    """A composite ``UNIQUE`` or ``INDEX`` spanning more than one column."""
+
+    kind: str
+    columns: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class SQLiteTable:
     """One table declared by the SQLite-facing portion of ``DATABASE.md``."""
 
     name: str
     fields: tuple[Field, ...]
+    columns: tuple[ColumnSpec, ...] = ()
+    constraints: tuple[TableConstraint, ...] = ()
 
 
 _SQLITE_TABLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-_SQLITE_TYPES = frozenset({"BLOB", "INTEGER", "NUMERIC", "REAL", "TEXT"})
+#: Declared column types. ``VARCHAR(n)`` carries a length because PostgreSQL enforces one and
+#: SQLite parses the identical declaration while ignoring it, so a single rendering serves both
+#: engines and no engine-specific stripping is needed.
+_BARE_TYPES = frozenset({"INTEGER", "NUMERIC", "REAL", "TEXT"})
+_VARCHAR_RE = re.compile(r"^VARCHAR\([1-9][0-9]{0,5}\)$")
+_COLUMN_MODIFIERS = frozenset({"PK", "NOT_NULL", "UNIQUE"})
+#: ``REFERENCES`` and ``DEFAULT`` are the two type-cell entries carrying an argument, so they are
+#: lifted out before the remainder is tokenized on whitespace.
+_REFERENCES_RE = re.compile(
+    r"\bREFERENCES\s+([a-z][a-z0-9_]*)\s*\(\s*([a-z][a-z0-9_]*)\s*\)", re.IGNORECASE
+)
+#: This DDL is rendered by Drydock and then executed against a live connection, so the literal
+#: set is closed rather than free text: an open DEFAULT cell is a DDL injection path into
+#: Drydock's own process, not merely a malformed declaration.
+_DEFAULT_RE = re.compile(
+    r"\bDEFAULT\s+(?P<literal>'[^']*'|-?\d+(?:\.\d+)?|NULL|CURRENT_TIMESTAMP|CURRENT_DATE"
+    r"|CURRENT_TIME)(?=\s|$)",
+    re.IGNORECASE,
+)
+_NOT_NULL_RE = re.compile(r"\bNOT\s+NULL\b", re.IGNORECASE)
+#: The accepted form marks optional entries with square brackets, and a model reading it writes
+#: ``TEXT NOT NULL [UNIQUE]`` often enough that repair passes return the same cell unchanged. The
+#: brackets carry no meaning, so a bracketed modifier is unwrapped rather than refused. Only a
+#: bracket enclosing a known modifier is removed, so a quoted default such as ``'[]'`` survives.
+_BRACKETED_MODIFIER_RE = re.compile(
+    r"\[\s*(PK|NOT\s+NULL|UNIQUE|DEFAULT\s+(?:'[^']*'|[^\s\]]+)"
+    r"|REFERENCES\s+[a-z][a-z0-9_]*\s*\(\s*[a-z][a-z0-9_]*\s*\))\s*\]",
+    re.IGNORECASE,
+)
+#: A composite constraint spans columns, so it cannot live in a per-column row. It is declared as
+#: a bullet under the table's field table.
+_TABLE_CONSTRAINT_RE = re.compile(
+    r"^-\s+(?P<kind>UNIQUE|INDEX)\s*\((?P<columns>[^)]*)\)\s*$", re.IGNORECASE
+)
+#: Quoted verbatim in the parse failure, for the same reason as ``_INTERFACE_FORM``: the repair
+#: loop is handed the message and nothing else.
+_COLUMN_FORM = (
+    "a type cell is `<TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] "
+    "[REFERENCES <table>(<column>)]`, where <TYPE> is INTEGER, NUMERIC, REAL, TEXT, or "
+    "VARCHAR(<n>), and <literal> is a single-quoted string, a number, NULL, CURRENT_TIMESTAMP, "
+    "CURRENT_DATE, or CURRENT_TIME; brackets mark optional entries and are not written, "
+    "as in `TEXT NOT NULL UNIQUE`"
+)
+
+
+def _parse_column(field: Field, *, table: str, source: str) -> ColumnSpec:
+    """Read one ``| Field | Type |`` cell into a validated column declaration.
+
+    ``REFERENCES`` and ``DEFAULT`` carry arguments containing spaces, so both are lifted out of
+    the cell before the remainder is tokenized. What is left must be the type and a closed set of
+    bare modifiers; anything else is refused by name rather than ignored, because a modifier that
+    parses as nothing is a constraint the author believes exists and the database does not have.
+    """
+    cell = _BRACKETED_MODIFIER_RE.sub(r"\1", field.type.strip())
+    references: tuple[str, str] | None = None
+    reference = _REFERENCES_RE.search(cell)
+    if reference is not None:
+        references = (reference.group(1), reference.group(2))
+        cell = f"{cell[: reference.start()]} {cell[reference.end() :]}".strip()
+    default: str | None = None
+    literal = _DEFAULT_RE.search(cell)
+    if literal is not None:
+        default = literal.group("literal")
+        cell = f"{cell[: literal.start()]} {cell[literal.end() :]}".strip()
+    if re.search(r"\bDEFAULT\b", cell, re.IGNORECASE):
+        raise SpecificationError(
+            f"{source}: {table}.{field.name} has an unreadable DEFAULT value — {_COLUMN_FORM}"
+        )
+    tokens = _NOT_NULL_RE.sub("NOT_NULL", cell).split()
+    if not tokens:
+        raise SpecificationError(f"{source}: {table}.{field.name} names no type — {_COLUMN_FORM}")
+    sql_type = tokens[0].upper()
+    if sql_type not in _BARE_TYPES and not _VARCHAR_RE.fullmatch(sql_type):
+        raise SpecificationError(
+            f"{source}: {table}.{field.name} has unsupported type {field.type!r} — {_COLUMN_FORM}"
+        )
+    modifiers = [token.upper() for token in tokens[1:]]
+    unknown = [token for token in modifiers if token not in _COLUMN_MODIFIERS]
+    if unknown:
+        raise SpecificationError(
+            f"{source}: {table}.{field.name} has unknown column modifier(s) "
+            f"{', '.join(repr(token.replace('NOT_NULL', 'NOT NULL')) for token in unknown)} — "
+            f"{_COLUMN_FORM}"
+        )
+    if len(set(modifiers)) != len(modifiers):
+        raise SpecificationError(
+            f"{source}: {table}.{field.name} repeats a column modifier — {_COLUMN_FORM}"
+        )
+    return ColumnSpec(
+        name=field.name,
+        sql_type=sql_type,
+        primary_key="PK" in modifiers,
+        not_null="NOT_NULL" in modifiers,
+        unique="UNIQUE" in modifiers,
+        default=default,
+        references=references,
+    )
+
+
+def _table_constraints(
+    body: str, *, table: str, source: str, columns: tuple[ColumnSpec, ...]
+) -> tuple[TableConstraint, ...]:
+    """Read the composite ``UNIQUE``/``INDEX`` bullets declared under one table's field table."""
+    declared = {column.name for column in columns}
+    constraints: list[TableConstraint] = []
+    for line in body.splitlines():
+        match = _TABLE_CONSTRAINT_RE.match(line.strip())
+        if match is None:
+            continue
+        names = tuple(
+            item
+            for item in (part.strip().strip("`") for part in match["columns"].split(","))
+            if item
+        )
+        if len(names) < 2:
+            raise SpecificationError(
+                f"{source}: {table} declares a composite {match['kind'].upper()} over "
+                f"{len(names)} column(s). A composite constraint spans two or more; a single "
+                "column states UNIQUE in its own type cell."
+            )
+        missing = [item for item in names if item not in declared]
+        if missing:
+            raise SpecificationError(
+                f"{source}: {table} constrains undeclared column(s) "
+                f"{', '.join(repr(item) for item in missing)}"
+            )
+        if len(set(names)) != len(names):
+            raise SpecificationError(f"{source}: {table} repeats a column in one constraint")
+        constraints.append(TableConstraint(kind=match["kind"].upper(), columns=names))
+    return tuple(constraints)
 
 
 def sqlite_schema_tables(text: str, *, source: str = "DATABASE.md") -> tuple[SQLiteTable, ...]:
@@ -83,45 +281,202 @@ def sqlite_schema_tables(text: str, *, source: str = "DATABASE.md") -> tuple[SQL
     database contracts alone.  The result is used to prove the declaration can create and open a
     SQLite store before any model is asked to implement an application adapter.
     """
+    sections = list(_SECTION_RE.finditer(text))
     tables: list[SQLiteTable] = []
-    for match in _SECTION_RE.finditer(text):
+    for index, match in enumerate(sections):
         name = match.group(1).strip().strip("`")
         if not _SQLITE_TABLE_NAME_RE.fullmatch(name):
             continue
         fields = _field_table(text, match.end())
         if not fields:
             continue
-        names: set[str] = set()
+        seen: set[str] = set()
+        columns: list[ColumnSpec] = []
         for field in fields:
             if not _SQLITE_TABLE_NAME_RE.fullmatch(field.name):
                 raise SpecificationError(f"{source}: {name} has invalid field name {field.name!r}")
-            if field.name in names:
+            if field.name in seen:
                 raise SpecificationError(f"{source}: {name} declares {field.name!r} more than once")
-            names.add(field.name)
-            sql_type = field.type.upper().split(maxsplit=1)[0]
-            if sql_type not in _SQLITE_TYPES:
-                raise SpecificationError(
-                    f"{source}: {name}.{field.name} has unsupported SQLite type {field.type!r}"
-                )
-        tables.append(SQLiteTable(name, fields))
+            seen.add(field.name)
+            columns.append(_parse_column(field, table=name, source=source))
+        stop = sections[index + 1].start() if index + 1 < len(sections) else len(text)
+        tables.append(
+            SQLiteTable(
+                name,
+                fields,
+                tuple(columns),
+                _table_constraints(
+                    text[match.end() : stop], table=name, source=source, columns=tuple(columns)
+                ),
+            )
+        )
     names = [table.name for table in tables]
     if len(names) != len(set(names)):
         raise SpecificationError(f"{source}: duplicate SQLite table declaration")
+    _validate_references(tuple(tables), source=source)
     return tuple(tables)
+
+
+def _validate_references(tables: tuple[SQLiteTable, ...], *, source: str) -> None:
+    """Refuse a foreign key whose target the declaration never states.
+
+    A key pointing at a table or column that does not exist is accepted silently by SQLite and
+    refused by PostgreSQL, so the declaration would build in test and fail in production.
+    """
+    declared = {table.name: {column.name for column in table.columns} for table in tables}
+    for table in tables:
+        for column in table.columns:
+            if column.references is None:
+                continue
+            target, target_column = column.references
+            if target not in declared:
+                raise SpecificationError(
+                    f"{source}: {table.name}.{column.name} references table {target!r}, which "
+                    "this declaration does not declare"
+                )
+            if target_column not in declared[target]:
+                raise SpecificationError(
+                    f"{source}: {table.name}.{column.name} references {target}.{target_column}, "
+                    f"which {target} does not declare"
+                )
+
+
+def _creation_order(tables: tuple[SQLiteTable, ...], *, source: str) -> tuple[SQLiteTable, ...]:
+    """Order tables so every foreign-key target is created before the table citing it.
+
+    SQLite tolerates any order; PostgreSQL does not. Rendering one ordering for both engines
+    keeps the generated schema portable rather than accidentally SQLite-shaped.
+    """
+    by_name = {table.name: table for table in tables}
+    ordered: list[SQLiteTable] = []
+    placed: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(table: SQLiteTable) -> None:
+        if table.name in placed:
+            return
+        if table.name in visiting:
+            raise SpecificationError(
+                f"{source}: foreign keys form a cycle through {table.name!r}. Break it by "
+                "dropping one REFERENCES and enforcing that edge in the repository."
+            )
+        visiting.add(table.name)
+        for column in table.columns:
+            if column.references is not None and column.references[0] != table.name:
+                target = by_name.get(column.references[0])
+                if target is not None:
+                    visit(target)
+        visiting.discard(table.name)
+        placed.add(table.name)
+        ordered.append(table)
+
+    for table in tables:
+        visit(table)
+    return tuple(ordered)
+
+
+def _column_sql(column: ColumnSpec) -> str:
+    """Render one column definition, identical for SQLite and PostgreSQL."""
+    parts = [f'"{column.name}"', column.sql_type]
+    if column.primary_key:
+        parts.append("PRIMARY KEY")
+    if column.not_null:
+        parts.append("NOT NULL")
+    if column.unique:
+        parts.append("UNIQUE")
+    if column.default is not None:
+        parts.append(f"DEFAULT {column.default}")
+    if column.references is not None:
+        parts.append(f'REFERENCES "{column.references[0]}"("{column.references[1]}")')
+    return " ".join(parts)
 
 
 def sqlite_schema_sql(tables: Iterable[SQLiteTable]) -> str:
     """Render idempotent SQLite DDL from :func:`sqlite_schema_tables` output."""
+    ordered = _creation_order(tuple(tables), source="DATABASE.md")
     statements: list[str] = []
+    indexes: list[str] = []
+    for table in ordered:
+        definitions = [_column_sql(column) for column in table.columns]
+        for constraint in table.constraints:
+            names = ", ".join(f'"{item}"' for item in constraint.columns)
+            if constraint.kind == "UNIQUE":
+                definitions.append(f"UNIQUE ({names})")
+            else:
+                index = f"{table.name}_{'_'.join(constraint.columns)}_idx"
+                indexes.append(f'CREATE INDEX IF NOT EXISTS "{index}" ON "{table.name}" ({names});')
+        statements.append(f'CREATE TABLE IF NOT EXISTS "{table.name}" ({", ".join(definitions)});')
+    return "\n".join(statements + indexes)
+
+
+def derived_indexes(
+    tables: tuple[SQLiteTable, ...], contract: DatabaseContract
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Indexes the declaration implies, as ``(table, columns)`` pairs in a stable order.
+
+    An index is derived rather than decided wherever the declaration already states the answer:
+    a foreign key is looked up by its child column, and a ``read`` pattern's ``Input:`` fields are
+    the predicate it filters on. Deriving them keeps the schema reproducible — an index invented
+    at build time and recorded only in a decision log is dropped by the next render, and nothing
+    detects the loss. Anything genuinely optional is declared as an ``- INDEX (...)`` bullet
+    instead.
+
+    ``read-write`` is excluded on purpose: its inputs are part predicate and part payload, and the
+    declaration does not say which, so deriving from it would index columns nothing searches.
+    """
+    by_name = {table.name: table for table in tables}
+    covered: set[tuple[str, tuple[str, ...]]] = set()
     for table in tables:
-        columns = []
-        for field in table.fields:
-            tokens = field.type.upper().split()
-            sql_type = tokens[0]
-            suffix = " PRIMARY KEY" if "PK" in tokens else ""
-            columns.append(f'"{field.name}" {sql_type}{suffix}')
-        statements.append(f'CREATE TABLE IF NOT EXISTS "{table.name}" ({", ".join(columns)});')
-    return "\n".join(statements)
+        for column in table.columns:
+            if column.primary_key or column.unique:
+                covered.add((table.name, (column.name,)))
+        for constraint in table.constraints:
+            covered.add((table.name, constraint.columns))
+    derived: list[tuple[str, tuple[str, ...]]] = []
+
+    def offer(table: str, columns: tuple[str, ...]) -> None:
+        key = (table, columns)
+        if not columns or key in covered:
+            return
+        covered.add(key)
+        derived.append(key)
+
+    for table in tables:
+        for column in table.columns:
+            if column.references is not None:
+                offer(table.name, (column.name,))
+    for pattern in contract.patterns:
+        if pattern.access != "read":
+            continue
+        for operation in pattern.operations:
+            table = by_name.get(operation.split(".", 1)[0])
+            if table is None:
+                continue
+            declared = {column.name for column in table.columns}
+            offer(
+                table.name, tuple(field.name for field in pattern.inputs if field.name in declared)
+            )
+    return tuple(derived)
+
+
+def schema_sql(text: str, *, source: str = "DATABASE.md") -> str:
+    """Render the complete declared schema: tables, declared constraints, and derived indexes."""
+    tables = sqlite_schema_tables(text, source=source)
+    if not tables:
+        return ""
+    statements = [sqlite_schema_sql(tables)]
+    try:
+        contract = parse_database_contract(text)
+    except SpecificationError:
+        contract = DatabaseContract(patterns=())
+    extra: list[str] = []
+    for table, columns in derived_indexes(tables, contract):
+        index = table + "_" + "_".join(columns) + "_idx"
+        names = ", ".join('"' + item + '"' for item in columns)
+        extra.append(
+            'CREATE INDEX IF NOT EXISTS "' + index + '" ON "' + table + '" (' + names + ");"
+        )
+    return "\n".join(statements + extra) if extra else statements[0]
 
 
 def validate_sqlite_schema(text: str, *, source: str = "DATABASE.md") -> tuple[SQLiteTable, ...]:
@@ -268,74 +623,368 @@ def _field_table(text: str, start: int) -> tuple[Field, ...]:
     return tuple(fields)
 
 
-def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> DatabaseContract:
-    """Parse the public operation surface from a DATABASE Blueprint."""
+def _repository_operations(value: str, *, identifier: str, source: str) -> tuple[str, ...]:
+    """Read a Repository operation cell into the one validated ``<table>.<verb>`` it names.
+
+    One pattern declares one operation. The cell once accepted a comma-separated list, but a
+    pattern carries exactly one ``Input:`` and one ``Output:`` table, so a cell naming
+    ``settings.get, settings.set`` describes two operations with one pair of DTOs and leaves
+    which fields belong to which undeclared. Splitting them is the only reading that stays
+    honest, and it is what lets the generated persistence layer build a statement per operation.
+    """
+    operations = tuple(
+        item for item in (part.strip().strip("`").strip() for part in value.split(",")) if item
+    )
+    if not operations:
+        raise SpecificationError(f"{source}: {identifier} names no repository operation")
+    if len(operations) > 1:
+        raise SpecificationError(
+            f"{source}: {identifier} names {len(operations)} repository operations "
+            f"({', '.join(repr(item) for item in operations)}). One access pattern declares one "
+            "operation, because it carries one Input and one Output. Give each operation its own "
+            "`### <FEATURE-DOMAIN-NNN>` section with its own DTO tables."
+        )
+    invalid = [item for item in operations if not _REPOSITORY_OPERATION_RE.fullmatch(item)]
+    if invalid:
+        raise SpecificationError(
+            f"{source}: {identifier} has invalid repository operation "
+            f"{invalid[0]!r}: it names one declared table and one verb as `<table>.<verb>`, "
+            f"lowercase, where the verb is one of {', '.join(_REPOSITORY_VERBS)}"
+        )
+    return operations
+
+
+def table_coverage_defects(
+    text: str, *, source: str = "DATABASE.md"
+) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+    """Return the two ways the schema and the operation surface can disagree.
+
+    ``(uncited, undeclared)``. A declared table no pattern reaches cannot be read or written by
+    any story: it is storage the product describes and nothing can use, and it means the schema
+    and the stories disagree about what is kept. An operation naming a table the schema never
+    declares is the same disagreement from the other side, and it builds a repository against a
+    table that will not exist.
+
+    Both are decided from the declaration alone, with no model judgment, which is why persistence
+    is gated here rather than left to review.
+    """
+    tables = sqlite_schema_tables(text, source=source)
+    if not tables:
+        return (), ()
+    contract = parse_database_contract(text, source=source)
+    declared = {table.name for table in tables}
+    covered: set[str] = set()
+    undeclared: list[tuple[str, str]] = []
+    for pattern in contract.patterns:
+        covered |= pattern.tables
+        undeclared.extend(
+            (pattern.identifier, operation)
+            for operation in pattern.operations
+            if operation.split(".", 1)[0] not in declared
+        )
+    uncited = tuple(table.name for table in tables if table.name not in covered)
+    return uncited, tuple(undeclared)
+
+
+def _pattern_blocks(text: str, source: str) -> list[tuple[re.Match[str], str]]:
+    """Split ``## Access Patterns`` into one ``(heading, body)`` pair per named operation."""
     access_patterns = _section(text, "Access Patterns")
     if not access_patterns.strip():
         raise SpecificationError(f"{source}: missing required ## Access Patterns section")
-    patterns: list[AccessPattern] = []
     matches = list(_H3_RE.finditer(access_patterns))
     if not matches:
         raise SpecificationError(f"{source}: ## Access Patterns has no named operation")
-    for index, match in enumerate(matches):
-        block = access_patterns[
-            match.end() : matches[index + 1].start()
-            if index + 1 < len(matches)
-            else len(access_patterns)
-        ]
-        metadata = {key.casefold(): value for key, value in _rows(block)}
-        missing = [
-            label
-            for label in ("owner", "access", "repository operation", "compatibility")
-            if not metadata.get(label)
-        ]
-        if missing:
-            raise SpecificationError(
-                f"{source}: {match.group(1)} missing access-pattern field(s): {', '.join(missing)}"
-            )
-        access = metadata["access"].casefold()
-        compatibility = metadata["compatibility"].casefold()
-        if access not in {"read", "write"}:
-            raise SpecificationError(f"{source}: {match.group(1)} has invalid Access: {access}")
-        if compatibility not in _COMPATIBILITY:
-            raise SpecificationError(
-                f"{source}: {match.group(1)} has invalid Compatibility: {compatibility}"
-            )
-        io = list(_INPUT_OUTPUT_RE.finditer(block))
-        values: dict[str, tuple[str, tuple[Field, ...]]] = {}
-        for io_match in io:
-            values[io_match.group(1).casefold()] = (
-                io_match.group(2).strip("` "),
-                _field_table(block, io_match.end()),
-            )
-        if "input" not in values or "output" not in values:
-            raise SpecificationError(f"{source}: {match.group(1)} requires Input and Output tables")
-        patterns.append(
-            AccessPattern(
-                identifier=match.group(1),
-                owner=metadata["owner"].strip(),
-                access=access,
-                repository_operation=metadata["repository operation"].strip("`"),
-                compatibility=compatibility,
-                input_name=values["input"][0],
-                inputs=values["input"][1],
-                output_name=values["output"][0],
-                outputs=values["output"][1],
-            )
+    return [
+        (
+            match,
+            access_patterns[
+                match.end() : matches[index + 1].start()
+                if index + 1 < len(matches)
+                else len(access_patterns)
+            ],
         )
+        for index, match in enumerate(matches)
+    ]
+
+
+def _parse_access_pattern(match: re.Match[str], block: str, source: str) -> AccessPattern:
+    metadata = {key.casefold(): value for key, value in _rows(block)}
+    missing = [
+        label
+        for label in ("owner", "access", "repository operation", "compatibility")
+        if not metadata.get(label)
+    ]
+    if missing:
+        raise SpecificationError(
+            f"{source}: {match.group(1)} missing access-pattern field(s): {', '.join(missing)}"
+        )
+    access = metadata["access"].casefold()
+    compatibility = metadata["compatibility"].casefold()
+    if access not in _ACCESS_GRANTS:
+        raise SpecificationError(f"{source}: {match.group(1)} has invalid Access: {access}")
+    if compatibility not in _COMPATIBILITY:
+        raise SpecificationError(
+            f"{source}: {match.group(1)} has invalid Compatibility: {compatibility}"
+        )
+    values: dict[str, tuple[str, tuple[Field, ...]]] = {}
+    for io_match in _INPUT_OUTPUT_RE.finditer(block):
+        values[io_match.group(1).casefold()] = (
+            io_match.group(2).strip("` "),
+            _field_table(block, io_match.end()),
+        )
+    if "input" not in values or "output" not in values:
+        # The repair prompt carries this message and nothing else, so it states the grammar.
+        raise SpecificationError(
+            f"{source}: {match.group(1)} requires Input and Output tables — after the "
+            "`| Field | Value |` table, write `Input: <DtoName>` and `Output: <DtoName>`, each "
+            "followed by a `| Field | Type |` table of the fields it carries"
+        )
+    return AccessPattern(
+        identifier=match.group(1),
+        owner=metadata["owner"].strip(),
+        access=access,
+        repository_operation=metadata["repository operation"].strip("`"),
+        operations=_repository_operations(
+            metadata["repository operation"], identifier=match.group(1), source=source
+        ),
+        compatibility=compatibility,
+        input_name=values["input"][0],
+        inputs=values["input"][1],
+        output_name=values["output"][0],
+        outputs=values["output"][1],
+    )
+
+
+#: The declaration itself, named as the ``| Owner |`` of a shared access pattern: one no single
+#: Feature owns, reached by several. An audit or activity log is the shape that needs it — six
+#: Features append to it and two Screens read it, so naming any one of them the owner is a lie,
+#: and inventing a Blueprint for it is worse. A shared pattern may be cited by any Blueprint and
+#: is required of none.
+SHARED_OWNER = "DATABASE.md"
+
+
+def legal_owner(owner: str, blueprints: Collection[str]) -> bool:
+    """True when ``owner`` may appear in an ``| Owner |`` cell.
+
+    Only a Feature owns data. A Screen renders it and a Release verifies it; both reach it
+    through a Feature's service, so neither may hold a repository. ``DATABASE.md`` is the one
+    other legal value, and it means shared.
+    """
+    return owner == SHARED_OWNER or (owner.startswith("FEATURE") and owner in blueprints)
+
+
+def rewrite_illegal_owners(
+    text: str, blueprints: Collection[str], *, source: str = "DATABASE.md"
+) -> tuple[str, tuple[str, ...]]:
+    """Point every illegal ``| Owner |`` cell at ``DATABASE.md``; return the text and what changed.
+
+    A name that owns nothing in this plan — a service, a module, a Screen, or a Blueprint the
+    model invented for the purpose — states no fact that can be checked. The one thing known
+    about the pattern is that no Feature here claims it, which is what ``DATABASE.md`` as owner
+    says. Deterministic, because there is nothing to decide: the alternative was an LLM repair
+    pass that invented `FEATURE-ACTIVITY-EVENTS.md`, a file no Blueprint answered to.
+    """
+    changes: list[str] = []
+
+    def replace(match: re.Match[str]) -> str:
+        owner = match.group("owner").strip()
+        if legal_owner(owner, blueprints):
+            return match.group(0)
+        changes.append(owner)
+        return match.group("head") + f" {SHARED_OWNER} " + match.group("tail")
+
+    patterns = _section(text, "Access Patterns")
+    if not patterns.strip():
+        return text, ()
+    rewritten = _OWNER_CELL_RE.sub(replace, patterns)
+    if not changes:
+        return text, ()
+    return text.replace(patterns, rewritten, 1), tuple(sorted(set(changes)))
+
+
+def _dto_name(table: str) -> str:
+    return "".join(part.capitalize() for part in table.split("_") if part)
+
+
+def _derived_dtos(
+    table: SQLiteTable, verb: str
+) -> dict[str, tuple[str, tuple[tuple[str, str, bool], ...]]]:
+    """The Input and Output a ``<table>.<verb>`` operation carries, read from the table alone.
+
+    Keyed operations (``get``, ``update``, ``delete``) take the primary key, or every column when
+    the table declares none. ``create`` takes the non-key columns, required where the schema
+    says ``NOT NULL`` with no default. Every verb but ``delete`` returns the row.
+    """
+    columns = table.columns
+    keys = tuple(column for column in columns if column.primary_key) or columns
+    row = tuple((column.name, column.sql_type, False) for column in columns)
+    key = tuple((column.name, column.sql_type, True) for column in keys)
+    base = _dto_name(table.name)
+    if verb == "list":
+        inputs: tuple[str, tuple[tuple[str, str, bool], ...]] = (f"{base}Query", ())
+    elif verb == "create":
+        inputs = (
+            f"{base}Create",
+            tuple(
+                (column.name, column.sql_type, column.not_null and column.default is None)
+                for column in columns
+                if not column.primary_key
+            ),
+        )
+    elif verb == "update":
+        inputs = (
+            f"{base}Update",
+            key
+            + tuple(
+                (column.name, column.sql_type, False) for column in columns if column not in keys
+            ),
+        )
+    else:
+        inputs = (f"{base}Key", key)
+    output = (f"{base}Key", key) if verb == "delete" else (f"{base}Row", row)
+    return {"Input": inputs, "Output": output}
+
+
+def _render_dto(label: str, name: str, fields: tuple[tuple[str, str, bool], ...]) -> str:
+    rows = "".join(
+        f"| {field} | {kind} | {'yes' if required else 'no'} |\n"
+        for field, kind, required in fields
+    )
+    return f"{label}: `{name}`\n| Field | Type | Required |\n|-------|------|----------|\n{rows}"
+
+
+def derive_missing_dtos(text: str, *, source: str = "DATABASE.md") -> tuple[str, tuple[str, ...]]:
+    """Write the Input/Output tables a pattern omits when its schema table determines them.
+
+    A pattern whose Repository operation names one declared table and one closed verb fixes its
+    DTOs: the fields are that table's columns. Nothing is left for a model to decide, and the
+    repair loop proved it cannot be relied on to do it — a Marina_Luna repair pass asked to reach
+    fifteen uncited tables added fifteen patterns with no DTO tables, and the run ended on its
+    last pass. A pattern whose operation is invalid or names an undeclared table is left alone for
+    the gate to report. Returns the text and the identifiers that were completed.
+    """
+    try:
+        tables = {table.name: table for table in sqlite_schema_tables(text, source=source)}
+    except SpecificationError:
+        return text, ()
+    section = _section(text, "Access Patterns")
+    matches = list(_H3_RE.finditer(section))
+    if not tables or not matches:
+        return text, ()
+    completed: list[str] = []
+    pieces = [section[: matches[0].start()]]
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(section)
+        block = section[match.start() : end]
+        present = {found.group(1) for found in _INPUT_OUTPUT_RE.finditer(block)}
+        operation = (
+            {key.casefold(): value for key, value in _rows(block)}
+            .get("repository operation", "")
+            .strip()
+            .strip("`")
+            .strip()
+        )
+        table_name, _, verb = operation.partition(".")
+        if (
+            {"Input", "Output"} <= present
+            or not _REPOSITORY_OPERATION_RE.fullmatch(operation)
+            or table_name not in tables
+        ):
+            pieces.append(block)
+            continue
+        dtos = _derived_dtos(tables[table_name], verb)
+        additions = "\n".join(
+            _render_dto(label, *dtos[label])
+            for label in ("Input", "Output")
+            if label not in present
+        )
+        trailing = block[len(block.rstrip()) :] or "\n"
+        pieces.append(block.rstrip() + "\n\n" + additions.rstrip("\n") + trailing)
+        completed.append(match.group(1))
+    if not completed:
+        return text, ()
+    return text.replace(section, "".join(pieces), 1), tuple(completed)
+
+
+def declared_owners(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
+    """Return every ``| Owner |`` value in ``## Access Patterns``, whether or not it parses.
+
+    Ownership is checked against the emitted Blueprints independently of the rest of the
+    pattern, so an unreadable pattern does not also hide the fact that it names no Blueprint.
+    """
+    try:
+        blocks = _pattern_blocks(text, source)
+    except SpecificationError:
+        return ()
+    owners: list[str] = []
+    for _, block in blocks:
+        metadata = {key.casefold(): value for key, value in _rows(block)}
+        if owner := metadata.get("owner", "").strip():
+            owners.append(owner)
+    return tuple(owners)
+
+
+def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> DatabaseContract:
+    """Parse the public operation surface from a DATABASE Blueprint."""
+    patterns = [
+        _parse_access_pattern(match, block, source)
+        for match, block in _pattern_blocks(text, source)
+    ]
     ids = [pattern.identifier for pattern in patterns]
     if len(ids) != len(set(ids)):
         raise SpecificationError(f"{source}: duplicate access-pattern identifier")
     return DatabaseContract(tuple(patterns))
 
 
+def database_contract_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
+    """Return every reason :func:`parse_database_contract` would reject ``text``, or ``()``.
+
+    The parser stops at the first bad pattern. A repair pass handed only that one fixes it and
+    returns to find the next, so thirteen incomplete patterns cost thirteen passes against a
+    budget sized for far fewer. Each pattern is judged on its own here.
+    """
+    try:
+        blocks = _pattern_blocks(text, source)
+    except SpecificationError as exc:
+        return (str(exc),)
+    defects: list[str] = []
+    ids: list[str] = []
+    for match, block in blocks:
+        ids.append(match.group(1))
+        try:
+            _parse_access_pattern(match, block, source)
+        except SpecificationError as exc:
+            defects.append(str(exc))
+    duplicates = sorted({ident for ident in ids if ids.count(ident) > 1})
+    if duplicates:
+        defects.append(f"{source}: duplicate access-pattern identifier(s): {', '.join(duplicates)}")
+    return tuple(defects)
+
+
 def parse_database_interface(text: str, *, source: str = "Blueprint") -> tuple[DatabaseUse, ...]:
-    """Read a Blueprint's optional database-interface declaration."""
+    """Read a Blueprint's database-interface declaration.
+
+    Every bullet in the section is an entry, and every entry must parse. Reading only the
+    lines that happened to match let a Blueprint describe its persistence in prose beside one
+    well-formed citation and pass, which is the failure this section exists to catch.
+    """
     section = _section(text, "Database Interface")
     if not section.strip():
         return ()
     uses: list[DatabaseUse] = []
-    for match in _INTERFACE_RE.finditer(section):
+    declared_none = False
+    for line in section.splitlines():
+        if not _INTERFACE_BULLET_RE.match(line):
+            continue
+        if _INTERFACE_NONE_RE.match(line):
+            declared_none = True
+            continue
+        match = _INTERFACE_RE.match(line)
+        if match is None:
+            raise SpecificationError(
+                f"{source}: malformed ## Database Interface entry {line.strip()!r} — "
+                f"{_INTERFACE_FORM}"
+            )
         uses.append(
             DatabaseUse(
                 identifier=match.group("id"),
@@ -344,9 +993,56 @@ def parse_database_interface(text: str, *, source: str = "Blueprint") -> tuple[D
                 returns=_names(match.group("output")),
             )
         )
-    if not uses:
-        raise SpecificationError(f"{source}: malformed ## Database Interface entry")
+    if declared_none and uses:
+        raise SpecificationError(
+            f"{source}: ## Database Interface declares None and also cites "
+            f"{len(uses)} access pattern(s); it reaches a repository or it does not"
+        )
+    if not declared_none and not uses:
+        raise SpecificationError(
+            f"{source}: ## Database Interface states no entry — {_INTERFACE_FORM}"
+        )
     return tuple(uses)
+
+
+def render_database_interface(contract: DatabaseContract, blueprint: str) -> str:
+    """Return the ``## Database Interface`` body the declaration implies for ``blueprint``.
+
+    A citation may only name a pattern the Blueprint owns, so an owner's section is a function of
+    ``DATABASE.md`` alone: every owned pattern at its declared access, supplying every Input field
+    and returning every Output field. A Blueprint that owns nothing declares ``- None``.
+    """
+    owned = [pattern for pattern in contract.patterns if pattern.owner == blueprint]
+    if not owned:
+        owners = sorted({pattern.owner for pattern in contract.patterns})
+        why = (
+            f"persistence is owned by {', '.join(owners)}."
+            if owners
+            else "no repository is declared."
+        )
+        return f"- None — {why}\n"
+
+    def names(fields: tuple[Field, ...]) -> str:
+        return ", ".join(f"`{field.name}`" for field in fields) or "—"
+
+    return "".join(
+        f"- `{pattern.identifier}` — {pattern.access}: {pattern.repository_operation} "
+        f"- supplies: {names(pattern.inputs)} - returns: {names(pattern.outputs)}\n"
+        for pattern in sorted(owned, key=lambda item: item.identifier)
+    )
+
+
+def replace_database_interface(text: str, body: str) -> str:
+    """Replace the ``## Database Interface`` section body with ``body``, appending if absent."""
+    match = next(
+        (m for m in _SECTION_RE.finditer(text) if m.group(1).strip() == "Database Interface"),
+        None,
+    )
+    if match is None:
+        return text.rstrip("\n") + "\n\n## Database Interface\n\n" + body
+    next_match = _SECTION_RE.search(text, match.end())
+    tail = text[next_match.start() :] if next_match else ""
+    return text[: match.end()] + "\n\n" + body + ("\n" + tail if tail else "")
 
 
 def _names(value: str) -> tuple[str, ...]:
@@ -365,15 +1061,22 @@ def validate_database_interfaces(
             pattern = patterns.get(use.identifier)
             if pattern is None:
                 raise SpecificationError(
-                    f"{blueprint}: unknown database operation {use.identifier}"
+                    f"{blueprint}: unknown database operation {use.identifier} — "
+                    f"no `### {use.identifier}` section is declared in ## Access Patterns"
                 )
-            if pattern.owner != blueprint:
+            if pattern.owner != blueprint and pattern.owner != SHARED_OWNER:
                 raise SpecificationError(
-                    f"{blueprint}: {use.identifier} is owned by {pattern.owner}, not this Blueprint"
+                    f"{blueprint}: {use.identifier} is owned by {pattern.owner!r}, not this "
+                    f"Blueprint. Either its `| Owner |` row names the owning Blueprint's file "
+                    f"name — {blueprint} — or this Blueprint reaches no repository and declares "
+                    f"`- None — <who owns it>.` instead. A service name is not an owner."
                 )
-            if use.access != pattern.access:
+            # A citation may narrow what the pattern grants — a read-only consumer of a
+            # read-write surface is a real and useful claim — but never widen it.
+            if use.access not in _ACCESS_GRANTS[pattern.access]:
                 raise SpecificationError(
-                    f"{blueprint}: {use.identifier} declares {use.access}, expected {pattern.access}"
+                    f"{blueprint}: {use.identifier} declares {use.access}, "
+                    f"which {pattern.access} does not grant"
                 )
             allowed_input = {field.name for field in pattern.inputs}
             allowed_output = {field.name for field in pattern.outputs}
@@ -557,6 +1260,8 @@ def changed_operation_ids_since(blueprint_dir: Path, commit: str) -> tuple[str, 
         ["git", "-C", str(blueprint_dir), "rev-parse", "--show-toplevel"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if root.returncode:
@@ -570,6 +1275,8 @@ def changed_operation_ids_since(blueprint_dir: Path, commit: str) -> tuple[str, 
         ["git", "-C", str(root_path), "show", f"{commit}:{relative}"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if prior.returncode:

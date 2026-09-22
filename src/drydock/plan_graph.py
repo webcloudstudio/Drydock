@@ -422,6 +422,16 @@ DEFAULT_BLOCK_LIMIT_TOKENS = 120_000
 #: five, starving every block behind it. Five leaves every previously observed block untouched.
 DEFAULT_BLOCK_ACCEPTANCE_LIMIT = 5
 
+#: Least shared context, in tokens, that justifies merging a story into a block. Ranking merges by
+#: savings alone makes any overlap above zero worth taking, so two stories sharing nothing but a
+#: compacted language file merge for a few hundred tokens — a saving nobody can spend, bought by
+#: widening the context one model call must hold. Below the floor the packer declines and each
+#: story is built alone.
+#:
+#: A standalone fallback, like the budgets above: callers pass the configured value, resolving
+#: ``config.DEFAULT_BLOCK_MIN_SAVINGS``, and this matters only to a caller that supplies nothing.
+DEFAULT_BLOCK_MIN_SAVINGS = 1_000
+
 
 @dataclass(frozen=True)
 class Block:
@@ -463,6 +473,7 @@ def group_blocks(
     target_tokens: int = DEFAULT_BLOCK_TARGET_TOKENS,
     limit_tokens: int = DEFAULT_BLOCK_LIMIT_TOKENS,
     acceptance_limit: int = DEFAULT_BLOCK_ACCEPTANCE_LIMIT,
+    min_savings: int = DEFAULT_BLOCK_MIN_SAVINGS,
     block_size_fn: Callable[[Sequence[PlannedStory]], int] | None = None,
 ) -> tuple[tuple[PlannedStory, ...], tuple[Block, ...]]:
     """Optimize blocks from the dependency frontier using deduplicated assembled cost.
@@ -470,6 +481,10 @@ def group_blocks(
     Phase, topology type, and screen/non-screen work kind are hard boundaries. Stack sets are
     deliberately not: a block receives their union and pays for shared files once. Selection is
     deterministic by shared-context savings, incremental cost, then declaration order.
+
+    Nothing else is forbidden. A merge that pays is taken and a merge that does not is declined
+    on its arithmetic, which is why ``min_savings`` exists: a merge saving less than that buys
+    nothing and widens the context one model call must hold, so it is no merge at all.
 
     Two independent budgets bound a block: assembled token cost, and the number of acceptance
     criteria it owes. Cost is the wrong proxy for the second — the cheapest merge on offer is
@@ -533,6 +548,11 @@ def group_blocks(
                 alone = max(0, block_size_fn((candidate,)))
                 incremental = combined - current_size
                 savings = current_size + alone - combined
+                # A merge that shares almost nothing is not an optimization. Declining it here
+                # rather than ranking it last keeps a cheap near-zero overlap from beating a
+                # genuinely shared candidate on the savings key.
+                if savings < min_savings:
+                    continue
                 ranked.append((
                     -savings,
                     incremental,
@@ -596,6 +616,7 @@ def compute_plan(
     target_tokens: int = DEFAULT_BLOCK_TARGET_TOKENS,
     limit_tokens: int = DEFAULT_BLOCK_LIMIT_TOKENS,
     acceptance_limit: int = DEFAULT_BLOCK_ACCEPTANCE_LIMIT,
+    min_savings: int = DEFAULT_BLOCK_MIN_SAVINGS,
     size_fn: Callable[[PlannedStory], int] | None = None,
     acceptance_count_fn: Callable[[PlannedStory], int] | None = None,
     block_size_fn: Callable[[Sequence[PlannedStory]], int] | None = None,
@@ -628,6 +649,7 @@ def compute_plan(
             target_tokens=target_tokens,
             limit_tokens=limit_tokens,
             acceptance_limit=acceptance_limit,
+            min_savings=min_savings,
             block_size_fn=block_size_fn,
         )
     except ValueError as exc:

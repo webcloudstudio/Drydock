@@ -12,28 +12,44 @@ These technology files are **shared across all projects** in this specification 
 
 # Catalog
 
-| File | Maps to STACK.yaml | Covers |
-|------|-------------------|--------|
-| `common.md` | *(always)* | Directory layout, bin/ scripts, Links.md, CLAUDE.md conventions, git hygiene, dev workflow |
-| `env_variables_and_secrets.md` | *(always)* | Secret hygiene, `.env`/`.env.example` discipline, early env validation, when not to use env vars |
-| `python.md` | `language: python` | Config classes, code style, type hints and static typing, logging, testing with pytest, dependencies, startup validation |
-| `uv_ruff.md` | `tooling: uv-ruff` | uv environment/lock workflow, ruff lint+format configuration, identical local/CI gates |
-| `typescript.md` | `language: typescript` | Code style, strict compiler settings, no `any`/unsafe assertions, explicit domain modeling, boundary validation, generated types |
-| `go.md` | `language: go` | Module layout, errors as values, consumer-side interfaces, goroutine lifetimes, table-driven tests, build and lint gates, dependency discipline |
-| `flask.md` | `framework: flask` | App factory, blueprints, Jinja2, HTMX, test client, security |
-| `django.md` | `framework: django` | Settings package, ORM, migrations, admin, django-htmx |
-| `sqlite.md` | `database: sqlite` | Connection setup, PRAGMAs, JSON columns, migrations, backup |
-| `postgres.md` | `database: postgres` | Connection pooling, JSONB, numbered migrations, indexing |
-| `bootstrap5.md` | `frontend: bootstrap5` | CDN setup, dark theme, components, HTMX integration |
-| `alexa-skills-kit.md` | `aws_services: [alexa-skills-kit]` | Alexa Skill configuration, interaction models, intent handling |
-| `aws-lambda.md` | `aws_services: [aws-lambda]` | Lambda function structure, environment setup, testing, IAM |
-| `aws-sqs.md` | `aws_services: [aws-sqs]` | Queue configuration, polling patterns, error handling |
-| `aws-api-gateway.md` | `aws_services: [aws-api-gateway]` | API setup, IAM/SigV4 auth, Lambda proxy, throttling |
-| `aws-dynamodb.md` | `aws_services: [aws-dynamodb]` | Single-table hierarchical design, on-demand billing, access patterns |
-| `aws-s3.md` | `aws_services: [aws-s3]` | Private buckets, prefix-per-user company share, encryption, lifecycle |
-| `terraform.md` | `infra: terraform` | Layered roots, S3+DynamoDB remote backend, naming/tags, bash wrappers |
-| `github-actions.md` | `ci: github-actions` | OIDC role assumption, ruff/pytest gates, plan-on-PR / apply-on-merge |
-| `cloud-client-library.md` | `lib: cloud-client` | A project-owned cloud client library — the single cloud boundary (never raw boto3) |
+Every file that defines a **foundation** declares it in its header: `**Foundation:** <kind>` plus
+a `## Foundation Contract` section publishing the package, entry, and fixture the rest of the
+Target writes against. A Target selects exactly one file per kind. `**Tier:**` states where that
+work sits in the chain that repeats inside each phase.
+
+Tiers 1 to 5 are the foundation: 1 `language`, 2 `platform` — sub-ordered 2.1 `database`,
+2.2 `web-server`, 2.3 `cli` — 3 `branding`, 4 `interface`, 5 `screen-foundation`. A language is
+built before the platform built into it, the palette before the shell that shows it, and the
+shell before the screen idiom built on it.
+
+Tier 6 is `application`: every service and screen the Blueprints describe. It has no internal
+order, and a file with no `**Tier:**` belongs to it — which is how a service stays free to land
+either side of the interface tier.
+
+| File | Maps to STACK.yaml | Foundation | Tier | Covers |
+|------|-------------------|------------|-------|--------|
+| `common.md` | *(always)* | — | — | Directory layout, bin/ scripts, Links.md, CLAUDE.md conventions, git hygiene, dev workflow |
+| `env_variables_and_secrets.md` | *(always)* | — | — | Secret hygiene, `.env`/`.env.example` discipline, early env validation, when not to use env vars |
+| `python.md` | `language: python` | language | language | Config classes, code style, type hints and static typing, logging, testing with pytest, dependencies, startup validation |
+| `uv_ruff.md` | `tooling: uv-ruff` | — | — | uv environment/lock workflow, ruff lint+format configuration, identical local/CI gates |
+| `typescript.md` | `language: typescript` | language | language | Code style, strict compiler settings, no `any`/unsafe assertions, explicit domain modeling, boundary validation, generated types |
+| `go.md` | `language: go` | language | language | Module layout, errors as values, consumer-side interfaces, goroutine lifetimes, table-driven tests, build and lint gates, dependency discipline |
+| `cli.md` | `framework: cli` | cli | platform | Entry point and exit codes, argparse separation, bash and PowerShell launchers, in-process testing |
+| `fastapi.md` | `framework: fastapi` | web-server | platform | App factory, routers, Pydantic models, dependency injection, Jinja2 templates, TestClient |
+| `flask.md` | `framework: flask` | web-server | platform | App factory, blueprints, Jinja2, HTMX, test client, security |
+| `django.md` | `framework: django` | web-server | platform | Settings package, ORM, migrations, admin, django-htmx |
+| `sqlite.md` | `database: sqlite` | database | platform | Connection setup, PRAGMAs, JSON columns, migrations, backup |
+| `postgres.md` | `database: postgres` | database | platform | Connection pooling, JSONB, numbered migrations, indexing |
+| `bootstrap5.md` | `frontend: bootstrap5` | — | interface | CDN setup, dark theme, components, HTMX integration |
+| `alexa-skills-kit.md` | `aws_services: [alexa-skills-kit]` | — | — | Alexa Skill configuration, interaction models, intent handling |
+| `aws-lambda.md` | `aws_services: [aws-lambda]` | — | — | Lambda function structure, environment setup, testing, IAM |
+| `aws-sqs.md` | `aws_services: [aws-sqs]` | — | — | Queue configuration, polling patterns, error handling |
+| `aws-api-gateway.md` | `aws_services: [aws-api-gateway]` | — | — | API setup, IAM/SigV4 auth, Lambda proxy, throttling |
+| `aws-dynamodb.md` | `aws_services: [aws-dynamodb]` | — | — | Single-table hierarchical design, on-demand billing, access patterns |
+| `aws-s3.md` | `aws_services: [aws-s3]` | — | — | Private buckets, prefix-per-user company share, encryption, lifecycle |
+| `terraform.md` | `infra: terraform` | — | — | Layered roots, S3+DynamoDB remote backend, naming/tags, bash wrappers |
+| `github-actions.md` | `ci: github-actions` | — | — | OIDC role assumption, ruff/pytest gates, plan-on-PR / apply-on-merge |
+| `cloud-client-library.md` | `lib: cloud-client` | — | — | A project-owned cloud client library — the single cloud boundary (never raw boto3) |
 
 ---
 
@@ -53,6 +69,7 @@ These technology files are **shared across all projects** in this specification 
 - **uv_ruff.md** — Python toolchain: uv environments/dependencies, ruff lint+format
 
 ### Web Frameworks
+- **fastapi.md** — Async Python web framework with Pydantic models and Jinja2 templates
 - **flask.md** — Lightweight Python web framework with HTMX
 - **django.md** — Full-featured Python web framework
 
@@ -61,7 +78,8 @@ These technology files are **shared across all projects** in this specification 
 - **postgres.md** — Production PostgreSQL with connection pooling
 
 ### Frontend
-- **bootstrap5.md** — CSS framework with dark theme variant
+- **bootstrap5.md** — CSS framework with dark theme variant (tier 4 `interface`: after the branding tier, before any screen)
+- **ui-flask.bootstrap-client.md** — Screen build reference for an already-running Flask/Bootstrap server (tier 5 `screen-foundation`)
 
 ### AWS Cloud Services
 - **aws-lambda.md** — Serverless compute

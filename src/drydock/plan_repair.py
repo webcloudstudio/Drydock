@@ -460,14 +460,28 @@ def repair(
 
     container_by_file: dict[str, Defect] = {}
     by_file: dict[str, list[Defect]] = {}
+    items: list[RepairItem] = []
     for defect in found.defects:
+        if defect.kind.startswith("database-"):
+            # The persistence declaration is not a criterion; the criterion prompt cannot repair
+            # it, and handing it one would rewrite DATABASE.md as an acceptance container. It
+            # stays unrepaired so the command cannot report a buildable plan it did not produce.
+            items.append(
+                RepairItem(
+                    defect.filename,
+                    "",
+                    "unrepaired",
+                    "",
+                    f"{defect.detail} — persistence is repaired by `drydock plan {target}`",
+                )
+            )
+            continue
         if not defect.check_id:
             container_by_file[defect.filename] = defect
             continue
         by_file.setdefault(defect.filename, []).append(defect)
 
     prompt = load_prompt(PROMPT_NAME)
-    items: list[RepairItem] = []
     changed: list[str] = []
     execution_ids: list[str] = []
 

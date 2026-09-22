@@ -223,14 +223,14 @@ def test_block_never_crosses_a_phase_boundary():
 
 def test_block_combines_unequal_stacks_as_a_union():
     ordered = (story("api", stack=("fastapi.md",)), story("ui", stack=("bootstrap5.md",)))
-    _, blocks = group_blocks(ordered)
+    _, blocks = group_blocks(ordered, min_savings=0)
     assert len(blocks) == 1
     assert blocks[0].stack == ("fastapi.md", "bootstrap5.md")
 
 
 def test_same_key_stories_amortize_one_block():
     ordered = tuple(story(f"s{i}", stack=("fastapi.md",)) for i in range(4))
-    stamped, blocks = group_blocks(ordered)
+    stamped, blocks = group_blocks(ordered, min_savings=0)
     assert len(blocks) == 1
     assert blocks[0].story_ids == ("s0", "s1", "s2", "s3")
     assert {s.block for s in stamped} == {1}
@@ -238,7 +238,7 @@ def test_same_key_stories_amortize_one_block():
 
 def test_block_ends_when_the_next_divisible_story_would_pass_the_target():
     ordered = tuple(story(f"s{i}", size_tokens=400) for i in range(3))
-    _, blocks = group_blocks(ordered, target_tokens=1000)
+    _, blocks = group_blocks(ordered, target_tokens=1000, min_savings=0)
     assert [b.story_ids for b in blocks] == [("s0", "s1"), ("s2",)]
     assert [b.over_target for b in blocks] == [False, False]
 
@@ -254,10 +254,77 @@ def test_optimizer_prefers_shared_context_and_unlocks_dependents_inside_block():
         files = {name for item in stories for name in item.stack}
         return len(stories) * 10 + len(files) * 100
 
-    _, blocks = group_blocks(ordered, target_tokens=1000, block_size_fn=cost)
+    _, blocks = group_blocks(ordered, target_tokens=1000, min_savings=0, block_size_fn=cost)
 
     assert blocks[0].story_ids == ("seed", "dependent", "unrelated")
     assert blocks[0].size_tokens == 330
+
+
+# A merge is worth taking only when the shared context it saves is worth having. Ranking merges
+# by savings alone made any overlap above zero worth taking, so two stories sharing nothing but a
+# compacted language file merged for a few hundred tokens — a saving nobody can spend.
+
+
+def test_a_merge_saving_less_than_the_floor_is_declined():
+    ordered = (
+        story("language", stack=("python.md",)),
+        story("persistence", stack=("python.md", "postgres.md")),
+    )
+
+    def cost(stories):
+        # python.md is cheap and shared; postgres.md is the real cost and is not.
+        weights = {"python.md": 200, "postgres.md": 20_000}
+        return sum(weights[name] for name in {n for item in stories for n in item.stack})
+
+    _, blocks = group_blocks(ordered, min_savings=1_000, block_size_fn=cost)
+
+    assert [block.story_ids for block in blocks] == [("language",), ("persistence",)]
+
+
+def test_a_merge_saving_more_than_the_floor_is_taken():
+    ordered = (
+        story("screen-list", stack=("bootstrap5.md", "list.md")),
+        story("screen-detail", stack=("bootstrap5.md", "detail.md")),
+    )
+
+    def cost(stories):
+        weights = {"bootstrap5.md": 20_000, "list.md": 200, "detail.md": 200}
+        return sum(weights[name] for name in {n for item in stories for n in item.stack})
+
+    _, blocks = group_blocks(ordered, min_savings=1_000, block_size_fn=cost)
+
+    assert [block.story_ids for block in blocks] == [("screen-list", "screen-detail")]
+
+
+def test_a_zero_floor_merges_on_any_saving_at_all():
+    """The prior behavior, still reachable: ``0`` takes every merge above zero savings."""
+    ordered = (
+        story("language", stack=("python.md",)),
+        story("persistence", stack=("python.md", "postgres.md")),
+    )
+
+    def cost(stories):
+        weights = {"python.md": 200, "postgres.md": 20_000}
+        return sum(weights[name] for name in {n for item in stories for n in item.stack})
+
+    _, blocks = group_blocks(ordered, min_savings=0, block_size_fn=cost)
+
+    assert [block.story_ids for block in blocks] == [("language", "persistence")]
+
+
+def test_the_floor_never_splits_a_block_the_budgets_already_bound():
+    """The floor declines merges; it never forces one, and never overrides a hard boundary."""
+    ordered = (
+        story("foundation", story_type="foundational", stack=("python.md",)),
+        story("service", story_type="service", stack=("python.md",)),
+    )
+
+    def cost(stories):
+        return 100 * len({name for item in stories for name in item.stack})
+
+    _, blocks = group_blocks(ordered, min_savings=0, block_size_fn=cost)
+
+    assert [block.story_type for block in blocks] == ["foundational", "service"]
 
 
 # The CommonMark regression: two cheap, context-sharing stories merged into one block that
@@ -280,7 +347,7 @@ def test_blocks_within_the_acceptance_ceiling_pack_exactly_as_before():
     """The 08-10 shape, where no block exceeded five criteria, must be untouched."""
     ordered = tuple(story(f"s{i}", acceptance_count=1) for i in range(5))
 
-    _, blocks = group_blocks(ordered)
+    _, blocks = group_blocks(ordered, min_savings=0)
 
     assert [b.story_ids for b in blocks] == [("s0", "s1", "s2", "s3", "s4")]
 
@@ -297,7 +364,7 @@ def test_a_story_over_the_ceiling_alone_still_builds_as_its_own_block():
 def test_the_acceptance_ceiling_can_be_disabled():
     ordered = (story("a", acceptance_count=8), story("b", acceptance_count=8))
 
-    _, blocks = group_blocks(ordered, acceptance_limit=0)
+    _, blocks = group_blocks(ordered, acceptance_limit=0, min_savings=0)
 
     assert [b.story_ids for b in blocks] == [("a", "b")]
 
@@ -340,7 +407,7 @@ def test_a_single_oversize_story_still_gets_its_own_block():
 
 def test_zero_target_disables_size_grouping_and_marking():
     ordered = tuple(story(f"s{i}", size_tokens=10**6) for i in range(3))
-    _, blocks = group_blocks(ordered, target_tokens=0, limit_tokens=0)
+    _, blocks = group_blocks(ordered, target_tokens=0, limit_tokens=0, min_savings=0)
     assert len(blocks) == 1
     assert blocks[0].over_target is False
 

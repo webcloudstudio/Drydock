@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260822 V16
+version: 20260921 V21
 ---
 
 ## Overview
@@ -528,6 +528,41 @@ and no execution order. A snippet that reads a name another snippet bound raises
 every run — it reports UNVERIFIED rather than failing the build, which means it verifies nothing
 and buys nothing. Each snippet imports what it uses and binds every name it reads.
 
+**A check exercises the built application through the client its foundation publishes.** The
+Rigging file for the Target's web server, database and CLI publishes a `## Foundation Contract`
+naming the package, the entry point, and the client callable — `web_client`, `db_session`,
+`cli_runner` — a plain function in `<package>/testing.py`. A check imports it from there and calls
+it: `from app_server.testing import web_client`, then `client = web_client()`. That runs the
+application the build wrote, in-process, without pytest; the pytest suite receives the same
+callable through `conftest.py`. The names are fixed by the technology the Commander selected, so a
+criterion writes them rather than inventing a package or constructing a client of its own.
+Constructing one is how a Blueprint set ends up split between two package names and calling a
+framework's method on another framework's object.
+
+A check may also run the application's own pytest suite through the language foundation's
+`test_command`. It imports the foundation package before it does, so against an application that
+is not built it fails as `foundation not built` rather than inside pytest. A suite run is never a
+story's only proof: the builder writes those tests, so at least one check asserts behavior the
+Blueprint states.
+
+A check importing a foundation package the build directory does not contain is not run and fails
+as `foundation not built`. That is the expected red before the foundation story builds it.
+
+`app_server`, `persistence`, and `cli` are reserved: each names the selected foundation of that
+kind, whichever file the Commander selected. A criterion importing one the stack did not select,
+or importing a published entry point from any other package, is refused as `unknown-package` and
+the plan is written `unbuildable`.
+
+**A check never reads a Blueprint document.** The Blueprint is the build's *input*; the build
+directory holds the code written from it and nothing copies a specification next to that code.
+`pathlib.Path("ARCHITECTURE.md").read_text()` raises `FileNotFoundError` on every run, so no
+implementation and no repair pass can turn it green. It is also worthless where it succeeds:
+grepping a specification for the words it was written with asserts that the document contains
+itself, and passes against an empty build directory. Assert against the built artifact — import
+the module, call the route, read the value off the settings object. Only paths under `sources/`
+are staged into the build and may be named. `drydock plan verify` refuses a criterion that reads
+one, and the plan is written `unbuildable`.
+
 **A check that shells out prints what it captured before it asserts.** `capture_output=True`
 routes the runner's tally and its failing cases into a variable; asserting on the exit code alone
 then discards them, and the failure reports the assertion with no evidence of what went wrong.
@@ -558,12 +593,11 @@ and a suite of hundreds of cases then reports its progress as a single bit.
 === AC health-check ===
 Intent: The health endpoint returns an OK response.
 
-from app import create_app
+from app_server.testing import web_client
 
-client = create_app().test_client()
+client = web_client()
 response = client.get("/health")
 assert response.status_code == 200
-assert response.get_json()["status"] == "ok"
 === END AC health-check ===
 
 === AC suite-conformance ===
@@ -723,33 +757,152 @@ A file can only be built in a phase after all its `Depends On` files are built.
 
 ---
 
+## Acceptance Strength
+
+A criterion states one expectation. Pin the status the implementation answers with: a stub that
+answers `200` is a real contract and a real test, and specifying a stub is legitimate.
+
+`404` means the endpoint is absent. Asserted alone it is a deliberate negative probe and one of the
+strongest checks available. Admitted beside any other status it makes the criterion true of an
+application that implements nothing, so `in {200, 404}` and `in {400, 404}` are both defects. A set
+admitting both success and a `5xx` is a defect for the same reason.
+
+A criterion that needs a row to exist creates it through the public interface first. Admitting the
+status that says the row never existed is not a substitute for building the state the criterion
+depends on.
+
 ## Persistence Encapsulation (DATABASE.md scope)
 
 `DATABASE.md` is the project's persistence contract — not SQL schema alone. It documents every
 persistent store and the typed repository contract that encapsulates it:
 
-- **Relational stores** — private SQLAlchemy models and sessions, repository interfaces, DTO
-  inputs/outputs, and Alembic revisions.
+- **Relational stores** — declared tables, the access patterns that reach them, and their DTO
+  inputs and outputs. Drydock generates the implementation from this; no Blueprint describes one.
 - **Config / `.env`** — required keys and the typed `Config` class.
 - **File stores** — directories and the `FileStore` class.
 - **External services** — the service contract and its wrapper.
 
-Routes call services; services call project-owned repository methods. ORM models, sessions, SQL,
-table names, and column names never cross that boundary. A storage change that leaves the named
+Routes call services; services call the generated persistence package — `db.<table>.<verb>(...)`,
+one method per declared access pattern. SQL, sessions, table names, and column names never cross
+that boundary, and no Blueprint describes a repository implementation: Drydock generates it from
+this declaration. A storage change that leaves the named
 repository-call contract unchanged does not invalidate downstream features.
 
-Every `DATABASE.md` includes `## Access Patterns` and `## Persistence Interfaces` before schema
-details. Every access pattern has a stable feature-owned `FEATURE-<DOMAIN>-<NNN>` id, Owner,
-read/write access, repository method, DTO input and output shapes, and compatibility level:
-`unchanged`, `data`, or `rebuild`. Route and screen Blueprints cite only those ids through an
-optional `## Database Interface` section, including only fields they supply or receive; they do
-not cite a physical store. Persistence interfaces name the repository, module location, and
+Every `DATABASE.md` includes `## Access Patterns` before schema details. Every access pattern has a stable feature-owned `FEATURE-<DOMAIN>-<NNN>` id, Owner,
+`read`, `write`, or `read-write` access, repository method, DTO input and output shapes, and
+compatibility level: `unchanged`, `data`, or `rebuild`. Route and screen Blueprints cite only those
+ids through a `## Database Interface` section, including only fields they supply or receive; they
+do not cite a physical store. Persistence interfaces name the repository, module location, and
 allowed callers.
 
-Python relational persistence requires `sqlalchemy.md` and `alembic.md` in the Technology Stack.
-SQLAlchemy owns runtime access; Alembic owns every schema revision. A Blueprint migration ledger
-record lives at `blueprint/migrations/MIGRATION-<AccessPatternId>.md`; it holds `upgrade` and
-`downgrade` snippets and is `planned` until the DATABASE build story completes, then `built`.
+`## Database Interface` is required, not optional, for every Blueprint that `DATABASE.md` names
+as the `Owner` of an access pattern. Ownership is read from the declaration, never guessed from a
+story's `stack:`: a stack selection says which technology the story is built with, not whether it
+reaches a repository. Each citation is one bullet on one line, in this exact form:
+
+```text
+## Database Interface
+
+- `FEATURE-ORDER-001` — write: create an order - supplies: `customer_id`, `items` - returns: `id`, `status`
+- `FEATURE-ORDER-002` — read: retrieve an order by id - supplies: `order_id` - returns: `status`, `total`
+```
+
+The id is an `## Access Patterns` id in backticks, the em dash is literal, the access is `read`,
+`write`, or `read-write`, and `supplies:` and `returns:` carry comma-separated backticked field
+names from that pattern's Input and Output DTOs. A Blueprint that reaches no repository — a Screen
+that delegates to a Feature's service routes — writes one bullet and no other:
+
+```text
+- None — persistence is owned by FEATURE-ORDER.md.
+```
+
+`- None` is available only to a Blueprint the declaration names nowhere. A Feature named as an
+`Owner` states the operations it owns, or the `| Owner |` row moves to the Feature that does own
+them. A pattern owned by `DATABASE.md` is shared: any Blueprint may cite it, and none is required
+to.
+
+Every bullet under the heading is an entry and every entry is checked, so a sentence of prose there
+fails the plan as a malformed citation. Say it in `## Purpose` instead. A citation may claim less
+access than the pattern grants — a read-only consumer of a `read-write` surface is a real claim —
+but never more. Drydock checks each citation
+against the declaration. An unknown operation, a wrong owner, access the pattern does not grant, a
+field the DTO does not carry, or a required field left out is a conflict Build would implement, and
+it fails the plan. A Blueprint whose story selects a persistence stack and cites nothing fails it
+the same way. Persistence is the one part of a plan decidable from the artifacts alone, so none of
+it is left to a Commander to answer: Drydock repairs the cited Blueprint and re-validates, and a
+defect that survives repair stops the run.
+
+Each access pattern is its own `### FEATURE-<DOMAIN>-<NNN> — <Operation>` section over a
+`| Field | Value |` table carrying Owner, Access, Repository operation, and Compatibility, followed
+by an `Input: <DTO>` and an `Output: <DTO>` field table. Never collapse the operations into one
+table of rows.
+
+`Owner` is the file name of the Feature that reaches this pattern — `FEATURE-ORDER.md` — and
+never a service, module, or layer name. Only a Feature owns data: a Screen renders it through a
+Feature's service and never holds a repository. It is the only place the plan says which Feature
+owns which data, so it is compared to the emitted file names rather than read as prose: an Owner
+naming something that is not a Feature in this plan fails the plan, as does a Feature that owns a
+pattern and cites nothing.
+
+A pattern no single Feature owns — an activity log or other shared surface several Features write
+and several Screens read — names `DATABASE.md` as its `Owner`. That states the fact: the data is
+declared here and no Feature claims it. Any Blueprint may cite a shared pattern, no Blueprint is
+required to, and `DATABASE.md` cites nothing itself. Never invent a Blueprint file name for a
+surface that has no Feature; name `DATABASE.md` instead.
+
+`Repository operation` names one declared table and one verb as `<table>.<verb>`, lowercase:
+`` `settings.get` ``. The verb is one of `get`, `list`, `create`, `update`, or `delete`, and no
+other. One access pattern declares exactly one operation, because it carries exactly one `Input:`
+and one `Output:` table — a cell naming two operations leaves which fields belong to which
+undeclared. Give each operation its own `### <FEATURE-DOMAIN-NNN>` section with its own DTO
+tables. It is the only place the declaration says which table a pattern reaches, so the form is
+checked rather than advisory, and free text there fails the plan. Every table in `## Schema` is reached by at least one access
+pattern, and every operation names a table `## Schema` declares. A table nothing reaches is
+storage no story can use; an operation on a table that is not declared builds a repository against
+nothing. Declare the pattern in the same batch as the table. A `DATABASE.md` whose `## Access Patterns` holds no named operation fails the plan:
+Build reads that surface to fingerprint the persistence contract, and an unparseable one stops the
+build after a block has already been spent.
+
+`DATABASE.md` is the one cumulative Blueprint. Drydock opens it before the first Blueprint batch,
+seeded from the Rigging template and every table the imported source specification already
+declared, and keeps it open for the whole planning run. Emit it in a batch only when a Blueprint in
+that batch needs storage the declaration does not yet hold, and then emit only the additions: the
+new `` ## `table_name` `` sections, the new field rows for a table already declared, and the new
+`## Access Patterns` entries. Drydock appends what you emit and keeps everything already declared,
+so never restate a table, column, or operation already held.
+
+Each table is a top-level `` ## `table_name` `` section — lowercase snake_case in backticks — over
+a `| Field | Type | Notes |` table. A type cell is
+`<TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] [REFERENCES <table>(<column>)]`, where
+`<TYPE>` is `INTEGER`, `TEXT`, `REAL`, `NUMERIC`, or `VARCHAR(<n>)`, and `<literal>` is a
+single-quoted string, a number, `NULL`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, or `CURRENT_TIME`.
+Brackets mark optional entries and are not written: `TEXT NOT NULL UNIQUE`, never
+`TEXT NOT NULL [UNIQUE]`. Nothing else is accepted: Drydock renders executable DDL from these cells, so a modifier it cannot
+read is a constraint the built database would not have. Declare a length where one matters —
+PostgreSQL enforces `VARCHAR(<n>)` and SQLite accepts the same declaration and ignores it, so one
+spelling serves both. A foreign key names a table and column this same file declares.
+
+A constraint spanning more than one column cannot live in a per-column row, so it is declared as a
+bullet directly under that table's field table, one per line:
+
+```markdown
+- UNIQUE (project_id, title)
+- INDEX (project_id, opened_on)
+```
+
+Both forms take two or more declared columns of that table. A single-column `UNIQUE` states
+`UNIQUE` in its own type cell instead. A `DATABASE.md` that declares no table fails the plan:
+Build implements the declaration, and an empty one leaves Build inventing a schema no Blueprint
+describes.
+
+Relational persistence needs no ORM or migration-framework selection in the Technology Stack.
+Drydock generates the persistence package from this declaration at the DATABASE build step and
+copies the engines in unchanged, so a story that implements `DATABASE.md` writes callers, not a
+repository. A Target declaring a `DATABASE.md` in a language Drydock ships no adapter for fails
+before planning rather than reaching a build with no persistence layer to write. A Blueprint
+migration ledger record lives at `blueprint/migrations/MIGRATION-<AccessPatternId>.md`; it holds
+`upgrade` and `downgrade` snippets and is `planned` until the DATABASE build story completes, then
+`built`. Within a release the schema is built once and never migrated.
 
 `ARCHITECTURE.md` includes a module ownership table for persistence, configuration, file-store, and
 external-service boundaries. It states which module owns each boundary and which low-level APIs that

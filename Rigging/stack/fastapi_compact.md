@@ -1,122 +1,155 @@
-<!-- Compacted from fastapi.md on 2026-06-22 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/fastapi.md sha256=743fb36c32c13f3750c8e4845d9695c4ceb1ee026452540b0990cfc746437470 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
-# FastAPI Best Practices — Usage Surface
+## Foundation Contract
 
-## Application Factory
+The published shape of this foundation. Drydock synthesizes the story that builds it and every
+acceptance criterion writes against these names. Carried verbatim into `fastapi_compact.md`.
 
-### create_app
+- package: app_server
+- entry: create_app() -> FastAPI
+- fixture: web_client
+- fixture_source: app_server/testing.py
 
-Returns a configured `FastAPI` instance with static files, routers, and exception handlers registered.
+```python
+# app_server/main.py
+def create_app() -> FastAPI:
+    ...
 
-Returns: `FastAPI` — fully configured application instance
+# app_server/testing.py
+from fastapi.testclient import TestClient
+from app_server.main import create_app
 
----
+def web_client() -> TestClient:
+    return TestClient(create_app())
 
-## Configuration
+# conftest.py
+import pytest
+from app_server import testing
 
-### app_name
+@pytest.fixture
+def web_client():
+    return testing.web_client()
+```
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| app_name | str | no | Application display name; default `"My App"` |
-
-### app_port
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| app_port | int | no | Port uvicorn binds to; default `8000` |
-
-### workspace_dir
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| workspace_dir | str | no | Path to backing state store directory; default `"./workspace"` |
-
----
-
-## Dependencies
-
-### get_settings
-
-Returns the cached `Settings` instance loaded from environment / `.env`.
-
-Returns: `Settings` — typed configuration object
-
-### get_store
-
-Returns a `StateStore` bound to the configured workspace directory.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| settings | Settings | yes | Injected via `Depends(get_settings)` |
-
-Returns: `StateStore` — backing state store instance
+A criterion imports `web_client` from `app_server.testing` and calls it — `client = web_client()` —
+which runs the built application in-process without pytest. The pytest suite receives the same
+client through the `conftest.py` fixture. Neither constructs a client of its own. A criterion never calls `create_app().test_client()`, which
+is Flask's API and does not exist on a FastAPI application.
 
 ---
 
-## Models
+## Application
 
-### Decision
+### create_app()
+Creates and returns a configured FastAPI application.
 
-Request body for recording a step decision.
+Returns: A FastAPI instance with static files, routers, templates, exception handlers, and lifespan behavior configured.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| status | `Literal["approved", "revise", "rejected"]` | Decision outcome |
-| feedback | `Optional[str]` | Free-text feedback; max 4000 chars |
+Constraints: Expose the created application as module-level `app` for `uvicorn app_server.main:app`.
 
-### StepView
+### config_key
+Typed settings are loaded through `pydantic-settings.BaseSettings`.
 
-Response shape for a single step.
+| Key | Type | Default |
+|---|---|---|
+| `app_name` | `str` | `"My App"` |
+| `app_port` | `int` | `8000` |
+| `workspace_dir` | `str` | `"./workspace"` |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| id | int | Step identifier |
-| name | str | Step name |
-| status | str | Current status |
-| evidence_files | list[str] | Associated file paths |
+Constraints: Environment configuration is centralized; `.env` is supported.
 
----
+## API
 
-## API Routes
+### GET /api/steps
+Returns the available steps from the backing store.
 
-### GET /steps
+| Input | Type | Required |
+|---|---|---|
+| `store` | dependency-provided store | yes |
 
-Returns all steps from the backing store.
+Returns: A serialized list of steps.
 
-Returns: `list[StepView]` — list of step objects
+### POST /api/steps/{step_id}/decision
+Records a decision for a step.
 
-### POST /steps/{step_id}/decision
+| Input | Type | Required |
+|---|---|---|
+| `step_id` | `int` path parameter | yes |
+| `decision` | `Decision` request body | yes |
+| `store` | dependency-provided store | yes |
 
-Records a decision against a specific step.
+Returns:
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| step_id | int | yes | Path parameter identifying the step |
-| decision | Decision | yes | Request body with status and optional feedback |
+| Field | Type |
+|---|---|
+| `ok` | `bool` |
+| `step_id` | `int` |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| ok | bool | `true` on success |
-| step_id | int | Echo of the updated step ID |
+Constraints: Route handlers validate input, delegate to business logic, and return serializable values.
 
 ### GET /health
+Verifies that the application can reach its backing store.
 
-Verifies the application can reach its backing store.
+Returns on success:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| status | str | `"ok"` or `"error"` |
-| detail | str | Error message; present only when status is `"error"` |
+```json
+{"status": "ok"}
+```
 
-Returns HTTP 500 when the store is unreachable.
+Returns on backing-store failure: HTTP 500 with `{"status": "error", "detail": "<error message>"}`.
 
----
+## Schemas
 
-## Page Routes
+### Decision
+Represents a submitted step decision.
+
+| Field | Type | Required | Constraints |
+|---|---|---:|---|
+| `status` | literal string | yes | One of `approved`, `revise`, `rejected` |
+| `feedback` | optional string | no | Maximum 4000 characters |
+
+### StepView
+Represents a step response.
+
+| Field | Type |
+|---|---|
+| `id` | `int` |
+| `name` | `str` |
+| `status` | `str` |
+| `evidence_files` | `list[str]` |
+
+## Pages and Errors
 
 ### GET /
+Renders the index page with the current steps.
 
-Renders the index page with all steps.
+Returns: An HTML response rendered from a Jinja2 template.
 
-Returns: `HTMLResponse` — server-rendered HTML via Jinja2 `index.html` template
+Constraints: Template response context includes `request`; pages extend `base.html`; static assets use `/static/...`.
+
+### Rule: error-responses
+Expected errors use HTTP error responses without leaking stack traces.
+
+Constraints: Requests under `/api/*` receive JSON errors; other requests receive HTML errors. Missing resources return HTTP 404.
+
+## Runtime
+
+### Rule: application-layout
+Application code is under the `app_server/` package, with `run.py` as the direct entry point and `config.py` at the project root.
+
+Constraints: `services.py` contains framework-independent business logic; `deps.py` provides injectable shared resources.
+
+### Rule: dependency-injection
+Shared resources are provided through FastAPI dependency injection and can be overridden in tests.
+
+Constraints: Tests use `app.dependency_overrides` to replace providers.
+
+### Rule: testing
+HTTP behavior is tested through `fastapi.testclient.TestClient`.
+
+Constraints: Required test dependencies include `fastapi`, `uvicorn`, `jinja2`, `pydantic-settings`, `httpx`, and `pytest`.
+
+### Rule: development-server
+Development runs Uvicorn with reload enabled; production does not use reload and may run multiple workers.
+
+Constraints: Startup and shutdown behavior uses lifespan handlers, not import-time side effects.

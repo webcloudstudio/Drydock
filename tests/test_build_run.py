@@ -3253,30 +3253,24 @@ def test_a_doubtful_criterion_does_not_refuse_the_build(tmp_path):
     assert runner.calls
 
 
-def test_a_criterion_reporting_unverified_does_not_fail_its_story(tmp_path):
-    """The whole point of the change: doubt costs a warning, never a build.
-
-    ``block-priority`` reads a name a sibling check bound, so it dies in its own frame and
-    reports UNVERIFIED. It is not charged against the build, and the story closes on the
-    strength of the assertion that actually ran.
-    """
+def _assert_refused(tmp_path, spec: str, check_id: str) -> None:
+    """Build refuses a criterion that cannot run, before any story is attempted."""
     target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(_CARRIED_NAME_SPEC, encoding="utf-8")
+    (target_dir / "blueprint" / "DATABASE.md").write_text(spec, encoding="utf-8")
+    runner = make_runner()
 
-    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+    with pytest.raises(SpecificationError, match="Build refused") as refused:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
-    owner = next(step for step in result.steps if step.block_id == "foundation")
-    assert owner.status == "built"
-    assert owner.state == "closed/verified"
-    assert {check.check_id: check.outcome for check in owner.acceptance} == {
-        "block-conformance": "PASS",
-        "block-priority": "UNVERIFIED",
-    }
+    assert check_id in str(refused.value)
+    assert runner.calls == []
 
 
-# Every check runs as its own script in its own process. A snippet that reads a name a sibling
-# check bound raises NameError on every run, so it can never go green — the same category of
-# waste as a mis-authored expectation, and it must be caught before an LLM pass is spent.
+def test_a_criterion_reading_a_siblings_name_refuses_the_build(tmp_path):
+    """``block-priority`` reads a name a sibling check bound; each check runs in its own process,
+    so it raises NameError on every run and can never pass."""
+    _assert_refused(tmp_path, _CARRIED_NAME_SPEC, "block-priority")
+
 
 _CARRIED_NAME_SPEC = """# FEATURE: Blocks
 
@@ -3315,16 +3309,14 @@ assert convert("a") ==
 """
 
 
-def test_an_unparseable_check_does_not_fail_its_story(tmp_path):
-    """``drydock plan`` rejects a criterion that does not compile; a build must survive one.
+def test_an_unparseable_check_refuses_the_build(tmp_path):
+    """A criterion that does not compile can only reach a build through a hand edit after
+    planning. It is refused there, not graded UNVERIFIED over a story it claims to gate."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_UNPARSEABLE_SPEC, encoding="utf-8")
 
-    Reaching the build means the spec was hand-edited after planning. The fragment raises
-    SyntaxError in its own frame, which the runtime classifier reads as a malformed check and
-    settles UNVERIFIED, so it costs the story nothing rather than failing a correct build.
-    """
-    log, _ = _quarantine_log(tmp_path, _UNPARSEABLE_SPEC)
-
-    assert "closed/verified" in "\n".join(log)
+    with pytest.raises(SpecificationError, match="Build refused"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
 
 
 # ── continue-repair (resume in place) ──────────────────────────────────────────
@@ -4105,7 +4097,7 @@ def test_override_stamps_the_target_as_ungoverned(tmp_path):
                 origin="plan",
                 blueprint="DATABASE.md",
                 story="foundation",
-                status="recommended",
+                status="open",
                 archived=False,
                 title="Which engine?",
                 description="Pick one.",
@@ -4137,7 +4129,7 @@ def test_a_gated_story_blocks_the_build_without_override(tmp_path):
                 origin="plan",
                 blueprint="DATABASE.md",
                 story="foundation",
-                status="recommended",
+                status="open",
                 archived=False,
                 title="Which engine?",
                 description="Pick one.",
@@ -4245,54 +4237,16 @@ def test_a_correctly_sized_block_reports_no_sizing_advisory(tmp_path):
     assert not any("sizing:" in line for line in lines)
 
 
-def test_a_kit_fault_never_buys_a_repair_pass_and_is_reported_by_id(tmp_path):
-    """A malformed criterion dies in its own frame, so no implementation can turn it green.
-
-    It settles UNVERIFIED rather than failing the build — the runtime verdict is evidence about
-    the kit, not the product, and ``fba5b90`` put the compile gate at plan and validate time where
-    it can be fixed. What the build owes is that the loop spends nothing on it and that the id is
-    named, so the criterion cannot stop gating in silence.
-    """
-    target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(
-        """## Programmatic Acceptance
-
-=== AC broken-criterion ===
-Intent: This criterion reads a name it never bound.
-
-assert never_bound_anywhere == 1
-=== END AC broken-criterion ===
-""",
-        encoding="utf-8",
+def test_a_criterion_reading_an_unbound_name_refuses_the_build(tmp_path):
+    """It dies in its own frame, so no implementation can turn it green. Building over it used to
+    settle it UNVERIFIED and close the story; the build now refuses before spending a call."""
+    _assert_refused(
+        tmp_path,
+        "## Programmatic Acceptance\n\n=== AC broken-criterion ===\n"
+        "Intent: This criterion reads a name it never bound.\n\n"
+        "assert never_bound_anywhere == 1\n=== END AC broken-criterion ===\n",
+        "broken-criterion",
     )
-    calls: list[int] = []
-    lines: list[str] = []
-
-    def runner(prompt, working_directory, **kwargs):
-        calls.append(kwargs["parameters"]["attempt"])
-        work = Path(working_directory)
-        work.mkdir(parents=True, exist_ok=True)
-        (work / "foundation.txt").write_text("ok\n", encoding="utf-8")
-        return FakeResult(text=_success_report(changed=("foundation.txt",)))
-
-    result = build_target(
-        "Demo",
-        target_dir,
-        build_dir=build_dir,
-        runner=runner,
-        step_id="foundation",
-        repair_attempts=6,
-        on_text=lines.append,
-    )
-
-    assert calls == [0], "a kit fault must not buy a repair pass"
-    step = result.steps[0]
-    # UNVERIFIED is not charged to the build, but it is never silent.
-    assert any(
-        "skipped=broken-criterion" in line for line in lines if line.startswith("    acceptance=")
-    )
-    assert any(check.skipped for check in step.acceptance)
-    assert [check.check_id for check in step.acceptance if check.skipped] == ["broken-criterion"]
 
 
 def test_a_retyped_expectation_is_disputed_and_the_block_still_closes(tmp_path):
@@ -4557,19 +4511,14 @@ def test_a_red_governed_gate_drives_the_repair_loop(tmp_path):
     assert _state(target_dir, "foundation") == "closed/verified"
 
 
-def test_build_warns_when_a_specs_acceptance_cannot_be_read(tmp_path):
-    """The criteria are gone from the unit's grading either way; the reason must not be."""
-    target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(
+def test_an_unclosed_acceptance_container_refuses_the_build(tmp_path):
+    """None of the file's criteria can be read, so none can gate the story."""
+    _assert_refused(
+        tmp_path,
         "# DATABASE\n\n## Programmatic Acceptance\n\n"
         "=== AC db-exists ===\nIntent: First.\n\nassert 1 == 1\n",
-        encoding="utf-8",
+        "db-exists",
     )
-    log: list[str] = []
-
-    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append)
-
-    assert any("DATABASE.md: acceptance criteria could not be read" in line for line in log)
 
 
 # ── staged-asset environment ─────────────────────────────────────────────────────────
@@ -4704,3 +4653,65 @@ def test_a_story_whose_every_criterion_is_unverified_is_implemented_not_verified
     assert "every criterion this story declared settled UNVERIFIED" in (
         target_dir / "MANIFEST.md"
     ).read_text(encoding="utf-8")
+
+
+def test_the_database_step_renders_the_declaration_into_executable_ddl(tmp_path: Path):
+    from drydock.build_run import _write_persistence
+
+    blueprint_dir = tmp_path / "blueprint"
+    build_dir = tmp_path / "build"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text(
+        "# DATABASE: X\n\n"
+        "## Access Patterns\n\n"
+        "### FEATURE-TICKET-001 — Find tickets\n\n"
+        "| Field | Value |\n|---|---|\n"
+        "| Owner | FEATURE-Ticket.md |\n| Access | read |\n"
+        "| Repository operation | `tickets.list` |\n| Compatibility | unchanged |\n\n"
+        "Input: FindTickets\n\n| Field | Type | Required |\n|---|---|---|\n| status | str | yes |\n\n"
+        "Output: Ticket\n\n| Field | Type |\n|---|---|\n| id | int |\n\n"
+        "## `tickets`\n\n| Field | Type | Notes |\n|---|---|---|\n"
+        "| id | INTEGER PK | |\n| status | TEXT NOT NULL DEFAULT 'open' | |\n",
+        encoding="utf-8",
+    )
+
+    written = _write_persistence(blueprint_dir, build_dir, tmp_path, None)
+
+    rendered = (build_dir / "schema.sql").read_text(encoding="utf-8")
+    assert "\"status\" TEXT NOT NULL DEFAULT 'open'" in rendered
+    assert 'CREATE INDEX IF NOT EXISTS "tickets_status_idx"' in rendered
+    assert (tmp_path / "DECISIONS.json") in written
+    assert (build_dir / "persistence" / "schema.py").is_file()
+    assert (build_dir / "persistence" / "db.py").is_file()
+
+
+def test_a_declaration_with_no_tables_writes_no_schema(tmp_path: Path):
+    from drydock.build_run import _write_persistence
+
+    blueprint_dir = tmp_path / "blueprint"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text("# DATABASE: X\n", encoding="utf-8")
+
+    assert _write_persistence(blueprint_dir, tmp_path / "build", tmp_path, None) == ()
+    assert not (tmp_path / "build" / "schema.sql").exists()
+    assert not (tmp_path / "build" / "persistence").exists()
+
+
+def test_build_refuses_a_persistence_declaration_it_cannot_read(tmp_path):
+    """Marina_Luna: thirteen access patterns without Input/Output tables. Build generates the
+    persistence package from the declaration, so it refuses before spending a call rather than
+    printing ``persistence: not generated`` at the DATABASE step and building on."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "# DATABASE: Demo\n\n## Access Patterns\n\n### FEATURE-SVC-001 — Store setting\n\n"
+        "| Field | Value |\n|---|---|\n| Owner | SERVICE.md |\n| Access | read-write |\n"
+        "| Repository operation | `settings.update` |\n| Compatibility | data |\n\n"
+        "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        encoding="utf-8",
+    )
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError, match="Build cannot read DATABASE.md"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert runner.calls == []

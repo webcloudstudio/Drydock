@@ -17,11 +17,10 @@ import sys
 import tempfile
 import tokenize
 import warnings
-from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from drydock.acceptance_runner import (
     PROGRESS_BEGIN,
@@ -47,6 +46,9 @@ REQUIRES_RE = re.compile(r"^Requires:\s*(?P<value>.+?)\s*$", re.MULTILINE | re.I
 #: Markup-processing targets make fence-bearing criteria ordinary rather than exotic.
 AC_OPEN_RE = re.compile(r"^===[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", re.MULTILINE)
 AC_END_RE = re.compile(r"^===[ \t]+END[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", re.MULTILINE)
+#: An end marker the model wrote without its id (``=== END AC`` or ``=== END AC ===``). It closes
+#: whichever criterion is open; it is never a valid terminator as written.
+AC_BARE_END_RE = re.compile(r"^===[ \t]+END[ \t]+AC[ \t]*(?:===)?[ \t]*$", re.MULTILINE)
 #: Leading ``Key: value`` metadata lines inside an AC block, terminated by the first blank line.
 AC_META_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9 _-]*):[ \t]*(?P<value>.*?)[ \t]*$")
 
@@ -98,6 +100,12 @@ UNVERIFIED_FAILURE_PREFIX = "unverified acceptance"
 # A check that died inside its own snippet rather than inside the code under test. No
 # implementation can turn it green, so a repair pass on it is wasted.
 MALFORMED_FAILURE_PREFIX = "malformed check"
+
+# A criterion importing a foundation package the build directory does not contain. The application
+# it exercises is not built, so it is not run: the verdict is FAIL, stated in one line instead of a
+# traceback from inside the application's own test machinery. Deliberately absent from
+# TERMINAL_FAILURE_PREFIXES — building the package is exactly the work a build pass does.
+UNBUILT_FOUNDATION_FAILURE_PREFIX = "foundation not built"
 
 #: Every failure prefix that names a fault in the check rather than in the code under test. A
 #: repair pass rewrites the implementation, never the criterion or the machine it runs on, so no
@@ -1010,12 +1018,44 @@ def body_is_a_complete_cut(body: str) -> bool:
     criterion rather than after it is inside a triple-quoted string. Tokenizing rather than
     compiling is deliberate: ``assert 1 ==`` is bad Python that still tokenizes, which is the
     point — the check only needs to rule out a cut landing mid-literal, not judge the Python.
+
+    Only the proof body is tokenized. The leading ``Intent:`` declaration is prose, and an
+    apostrophe in it (``the screen's inventory``) reads as an unterminated string literal, which
+    refused every repair of a criterion whose intent used a possessive.
     """
+    code = _parse_ac_block(body, check_id="", source="").code
     try:
-        list(tokenize.generate_tokens(io.StringIO(body).readline))
+        list(tokenize.generate_tokens(io.StringIO(code).readline))
     except (tokenize.TokenError, SyntaxError, IndentationError):
         return False
     return True
+
+
+def _markers_alternate(text: str) -> bool:
+    """True when every acceptance marker in ``text`` opens, closes with its own id, and is unique.
+
+    The structural half of :func:`parse_delimited_acceptance`, without the body parsing. A
+    speculative boundary repair is accepted only when it produces this shape, so the repair can
+    never hand Build a file that the real parser then rejects.
+    """
+    seen: set[str] = set()
+    pending: str | None = None
+    for _, kind, match in sorted(
+        [(m.start(), "open", m) for m in AC_OPEN_RE.finditer(text)]
+        + [(m.start(), "end", m) for m in AC_END_RE.finditer(text)],
+        key=lambda item: item[0],
+    ):
+        ident = match.group("id").strip()
+        if kind == "open":
+            if pending is not None or ident in seen:
+                return False
+            seen.add(ident)
+            pending = ident
+            continue
+        if pending != ident:
+            return False
+        pending = None
+    return pending is None
 
 
 def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | None:
@@ -1027,11 +1067,17 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
     where an LLM asked to repair it reliably renamed the wrong closer but never inserted the
     missing opener, failing identically on every attempt.
 
+    The fusion chains. A live run emitted ``workflow-columns`` closed by
+    ``workflow-production-terminal``, whose body was closed by ``workflow-catalog-boundary`` —
+    each wrong closer opening the next criterion in turn. Every link is repaired, not just the
+    first, because a chain is no more ambiguous than a single fusion: the walk carries the wrong
+    id forward as the new pending opener, exactly as the model should have written it.
+
     Repaired only when unambiguous: the wrong id never opens anywhere in the text (so it cannot
-    be a real, differently-placed criterion), it closes a second, genuine block later in the text
-    (so a synthetic opener has a real closer waiting for it), and the body being split off passes
-    :func:`body_is_a_complete_cut`. Anything else is left to the hard error in
-    :func:`parse_delimited_acceptance`.
+    be a real, differently-placed criterion), the body being split off passes
+    :func:`body_is_a_complete_cut`, and the repaired text alternates strictly. That last check is
+    the guard — a speculative repair that leaves any block unclosed, stray, or duplicated is
+    discarded whole and the hard error in :func:`parse_delimited_acceptance` stands.
 
     Returns ``(repaired_text, messages)`` when at least one boundary was inserted, else ``None``.
     Each message names the criterion id but not the file, so a caller with the filename can
@@ -1040,17 +1086,25 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
     """
     markers = sorted(
         [(match.start(), match.end(), "open", match) for match in AC_OPEN_RE.finditer(text)]
-        + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)],
+        + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)]
+        + [(match.start(), match.end(), "bare", match) for match in AC_BARE_END_RE.finditer(text)],
         key=lambda item: item[0],
     )
     if not markers:
         return None
     open_ids = {m.group("id").strip() for _, _, kind, m in markers if kind == "open"}
-    end_id_counts = Counter(m.group("id").strip() for _, _, kind, m in markers if kind == "end")
     repairs: list[tuple[int, int, str]] = []
     messages: list[str] = []
     pending: tuple[str, int] | None = None
     for start, end, kind, match in markers:
+        if kind == "bare":
+            # The chain's last link is closed by an end marker with no id. Whatever is open is
+            # the only thing it can close; with nothing open it is stray and left for the parser.
+            if pending is not None:
+                repairs.append((start, end, f"=== END AC {pending[0]} ==="))
+                messages.append(f"[{pending[0]}]: '=== END AC' without an id closed it; id added")
+                pending = None
+            continue
         ident = match.group("id").strip()
         if kind == "open":
             pending = (ident, end)
@@ -1058,7 +1112,7 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
         if pending is None or ident == pending[0]:
             pending = None
             continue
-        if ident in open_ids or end_id_counts[ident] < 2:
+        if ident in open_ids:
             pending = None
             continue
         body = text[pending[1] : start]
@@ -1073,9 +1127,12 @@ def split_fused_acceptance_boundary(text: str) -> tuple[str, tuple[str, ...]] | 
         pending = (ident, end)
     if not repairs:
         return None
+    repaired = text
     for start, end, replacement in sorted(repairs, key=lambda item: item[0], reverse=True):
-        text = text[:start] + replacement + text[end:]
-    return text, tuple(messages)
+        repaired = repaired[:start] + replacement + repaired[end:]
+    if not _markers_alternate(repaired):
+        return None
+    return repaired, tuple(messages)
 
 
 def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticAcceptance, ...]:
@@ -1402,6 +1459,77 @@ def acceptance_checks_from_file(
         return ()
 
 
+#: An ``assert <expr>.status_code <op> <codes>`` line, with the accepted codes as written. Both the
+#: membership form (``in {200, 404}``, and the tuple and list spellings) and the equality form
+#: (``== 200``) are read, because the defect is about which codes a criterion admits, not how the
+#: author spelled the admission.
+_STATUS_ASSERT_RE = re.compile(
+    r"^[ \t]*assert\b[^\n]*?\.status_code\s*(?:in\s*[\[({]\s*(?P<set>[^\])}]*)\s*[\])}]"
+    r"|==\s*(?P<one>\d{3}))",
+    re.MULTILINE,
+)
+
+
+def accepted_status_codes(code: str) -> tuple[tuple[str, frozenset[int]], ...]:
+    """Return each status assertion in ``code`` as its source line and the codes it admits."""
+    found: list[tuple[str, frozenset[int]]] = []
+    for match in _STATUS_ASSERT_RE.finditer(code):
+        if match.group("one") is not None:
+            codes = {int(match.group("one"))}
+        else:
+            codes = {int(item) for item in re.findall(r"\d{3}", match.group("set") or "")}
+        if codes:
+            found.append((match.group(0).strip(), frozenset(codes)))
+    return tuple(found)
+
+
+def weak_status_assertion(codes: frozenset[int]) -> str:
+    """Return why an accepted-status set asserts nothing, or ``""`` when it is determinate.
+
+    A criterion states one expectation. ``404`` means the endpoint is not there, so admitting it
+    beside any other code makes the criterion true of an application that implements nothing —
+    which is how a real run produced 37 criteria that an empty FastAPI app satisfies. Asserted
+    alone it is the opposite: a deliberate negative probe, and one of the stronger checks there is.
+
+    A stub is not the problem and is not caught here. A stub answers, and a criterion that pins
+    the status it answers with is a real test of a real contract.
+    """
+    if len(codes) < 2:
+        return ""
+    if 404 in codes:
+        return (
+            f"accepts {sorted(codes)}: 404 means the endpoint is absent, so this passes against "
+            "an application that implements nothing. Assert 404 alone for a negative probe, or "
+            "assert the status the implementation answers with."
+        )
+    if any(200 <= code < 300 for code in codes) and any(code >= 500 for code in codes):
+        return (
+            f"accepts {sorted(codes)}: success and server failure are both admitted, so the "
+            "criterion holds whatever the implementation does."
+        )
+    return ""
+
+
+def weak_acceptance_defects(
+    checks: Iterable[ProgrammaticAcceptance],
+) -> tuple[MalformedAcceptance, ...]:
+    """Return every criterion whose status assertion admits contradictory outcomes."""
+    defects: list[MalformedAcceptance] = []
+    for check in checks:
+        for line, codes in accepted_status_codes(check.code):
+            reason = weak_status_assertion(codes)
+            if reason:
+                defects.append(
+                    MalformedAcceptance(
+                        check_id=check.check_id,
+                        source=check.source,
+                        reason=f"{reason} ({line})",
+                    )
+                )
+                break
+    return tuple(defects)
+
+
 @dataclass(frozen=True)
 class MalformedAcceptance:
     """One acceptance criterion that does not compile, and so can never execute."""
@@ -1518,6 +1646,102 @@ def regex_defects(code: str) -> tuple[str, ...]:
         except re.error as exc:
             defects.append(f"line {node.lineno}: pattern {pattern!r} does not compile: {exc}")
     return tuple(defects)
+
+
+#: Callables whose first positional argument names a path on disk. Matched on the terminal name,
+#: so ``open``, ``io.open``, ``Path``, ``pathlib.Path`` and ``os.path.exists`` are all covered.
+_PATH_ARGUMENT_NAMES = frozenset({
+    "open",
+    "Path",
+    "PosixPath",
+    "exists",
+    "isfile",
+    "isdir",
+    "getsize",
+    "stat",
+})
+
+
+def _opened_path_literals(tree: ast.Module) -> tuple[tuple[int, str], ...]:
+    """Return ``(line, literal)`` for every statically-known path a criterion opens or stats."""
+    strings = _module_string_literals(tree)
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name not in _PATH_ARGUMENT_NAMES:
+            continue
+        if (literal := _literal_string(node.args[0], strings)) is not None:
+            found.append((node.lineno, literal))
+    return tuple(found)
+
+
+def blueprint_read_defects(code: str, blueprint_dir: Path) -> tuple[str, ...]:
+    """Return the Blueprint documents a criterion opens, which the build directory never holds.
+
+    Acceptance runs with the build directory as its working directory, and the Blueprint is an
+    *input* to the build: nothing copies ``ARCHITECTURE.md`` next to the code written from it. A
+    criterion reading one raises ``FileNotFoundError`` in its own frame on every run, so no
+    implementation and no repair pass can turn it green — it is a test that cannot run, detected
+    here rather than paid for a block at a time.
+
+    The reading is also worthless where it succeeds. A Blueprint document is the statement of
+    intent the story implements, so grepping it for the words it was written with asserts that the
+    specification contains itself. It passes against an empty build directory.
+
+    Staged assets under ``sources/`` are excluded: the Analysis marks those for copying into the
+    build, so a criterion invoking one names a path that will exist.
+    """
+    try:
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        # Not parseable is a separate, already-reported fact.
+        return ()
+
+    defects: list[str] = []
+    for line, literal in _opened_path_literals(tree):
+        relative = literal.removeprefix("./")
+        if PurePosixPath(relative).is_absolute() or relative.startswith(_STAGED_PREFIX):
+            continue
+        relative = relative.removeprefix("blueprint/")
+        if relative.startswith(_STAGED_PREFIX) or not (blueprint_dir / relative).is_file():
+            continue
+        defects.append(
+            f"line {line}: reads {relative}, a Blueprint document the build directory never "
+            "holds; assert against the code the story builds, not the specification it builds from"
+        )
+    return tuple(defects)
+
+
+def imported_modules(code: str) -> tuple[tuple[int, str, tuple[str, ...]], ...]:
+    """Return ``(line, module, imported names)`` for every import in a criterion.
+
+    ``import a.b`` yields ``(line, "a.b", ())``; ``from a import x, y`` yields
+    ``(line, "a", ("x", "y"))``. A relative import yields its module with the leading dots
+    dropped, because a criterion runs as a top-level script and has no package to be relative to.
+
+    The judgment lives in ``rigging_contract.import_defects``; this function only reads the text.
+    """
+    try:
+        with captured_syntax_warnings():
+            tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return ()
+
+    found: list[tuple[int, str, tuple[str, ...]]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.extend((node.lineno, alias.name, ()) for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            found.append((
+                node.lineno,
+                node.module or "",
+                tuple(alias.name for alias in node.names),
+            ))
+    return tuple(sorted(found))
 
 
 def staged_regex_defects(code: str, source_root: Path) -> tuple[str, ...]:
@@ -2057,6 +2281,51 @@ def all_programmatic_acceptance(
     return tuple(checks)
 
 
+def _foundation_packages() -> dict[str, str]:
+    """Return ``{package: "the <kind> foundation (<file>)"}`` for every published foundation."""
+    from drydock.rigging_contract import published_packages
+
+    try:
+        published = published_packages()
+    except (OSError, ValueError):
+        return {}
+    return {
+        package: f"the {contracts[0].kind} foundation ({', '.join(c.filename for c in contracts)})"
+        for package, contracts in published.items()
+    }
+
+
+def _unbuilt_foundation_failure(
+    code: str, build_dir: Path, packages: Mapping[str, str]
+) -> str | None:
+    """Return the failure for a criterion whose foundation package is absent, else ``None``.
+
+    Decided before the criterion runs. ``from app_server.testing import web_client`` against a
+    build directory with no ``app_server/`` can only raise ``ModuleNotFoundError``, and a
+    criterion that runs the application's pytest suite would fail inside pytest's collection
+    instead — neither says what is wrong as plainly as naming the package that was never built.
+    """
+    missing: list[str] = []
+    for _line, module, _names in imported_modules(code):
+        root = module.split(".", 1)[0]
+        if root not in packages or root in missing:
+            continue
+        if (build_dir / root).is_dir() or (build_dir / f"{root}.py").is_file():
+            continue
+        missing.append(root)
+    if not missing:
+        return None
+    return (
+        f"{UNBUILT_FOUNDATION_FAILURE_PREFIX}: "
+        + "; ".join(
+            f"`{root}` is the package {packages[root]} builds, and the build directory has no "
+            f"`{root}/`"
+            for root in missing
+        )
+        + ". The criterion exercises the built application, so it was not run."
+    )
+
+
 def run_programmatic_acceptance(
     checks: tuple[ProgrammaticAcceptance, ...],
     *,
@@ -2113,7 +2382,28 @@ def run_programmatic_acceptance(
     }
     limit_mb = get_sandbox_mem_limit_mb()
     preexec = child_limits(limit_mb)
+    packages = _foundation_packages()
     for index, check in enumerate(checks, start=1):
+        if unbuilt := _unbuilt_foundation_failure(check.code, build_dir, packages):
+            results.append(
+                AcceptanceRunResult(
+                    check_id=check.check_id,
+                    source=check.source,
+                    intent=check.intent,
+                    passed=False,
+                    return_code=None,
+                    stdout="",
+                    stderr="",
+                    error=unbuilt,
+                    interpreter=str(environment.interpreter),
+                    provisioning_result=environment.provisioning_result,
+                    # The miss is a fact about the build, not about a re-typed expectation.
+                    binding=True,
+                )
+            )
+            if on_item is not None:
+                on_item(check, index, len(checks), False)
+            continue
         # Run from a real file, never ``python -c``: a ``-c`` traceback reports
         # ``File "<string>", line N`` with no source text, so a failing assertion names
         # neither the assertion nor the expectation it asserted. Written to a file, the

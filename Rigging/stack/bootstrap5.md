@@ -1,7 +1,8 @@
 # Bootstrap 5 Best Practices
 
 **Version:** 20260320 V1  
-**Category:** Web Server
+**Tier:** interface
+**Category:** Frontend
 **Description:** Bootstrap 5 frontend patterns: layout, components, and form conventions
 
 Technology reference for Bootstrap 5 frontend styling. This file does not change between projects.

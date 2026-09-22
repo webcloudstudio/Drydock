@@ -2652,6 +2652,34 @@ def _tech_rigging_select(selected: str | None) -> str:
     return "<select class='ts-rigging'>" + "".join(options) + "</select>"
 
 
+def _foundation_fieldset(group: dict[str, Any]) -> str:
+    """One exclusive foundation choice: radios, never checkboxes.
+
+    A Target has one language, one web server, one database. A checkbox list invites the second
+    selection that ``plan verify`` then refuses — the wrong end of the process to learn it.
+    """
+    kind = str(group["kind"])
+    name = f"ts-foundation-{kind}"
+    selected = str(group.get("selected") or "")
+    options = [
+        f"<label class='ts-choice'><input type='radio' name='{html.escape(name)}' "
+        f"value='{html.escape(option)}'{' checked' if option == selected else ''}>"
+        f"<span>{html.escape(option.removesuffix('.md'))}</span></label>"
+        for option in group.get("options", [])
+    ]
+    options.append(
+        f"<label class='ts-choice ts-choice-none'><input type='radio' "
+        f"name='{html.escape(name)}' value=''{'' if selected else ' checked'}>"
+        "<span>None</span></label>"
+    )
+    return (
+        f"<fieldset class='ts-foundation' data-kind='{html.escape(kind)}'>"
+        f"<legend>{html.escape(str(group['label']))} "
+        f"<span class='ts-tier'>Tier {group['tier_label']} · "
+        f"{html.escape(str(group['tier']))}</span></legend>" + "".join(options) + "</fieldset>"
+    )
+
+
 def _tech_row(technology: str = "", rigging: str | None = None, notes: str = "") -> str:
     return (
         "<tr class='ts-row'>"
@@ -2661,6 +2689,42 @@ def _tech_row(technology: str = "", rigging: str | None = None, notes: str = "")
         "<td><button type='button' class='ts-remove' onclick='tsRemoveRow(this)' "
         "title='Remove this technology'>✕</button></td>"
         "</tr>"
+    )
+
+
+#: What each tier builds, in the order it is built, as ``(number, name, what it builds)``. Tiers 1
+#: and 2 are the exclusive foundation choices above; 3 to 5 are chosen in the table below, and
+#: Drydock orders them from the ``**Tier:**`` header each Rigging file carries. Tier 6 is
+#: everything the Blueprints describe and is shown so the page accounts for all the work, not only
+#: the part with a radio group.
+_TIER_SUMMARY = (
+    ("1", "language", "the tree, the environment, the test runner"),
+    ("2.1", "database", "the one database"),
+    ("2.2", "web server", "the one web server"),
+    ("2.3", "cli", "the one command-line entry point"),
+    ("3", "branding", "the palette, the typography, the voice"),
+    ("4", "interface", "the shared UI shell, built with that palette"),
+    ("5", "screen foundation", "the screen idiom, built on that shell"),
+    ("6", "application", "every service and screen — no internal order"),
+)
+
+
+def _tier_legend() -> str:
+    """The whole build chain, so the page shows where a non-foundation file lands.
+
+    bootstrap5.md and BRANDING_MAIN.md are not exclusive choices and so have no radio group, but
+    they do carry a tier. Without this the page shows two of six tiers and implies there are two.
+    """
+    rows = "".join(
+        f"<li><span class='ts-tier'>Tier {number} · {html.escape(name)}</span> "
+        f"{html.escape(what)}</li>"
+        for number, name, what in _TIER_SUMMARY
+    )
+    return (
+        "<details class='ts-tiers'><summary>Build order — six tiers</summary>"
+        f"<ul class='ts-tier-list'>{rows}</ul>"
+        "<p>A service declares no tier: it may be built either side of the interface tier. "
+        "Tiers repeat inside every phase; a tier is not a phase and not a block.</p></details>"
     )
 
 
@@ -2679,22 +2743,31 @@ def render_technology_stack(item: dict[str, Any]) -> str:
     except HTTPException:
         source_path = None
         entries = []
-    rows = "".join(_tech_row(e.technology, e.rigging, e.notes) for e in entries)
+    groups = technology_stack.foundation_groups(entries)
+    remaining = technology_stack.split_foundations(entries)[1] if entries else []
+    rows = "".join(_tech_row(e.technology, e.rigging, e.notes) for e in remaining)
+    foundations = (
+        "<div class='ts-foundations'>"
+        + "".join(_foundation_fieldset(group) for group in groups)
+        + "</div>"
+    )
     helper = _render_help_note(item)
     catalog = json.dumps({
         name.removesuffix(".md").lower().replace("-", "").replace("_", ""): name
         for name in technology_stack.rigging_names()
     })
-    required = (
-        technology_stack.missing_required_rigging(source_path.parent, entries)
+    unsupported = (
+        technology_stack.unsupported_persistence(source_path.parent, entries)
         if source_path is not None
-        else ()
+        else None
     )
     required_note = (
-        "<p class='item-warning'>Python relational persistence requires these Rigging selections: "
-        + ", ".join(html.escape(name) for name in required)
+        "<p class='item-warning'>Drydock ships no persistence adapter for "
+        + html.escape(unsupported)
+        + ". A Target with a DATABASE.md is limited to "
+        + ", ".join(html.escape(name) for name in technology_stack.PERSISTENCE_LANGUAGES)
         + ".</p>"
-        if required
+        if unsupported
         else ""
     )
     return (
@@ -2706,8 +2779,15 @@ def render_technology_stack(item: dict[str, Any]) -> str:
         + required_note
         + f"<div class='ts-editor' data-item='{html.escape(item['id'])}' "
         f"data-catalog='{html.escape(catalog)}'>"
+        + "<h2>Foundations</h2>"
+        + "<p class='q-autosave-hint'>One per row, in build order: the language is built first "
+        "and every other foundation is built into it. Each choice publishes the package name, "
+        "entry point, and test fixture that every acceptance criterion is written against.</p>"
+        + foundations
+        + _tier_legend()
+        + "<h2>Other technologies</h2>"
         + "<table class='ts-table'><thead><tr>"
-        + "<th>Technology</th><th>Rigging</th><th>Notes</th><th></th>"
+        + "<th>Technology Label</th><th>Rigging File</th><th>Notes</th><th></th>"
         + f"</tr></thead><tbody>{rows}</tbody></table>"
         + "<button type='button' class='ts-add' onclick='tsAddRow(this)'>+ Add technology</button>"
         + "<span class='q-save-status' aria-live='polite'></span></div>"
@@ -3338,12 +3418,13 @@ def api_approve_item(item_id: str, request: Request = None) -> dict[str, Any]:
                 entries = technology_stack.parse(path.read_text(encoding="utf-8"))
             except OSError:
                 entries = []
-            missing = technology_stack.missing_required_rigging(path.parent, entries)
-            if missing:
+            unsupported = technology_stack.unsupported_persistence(path.parent, entries)
+            if unsupported:
                 raise HTTPException(
                     status_code=400,
-                    detail="Python relational persistence requires Rigging selection: "
-                    + ", ".join(missing),
+                    detail=f"Drydock ships no persistence adapter for {unsupported}. A Target "
+                    "with a DATABASE.md is limited to "
+                    + ", ".join(technology_stack.PERSISTENCE_LANGUAGES),
                 )
             _atomic_write_text(path, technology_stack.render(entries, approved))
         return {"ok": True, "item_id": item_id, "state": "approved", "approved": approved}
@@ -3873,6 +3954,20 @@ _STYLE = """
   .q-save-status { display:inline-block; min-height:18px; margin-top:12px; font-size:13px;
                    font-weight:600; color:#16a34a; }
   .q-save-status.q-save-failed { color:#b91c1c; }
+  .ts-foundations { display:flex; flex-direction:column; gap:8px; margin:12px 0 20px; }
+  .ts-foundation { border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px 10px;
+                   display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
+  .ts-foundation legend { font-size:13px; font-weight:600; color:#334155; padding:0 4px; }
+  .ts-tier { font-weight:400; font-size:11px; color:#94a3b8; text-transform:uppercase;
+              letter-spacing:.04em; margin-left:6px; }
+  .ts-choice { display:inline-flex; align-items:center; gap:5px; font-size:13px;
+               color:#1e293b; cursor:pointer; }
+  .ts-choice input { margin:0; }
+  .ts-choice-none span { color:#94a3b8; }
+  .ts-tiers { margin:0 0 18px; font-size:13px; color:#475569; }
+  .ts-tiers summary { cursor:pointer; color:#334155; font-weight:600; }
+  .ts-tier-list { margin:8px 0 0; padding-left:0; list-style:none; }
+  .ts-tier-list li { margin:2px 0; }
   .ts-table { width:100%; border-collapse:collapse; margin:12px 0; }
   .ts-table th { text-align:left; font-size:13px; color:#475569; padding:6px 8px;
     border-bottom:1px solid #e2e8f0; }
@@ -4346,12 +4441,23 @@ def index(request: Request = None) -> str:
       const match = catalog[_tsNormalize(row.querySelector('.ts-technology').value)];
       if (match) select.value = match;
     }}
+    // Foundations lead the file, in the order they are built. A kind left on "None" emits no
+    // row at all — that is how a Target says it has no web server.
     function tsPayload(editor) {{
-      return [...editor.querySelectorAll('.ts-row')].map(row => ({{
+      const foundations = [...editor.querySelectorAll('.ts-foundation')]
+        .map(set => set.querySelector('input[type=radio]:checked'))
+        .filter(input => input && input.value)
+        .map(input => ({{
+          technology: input.value.replace(/[.]md$/, ''),
+          rigging: input.value,
+          notes: '',
+        }}));
+      const rows = [...editor.querySelectorAll('.ts-row')].map(row => ({{
         technology: row.querySelector('.ts-technology').value,
         rigging: row.querySelector('.ts-rigging').value,
         notes: row.querySelector('.ts-notes').value,
       }}));
+      return foundations.concat(rows);
     }}
     function tsAddRow(btn) {{
       const editor = _tsEditor(btn);
@@ -4406,6 +4512,9 @@ def index(request: Request = None) -> str:
         return pending;
       }};
       editor.addEventListener('ts-save', save);
+      editor.querySelectorAll('.ts-foundation input[type=radio]').forEach(input => {{
+        input.addEventListener('change', save);
+      }});
       editor.querySelectorAll('.ts-row').forEach(row => {{
         if (row.dataset.wired) return;
         row.dataset.wired = '1';

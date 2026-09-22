@@ -15,11 +15,10 @@ Tests inject a fake runner and never spend API credits.
 from __future__ import annotations
 
 import ast
-import io
 import json
 import os
 import re
-import tokenize
+import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -31,14 +30,17 @@ from typing import Protocol, cast
 
 from drydock import technology_stack
 from drydock.acceptance import (
+    AC_BARE_END_RE,
     AC_END_RE,
     AC_OPEN_RE,
     MalformedAcceptance,
     ProgrammaticAcceptance,
     acceptance_checks_from_text,
+    body_is_a_complete_cut,
     escape_defects,
     parse_programmatic_acceptance_text,
     split_fused_acceptance_boundary,
+    unresolved_globals,
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
 from drydock.acceptance_env import read_staged_assets, staged_asset_env_defects
@@ -61,10 +63,27 @@ from drydock.build_plan import (
     disambiguate_manifest_ids,
     parse_build_plan,
     set_applied_specs,
+    set_plan_state,
 )
 from drydock.compass_sources import normative_compass_sections
 from drydock.config import build_dir_for, get_llm_provider
-from drydock.database_contract import validate_sqlite_schema
+from drydock.database_contract import (
+    SHARED_OWNER,
+    DatabaseUse,
+    database_contract_defects,
+    declared_owners,
+    derive_missing_dtos,
+    legal_owner,
+    parse_database_contract,
+    parse_database_interface,
+    render_database_interface,
+    replace_database_interface,
+    rewrite_illegal_owners,
+    table_coverage_defects,
+    validate_database_interfaces,
+    validate_sqlite_schema,
+)
+from drydock.database_schema import DATABASE_BLOCK, merge_schema, seed_blueprint
 from drydock.decisions import (
     ARCHITECTURE_BLUEPRINT,
     DECISIONS_BLOCK,
@@ -92,8 +111,8 @@ from drydock.llm import ClaudePromptSession, run_prompt
 from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.override import PLAN_DECISION, WaivedGate, dedupe_waivers, stamp_override
-from drydock.paths import get_prompts_root
-from drydock.plan_graph import PlanComputation, PlannedStory
+from drydock.paths import get_prompts_root, get_spec_template_dir
+from drydock.plan_graph import PlanComputation, PlannedStory, specification_names
 from drydock.plan_score import PlanScore, score_plan
 from drydock.plan_shape import OutputContract, ShapeDefect, check_contract, render_defects
 from drydock.plan_topology import TOPOLOGY_BLOCK, parse_topology
@@ -110,6 +129,11 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
+from drydock.rigging_contract import (
+    FoundationContract,
+    entry_owners,
+    selected_contract_sections,
+)
 from drydock.source_material import SourceMaterialFile, discover_source_material
 from drydock.source_roles import parse_source_roles, promote_imported_sources
 from drydock.standard_artifacts import ensure_standard_artifacts, render_console
@@ -1606,9 +1630,17 @@ def _assemble_prompt_assembly(
         text = technology_stack.load_text(target_dir)
         if not text.strip():
             return []
+        # The contract of each selected foundation travels with the stack that selects it. A
+        # criterion writes against the package it names; without it the author invents one, and
+        # Marina_Luna split 153 criteria between `app` and `marina_app`.
+        selected = technology_stack.stack_files(target_dir)
+        content = "\n\n".join([
+            text.strip(),
+            *(section.strip() for section in selected_contract_sections(selected)),
+        ])
         return _managed_doc_parts(
             filename=technology_stack.FILENAME,
-            content=text.strip(),
+            content=content,
             content_role="technology stack",
             path=technology_stack.path_for(target_dir),
         )
@@ -2189,6 +2221,14 @@ def _integrity_check(
                     "DATABASE.md: Drydock verified SQLite construction and connectivity for "
                     f"{len(schema_tables)} declared table(s)"
                 )
+            else:
+                # A project with no persistence has no DATABASE.md at all. One that exists and
+                # declares nothing is an empty contract, and Build fills that vacuum by inventing
+                # a schema no Blueprint describes.
+                fatal.append(
+                    "DATABASE.md: declares no tables. A persistence Blueprint states every table "
+                    "as a `## `table_name`` section over a | Field | Type | Notes | table."
+                )
 
     executable_with_empty_depends = False
     spec_owners: dict[str, list[str]] = {}
@@ -2324,6 +2364,216 @@ def _parse_plan_text(text: str) -> BuildPlan:
     return DrydockManifest.parse(text, source="MANIFEST.md")
 
 
+def _database_interface_defects(
+    blocks: dict[str, str],
+) -> tuple[tuple[str, MalformedAcceptance], ...]:
+    """Return every way a Blueprint's persistence citation disagrees with the declaration.
+
+    ``## Database Interface`` is how a Feature or Screen names the operations it uses, and
+    ``validate_database_interfaces`` checks one against the declared contract — unknown
+    operation, wrong owner, access it was not granted, a field the DTO does not carry, a
+    required field left out.
+
+    Ownership is read from the declaration, never from the story's ``stack:``. A stack selection
+    says which technology the story is built with, not whether it reaches a repository: in a
+    Python Target every story carries ``sqlalchemy.md`` and ``alembic.md`` whether it owns data
+    or merely runs the migration at startup, so a gate keyed on the stack demanded a citation
+    from the application shell and was silent about a Go or C++ Target entirely. Each access
+    pattern already names its ``Owner``. A Blueprint named there owns that operation and must
+    cite it; a Blueprint named nowhere reaches no repository and declares ``- None``. That is
+    decidable from the artifacts, in any language, with no list of technology files to maintain.
+
+    Three kinds are returned tagged for the artifact repair loop. A citation conflict is a
+    disagreement between two files, so it is reported against both the citing Blueprint and
+    ``DATABASE.md`` — the repair loop re-emits exactly the sources it is given, and a pass handed
+    only the Blueprint has no legal move when the declaration is the wrong side. That was the
+    observed deadlock: four passes, one file, the same defect returned each time.
+
+    Persistence is the one part of a plan that is wholly decidable from the declaration, so it is
+    repaired before the plan is written rather than emitted and handed to a Commander as a
+    question about a defect Drydock had already located. Reporting them as decisions instead left
+    17 stories of a well-specified project citing nothing at all.
+
+    The validator raises on the first defect it finds, so it is called once per Blueprint: one
+    bad citation in one file must not hide the citations in every other file from the repair
+    loop.
+    """
+    database_text = blocks.get(DATABASE_BLOCK)
+    if not database_text:
+        return ()
+    defects: list[tuple[str, MalformedAcceptance]] = []
+    # An Owner naming something that is not an emitted Blueprint is the declaration's defect and
+    # nobody else's. Caught here it is one message against one file; left uncaught it reappears
+    # as a wrong-owner conflict in every Blueprint that cites the pattern, none of which can fix
+    # it. Marina_Luna declared five owners as service names and spent its whole repair budget on
+    # the first Blueprint to notice. Read before the contract is parsed: a repair that invented
+    # both an owner and an incomplete pattern must hear about both in the same pass.
+    blueprints = {name for name in blocks if name not in _RESERVED_BLOCKS}
+    unowned = sorted({
+        owner for owner in declared_owners(database_text) if not legal_owner(owner, blueprints)
+    })
+    defects.extend(
+        (
+            "database-owner-unknown",
+            MalformedAcceptance(
+                check_id="## Access Patterns",
+                source=DATABASE_BLOCK,
+                reason=(
+                    f"`| Owner |` names {owner!r}, which is not a Feature in this plan. An "
+                    "access pattern is owned by the Feature that reaches it, named by its file "
+                    "name — `FEATURE-ORDER.md`, never a Screen, a service, or a module. A "
+                    f"pattern no single Feature owns names `{SHARED_OWNER}` and may be cited by "
+                    "any Blueprint."
+                ),
+            ),
+        )
+        for owner in unowned
+    )
+    try:
+        contract = parse_database_contract(database_text)
+    except SpecificationError:
+        # An unreadable declaration is ``_database_contract_defects``' business. Nothing can be
+        # said about citations against a contract that does not parse.
+        return tuple(defects)
+    interfaces: dict[str, tuple[DatabaseUse, ...]] = {}
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS or name == DATABASE_BLOCK:
+            continue
+        try:
+            interfaces[name] = parse_database_interface(blocks[name], source=name)
+        except SpecificationError as exc:
+            defects.append((
+                "database-interface-invalid",
+                MalformedAcceptance(check_id="## Database Interface", source=name, reason=str(exc)),
+            ))
+
+    for name, uses in interfaces.items():
+        try:
+            validate_database_interfaces(contract, {name: uses})
+        except SpecificationError as exc:
+            defects.append((
+                "database-citation-conflict",
+                MalformedAcceptance(check_id="## Database Interface", source=name, reason=str(exc)),
+            ))
+            defects.append((
+                "database-citation-conflict",
+                MalformedAcceptance(
+                    check_id="## Access Patterns",
+                    source=DATABASE_BLOCK,
+                    reason=(
+                        f"the declaration disagrees with {name}: {exc}. Repair whichever side is "
+                        "wrong — the citation or the pattern it cites."
+                    ),
+                ),
+            ))
+
+    # An owner that cites nothing. The declaration says this Blueprint reaches the repository, so
+    # ``- None`` is not available to it: it states the operations it owns or the pattern moves to
+    # the Blueprint that does own it.
+    owners = {pattern.owner for pattern in contract.patterns}
+    defects.extend(
+        (
+            "database-interface-missing",
+            MalformedAcceptance(
+                check_id="## Database Interface",
+                source=name,
+                reason=(
+                    f"`{DATABASE_BLOCK}` names it as the Owner of "
+                    + ", ".join(
+                        sorted(
+                            pattern.identifier
+                            for pattern in contract.patterns
+                            if pattern.owner == name
+                        )
+                    )
+                    + ", but the Blueprint cites no access pattern. State them in a "
+                    "`## Database Interface` section with only the fields it supplies or "
+                    "receives, or move the `| Owner |` row to the Blueprint that owns them."
+                ),
+            ),
+        )
+        for name in sorted(owners & set(interfaces))
+        if not interfaces[name]
+    )
+    return tuple(defects)
+
+
+def _database_table_defects(blocks: dict[str, str]) -> tuple[tuple[str, MalformedAcceptance], ...]:
+    """Return every disagreement between the declared schema and the operation surface.
+
+    A table no access pattern reaches is storage the declaration describes and no story can use.
+    An operation naming a table the schema never declares is the same disagreement seen from the
+    other side, and Build would write a repository against a table that will not exist. Neither
+    needs judgment to see: both are read from ``DATABASE.md`` alone, which is why they are gated
+    here instead of left to review. A plan that declared four tables and reached three shipped
+    with nothing looking at the fourth.
+    """
+    text = blocks.get(DATABASE_BLOCK)
+    if not text:
+        return ()
+    try:
+        uncited, undeclared = table_coverage_defects(text)
+    except SpecificationError:
+        # ``_database_contract_defects`` owns an unreadable declaration.
+        return ()
+    return tuple(
+        (
+            "database-table-uncited",
+            MalformedAcceptance(
+                check_id=table,
+                source=DATABASE_BLOCK,
+                reason=(
+                    f"table `{table}` is declared in `## Schema` but no access pattern reaches "
+                    "it, so no story can read or write it. Add a "
+                    "`### <FEATURE-DOMAIN-NNN> — <Operation>` pattern whose Repository operation "
+                    f"names `{table}.<verb>`, or remove the table."
+                ),
+            ),
+        )
+        for table in uncited
+    ) + tuple(
+        (
+            "database-table-undeclared",
+            MalformedAcceptance(
+                check_id=identifier,
+                source=DATABASE_BLOCK,
+                reason=(
+                    f"repository operation `{operation}` names table "
+                    f"`{operation.split('.', 1)[0]}`, which `## Schema` does not declare. Declare "
+                    "the table or correct the operation."
+                ),
+            ),
+        )
+        for identifier, operation in undeclared
+    )
+
+
+def _database_contract_defects(
+    blocks: dict[str, str],
+) -> tuple[tuple[str, MalformedAcceptance], ...]:
+    """Return every reason ``DATABASE.md``'s operation surface cannot be parsed, or ``()``.
+
+    Build reads that surface through ``database_operation_fingerprints`` and generates the
+    persistence package from it, so a declaration this rejects is one Build cannot consume.
+    It raises ``DatabaseDefect`` like every other persistence defect: an unreadable declaration
+    also silences the table-coverage and citation checks, which cannot judge a contract that
+    does not parse, so recording it as a decision let a plan whose whole persistence layer was
+    unchecked report success.
+    """
+    text = blocks.get(DATABASE_BLOCK)
+    if not text:
+        return ()
+    return tuple(
+        (
+            "database-contract-invalid",
+            MalformedAcceptance(
+                check_id="## Access Patterns", source=DATABASE_BLOCK, reason=reason
+            ),
+        )
+        for reason in database_contract_defects(text)
+    )
+
+
 def malformed_acceptance_decisions(
     defects: tuple[MalformedAcceptance, ...],
     *,
@@ -2450,6 +2700,32 @@ class CriteriaDefect(SpecificationError):
         self.defects = defects
 
 
+class PlanNotBuildable(SpecificationError):
+    """The plan was written but fails the buildability gate, so ``drydock plan`` fails."""
+
+
+class DatabaseDefect(SpecificationError):
+    """A persistence defect that is decidable from the declaration, and so must be repaired.
+
+    Deliberately a sibling of :class:`CriteriaDefect` rather than a subclass. Both carry
+    ``defects`` in the same shape, so both drive the artifact repair loop — grouped by kind,
+    chunked, and budgeted to reach every chunk. They part at exhaustion. A criterion that still
+    cannot be written is recorded as a blocking decision and the plan is kept, because the rest
+    of the planning is sound and a Commander can answer for one snippet. A persistence defect is
+    not like that: the schema, the operation surface, and the citations either agree or they do
+    not, nothing about the disagreement needs a human to decide, and Build would implement it.
+    Exhausting the repair budget on one means the model could not produce a coherent persistence
+    boundary, so the run fails and writes nothing rather than handing forward a plan whose
+    storage contract is known to be wrong.
+    """
+
+    def __init__(
+        self, message: str, defects: tuple[tuple[str, MalformedAcceptance], ...] = ()
+    ) -> None:
+        super().__init__(message)
+        self.defects = defects
+
+
 #: Runner modes that enumerate a suite without executing a case. A non-terminal story may
 #: invoke the authoritative runner in one of these and in no other way: listing proves the
 #: corpus parses and the harness starts while requiring nothing of the code under test.
@@ -2549,27 +2825,70 @@ def _malformed_acceptance_defects(blocks: dict[str, str]) -> tuple[MalformedAcce
     return tuple(defects)
 
 
-def _body_is_a_complete_cut(body: str) -> bool:
-    """True when ``body`` can stand as a whole criterion, so a boundary may be inserted after it.
+def _weak_acceptance_defects(blocks: dict[str, str]) -> tuple[MalformedAcceptance, ...]:
+    """Return every criterion whose status assertion admits contradictory outcomes.
 
-    This is the one decidable question that separates a dropped terminator from a real defect.
-    An ``=== AC ... ===`` line only matches at column zero, so the sole way one lands inside a
-    criterion rather than after it is inside a triple-quoted string — and a target that processes
-    Drydock's own markup will legitimately embed one. Cutting there leaves an unterminated
-    literal, which ``tokenize`` reports and ``compile`` alone would not distinguish from ordinary
-    bad Python.
+    The sibling of ``_malformed_acceptance_defects``. That one catches a criterion that cannot
+    execute; this one catches a criterion that executes and proves nothing — a real run produced
+    37 of them, 22% of the plan's gates, each satisfied by an application with no routes at all.
+    A story whose acceptance is green on an empty implementation reports progress that has not
+    happened, which is the one failure Drydock exists to prevent.
 
-    Tokenizing rather than compiling is the point. ``assert 1 ==`` is bad Python that tokenizes;
-    it is normalized here and then downgraded to a blocking decision downstream, which is the
-    policy already settled for a criterion that does not compile. ``sample = \"\"\"`` and ``f(``
-    do not tokenize; they mean the boundary is not where the marker is, so nothing is inserted
-    and the existing hard error stands.
+    Reported as a warning and a material decision rather than a blocking one. A stub is a
+    legitimate state for a Blueprint to specify and its criterion is not the defect; a criterion
+    that declines to say what the stub answers is.
     """
-    try:
-        list(tokenize.generate_tokens(io.StringIO(body).readline))
-    except (tokenize.TokenError, SyntaxError, IndentationError):
-        return False
-    return True
+    from drydock.acceptance import parse_programmatic_acceptance_text, weak_acceptance_defects
+
+    defects: list[MalformedAcceptance] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            # Unparseable containers are ``_malformed_acceptance_defects``' business, not this
+            # pass's; reporting the same file twice helps nobody.
+            continue
+        defects.extend(weak_acceptance_defects(checks))
+    return tuple(defects)
+
+
+def weak_acceptance_decisions(
+    defects: tuple[MalformedAcceptance, ...],
+    *,
+    unattended: bool = False,
+) -> tuple[Decision, ...]:
+    """Record each criterion that proves nothing, for the Commander to settle.
+
+    ``severity: material`` and not ``blocking``: these criteria execute, and a plan full of stubs
+    is a legitimate early pass. The record exists so the weakness is counted and visible rather
+    than discovered when the build reports acceptance it never earned.
+    """
+    return tuple(
+        Decision(
+            id=f"weak-acceptance-{defect.source}-{defect.check_id or 'container'}",
+            type="text",
+            severity="material",
+            origin="plan",
+            blueprint=defect.source,
+            story=None,
+            status="recommended" if unattended else "open",
+            archived=False,
+            title=f"Acceptance criterion {defect.check_id or 'container'} proves nothing",
+            description=(
+                f"{defect.rendered}\n\n"
+                "A criterion states one expectation. Pin the status the implementation answers "
+                "with — a stub that answers is a real contract and a real test — or assert the "
+                "not-found status alone as a deliberate negative probe. A criterion that needs a "
+                "row to exist creates it through the public interface first rather than admitting "
+                "the status that says it never existed."
+            ),
+            options=(),
+            system_choice="",
+        )
+        for defect in defects
+    )
 
 
 def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[str, ...]:
@@ -2583,7 +2902,7 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
 
     Only the unambiguous shape is repaired. An open marker followed by another open marker, or a
     trailing open marker at the end of the block, has exactly one possible boundary, and
-    ``_body_is_a_complete_cut`` confirms the boundary is where the marker is. A mismatched end
+    ``body_is_a_complete_cut`` confirms the boundary is where the marker is. A mismatched end
     id, a stray end marker, and a duplicate id have no single answer and are left to the hard
     error in ``parse_delimited_acceptance``.
 
@@ -2597,7 +2916,13 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
         text = blocks[name]
         markers = sorted(
             [(match.start(), match.end(), "open", match) for match in AC_OPEN_RE.finditer(text)]
-            + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)],
+            + [(match.start(), match.end(), "end", match) for match in AC_END_RE.finditer(text)]
+            # An id-less end marker is a terminator, not a missing one; the fused-boundary pass
+            # names it. Treating it as absent appended a terminator after the section's prose.
+            + [
+                (match.start(), match.end(), "end", match)
+                for match in AC_BARE_END_RE.finditer(text)
+            ],
             key=lambda item: item[0],
         )
         if not markers:
@@ -2612,7 +2937,7 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
                 continue
             boundary = following[0] if following is not None else len(text)
             body = text[end:boundary]
-            if not _body_is_a_complete_cut(body):
+            if not body_is_a_complete_cut(body):
                 continue
             ident = match.group("id").strip()
             terminator = f"=== END AC {ident} ===\n"
@@ -2626,6 +2951,167 @@ def _normalize_unterminated_acceptance_blocks(blocks: dict[str, str]) -> tuple[s
         for boundary, terminator in reversed(repairs):
             text = text[:boundary] + terminator + text[boundary:]
         blocks[name] = text
+    return tuple(normalized)
+
+
+#: Unambiguous spellings of the three Access values the persistence contract defines. A combined
+#: surface reads as ``read-write`` rather than collapsing to ``write``: once a Blueprint must cite
+#: the pattern it uses, a collapsed level rejects the read-only consumer that cites it honestly.
+_ACCESS_SYNONYMS = {
+    "read": "read",
+    "read-only": "read",
+    "read only": "read",
+    "readonly": "read",
+    "get": "read",
+    "list": "read",
+    "query": "read",
+    "select": "read",
+    "write": "write",
+    "write-only": "write",
+    "writeonly": "write",
+    "append": "write",
+    "create": "write",
+    "insert": "write",
+    "update": "write",
+    "upsert": "write",
+    "delete": "write",
+    "mutate": "write",
+    "read-write": "read-write",
+    "read/write": "read-write",
+    "read-and-write": "read-write",
+    "read and write": "read-write",
+    "read, write": "read-write",
+    "readwrite": "read-write",
+    "rw": "read-write",
+}
+
+_ACCESS_ROW_RE = re.compile(
+    r"^(\|\s*Access\s*\|\s*)([^|\n]+?)(\s*\|)\s*$", re.MULTILINE | re.IGNORECASE
+)
+
+
+def _normalize_database_access_values(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Rewrite each unambiguous ``| Access |`` spelling to the value the contract defines.
+
+    A live run lost a whole plan — 39 accepted Blueprints across 9 LLM calls — to one cell reading
+    ``read-write`` where the contract admits ``read`` or ``write``. The operation it described was
+    correct and the model's intent was not in doubt; only the spelling was outside the vocabulary.
+
+    Only a recognized spelling is rewritten. Anything else is left exactly as written, so a value
+    Drydock cannot read without guessing still reaches the contract parser and is surfaced there
+    rather than silently reinterpreted.
+    """
+    text = blocks.get(DATABASE_BLOCK)
+    if not text:
+        return ()
+    normalized: list[str] = []
+
+    def rewrite(match: re.Match[str]) -> str:
+        written = match.group(2).strip()
+        settled = _ACCESS_SYNONYMS.get(written.casefold())
+        if settled is None or settled == written:
+            return match.group(0)
+        normalized.append(
+            f"{DATABASE_BLOCK}: Access {written!r} read as {settled!r}; "
+            "the contract defines read and write"
+        )
+        return f"{match.group(1)}{settled}{match.group(3)}"
+
+    blocks[DATABASE_BLOCK] = _ACCESS_ROW_RE.sub(rewrite, text)
+    return tuple(normalized)
+
+
+def _normalize_database_dtos(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Derive the Input/Output tables a pattern omits from the schema table it names.
+
+    Run before ``_normalize_database_interfaces``, which renders citations from these DTOs.
+    """
+    database_text = blocks.get(DATABASE_BLOCK)
+    if not database_text:
+        return ()
+    rewritten, completed = derive_missing_dtos(database_text)
+    if not completed:
+        return ()
+    blocks[DATABASE_BLOCK] = rewritten
+    return tuple(
+        f"{DATABASE_BLOCK}: {identifier} declared no Input/Output tables; derived them from the "
+        "schema table its Repository operation names"
+        for identifier in completed
+    )
+
+
+def _normalize_database_owners(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Point an `| Owner |` cell that names no Feature in this plan at ``DATABASE.md``.
+
+    There is nothing here for a model to decide: the cell names something that does not own data
+    in this plan, and the one checkable fact left is that no Feature claims the pattern — which
+    is what ``DATABASE.md`` as owner states. A log is the honest case (every Feature appends,
+    no Feature owns it); a Screen or a service name in the cell is the sloppy one, and both
+    resolve the same way. Run before ``_normalize_database_interfaces``, whose rewrite is a
+    function of these owners.
+    """
+    database_text = blocks.get(DATABASE_BLOCK)
+    if not database_text:
+        return ()
+    blueprints = {name for name in blocks if name not in _RESERVED_BLOCKS}
+    rewritten, changed = rewrite_illegal_owners(database_text, blueprints)
+    if not changed:
+        return ()
+    blocks[DATABASE_BLOCK] = rewritten
+    return tuple(
+        f"{DATABASE_BLOCK}: `| Owner |` named {owner!r}, which owns no data in this plan; "
+        f"the pattern is now owned by {SHARED_OWNER} and may be cited by any Blueprint"
+        for owner in changed
+    )
+
+
+def _normalize_database_interfaces(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Rewrite each invalid ``## Database Interface`` section from ``DATABASE.md``.
+
+    A citation may name only a pattern its Blueprint owns, so the section is derivable from the
+    declaration. The LLM repair loop could not derive it: its prompt carries the cited Blueprints
+    but not the DTO field names, and a live Marina_Luna run spent all three passes alternating
+    between a prose table, an empty section, and an ``Access pattern:`` sentence. A valid section
+    is left untouched, so a citation that deliberately claims less than the grant survives.
+
+    An Owner that names no emitted Blueprint is the declaration's defect, and
+    ``_database_interface_defects`` routes it to repair. It does not stop the rewrite here. An
+    owner's section is a function of the patterns that name *it*, so a bad owner elsewhere cannot
+    make it wrong. Only ``- None`` is withheld while one exists: the unknown owner may be this
+    Blueprint's own name misspelled, and writing ``- None`` over its citations would destroy them.
+    Bailing on all of them cost a Marina_Luna run its whole repair budget — four Blueprints whose
+    sections this function derives exactly were handed to the model because a fifth pattern named
+    an owner that did not exist.
+    """
+    database_text = blocks.get(DATABASE_BLOCK)
+    if not database_text:
+        return ()
+    try:
+        contract = parse_database_contract(database_text)
+    except SpecificationError:
+        return ()
+    blueprints = {name for name in blocks if name not in _RESERVED_BLOCKS}
+    unknown_owner = any(not legal_owner(pattern.owner, blueprints) for pattern in contract.patterns)
+    owners = {pattern.owner for pattern in contract.patterns}
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS or name == DATABASE_BLOCK or not name.endswith(".md"):
+            continue
+        text = blocks[name]
+        try:
+            uses = parse_database_interface(text, source=name)
+            validate_database_interfaces(contract, {name: uses})
+            if uses or name not in owners:
+                continue
+            reason = "cites no access pattern it owns"
+        except SpecificationError as exc:
+            reason = str(exc).split(" — ", 1)[0]
+        if unknown_owner and name not in owners:
+            continue
+        blocks[name] = replace_database_interface(text, render_database_interface(contract, name))
+        normalized.append(
+            f"{name}: ## Database Interface rewritten from {DATABASE_BLOCK} ({reason})"
+        )
     return tuple(normalized)
 
 
@@ -2672,12 +3158,160 @@ def _acceptance_escape_warnings(blocks: dict[str, str]) -> tuple[str, ...]:
     return tuple(reported)
 
 
-def _normalize_standalone_subprocess_imports(blocks: dict[str, str]) -> tuple[str, ...]:
-    """Give each AC that reads ``subprocess`` its own explicit module import.
+def _top_level_imports(code: str) -> dict[str, str]:
+    """Map each name a criterion binds by a module-level import to that import statement."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return {}
+    bound: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                name = alias.asname or alias.name.split(".")[0]
+                bound[name] = ast.unparse(ast.Import(names=[alias]))
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            for alias in node.names:
+                if alias.name != "*":
+                    bound[alias.asname or alias.name] = ast.unparse(
+                        ast.ImportFrom(module=node.module, names=[alias], level=0)
+                    )
+    return bound
 
-    This is deliberately one exact normalization, not a general undefined-name predictor. A
-    qualified ``subprocess`` read is unambiguous, the module is in Python's standard library, and
-    the Blueprint contract already requires this import in every independently executed block.
+
+def _splice_check_code(text: str, check: ProgrammaticAcceptance, replacement: str) -> str | None:
+    """Return ``text`` with one criterion's code replaced, or ``None`` when its span is not found.
+
+    Located by the criterion's own delimiters and then by the exact code inside them, so a repair
+    rewrites that criterion and nothing else in the file — including a sibling whose code is
+    identical.
+    """
+    opening = next(
+        (
+            match
+            for match in AC_OPEN_RE.finditer(text)
+            if match.group("id").strip() == check.check_id
+        ),
+        None,
+    )
+    if opening is None:
+        return None
+    closing = next(
+        (
+            match
+            for match in AC_END_RE.finditer(text, opening.end())
+            if match.group("id").strip() == check.check_id
+        ),
+        None,
+    )
+    if closing is None:
+        return None
+    offset = text[opening.end() : closing.start()].find(check.code)
+    if offset < 0:
+        return None
+    start = opening.end() + offset
+    return text[:start] + replacement + text[start + len(check.code) :]
+
+
+def _normalize_standalone_imports(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Give each AC the import its sibling criteria already state for a name it reads unbound.
+
+    Each criterion executes as an isolated script, and the model habitually writes the import
+    once and omits it from the next block (``create_app()`` with ``from app import create_app``
+    only in the neighbouring criterion). The import is taken only where it is unambiguous: every
+    sibling criterion in the same Blueprint that binds the name binds it with the same statement.
+    ``subprocess`` is standard library and needs no sibling. Anything else stays undefined and is
+    reported as before.
+    """
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            continue
+        sibling_imports: dict[str, set[str]] = {}
+        for check in checks:
+            for bound, statement in _top_level_imports(check.code).items():
+                sibling_imports.setdefault(bound, set()).add(statement)
+        text = blocks[name]
+        for check in checks:
+            added: list[str] = []
+            for missing in unresolved_globals(check.code):
+                if missing == "subprocess":
+                    added.append("import subprocess")
+                elif len(statements := sibling_imports.get(missing, set())) == 1:
+                    added.append(next(iter(statements)))
+            if not added:
+                continue
+            replacement = "\n".join(added) + "\n\n" + check.code
+            spliced = _splice_check_code(text, check, replacement)
+            if spliced is not None:
+                text = spliced
+                normalized.extend(
+                    f"{name} [{check.check_id}]: added the required standalone import subprocess"
+                    if statement == "import subprocess"
+                    else f"{name} [{check.check_id}]: added the standalone import {statement} "
+                    "its sibling criteria use"
+                    for statement in added
+                )
+        blocks[name] = text
+    return tuple(normalized)
+
+
+def _factory_bindings(code: str) -> tuple[str, ...]:
+    """Return the assignments that bind each module name a criterion imports from and then reads.
+
+    ``from app import create_app`` followed by ``client = app.test_client()`` is one slip with one
+    reading: the criterion imported the factory it needs and then reached for a name the import
+    never bound. The module object would not answer ``test_client`` even if it were imported, so
+    ``app = create_app()`` is the only construction the criterion can have meant, and it is the
+    construction its sibling criteria in the same Blueprint already write.
+
+    Taken only where nothing else is plausible: the unbound name is not a standard library module,
+    exactly one name is imported from the module rooted at it, and no attribute read of that name
+    matches a submodule of the import — ``marina.db`` after ``from marina.db import Session`` means
+    the module, not the session, and is left for ``plan verify`` to report.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return ()
+    bindings: list[str] = []
+    for missing in unresolved_globals(code):
+        if missing in sys.stdlib_module_names:
+            continue
+        imported: set[str] = set()
+        submodules: set[str] = set()
+        for node in tree.body:
+            if not isinstance(node, ast.ImportFrom) or node.level != 0 or not node.module:
+                continue
+            path = node.module.split(".")
+            if path[0] != missing:
+                continue
+            submodules.update(path[1:])
+            imported.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+        if len(imported) != 1:
+            continue
+        if any(
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == missing
+            and node.attr in submodules
+            for node in ast.walk(tree)
+        ):
+            continue
+        bindings.append(f"{missing} = {next(iter(imported))}()")
+    return tuple(bindings)
+
+
+def _normalize_factory_bindings(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Bind, after its imports, each name a criterion imports a factory from and then reads.
+
+    Runs after :func:`_normalize_standalone_imports`, whose additions can supply the import this
+    reading is drawn from. The assignment goes below the criterion's last import rather than above
+    its code, because the name it calls is bound by that import.
     """
     normalized: list[str] = []
     for name in sorted(blocks):
@@ -2689,61 +3323,209 @@ def _normalize_standalone_subprocess_imports(blocks: dict[str, str]) -> tuple[st
             continue
         text = blocks[name]
         for check in checks:
-            try:
-                tree = ast.parse(check.code)
-            except SyntaxError:
+            if not (bindings := _factory_bindings(check.code)):
                 continue
-            reads_subprocess = any(
-                isinstance(node, ast.Name)
-                and node.id == "subprocess"
-                and isinstance(node.ctx, ast.Load)
-                for node in ast.walk(tree)
-            )
-            binds_subprocess = any(
-                (
-                    isinstance(node, ast.Import)
-                    and any(
-                        alias.name == "subprocess" and alias.asname in {None, "subprocess"}
-                        for alias in node.names
-                    )
-                )
-                or (
-                    isinstance(node, ast.Name)
-                    and node.id == "subprocess"
-                    and isinstance(node.ctx, ast.Store)
-                )
-                for node in ast.walk(tree)
-            )
-            if not reads_subprocess or binds_subprocess:
+            replacement = _with_bindings_after_imports(check.code, bindings)
+            if replacement is None:
                 continue
-            replacement = "import subprocess\n\n" + check.code
-            opening = next(
-                (
-                    match
-                    for match in AC_OPEN_RE.finditer(text)
-                    if match.group("id").strip() == check.check_id
-                ),
-                None,
+            spliced = _splice_check_code(text, check, replacement)
+            if spliced is None:
+                continue
+            text = spliced
+            normalized.extend(
+                f"{name} [{check.check_id}]: bound the name its import left undefined with "
+                f"{binding}"
+                for binding in bindings
             )
-            closing = next(
-                (
-                    match
-                    for match in AC_END_RE.finditer(text, opening.end() if opening else 0)
-                    if match.group("id").strip() == check.check_id
-                ),
-                None,
+        blocks[name] = text
+    return tuple(normalized)
+
+
+def _with_bindings_after_imports(code: str, bindings: Sequence[str]) -> str | None:
+    """Return ``code`` with ``bindings`` inserted below its last top-level import."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+    last = max(
+        (
+            node.end_lineno or node.lineno
+            for node in tree.body
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+        ),
+        default=0,
+    )
+    if not last:
+        return None
+    lines = code.splitlines(keepends=True)
+    prefix = "".join(lines[:last])
+    if not prefix.endswith("\n"):
+        prefix += "\n"
+    return prefix + "".join(f"{binding}\n" for binding in bindings) + "".join(lines[last:])
+
+
+def _selected_rigging(target_dir: Path) -> list[str]:
+    """The Rigging files the Target's Technology Stack names, or ``[]`` when it has no stack."""
+    if not technology_stack.path_for(target_dir).is_file():
+        return []
+    return technology_stack.stack_files(target_dir)
+
+
+def _foundation_import_rewrites(
+    code: str, owners: Mapping[str, FoundationContract]
+) -> tuple[str, tuple[tuple[str, str, str], ...]] | None:
+    """Return ``code`` importing each published entry callable from the foundation that owns it.
+
+    ``from marina_app import create_app`` on a FastAPI Target has found the right symbol under an
+    invented name; the selected web server publishes it in ``app_server.main`` and nowhere else.
+    Rewritten only where the statement imports that one name, so a sibling name it also imports
+    from the invented package is left for ``plan verify`` rather than silently dropped. Returns
+    ``(code, ((callable, old module, new module), ...))``, or ``None`` when nothing changes.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+    lines = code.splitlines(keepends=True)
+    changes: list[tuple[str, str, str]] = []
+    nodes = sorted(
+        (node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)),
+        key=lambda node: node.lineno,
+        reverse=True,
+    )
+    for node in nodes:
+        if node.level != 0 or not node.module or len(node.names) != 1:
+            continue
+        alias = node.names[0]
+        owner = owners.get(alias.name)
+        if owner is None or node.module.split(".", 1)[0] == owner.package:
+            continue
+        start, end = node.lineno - 1, (node.end_lineno or node.lineno) - 1
+        indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
+        bound = f" as {alias.asname}" if alias.asname else ""
+        newline = "\n" if lines[end].endswith("\n") else ""
+        lines[start : end + 1] = [
+            f"{indent}from {owner.entry_module} import {alias.name}{bound}{newline}"
+        ]
+        changes.append((alias.name, node.module, owner.entry_module))
+    if not changes:
+        return None
+    return "".join(lines), tuple(reversed(changes))
+
+
+def _normalize_foundation_imports(
+    blocks: dict[str, str], selected: Sequence[str]
+) -> tuple[str, ...]:
+    """Import each published entry callable from the package its selected foundation publishes.
+
+    Runs after :func:`_normalize_factory_bindings`, which reads the invented module name to bind
+    the instance the criterion meant; rewriting the import first would hide that name from it.
+    """
+    owners = entry_owners(selected)
+    if not owners:
+        return ()
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            continue
+        text = blocks[name]
+        for check in checks:
+            if (rewritten := _foundation_import_rewrites(check.code, owners)) is None:
+                continue
+            spliced = _splice_check_code(text, check, rewritten[0])
+            if spliced is None:
+                continue
+            text = spliced
+            normalized.extend(
+                f"{name} [{check.check_id}]: imported `{symbol}` from `{new}`, where the "
+                f"{owners[symbol].kind} foundation publishes it, instead of `{old}`"
+                for symbol, old, new in rewritten[1]
             )
-            if opening is not None and closing is not None:
-                body = text[opening.end() : closing.start()]
-                offset = body.find(check.code)
-            else:
-                offset = -1
-            if offset >= 0:
-                start = opening.end() + offset
-                text = text[:start] + replacement + text[start + len(check.code) :]
-                normalized.append(
-                    f"{name} [{check.check_id}]: added the required standalone import subprocess"
-                )
+        blocks[name] = text
+    return tuple(normalized)
+
+
+def _published_client_rewrite(
+    code: str, owners: Mapping[str, FoundationContract]
+) -> tuple[str, str, str] | None:
+    """Return ``(code, old, new)`` with a hand-built client replaced by the published callable.
+
+    ``create_app().test_client()`` is Flask's API; on FastAPI it raises ``AttributeError`` and on
+    every stack it bypasses the client the foundation publishes. The replacement is fixed by the
+    contract — ``web_client()`` from ``app_server.testing`` — so it is made here rather than paid
+    for in a repair pass. The entry import is dropped when nothing else reads the entry.
+    """
+    for entry, owner in owners.items():
+        if not owner.fixture:
+            continue
+        old = f"{entry}().test_client()"
+        pattern = re.compile(rf"(?<![\w.]){re.escape(entry)}\(\)\.test_client\(\)")
+        if not pattern.search(code):
+            continue
+        rewritten = pattern.sub(f"{owner.fixture}()", code)
+        try:
+            tree = ast.parse(rewritten)
+        except SyntaxError:
+            return None
+        statement = f"from {owner.fixture_module} import {owner.fixture}"
+        lines = rewritten.splitlines(keepends=True)
+        still_read = any(isinstance(node, ast.Name) and node.id == entry for node in ast.walk(tree))
+        entry_import = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, ast.ImportFrom)
+                and [alias.name for alias in node.names] == [entry]
+                and node.names[0].asname is None
+            ),
+            None,
+        )
+        if entry_import is not None and not still_read:
+            start, end = entry_import.lineno - 1, (entry_import.end_lineno or entry_import.lineno)
+            lines[start:end] = [f"{statement}\n"]
+            rewritten = "".join(lines)
+        else:
+            placed = _with_bindings_after_imports(rewritten, (statement,))
+            rewritten = placed if placed is not None else f"{statement}\n{rewritten}"
+        return rewritten, old, f"{owner.fixture}()"
+    return None
+
+
+def _normalize_published_clients(
+    blocks: dict[str, str], selected: Sequence[str]
+) -> tuple[str, ...]:
+    """Replace each hand-built client with the one the selected foundation publishes.
+
+    Runs after :func:`_normalize_foundation_imports`, so the entry import it removes is already
+    the published one.
+    """
+    owners = entry_owners(selected)
+    if not owners:
+        return ()
+    normalized: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError:
+            continue
+        text = blocks[name]
+        for check in checks:
+            if (rewritten := _published_client_rewrite(check.code, owners)) is None:
+                continue
+            spliced = _splice_check_code(text, check, rewritten[0])
+            if spliced is None:
+                continue
+            text = spliced
+            normalized.append(
+                f"{name} [{check.check_id}]: replaced `{rewritten[1]}` with the published "
+                f"`{rewritten[2]}`"
+            )
         blocks[name] = text
     return tuple(normalized)
 
@@ -2813,7 +3595,7 @@ def _compute_schedule(
     """
     from drydock.config import get_prompt_error_tokens
     from drydock.plan_graph import compute_plan
-    from drydock.plan_stack import block_target_tokens, resolve_stack_set
+    from drydock.plan_stack import block_min_savings, block_target_tokens, resolve_stack_set
 
     resolved = resolve_stack_set(name for story in declared for name in story.stack)
 
@@ -2913,6 +3695,7 @@ def _compute_schedule(
         declared,
         target_tokens=block_target_tokens(),
         limit_tokens=get_prompt_error_tokens(),
+        min_savings=block_min_savings(),
         size_fn=lambda story: block_size_fn((story,)),
         acceptance_count_fn=acceptance_count_fn,
         block_size_fn=block_size_fn,
@@ -3140,15 +3923,30 @@ def _validate_plan_output(
     # review. Either way the pipeline processes the criterion cleanly instead of stopping on it.
     # Terminators first: every pass below parses the acceptance containers, and an unclosed one
     # raises before any of them can report anything useful about the criterion it belongs to.
-    terminator_warnings = _normalize_unterminated_acceptance_blocks(
-        blocks
-    ) + _normalize_fused_acceptance_boundaries(blocks)
-    standalone_import_warnings = _normalize_standalone_subprocess_imports(blocks)
+    terminator_warnings = (
+        _normalize_unterminated_acceptance_blocks(blocks)
+        + _normalize_fused_acceptance_boundaries(blocks)
+        + _normalize_database_access_values(blocks)
+        + _normalize_database_dtos(blocks)
+        + _normalize_database_owners(blocks)
+        + _normalize_database_interfaces(blocks)
+    )
+    selected_rigging = _selected_rigging(blueprint_dir.parent)
+    standalone_import_warnings = (
+        _normalize_standalone_imports(blocks)
+        + _normalize_factory_bindings(blocks)
+        + _normalize_foundation_imports(blocks, selected_rigging)
+        + _normalize_published_clients(blocks, selected_rigging)
+    )
     escape_warnings = _acceptance_escape_warnings(blocks)
     malformed_acceptance = _malformed_acceptance_defects(blocks)
     malformed_warnings = tuple(
         f"{defect.rendered} — recorded as a blocking decision; this criterion gates nothing"
         for defect in malformed_acceptance
+    ) + tuple(
+        f"{defect.rendered} — recorded as a material decision; this criterion passes against an "
+        "implementation that does nothing"
+        for defect in _weak_acceptance_defects(blocks)
     )
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
     if forbidden_artifacts:
@@ -3199,7 +3997,8 @@ def _validate_plan_output(
     # all. Prose in the planning contract instructs the model on both, and a 370 KB prompt is
     # not a gate.
     kinded_criteria_defects: tuple[tuple[str, MalformedAcceptance], ...] = (
-        tuple(
+        tuple(("acceptance-malformed", defect) for defect in malformed_acceptance)
+        + tuple(
             ("staged-asset-env", defect)
             for defect in _staged_asset_env_defects(blocks, blueprint_dir)
         )
@@ -3219,6 +4018,27 @@ def _validate_plan_output(
                 result,
             ),
             defects=kinded_criteria_defects,
+        )
+
+    # Persistence is the one part of a plan that is wholly decidable from the artifacts: the
+    # schema, the operation surface, and each Blueprint's citations either agree or they do not.
+    # Raising routes them into the same repair loop, and unlike a criterion they are not
+    # forgiven when it is exhausted — see ``DatabaseDefect``.
+    kinded_database_defects = (
+        _database_contract_defects(blocks)
+        + _database_table_defects(blocks)
+        + _database_interface_defects(blocks)
+    )
+    if kinded_database_defects:
+        raise DatabaseDefect(
+            _with_execution_evidence(
+                "Plan generation failed: the persistence declaration and the Blueprints that "
+                "cite it disagree.\n  "
+                + "\n  ".join(defect.rendered for _, defect in kinded_database_defects)
+                + "\n  No Blueprint or Manifest artifacts were written.",
+                result,
+            ),
+            defects=kinded_database_defects,
         )
 
     emitted_files = {name: text for name, text in blocks.items() if name not in _RESERVED_BLOCKS}
@@ -3743,6 +4563,7 @@ def _repair_declaration(
             "llm": llm_provider,
             "model": model,
             "command_name": "plan",
+            "sub_command": "declaration repair",
             "parameters": {
                 "target": target,
                 "declaration_repair_pass": repair_pass,
@@ -3848,9 +4669,51 @@ def _next_repair_chunk(
         names = tuple(sorted({item.source for item in items if item.source in blocks}))[:batch_size]
         if not names:
             continue
-        text = "\n".join(item.rendered for item in items if item.source in names)
+        # Every defect those files carry travels, whatever kind found it. The pass rewrites the
+        # whole file, so a defect of another kind left out of the prompt is a defect the model is
+        # told to preserve byte-for-byte and then fails on in the next pass. Marina_Luna spent
+        # three passes on one DATABASE.md that way, each fixing the defect it was shown and
+        # leaving the next.
+        text = "\n".join(defect.rendered for _, defect in defects if defect.source in names)
         return kind, names, text
     return None
+
+
+def _repair_cited_names(exc: Exception, blocks: Mapping[str, str]) -> frozenset[str]:
+    """Every emitted artifact a validation exception still holds against the plan."""
+    defects: tuple[tuple[str, MalformedAcceptance], ...] = getattr(exc, "defects", ())
+    if defects:
+        return frozenset(defect.source for _, defect in defects if defect.source in blocks)
+    return frozenset(_repairable_artifact_names(blocks, str(exc)))
+
+
+def _extended_repair_budget(
+    budget: int,
+    spent: int,
+    repaired: Sequence[str],
+    next_exc: Exception,
+    blocks: Mapping[str, str],
+    *,
+    batch_size: int,
+    floor: int,
+) -> int:
+    """Return the pass budget after a pass whose re-validation still failed.
+
+    Validation is staged: a defect in one artifact can mask a defect in another until the first
+    is fixed. A pass that clears every file it repaired has made progress, and the defect it
+    unmasked in other files gets its own budget. Marina_Luna spent all three passes on
+    DATABASE.md; the third pass fixed it and exposed a SCREEN route-coverage defect no pass was
+    left to repair. The ceiling bounds a loop that keeps unmasking.
+    """
+    cited = _repair_cited_names(next_exc, blocks)
+    if not cited or cited & set(repaired):
+        return budget
+    ceiling = floor * _REPAIR_BUDGET_CEILING_FACTOR
+    return min(ceiling, max(budget, spent + _repair_pass_budget(next_exc, batch_size, floor)))
+
+
+#: Multiple of the configured repair count that no chain of progressing passes may exceed.
+_REPAIR_BUDGET_CEILING_FACTOR = 3
 
 
 def _repair_pass_budget(exc: Exception, batch_size: int, floor: int) -> int:
@@ -3907,6 +4770,28 @@ def _artifact_repair_assembly(
         "Deterministic validation defect:",
         defect.strip(),
     ]
+    if DATABASE_BLOCK in names:
+        # The only legal `| Owner |` values. Without them the model has no way to know which
+        # Blueprints this plan contains, and a repair pass asked to split an access pattern
+        # invented `FEATURE-ACTIVITY-EVENTS.md` — an owner no Blueprint answers to, which no
+        # later pass could resolve. The names are free: they are the keys of the artifacts the
+        # plan already holds.
+        owners = sorted(
+            name
+            for name in blocks
+            if name.startswith("FEATURE-") and name.endswith(".md") and name not in _RESERVED_BLOCKS
+        )
+        if owners:
+            lines.extend([
+                "",
+                "Every `| Owner |` names one of these Features, exactly as written, or "
+                f"`{SHARED_OWNER}` for a pattern no single Feature owns — a log or other surface "
+                "several Features reach, which any Blueprint may then cite. There are no other "
+                "legal values: a Screen, a service, a module, and a file not on this list are "
+                "each a defect.",
+                "",
+                *(f"- {name}" for name in owners),
+            ])
     compass = normative_compass_sections(target_dir) if target_dir is not None else ""
     if compass:
         lines.extend([
@@ -4025,10 +4910,21 @@ def _blueprint_tranche(score: PlanScore) -> tuple[str, ...]:
 def _render_ledger(score: PlanScore) -> str:
     """Render one bounded Stage 2 work queue, never the complete remaining topology."""
     tranche = frozenset(_blueprint_tranche(score))
-    lines = [f"Accepted ({len(score.accepted)}) — already held, do not re-emit:"]
-    lines.extend(f"  {name}" for name in sorted(score.accepted))
-    if not score.accepted:
+    frozen = sorted(name for name in score.accepted if name != DATABASE_BLOCK)
+    lines = [f"Accepted ({len(frozen)}) — already held, do not re-emit:"]
+    lines.extend(f"  {name}" for name in frozen)
+    if not frozen:
         lines.append("  (none)")
+    if DATABASE_BLOCK in score.accepted:
+        lines.append("")
+        lines.append(
+            f"Open ({DATABASE_BLOCK}) — the persistence declaration is cumulative. Emit it in "
+            "this batch only when a Blueprint in this batch needs storage the declaration does "
+            "not yet hold, and then emit only the additions: the new `## `table_name`` sections, "
+            "the new rows for a table already declared, and the new `## Access Patterns` entries. "
+            "Never restate a table, column, or operation already held — Drydock appends what you "
+            "emit and keeps everything already declared."
+        )
     lines.append("")
     lines.append(f"Current batch ({len(tranche)}) — emit exactly these, in this order:")
     lines.extend(f"  {item.rendered()}" for item in score.missing if item.filename in tranche)
@@ -4117,6 +5013,33 @@ class _Continuation:
     passes: int
 
 
+def _seed_database_blueprint(
+    blocks: dict[str, str], *, declared: Sequence[PlannedStory], blueprint_dir: Path
+) -> None:
+    """Open the cumulative persistence declaration before the first Blueprint batch runs.
+
+    The seed is the Rigging template plus whatever the imported source specification already
+    declared. Carrying those tables across deterministically is the point: a model asked to render
+    an input specification as a Blueprint paraphrases it, and a declaration that loses its tables
+    leaves Build implementing a schema no Blueprint describes.
+    """
+    if not any(DATABASE_BLOCK in specification_names(story.implements) for story in declared):
+        return
+    template_path = get_spec_template_dir() / DATABASE_BLOCK
+    if not template_path.is_file():
+        return
+    source = ""
+    sources_dir = blueprint_dir / "sources"
+    if sources_dir.is_dir():
+        for path in sorted(sources_dir.iterdir()):
+            if path.is_file() and path.name.casefold() == DATABASE_BLOCK.casefold():
+                source = path.read_text(encoding="utf-8")
+                break
+    seed = seed_blueprint(template_path.read_text(encoding="utf-8"), source)
+    emitted = blocks.get(DATABASE_BLOCK, "")
+    blocks[DATABASE_BLOCK] = merge_schema(seed, emitted) if emitted.strip() else seed
+
+
 def _continue_short_plan(
     blocks: dict[str, str],
     *,
@@ -4179,6 +5102,7 @@ def _continue_short_plan(
             "llm": llm_provider,
             "model": model,
             "command_name": "plan",
+            "sub_command": f"blueprint batch {passes}",
             "parameters": {
                 "target": target,
                 "continuation_pass": passes,
@@ -4268,6 +5192,16 @@ def _continue_short_plan(
                 if accumulated.get(name) != body:
                     rejection = f"{name} is frozen and this pass revised it"
                     break
+                continue
+            if name == DATABASE_BLOCK and name in declared_names:
+                # The persistence declaration is the one cumulative Blueprint. A Feature authored
+                # in a later batch may need a table, or a column on one declared batches ago, so
+                # this file is never frozen. The pass contributes additions and Drydock appends
+                # them: what is already declared cannot be retyped, reordered, or paraphrased away.
+                if name in pass_damaged:
+                    continue
+                held = candidate.get(name, "")
+                candidate[name] = merge_schema(held, body) if held.strip() else body
                 continue
             if name in accepted_now:
                 # An accepted artifact is frozen. A byte-identical repeat costs nothing; a
@@ -4649,12 +5583,14 @@ def create_plan(
         raise SpecificationError(
             "ANALYSIS.md quality is Blocked — resolve blockers and re-run analyze before planning."
         )
-    missing_persistence_rigging = technology_stack.missing_required_rigging(target_dir)
-    if missing_persistence_rigging:
+    unsupported_persistence = technology_stack.unsupported_persistence(target_dir)
+    if unsupported_persistence:
         raise SpecificationError(
-            "Python relational persistence requires Rigging selections before planning: "
-            + ", ".join(missing_persistence_rigging)
-            + f". Set them in {technology_stack.FILENAME} through QuarterDeck."
+            f"This Target declares {unsupported_persistence} and a DATABASE.md, and Drydock ships "
+            f"no persistence adapter for {unsupported_persistence}. Build generates the "
+            "persistence package from the declaration, so a Target declares storage only in a "
+            f"language it can be generated for: {', '.join(technology_stack.PERSISTENCE_LANGUAGES)}"
+            ". Add an adapter to Rigging/database/, or remove DATABASE.md."
         )
     # TECHNOLOGY_STACK.md otherwise never gates planning. An absent or empty stack file means the
     # stack is undecided, which plan resolves from the sources — it is not a Commander decision to await.
@@ -4855,6 +5791,7 @@ def create_plan(
         "llm": llm_provider,
         "model": model or prompt.model,
         "command_name": "plan",
+        "sub_command": "topology",
         "parameters": {"target": target, "blueprint": str(blueprint_dir)},
         "log_dir": log_dir,
         "target": target,
@@ -5003,6 +5940,7 @@ def create_plan(
                     "llm": llm_provider,
                     "model": model or prompt.model,
                     "command_name": "plan",
+                    "sub_command": "conflict challenge",
                     "parameters": {
                         "target": target,
                         "blueprint": str(blueprint_dir),
@@ -5150,6 +6088,9 @@ def create_plan(
                 )
             declared_stories, _ = parse_topology(blocks[TOPOLOGY_BLOCK])
             if declared_stories:
+                _seed_database_blueprint(
+                    blocks, declared=declared_stories, blueprint_dir=blueprint_dir
+                )
                 continuation = _continue_short_plan(
                     blocks,
                     blocks_text=blocks_text,
@@ -5224,6 +6165,7 @@ def create_plan(
                         "llm": llm_provider,
                         "model": model or prompt.model,
                         "command_name": "plan",
+                        "sub_command": "topology repair",
                         "parameters": {
                             "target": target,
                             "topology_repair_pass": repair_pass,
@@ -5303,7 +6245,9 @@ def create_plan(
                 pass_budget = _repair_pass_budget(
                     repair_exc, _PLAN_BLUEPRINT_BATCH_SIZE, continue_attempts
                 )
-                for repair_pass in range(1, pass_budget + 1):
+                repair_pass = 0
+                while repair_pass < pass_budget:
+                    repair_pass += 1
                     chunk = _next_repair_chunk(
                         repair_exc, repaired_blocks, _PLAN_BLUEPRINT_BATCH_SIZE
                     )
@@ -5333,6 +6277,7 @@ def create_plan(
                         "llm": llm_provider,
                         "model": model or prompt.model,
                         "command_name": "plan",
+                        "sub_command": "artifact repair",
                         "parameters": {
                             "target": target,
                             "artifact_repair_pass": repair_pass,
@@ -5381,6 +6326,15 @@ def create_plan(
                             )
                         except Exception as next_exc:
                             repair_exc = next_exc
+                            pass_budget = _extended_repair_budget(
+                                pass_budget,
+                                repair_pass,
+                                names,
+                                next_exc,
+                                repaired_blocks,
+                                batch_size=_PLAN_BLUEPRINT_BATCH_SIZE,
+                                floor=continue_attempts,
+                            )
                             continue
                         blocks = candidate_blocks
                         result = repair_result
@@ -5437,6 +6391,10 @@ def create_plan(
                     execution_id=exec_id,
                     evidence=log_dir,
                     recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",
+                    # Every surviving defect, not the first 800 characters of them. This record
+                    # is the whole evidence of a failed plan: a list cut mid-way hid four of the
+                    # five defects of a Marina_Luna run from the operator repairing it.
+                    detail_limit=None,
                 )
                 from drydock.quarterdeck_state import refresh_commanders_chair
 
@@ -5515,6 +6473,7 @@ def create_plan(
         *staged_asset_env_decisions(
             _staged_asset_env_defects(blocks, blueprint_dir), unattended=unattended
         ),
+        *weak_acceptance_decisions(_weak_acceptance_defects(blocks), unattended=unattended),
     )
     story_for_spec = {
         str(name): block.block_id
@@ -5552,6 +6511,20 @@ def create_plan(
         log_dir=log_dir,
         target=target,
     )
+    # The terminal gate. Everything above repairs what it can; this asks the one question the
+    # command's exit status answers — can Build execute what was written — with the same check
+    # ``drydock plan verify`` and ``drydock build`` apply. A plan that fails it is kept, because
+    # it was paid for and ``drydock plan repair`` works from disk, but it is left ``draft`` and
+    # the command fails: reporting success over a Manifest whose criteria cannot run or whose
+    # persistence declaration Build cannot read is a false positive, not a warning. No waiver
+    # applies — neither ``--override`` nor an unattended run can make a defect buildable.
+    from drydock.plan_verify import render as render_verify
+    from drydock.plan_verify import verify as verify_plan
+
+    buildability = verify_plan(target, target_dir)
+    if not buildability.ok:
+        set_plan_state(plan_path, "draft")
+
     from drydock.question_gates import synchronize_manifest_question_gates
 
     plan = synchronize_manifest_question_gates(plan_path, blueprint_dir)
@@ -5566,7 +6539,7 @@ def create_plan(
 
     increment_version(target_dir)
     set_build_state(target_dir, "planned")
-    set_sub_state(target_dir, "approved")
+    set_sub_state(target_dir, "approved" if buildability.ok else "unbuildable")
     stamp_last(target_dir, "planned")
 
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
@@ -5575,6 +6548,26 @@ def create_plan(
 
     unique_waivers = dedupe_waivers(waivers)
     stamp_override(target_dir, unique_waivers)
+
+    if not buildability.ok:
+        # Recorded like every other plan failure, so ERRORS.md names the unbuildable criteria
+        # for the operator and for tooling that repairs from it.
+        write_error_record(
+            target_dir,
+            command="plan",
+            phase="plan verify",
+            classification="plan cannot be built as written",
+            detail=render_verify(buildability),
+            execution_id=exec_id,
+            evidence=log_dir,
+            recovery=f"Run: drydock plan repair {target}",
+            detail_limit=None,
+        )
+        _refresh_chair(target_dir)
+        raise PlanNotBuildable(
+            "Plan cannot be built as written. The Blueprint and Manifest are written for repair; "
+            "the Manifest is draft and Build refuses it.\n" + render_verify(buildability)
+        )
 
     return PlanCreateResult(
         plan=plan,

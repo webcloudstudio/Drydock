@@ -72,6 +72,7 @@ from drydock.build import (
 from drydock.build_decisions import (
     record_acceptance_env_decisions,
     record_build_decisions,
+    record_derived_indexes,
     record_skipped_acceptance_decisions,
 )
 from drydock.build_environment import EnvMaterialization, materialize_env_file
@@ -94,7 +95,14 @@ from drydock.config import (
     get_sandbox_mem_limit_mb,
     max_consecutive_stalls,
 )
-from drydock.database_contract import database_operation_fingerprints, mark_migrations_built
+from drydock.database_contract import (
+    database_operation_fingerprints,
+    derived_indexes,
+    mark_migrations_built,
+    parse_database_contract,
+    sqlite_schema_tables,
+)
+from drydock.database_emit import write_persistence_package
 from drydock.decisions import load_decisions, render_commander_guidance
 from drydock.dependency_gate import (
     DependencyGateResult,
@@ -2121,6 +2129,35 @@ def _outstanding_blocks(manifest_path: Path) -> tuple[str, ...]:
     )
 
 
+def _write_persistence(
+    blueprint_dir: Path, build_dir: Path, target_dir: Path, on_text: object
+) -> tuple[Path, ...]:
+    """Emit the Target's persistence package once the schema story closes.
+
+    The schema is declared by Plan and built once, so this runs at the DATABASE step and never
+    again within a release. Copying the shipped engines and generating the schema module here is
+    what makes the declaration the source of the persistence layer rather than a description
+    checked against one a build agent wrote from prose.
+    """
+    database_path = blueprint_dir / "DATABASE.md"
+    if not database_path.is_file():
+        return ()
+    text = database_path.read_text(encoding="utf-8")
+    try:
+        written = write_persistence_package(blueprint_dir, build_dir)
+        if not written:
+            return ()
+        tables = sqlite_schema_tables(text)
+        contract = parse_database_contract(text)
+    except SpecificationError as exc:
+        # The schema story just closed on a declaration nothing can generate from. Continuing
+        # would let every later story build against a persistence layer that does not exist.
+        raise SpecificationError(f"persistence: not generated — {exc}") from exc
+    return written + record_derived_indexes(
+        derived_indexes(tables, contract), target_dir=target_dir
+    )
+
+
 def build_target(
     target: str,
     target_dir: Path,
@@ -2162,6 +2199,20 @@ def build_target(
     # exclusive reconciliation point for Blueprint drift; no build option may erase its evidence.
     blueprint_dir = blueprint_dir_for(target_dir)
     _ensure_applied_specs_current(manifest_path, blueprint_dir)
+
+    # Build executes only a plan it can execute, judged by the check ``drydock plan`` ends on. A
+    # criterion that cannot run fails in its own code before it reaches the product, so no build
+    # can turn it green; a DATABASE.md that cannot be read generates no persistence layer for the
+    # stories after it. Both are refused before anything is spent. A criterion that merely might
+    # fail is graded as usual — only a defect in the criterion's own text is refused here.
+    from drydock.plan_verify import render as render_verify
+    from drydock.plan_verify import verify as verify_plan
+
+    buildability = verify_plan(target, target_dir) if blueprint_dir.is_dir() else None
+    if buildability is not None and not buildability.ok:
+        raise SpecificationError(
+            "Build refused: the plan cannot be built as written.\n" + render_verify(buildability)
+        )
 
     # A build owns the current Target error record. Remove the prior run's recovery signal before
     # any new run is observed; a new terminal failure writes a fresh record below.
@@ -3771,6 +3822,10 @@ def build_target(
             )
             if database_built:
                 mark_migrations_built(blueprint_dir)
+                for written in _write_persistence(
+                    blueprint_dir, resolved_build_dir, target_dir, on_text
+                ):
+                    _emit(on_text, f"persistence: wrote {_rel(written, target_dir)}")
             applied_specs = dict(parse_build_plan(manifest_path).applied_specs)
             applied_at = datetime.now(UTC).isoformat(timespec="seconds")
             changed = False

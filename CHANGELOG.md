@@ -8,7 +8,446 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-09-20: **The block packer declines a merge that saves nothing worth having.** Merge
+  candidates were ranked by shared-context savings alone, so any overlap above zero was worth
+  taking and two stories sharing nothing but a compacted language file grouped for a few hundred
+  tokens — a saving nobody can spend, bought by widening the context one model call must hold.
+  The new `block_min_savings` configuration key sets the least shared context that justifies a
+  merge, in tokens, and defaults to `1000`. `0` restores the prior behavior. Grouping is
+  otherwise unchanged and still bounded by the block token target and the acceptance-criteria
+  ceiling; no block composition is forbidden, including two tiers in one block. The floor applies
+  wherever the shared optimizer runs, so `drydock plan` and a `normalize` edit of a computed
+  `MANIFEST.md` group identically.
+
+- 2026-09-20: **Language is a foundation, and it is built first.** `python.md`, `go.md` and
+  `typescript.md` declare `**Foundation:** language` and publish an environment contract —
+  `source_root`, `test_command`, the environment, and the dependency manifest — rather than a
+  package and a fixture. A Target has exactly one language, refused in the same place two web
+  servers are. A web server, a database or a CLI is built *into* the tree, the environment and the
+  test runner the language foundation lays down; `fastapi.md` was never standalone.
+- 2026-09-20: **The build chain is declared and ordered as six tiers.** Every Rigging file may
+  carry a `**Tier:**` header. Tiers 1 to 5 are the foundation: 1 `language`, 2 `platform` —
+  sub-ordered 2.1 `database`, 2.2 `web-server`, 2.3 `cli` — 3 `branding`, 4 `interface`,
+  5 `screen-foundation`. Each holds at most one selected file per kind, publishes a contract, and
+  is built into the tier before it: the palette before the shell that shows it, the shell before
+  the screen idiom built on it. Tier 2's three kinds are independent, so they order by what
+  imports what — a web server and a CLI import persistence, and persistence imports neither.
+  Tier 6 is `application`: every service and every screen the Blueprints describe, with no
+  internal order, ranked against each other by `depends:` alone. A file or story with no
+  `**Tier:**` belongs to tier 6, which is how a service stays free to land either side of the
+  interface tier. A tier is a rank *inside* a phase — never a phase, never a block — and the
+  chain repeats in every phase, exactly as `MANIFEST_CONTRACT.md` already described it. Ordering
+  the tiers forbids no block composition: two tiers may legally share a block, and what keeps
+  unrelated work apart is that it shares no context, so the block packer finds no saving in
+  merging it.
+
+- 2026-09-20: Rigging files publish a **foundation contract**. A file that defines a foundation
+  declares its kind in the header (`**Foundation:** web-server`) and its shape in a
+  `## Foundation Contract` section naming the package, the entry point, and the test fixture.
+  `fastapi.md`, `flask.md` and `django.md` publish `web-server`; `sqlite.md` and `postgres.md`
+  publish `database`; the new `cli.md` publishes `cli`. Every web server builds `app_server` and
+  offers `web_client`, every database builds `persistence` and offers `db_session`, so an
+  acceptance criterion writes one name whichever framework the Commander selected — in Marina_Luna
+  those names were invented 47 Blueprints at a time, splitting 98 imports of `app` against 77 of
+  `marina_app` and calling Flask's `test_client()` 134 times on a FastAPI application. Kinds are
+  open: a new exclusive foundation is a new Rigging file with a new `**Foundation:**` value.
+  `prompts/BLUEPRINTS_CONTRACT.md` requires criteria to call the published fixture.
+- 2026-09-20: `Rigging/stack/cli.md` — command-line application guidance: `main(argv) -> int` that
+  returns rather than exits, argparse construction separated from behavior, exit codes `0`/`1`/`2`,
+  and bash plus PowerShell launchers that share one `python -m cli` invocation so the two cannot
+  drift in behavior.
+
+### Changed
+
+- 2026-09-21: **Foundation clients are plain functions criteria call against the built
+  application.** A Programmatic Acceptance criterion runs as a standalone script, so the pytest
+  fixtures the Foundation Contracts published (`web_client`, `db_session`, `cli_runner`) could not
+  be called from one. Each contract in `fastapi.md`, `flask.md`, `django.md`, `sqlite.md`,
+  `postgres.md` and `cli.md` now publishes the callable in `<package>/testing.py`
+  (`fixture_source`), and `conftest.py` wraps the same function for the pytest suite. A criterion
+  writes `from app_server.testing import web_client` and exercises the application in-process; it
+  may also run the application's pytest suite, importing the foundation package first. Plan
+  rewrites `create_app().test_client()` to the published `web_client()` and reports each rewrite.
+- 2026-09-21: **A criterion against an unbuilt foundation fails cleanly.** Acceptance no longer
+  runs a criterion that imports a foundation package (`app_server`, `persistence`, `cli`) the
+  build directory does not contain. The result is FAIL with the error `foundation not built`,
+  naming the package and the Rigging file that builds it, instead of a `ModuleNotFoundError`
+  traceback or a pytest collection error. It is not a terminal failure: building the package is
+  the build's work.
+
+- 2026-09-20: `drydock plan verify` refuses a criterion that imports a package no selected
+  foundation publishes — defect kind `unknown-package`, and the plan is written `unbuildable`.
+  `app_server`, `persistence` and `cli` are reserved names meaning *the selected foundation of
+  that kind*, so importing one the stack did not select raises `ModuleNotFoundError` in the
+  criterion's own frame on every run. Importing a published entry callable from any other package
+  is refused with the package it should have come from — the `app` / `marina_app` split, named
+  before a build call is paid for. Nothing else is judged: whether an arbitrary third-party import
+  resolves is a fact about the build environment, not the Blueprint.
+- 2026-09-20: The QuarterDeck **Technology Stack** page selects foundations with one radio group
+  per kind, captioned with its tier and in build order — Tier 1 Language, then Tier 2.1 Database,
+  2.2 Web Server and 2.3 CLI — instead of a free-text row and
+  a dropdown. The underlying fact is a choice, not a set, and a checkbox list invited the second
+  selection `plan verify` then refuses. A Target with no rows starts on `python.md` /
+  `fastapi.md` / `sqlite.md`; a Target that has rows and names no web server has decided it has
+  none, and is left alone. Non-foundation technologies keep the free-text table, whose headings
+  now read **Technology Label** and **Rigging File**, and a **Build order — six tiers** legend
+  shows where a file with no exclusive choice — `bootstrap5.md`, `BRANDING_MAIN.md` — lands, and
+  that tier 6 holds every service and screen.
+- 2026-09-20: `django.md` rewritten against the published contract. The Django project package
+  *is* `app_server` — `app_server/settings.py`, `app_server/urls.py`, `app_server/wsgi.py` — and
+  `create_app() -> WSGIHandler` wraps `get_wsgi_application()`, so a criterion written against
+  `app_server` and `web_client` runs unchanged whether the Commander selected Django, FastAPI or
+  Flask. The old `config/` package is gone and the testing section publishes `web_client` rather
+  than shadowing pytest-django's own `client` fixture.
+- 2026-09-20: `bootstrap5.md` and `ui-flask.bootstrap-client.md` moved from category `Web Server`
+  to `Frontend`. Neither is a web server; both were offered to the Commander beside the three
+  files that are.
+
+- 2026-09-20: `drydock plan verify` refuses a Technology Stack that cannot yield one foundation per
+  kind, a new `foundation` defect. Two files of one kind — FastAPI and Flask — are refused, because
+  that is two application shapes in one build tree rather than a richer stack. A row naming a
+  technology whose Rigging publishes a foundation but leaving the Rigging column blank is refused
+  too: Drydock does not choose a web server on the operator's behalf. Checked at plan, not at
+  analyze — `drydock analyze` proposes the questionnaire and an unanswered row is a normal
+  intermediate state there.
+- 2026-09-20: `drydock rigging compact` carries a `## Foundation Contract` section verbatim. The
+  section is removed before the prompt is assembled and spliced back into the output, so the model
+  never sees it and cannot shorten it. A compacted contract is a changed contract, and the builder's
+  copy and the Blueprint author's copy would drift silently.
+- 2026-09-20: `fastapi.md` and `flask.md` name the application package `app_server` rather than
+  `app`. `app` is also the conventional name of the ASGI/WSGI instance, and a package and an
+  instance sharing a name is the ambiguity that made `from app import create_app` followed by
+  `app.test_client()` look plausible.
+
 ### Fixed
+
+- 2026-09-21: **`drydock plan` derives omitted access-pattern DTOs from `## Schema`.** A
+  `DATABASE.md` pattern whose Repository operation names one declared table and one verb
+  (`get`, `list`, `create`, `update`, `delete`) now receives any missing `Input:`/`Output:` table
+  from that table's columns before the persistence gate runs; a warning names each completed
+  pattern. Previously a repair pass that added patterns to cover uncited tables but omitted their
+  DTO tables failed the plan with `requires Input and Output tables`. Patterns with invalid
+  operations or undeclared tables still fail the gate.
+- 2026-09-21: **`drydock plan` writes criteria against the selected foundation's package.** The
+  `unknown-package` gate added with Foundation Contracts refused every criterion importing
+  `create_app` from an invented package, but nothing gave the author the package name: the plan
+  prompt carried the stack table without the contracts, and the Blueprints Contract example still
+  wrote `from app import create_app`. Marina_Luna lost a plan to 153 such criteria. The selected
+  foundations' `## Foundation Contract` sections now accompany `TECHNOLOGY_STACK.md` in the plan
+  prompt, the example imports from `app_server`, and Plan rewrites a lone import of a published
+  entry callable to the module the contract names (`app_server.main` for FastAPI), reporting each
+  rewrite. An import that also takes other names from the invented package is left for
+  `plan verify`.
+- 2026-09-20: `drydock plan verify` refuses a criterion that reads a Blueprint document, a new
+  `blueprint-read` defect. Acceptance runs with the build directory as its working directory and
+  the Blueprint is an input to the build, so `pathlib.Path("ARCHITECTURE.md").read_text()` raises
+  `FileNotFoundError` on every run — no implementation and no repair pass can turn it green. The
+  reading is worthless where it succeeds, too: grepping a specification for the words it was
+  written with asserts that the document contains itself and passes against an empty build
+  directory. Paths under `sources/` are exempt, because the Analysis stages those into the build.
+  `drydock plan` already gates on verify, so such a plan is now written `unbuildable` and named at
+  plan time instead of blocking a story a block at a time; in Marina_Luna this is 14 criteria
+  across four Blueprints, the first three of which blocked the first build block after a paid
+  model call. `prompts/BLUEPRINTS_CONTRACT.md` states the authoring rule.
+- 2026-09-20: `drydock plan` no longer writes a plan that `drydock plan verify` refuses over a
+  criterion reading the module it imported its factory from. `from app import create_app` followed
+  by `client = app.test_client()` binds nothing named `app`, so the criterion raises `NameError`
+  before it asserts anything; the plan was written `unbuildable` and the operator paid for a repair
+  pass to recover a name the criterion's own import already determines. Plan now inserts
+  `app = create_app()` below the criterion's last import, deterministically and with a warning.
+  The rewrite is taken only where nothing else is plausible: the unbound name is not a standard
+  library module, exactly one name is imported from the module rooted at it, and no attribute read
+  of the name matches a submodule of that import — `marina.db` after `from marina.db import
+  Session` means the module and is still reported by `drydock plan verify`. In Marina_Luna this
+  repaired the four criteria that failed the plan and touched nothing else in 47 Blueprints.
+
+### Changed
+
+- 2026-09-19: Table ownership has one rule: only a Feature owns an access pattern, and a pattern no
+  single Feature owns names `DATABASE.md` as its `| Owner |`. A Screen renders data through a
+  Feature's service and may no longer be named an owner. A `DATABASE.md`-owned pattern is shared —
+  any Blueprint may cite it, none is required to, and the declaration cites nothing itself. This is
+  the shape an activity log takes: in Marina_Luna six Features append to `activity_events` and two
+  Screens read it, so every candidate owner was a lie and a repair pass invented a Blueprint file
+  name for the gap. `drydock plan` now rewrites an `| Owner |` that names no Feature in the plan to
+  `DATABASE.md` deterministically, with a warning and no LLM pass, and `drydock plan verify` reads
+  the same rule. `prompts/BLUEPRINTS_CONTRACT.md` and the `DATABASE.md` template state it.
+
+### Added
+
+- 2026-09-19: `drydock build` now generates the Target's persistence package at the DATABASE step.
+  `write_persistence_package` copies the shipped engines into `persistence/` and emits
+  `persistence/schema.py` from `DATABASE.md`: the declared tables, the declared operations, and a
+  frozen dataclass per read output. The generated module contains no SQL — statements are built by
+  the driver for the engine in use — and its field annotations are emitted as declared and never
+  evaluated, so a declared type the module cannot import is preserved rather than dropped. The
+  declaration is now the source of the persistence layer rather than a description checked against
+  one a build agent rewrote from prose each build. `schema.sql` is written beside the package.
+- 2026-09-19: Drydock now ships the persistence layer itself. `Rigging/database/` holds `db.py`,
+  `sqlite.py`, and `postgres.py` — Python source copied into a build unchanged, not guidance a
+  build agent reinterprets. It is hardened and tested once in Drydock's own suite, so every Target
+  inherits a persistence layer that has already passed rather than one re-derived from 126 lines of
+  prose on each build. The caller surface is one attribute per declared table and one method per
+  declared access pattern: `db.tickets.get(id=7)`. Values are bound, never formatted into SQL, and
+  identifiers come only from the generated schema, which Drydock validated before emitting. Both
+  engines are copied into every build and selected at runtime from the DSN, because the same build
+  runs SQLite in test and PostgreSQL in production. A verb a table does not declare raises
+  `UnknownOperation` naming what it does grant, rather than reaching the database. `drydock.paths`
+  resolves the directory through `get_database_dir()`.
+- 2026-09-19: `drydock build` now renders `DATABASE.md` into `schema.sql` beside the build when the
+  DATABASE story closes, so a fresh environment is created from the declaration rather than from
+  whatever the last build happened to execute. Indexes are derived, not decided: a foreign key is
+  indexed by its child column and a `read` access pattern's `Input:` fields are the predicate it
+  filters on, while `read-write` is excluded because its inputs are part predicate and part payload
+  and the declaration does not say which. Derivation keeps the schema reproducible — an index
+  invented at build time and recorded only in a decision log is dropped by the next render with
+  nothing detecting the loss. The derived set is reported as one `DECISIONS.json` record rather than
+  one per index, because it is one step of one build.
+
+### Changed
+
+- 2026-09-19: `drydock plan` console progress names the stage of each LLM call —
+  `Calling CODEX/<model> (plan · topology)...`, then `plan · blueprint batch <n>`,
+  `plan · conflict challenge`, `plan · topology repair`, `plan · declaration repair`, or
+  `plan · artifact repair`. `llm.run_prompt` renders its `sub_command` into the Calling and
+  Completed lines; the recorded `command_name` stays `plan`, so evidence and usage classification
+  are unchanged.
+
+- 2026-09-19: `drydock rigging compact --all` now runs without a `<Target>`. Rigging is Drydock's
+  own shipped tree and has no Target, so refreshing its stale compacts no longer requires naming an
+  unrelated Blueprint whose scope is then also compacted. `--all` alone refreshes only Rigging;
+  `--all` with a `<Target>` keeps the previous behavior and adds that Blueprint's scope. Invoking
+  the command with neither a `<Target>` nor `--all`, `--include-file`, or `--include-dir` remains a
+  usage error and now names `--all` among the scopes that satisfy it.
+
+- 2026-09-19: Relational persistence no longer requires an ORM or migration-framework selection.
+  `sqlalchemy.md` and `alembic.md` are no longer mandatory for a Python Target with a `DATABASE.md`,
+  because Build generates the persistence package from the declaration instead of asking an agent to
+  implement one from prose. The stack gate is now keyed on the Target's language rather than on
+  Python: a Target declaring a `DATABASE.md` in a language Drydock ships no adapter for is refused
+  by `drydock plan`, `technology_stack.approve`, and QuarterDeck, naming the language. The previous
+  check returned nothing at all for such a Target, so a Go Target with a database was never gated
+  and reached a build with no persistence layer to write. `technology_stack.required_rigging` and
+  `missing_required_rigging` are replaced by `declared_language` and `unsupported_persistence`.
+- 2026-09-19: `Rigging/stack/persistence.md`, `sqlite.md`, and `postgres.md` are rewritten for the
+  generated layer. `persistence.md` no longer carries a hand-rolled `Database`/table-class example
+  to copy — it states the generated package's call surface and forbids writing a repository,
+  session factory, connection helper, or migration by hand. `sqlite.md` and `postgres.md` are now
+  store references that dispatch on language and state what each engine enforces: SQLite ignores
+  `VARCHAR(n)` length and column types, so a green SQLite test is not evidence about either, and
+  PostgreSQL is the authority on both. `## Persistence Interfaces` is removed from
+  `Rigging/spec_template/DATABASE.md` and `prompts/BLUEPRINTS_CONTRACT.md` — it named per-feature
+  repository modules that no longer exist. The stale `*_compact.md` siblings of the three rewritten
+  files are deleted: stack compaction substitutes a compact sibling without a freshness check, so a
+  stale one would have injected the superseded guidance into every build after its first use.
+- 2026-09-19: `DATABASE.md` table declarations now carry the constraints a real schema needs, and
+  Drydock renders executable DDL from them. A type cell is
+  `<TYPE> [PK] [NOT NULL] [UNIQUE] [DEFAULT <literal>] [REFERENCES <table>(<column>)]`, where
+  `<TYPE>` is `INTEGER`, `TEXT`, `REAL`, `NUMERIC`, or `VARCHAR(<n>)`; `BLOB` is no longer
+  declarable. `DEFAULT` takes a closed literal set — a single-quoted string, a number, `NULL`,
+  `CURRENT_TIMESTAMP`, `CURRENT_DATE`, or `CURRENT_TIME` — because the rendered DDL is executed
+  against a live connection, so an open cell is a DDL injection path rather than merely a malformed
+  declaration. A constraint spanning several columns is declared as a `- UNIQUE (a, b)` or
+  `- INDEX (a, b)` bullet under the table's field table. Foreign keys are resolved against the same
+  file: a key naming an undeclared table or column fails the plan, and `CREATE TABLE` statements are
+  emitted in dependency order so the schema is portable rather than accidentally SQLite-shaped —
+  SQLite tolerates any order, PostgreSQL does not. A key cycle is named instead of rendered.
+  `VARCHAR(<n>)` is emitted verbatim to both engines: PostgreSQL enforces the length and SQLite
+  parses the identical declaration and ignores it, so no engine-specific stripping exists.
+- 2026-09-19: An access pattern in `DATABASE.md` now declares exactly one repository operation, and
+  its verb is one of `get`, `list`, `create`, `update`, or `delete`. The cell previously accepted a
+  comma-separated list, but a pattern carries exactly one `Input:` and one `Output:` table, so
+  `settings.get, settings.set` described two operations with one pair of DTOs and left which fields
+  belonged to which undeclared. The closed verb set exists because the generated persistence layer
+  builds each statement rather than carrying SQL text. Both rules are stated in
+  `prompts/BLUEPRINTS_CONTRACT.md` (V19), `Rigging/spec_template/DATABASE.md`, and
+  `prompts/rigging_compact_database.md`, which now preserves column constraints verbatim so
+  compaction cannot drop a constraint the built database would then not have.
+- 2026-09-18: `drydock plan` now reads persistence ownership from `DATABASE.md` rather than from a
+  story's `stack:`. An access pattern's `| Owner |` row carries the owning Blueprint's file name,
+  and that decides who must cite: a Blueprint named as an Owner states the operations it owns, a
+  Blueprint named nowhere declares `- None`. A stack selection says which technology a story is
+  built with, not whether it reaches a repository — every Python story selects `sqlalchemy.md` and
+  `alembic.md`, so the previous gate demanded a citation from the application shell that only runs
+  the startup migration, while a Go or C++ Target was never gated at all. An `Owner` naming
+  something that is not a Blueprint in the plan is now reported once against `DATABASE.md` as
+  `database-owner-unknown` instead of resurfacing as a wrong-owner conflict in every Blueprint that
+  cites it, and a citation conflict is reported against both the Blueprint and `DATABASE.md` so the
+  repair loop can correct whichever side is wrong. A plan run had spent four of five repair passes
+  re-emitting one Blueprint that could not be fixed from its own contents, leaving twelve further
+  defects unattempted. `Owner` semantics are stated in `prompts/BLUEPRINTS_CONTRACT.md` and
+  `Rigging/spec_template/DATABASE.md`.
+- 2026-09-18: The `## Database Interface` entry grammar is now stated in
+  `prompts/BLUEPRINTS_CONTRACT.md` and `Rigging/spec_template/DATABASE.md`, and a Blueprint that
+  reaches no repository declares `- None — <why>.` The grammar `parse_database_interface` enforces
+  — one bullet per line carrying an access-pattern id, access level, `supplies:`, and `returns:` —
+  appeared in no prompt the model reads, so a plan run emitted the prose the contract asked for and
+  21 Blueprints failed as malformed citations; the repair loop, which is handed the defect message
+  and nothing else, returned the same prose for five passes. A Screen that delegated persistence to
+  a Feature had no declared way to say so and failed for writing it in prose. Every bullet under
+  the heading is now checked rather than only those that happen to match, so prose beside one
+  well-formed citation no longer passes, and declaring `None` alongside a citation is a defect. The
+  parse failure quotes the offending line and the accepted form.
+- 2026-09-17: `drydock plan` now decides the persistence boundary rather than asking about it. The
+  schema, the operation surface, and each Blueprint's citations either agree or they do not, and
+  nothing about a disagreement needs a Commander, so four checks run at plan time: a Blueprint
+  whose story declares persistence in `stack:` cites the operations it uses, a citation never
+  widens what its pattern grants, every table in `## Schema` is reached by some access pattern, and
+  every operation names a table the schema declares. `Repository operation` is now a checked
+  `<table>.<verb>` form — it is the only place the declaration says which table a pattern reaches,
+  so table coverage is read from its prefix and free text there fails the plan. A live plan
+  declared four tables, reached three, and nothing looked at the fourth. Defects drive the existing
+  artifact repair loop, five Blueprints per pass with a budget that reaches every chunk, and unlike
+  an acceptance criterion they are not forgiven when that budget is spent: the run fails and writes
+  nothing rather than hand Build a storage contract known to be wrong. This replaces the material
+  and blocking decisions the previous entry describes, which reported the defect instead of
+  repairing it and left 17 Blueprints of a live plan citing no operation at all.
+  `Rigging/stack/persistence.md` binds the other end at build: a repository's public methods are
+  exactly the declared operations, none added and none missing.
+- 2026-09-17: `## Database Interface` is now required, not optional, for every Blueprint whose
+  story declares persistence in `stack:`. The machinery to check one has always existed —
+  `validate_database_interfaces` rejects an unknown operation, a wrong owner, access the pattern
+  does not grant, a field the DTO does not carry, and a required field left out — but nothing
+  called it outside `drydock refit`, so in practice no Blueprint carried the section and the
+  persistence boundary was prose. `drydock plan` now parses every citation and validates it against
+  the declaration, and reports a Blueprint that reaches the database while citing nothing. A live
+  plan had 22 Blueprints in exactly that state. A citation that disagrees with the declaration
+  blocks that Blueprint's story, because Build would implement the disagreement; one that is merely
+  absent is recorded as a material decision, because the story builds correctly and only its
+  storage access goes unchecked. Access gains a third declared level, `read-write`,
+  because a repository surface is often genuinely both and forcing it apart invents a split the
+  declaration never intended; a citation may claim less access than the pattern grants but never
+  more.
+- 2026-09-17: `drydock plan` now grades acceptance criteria for strength, not only for whether they
+  can execute. A criterion whose accepted-status set admits `404` beside any other status is true
+  of an application with no routes at all, and one admitting both a 2xx and a 5xx holds whatever
+  the implementation does; a live plan had 35 such criteria, 21% of its gates, reporting acceptance
+  no build had earned. Both shapes are now reported as a warning and a material decision against
+  the owning Blueprint. Specifying a stub stays legitimate — a stub that answers `200` is a real
+  contract and a real test — and `404` asserted alone remains a deliberate negative probe.
+- 2026-09-17: `DATABASE.md` is now a cumulative Blueprint rather than a write-once one. `drydock
+  plan` seeds it before the first Blueprint batch from `Rigging/spec_template/DATABASE.md` plus
+  every table the imported source specification already declared, and keeps it open for the whole
+  planning run. A batch emits only additions — new `` ## `table_name` `` sections, new field rows
+  on a table already declared, and new `## Access Patterns` entries — and Drydock appends them.
+  Nothing already declared can be retyped, reordered, or removed, so a Feature authored in a late
+  batch can add the storage it needs without a model restating, and paraphrasing away, the
+  declaration it was handed. The Stage 2 ledger lists `DATABASE.md` as `Open` instead of listing it
+  among the accepted artifacts a batch must not re-emit. The template marks its illustrative blocks
+  with `<!-- drydock:example -->`, which seeding strips, and declares its schema in the top-level
+  `` ## `table_name` `` form the schema reader has always required.
+
+### Fixed
+
+- 2026-09-19: Persistence repair no longer spends the plan's repair budget on sections Drydock
+  derives itself. `_normalize_database_interfaces` used to bail on every Blueprint as soon as one
+  access pattern named an Owner that is not a Blueprint in the plan; a live Marina_Luna run sent
+  four `## Database Interface` sections to the model that `DATABASE.md` defines exactly, and
+  failed. Each owner's section is now written from the declaration regardless, since it is a
+  function of the patterns naming that owner. Only `- None` is withheld while an unknown owner
+  exists, because the unknown name may be that Blueprint's own, misspelled.
+- 2026-09-19: A plan artifact repair pass now carries every defect its files have, not only the
+  defects of one kind. One `DATABASE.md` with three defects consumed three passes, each fixing
+  what it was shown and failing on the next.
+- 2026-09-19: A repair pass that re-emits `DATABASE.md` is given the Blueprint file names in the
+  plan — the only legal `| Owner |` values. A pass asked to split an access pattern invented
+  `FEATURE-ACTIVITY-EVENTS.md`, an owner no Blueprint answers to and no later pass could resolve.
+- 2026-09-19: The `ERRORS.md` record for a failed plan validation carries every defect instead of
+  the first 800 characters. The truncation hid four of five defects from the operator repairing
+  the plan.
+- 2026-09-19: `drydock plan` now records a failed plan-verify gate in `ERRORS.md` (phase
+  `plan verify`, the rendered unbuildable criteria, recovery `drydock plan repair <Target>`).
+  The gate previously raised with no error record, so the only evidence was console output and
+  `helpers/plan_fix.sh` exited with nothing to fix from. `plan_fix.sh` also falls back to the
+  newest plan log when `ERRORS.md` is absent.
+- 2026-09-19: Plan normalization now adds an import a criterion omits when every sibling criterion
+  in the same Blueprint binds that name with the same import statement (`create_app()` read in one
+  AC, `from app import create_app` in its neighbours). Criteria execute as isolated scripts, so the
+  omission made the criterion unrunnable and failed the plan after the repair budget was spent.
+  Ambiguous or unbound names are left for plan verify to report.
+- 2026-09-19: `drydock plan` no longer reports success over a plan Build cannot execute. The plan
+  ends on the `drydock plan verify` check; when a criterion cannot run or `DATABASE.md` cannot be
+  read, the Blueprint and Manifest are still written for repair, but `MANIFEST.md` is left
+  `state: draft`, `build_sub_state` is `unbuildable`, `PLAN CREATED` is recorded as failed, and the
+  command exits `1` with the defect list. Neither `--override` nor an unattended run waives it.
+  Previously these defects were demoted to `DECISIONS.json` entries (downgraded to `material` when
+  unattended) and the command stamped `approved`.
+- 2026-09-19: An unreadable `DATABASE.md` access-pattern surface now raises `DatabaseDefect` into
+  the artifact repair loop, and every incomplete pattern is reported in one pass. It was recorded
+  as a decision, and because the table-coverage and citation checks skip a contract that does not
+  parse, an unreadable declaration silenced every persistence gate. `| Owner |` values naming no
+  Blueprint are reported even when the contract does not parse. Persistence checks also run in the
+  repair-exhausted fallback pass, which previously skipped them.
+- 2026-09-19: Malformed acceptance containers are raised into the artifact repair loop instead of
+  being recorded as blocking decisions. The fused-boundary normalizer now repairs the two shapes
+  it missed: an `Intent:` line containing an apostrophe (the cut check tokenized the prose), and a
+  chain closed by an id-less `=== END AC`.
+- 2026-09-19: `drydock plan verify` reports `DATABASE.md` contract, unknown-owner, and table
+  coverage defects when the declaration declares tables, and names `drydock plan <Target>` as
+  their repair. `drydock plan repair` leaves those defects outstanding instead of sending
+  `DATABASE.md` to the criterion prompt, records `PLAN REPAIRED` as passed only when the
+  post-repair verification is clean, and sets the Manifest `approved` or `draft` to match.
+- 2026-09-19: `drydock build` refuses to start when `drydock plan verify` fails — a criterion that
+  cannot run, or a `DATABASE.md` that declares tables and cannot be read — and stops when the
+  DATABASE step cannot generate the persistence package instead of printing `persistence: not
+  generated` and continuing. Such criteria previously settled UNVERIFIED and let their story close.
+- 2026-09-19: `DATABASE.md` type cells accept column modifiers wrapped in the square brackets of the
+  documented form (`TEXT NOT NULL [UNIQUE]`, `[DEFAULT 0]`, `[REFERENCES t(c)]`); the brackets are
+  removed before validation instead of failing `drydock plan` with an unknown column modifier after
+  repair passes return the same cell. The form text in `BLUEPRINTS_CONTRACT.md` and the parse error
+  now state that brackets mark optional entries and are not written.
+- 2026-09-19: `drydock plan` now writes an invalid or missing `## Database Interface` section itself
+  from `DATABASE.md` instead of sending it to the LLM repair loop. A Blueprint named as an access
+  pattern's `Owner` cites every pattern it owns at the declared access with the full Input and Output
+  field lists; any other Blueprint declares `- None`. A valid section, including a narrowed
+  citation, is left unchanged, and each rewrite is reported as a plan warning. Previously a live run
+  lost 41 accepted Blueprints when three repair passes, which had no DTO field names to work from,
+  never produced a well-formed citation.
+- 2026-09-17: A `DATABASE.md` defect no longer discards the plan that found it. A live run lost 39
+  accepted Blueprints across 9 LLM calls, writing nothing, because one `Access` cell read
+  `read-write` where the contract admits `read` or `write`. Two changes settle it. `drydock plan`
+  now reads every unambiguous `Access` spelling — `read/write`, `append`, `create`, `select` and
+  the rest — as the contract value it means, collapsing a combined operation to `write` because a
+  citation Drydock widens can never under-declare access, and reporting each rewrite. A spelling
+  Drydock cannot read without guessing is never reinterpreted. Anything the contract parser still
+  rejects is raised as a blocking decision against the story implementing the declaration rather
+  than as a fatal, which is the response already settled for an acceptance criterion that does not
+  compile: Build still cannot proceed on a contract it cannot read, but the cost is one story
+  instead of the whole run.
+- 2026-09-17: `drydock plan` now validates the `DATABASE.md` operation surface, not only its
+  schema. Build reads `## Access Patterns` through `database_operation_fingerprints`, so a
+  declaration it cannot parse used to stop the build only after a block had already been spent — a
+  live run failed on `DATABASE.md: ## Access Patterns has no named operation` with block 1 already
+  accepted at 5/5. The plan integrity check parses the same contract and refuses the plan for free.
+  `Rigging/spec_template/DATABASE.md` and the Blueprints contract now state the required shape:
+  one `### FEATURE-<DOMAIN>-<NNN> — <Operation>` section per operation, never a single table of
+  operation rows. The check is reported as a blocking decision, not a fatal, so the plan survives
+  it.
+- 2026-09-17: `drydock plan` now repairs a *chain* of fused acceptance boundaries, not only a
+  single fusion. When the plan model closes one criterion with the next criterion's id and never
+  opens that one, the same slip can repeat down a file — a live run produced
+  `workflow-columns` → `workflow-production-terminal` → `workflow-catalog-boundary`, where every
+  wrong id appeared exactly once as a closer and the previous rule declined the whole chain,
+  shipping a Blueprint that acceptance parsing rejected before any test ran. Each link is now
+  carried forward as the next pending opener, and the repaired text is accepted only when its
+  markers alternate strictly; a speculative repair that would leave any block unclosed, stray, or
+  duplicated is discarded whole and the hard parse error stands.
+- 2026-09-17: A `DATABASE.md` that declares no tables now fails the plan integrity check instead of
+  passing silently. A project without persistence has no `DATABASE.md` at all; one that exists and
+  declares nothing is an empty contract, and Build filled that vacuum by inventing a schema no
+  Blueprint described — models created by `create_all()` alone, which never alters a table that
+  already exists, so the first story needing a new column on an existing table deadlocked the build
+  against a database file that predated it.
+
+- 2026-09-16: `drydock config env` is a pure query again. Every command outside a small read-only
+  set checkpoints the named Target's Git store, and that checkpoint prints `Target - committed
+  project workspace git store` to stdout. For `config env`, whose output a caller passes straight
+  to `eval`, the banner became a stray command: `drydock_runner.sh` died with
+  `Target: command not found`, attributed by bash to an unrelated line, whenever a Target had
+  uncommitted changes. `config` now joins `status` as read-only, so it neither creates nor commits
+  a Target's Git store.
 
 - 2026-09-16: A failed LLM run now names its cause. Commands reported only `LLM execution
   failed`, leaving the provider's explanation in an evidence file the operator had no reason to

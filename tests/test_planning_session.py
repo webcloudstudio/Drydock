@@ -14,7 +14,11 @@ import pytest
 
 from drydock import artifact_blocks, technology_stack
 from drydock import planning_session as ps
-from drydock.acceptance import parse_programmatic_acceptance, parse_programmatic_acceptance_text
+from drydock.acceptance import (
+    parse_programmatic_acceptance,
+    parse_programmatic_acceptance_text,
+    unresolved_globals,
+)
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
 from drydock.plan_graph import PlannedStory
@@ -68,6 +72,23 @@ def _pa_code(*snippets: str) -> str:
         body = f"from app import client\n{code}"
         blocks.append(f"### check-{index}\nRoute acceptance {index}.\n\n```python\n{body}\n```")
     return "\n\n".join(blocks)
+
+
+#: A minimal ``## Access Patterns`` section that ``parse_database_contract`` accepts. Plan gates
+#: the operation surface because Build reads it through ``database_operation_fingerprints``.
+_ACCESS_PATTERNS = (
+    "## Access Patterns\n\n"
+    "### FEATURE-X-001 — Read setting\n\n"
+    "| Field | Value |\n|---|---|\n"
+    "| Owner | FEATURE-Example.md |\n"
+    "| Access | read |\n"
+    "| Repository operation | `settings.get` |\n"
+    "| Compatibility | rebuild |\n\n"
+    "Input: GetSetting\n\n"
+    "| Field | Type | Required |\n|---|---|---|\n| key | str | yes |\n\n"
+    "Output: Setting\n\n"
+    "| Field | Type |\n|---|---|\n| key | str |\n\n"
+)
 
 
 def test_default_feedback_heading_is_plan_compass(tmp_path):
@@ -1303,7 +1324,24 @@ def test_replan_prunes_applied_spec_when_authoritative_spec_changes(tmp_path):
 
 def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
     target_dir = _make_target(tmp_path)
-    db = _SPEC_HEADER.format(ftype="DATABASE", name="Example Data", ac="None.")
+    # A persistence Blueprint declares its tables; an empty one fails the plan integrity check.
+    db = _SPEC_HEADER.format(ftype="DATABASE", name="Example Data", ac="None.").replace(
+        "## Programmatic Acceptance",
+        _ACCESS_PATTERNS.replace("FEATURE-Example.md", "FEATURE-Status.md")
+        + "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n\n"
+        "## Programmatic Acceptance",
+        1,
+    )
+    # The declaration names FEATURE-Status.md as the owner of FEATURE-X-001, so it cites it.
+    status = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    ).replace(
+        "## Programmatic Acceptance",
+        "## Database Interface\n\n"
+        "- `FEATURE-X-001` — read: read a setting - supplies: `key` - returns: `key`\n\n"
+        "## Programmatic Acceptance",
+        1,
+    )
     manifest = _manifest().replace(
         "scope: both\nstate: pending",
         "scope: both\ncontext: README.md, ARCHITECTURE.md\nstate: pending",
@@ -1311,7 +1349,7 @@ def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
     out = (
         f"=== ARCHITECTURE.md ===\n{_SPEC_HEADER.format(ftype='ARCHITECTURE', name='Example', ac='None.')}\n=== END ARCHITECTURE.md ===\n"
         f"=== DATABASE.md ===\n{db}\n=== END DATABASE.md ===\n"
-        f"=== FEATURE-Status.md ===\n{_SPEC_HEADER.format(ftype='FEATURE', name='Status', ac='Status command exits successfully.')}\n=== END FEATURE-Status.md ===\n"
+        f"=== FEATURE-Status.md ===\n{status}\n=== END FEATURE-Status.md ===\n"
         f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n"
     )
 
@@ -1609,6 +1647,10 @@ def test_technology_stack_is_injected_into_the_plan_prompt(tmp_path):
     assert technology_stack.FILENAME in prompt
     assert "fastapi.md" in prompt
     assert "marina-library" in prompt
+    # The selected web server's contract travels with the stack, so the author writes the
+    # package it names instead of inventing one.
+    assert "## Foundation Contract" in prompt
+    assert "- package: app_server" in prompt
 
 
 def test_unanswered_required_analyze_decision_blocks_before_llm(tmp_path):
@@ -4162,6 +4204,20 @@ def test_nonclaude_continuation_reuses_the_original_prefix_and_carries_the_ledge
     assert "## story story-status" in appended
 
 
+def test_each_plan_call_names_its_stage_for_console_progress(tmp_path):
+    _make_target(tmp_path)
+    stages: list[object] = []
+
+    def runner(prompt_text, *_args, **kwargs):
+        stages.append(kwargs.get("sub_command"))
+        text = _short_output() if len(stages) == 1 else _feature_block()
+        return FakeRun(text=text, execution_id=f"exec-{len(stages)}")
+
+    create_plan("Example", "Example", tmp_path, runner=runner, llm_provider="codex")
+
+    assert stages[:2] == ["topology", "blueprint batch 1"]
+
+
 def test_claude_continuation_resumes_the_initial_session_with_only_the_ledger(tmp_path):
     _make_target(tmp_path)
     calls: list[tuple[str, dict[str, object]]] = []
@@ -4502,7 +4558,7 @@ def test_a_compiling_criterion_reports_nothing():
 
 
 def test_plan_normalizes_subprocess_import_inside_each_standalone_ac():
-    from drydock.planning_session import _normalize_standalone_subprocess_imports
+    from drydock.planning_session import _normalize_standalone_imports
 
     blocks = {
         "FEATURE-Example.md": (
@@ -4516,12 +4572,247 @@ def test_plan_normalizes_subprocess_import_inside_each_standalone_ac():
         )
     }
 
-    warnings = _normalize_standalone_subprocess_imports(blocks)
+    warnings = _normalize_standalone_imports(blocks)
 
     assert blocks["FEATURE-Example.md"].count("import subprocess") == 2
     assert warnings == (
         "FEATURE-Example.md [second]: added the required standalone import subprocess",
     )
+
+
+def test_plan_takes_an_omitted_import_from_its_sibling_criteria():
+    """Marina_Luna: ``create_app()`` read in one AC, imported only in its neighbours."""
+    from drydock.planning_session import _normalize_standalone_imports
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "from app import create_app\n\nassert create_app()\n"
+            "=== END AC first ===\n\n"
+            "=== AC second ===\nIntent: Second.\n\n"
+            "client = create_app().test_client()\nassert helper(client)\n"
+            "=== END AC second ===\n"
+        )
+    }
+
+    warnings = _normalize_standalone_imports(blocks)
+
+    checks = parse_programmatic_acceptance_text(
+        blocks["FEATURE-Example.md"], source="FEATURE-Example.md"
+    )
+    assert checks[1].code.startswith("from app import create_app\n\nclient =")
+    assert "helper" in checks[1].code  # no sibling binds it: left for verify to report
+    assert warnings == (
+        "FEATURE-Example.md [second]: added the standalone import from app import create_app "
+        "its sibling criteria use",
+    )
+
+
+def test_plan_does_not_guess_an_import_its_siblings_disagree_on():
+    from drydock.planning_session import _normalize_standalone_imports
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC a ===\nIntent: A.\n\nfrom app import create_app\nassert create_app()\n"
+        "=== END AC a ===\n\n"
+        "=== AC b ===\nIntent: B.\n\nfrom web import create_app\nassert create_app()\n"
+        "=== END AC b ===\n\n"
+        "=== AC c ===\nIntent: C.\n\nassert create_app()\n=== END AC c ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_standalone_imports(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_plan_binds_the_module_name_a_criterion_imports_its_factory_from():
+    """Marina_Luna: ``from app import create_app`` then ``app.test_client()``."""
+    from drydock.planning_session import _normalize_factory_bindings
+
+    blocks = {
+        "SCREEN-Example.md": (
+            "# SCREEN: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "from marina_app.factory import create_app\n\n"
+            "client = marina_app.test_client()\nassert client.get('/').status_code == 200\n"
+            "=== END AC first ===\n"
+        )
+    }
+
+    warnings = _normalize_factory_bindings(blocks)
+
+    checks = parse_programmatic_acceptance_text(blocks["SCREEN-Example.md"], source="x")
+    assert checks[0].code == (
+        "from marina_app.factory import create_app\n"
+        "marina_app = create_app()\n\n"
+        "client = marina_app.test_client()\nassert client.get('/').status_code == 200"
+    )
+    assert unresolved_globals(checks[0].code) == ()
+    assert warnings == (
+        "SCREEN-Example.md [first]: bound the name its import left undefined with "
+        "marina_app = create_app()",
+    )
+
+
+def test_plan_leaves_an_unbound_name_that_means_the_module_it_imports_from():
+    """``marina.db`` after ``from marina.db import Session`` means the module, not a session."""
+    from drydock.planning_session import _normalize_factory_bindings
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\n"
+        "from marina.db import Session\n\nassert marina.db.engine is not None\n"
+        "=== END AC first ===\n\n"
+        "=== AC second ===\nIntent: Second.\n\n"
+        "from app import create_app, seed\n\nclient = app.test_client()\nassert client\n"
+        "=== END AC second ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_factory_bindings(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_plan_does_not_call_a_standard_library_module_it_imports_a_name_from():
+    from drydock.planning_session import _normalize_factory_bindings
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\n"
+        "from pathlib import Path\n\nassert pathlib.Path('.').exists()\n"
+        "=== END AC first ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_factory_bindings(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_plan_imports_the_entry_callable_from_the_selected_foundation():
+    """Marina_Luna: 153 criteria imported ``create_app`` from ``app`` or ``marina_app``."""
+    from drydock.planning_session import _normalize_foundation_imports
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "from marina_app import create_app\n\nassert create_app()\n"
+            "=== END AC first ===\n\n"
+            "=== AC second ===\nIntent: Second.\n\n"
+            "from app import create_app as factory\n\nassert factory()\n"
+            "=== END AC second ===\n"
+        )
+    }
+
+    warnings = _normalize_foundation_imports(blocks, ["python.md", "fastapi.md"])
+
+    checks = parse_programmatic_acceptance_text(blocks["FEATURE-Example.md"], source="x")
+    assert [check.code for check in checks] == [
+        "from app_server.main import create_app\n\nassert create_app()",
+        "from app_server.main import create_app as factory\n\nassert factory()",
+    ]
+    assert warnings == (
+        "FEATURE-Example.md [first]: imported `create_app` from `app_server.main`, where the "
+        "web-server foundation publishes it, instead of `marina_app`",
+        "FEATURE-Example.md [second]: imported `create_app` from `app_server.main`, where the "
+        "web-server foundation publishes it, instead of `app`",
+    )
+
+
+def test_plan_follows_the_rewrite_to_the_module_each_foundation_publishes():
+    from drydock.planning_session import _normalize_foundation_imports
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "from app import create_app\n\nassert create_app()\n"
+            "=== END AC first ===\n"
+        )
+    }
+
+    _normalize_foundation_imports(blocks, ["flask.md"])
+
+    checks = parse_programmatic_acceptance_text(blocks["FEATURE-Example.md"], source="x")
+    assert checks[0].code.startswith("from app_server import create_app\n")
+
+
+def test_plan_leaves_foundation_imports_it_cannot_rewrite_whole():
+    """A sibling name from the invented package would be dropped; ``plan verify`` reports it."""
+    from drydock.planning_session import _normalize_foundation_imports
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\n"
+        "from marina_app import create_app, Settings\n\nassert create_app(Settings())\n"
+        "=== END AC first ===\n\n"
+        "=== AC second ===\nIntent: Second.\n\n"
+        "from app_server.main import create_app\n\nassert create_app()\n"
+        "=== END AC second ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_foundation_imports(blocks, ["fastapi.md"]) == ()
+    assert _normalize_foundation_imports(blocks, ["python.md"]) == ()
+    assert blocks["FEATURE-Example.md"] == text
+
+
+def test_plan_replaces_a_hand_built_client_with_the_published_one():
+    """Marina_Luna wrote ``client = create_app().test_client()`` 96 times on FastAPI."""
+    from drydock.planning_session import (
+        _normalize_foundation_imports,
+        _normalize_published_clients,
+    )
+
+    blocks = {
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+            "=== AC first ===\nIntent: First.\n\n"
+            "import json\nfrom marina_app import create_app\n\n"
+            "client = create_app().test_client()\nassert client.get('/').status_code == 200\n"
+            "=== END AC first ===\n\n"
+            "=== AC second ===\nIntent: Second.\n\n"
+            "from app_server.main import create_app\n\n"
+            "assert create_app()\nclient = create_app().test_client()\nassert client\n"
+            "=== END AC second ===\n"
+        )
+    }
+
+    _normalize_foundation_imports(blocks, ["fastapi.md"])
+    warnings = _normalize_published_clients(blocks, ["fastapi.md"])
+
+    checks = parse_programmatic_acceptance_text(blocks["FEATURE-Example.md"], source="x")
+    assert checks[0].code == (
+        "import json\nfrom app_server.testing import web_client\n\n"
+        "client = web_client()\nassert client.get('/').status_code == 200"
+    )
+    # The entry is still read, so its import stays and the published one joins it.
+    assert checks[1].code == (
+        "from app_server.main import create_app\nfrom app_server.testing import web_client\n\n"
+        "assert create_app()\nclient = web_client()\nassert client"
+    )
+    assert warnings == (
+        "FEATURE-Example.md [first]: replaced `create_app().test_client()` with the published "
+        "`web_client()`",
+        "FEATURE-Example.md [second]: replaced `create_app().test_client()` with the published "
+        "`web_client()`",
+    )
+
+
+def test_plan_leaves_clients_alone_without_a_selected_web_server():
+    from drydock.planning_session import _normalize_published_clients
+
+    text = (
+        "# FEATURE: Example\n\n## Programmatic Acceptance\n\n"
+        "=== AC first ===\nIntent: First.\n\n"
+        "from app import create_app\n\nclient = create_app().test_client()\nassert client\n"
+        "=== END AC first ===\n"
+    )
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_published_clients(blocks, ["python.md"]) == ()
+    assert blocks["FEATURE-Example.md"] == text
 
 
 def test_plan_closes_acceptance_blocks_whose_terminator_the_model_dropped():
@@ -4582,18 +4873,18 @@ def test_a_marker_inside_a_string_literal_is_not_treated_as_a_boundary():
         parse_programmatic_acceptance_text(text, source="FEATURE-Example.md")
 
 
-def test_an_unrepairable_acceptance_container_keeps_the_plan(tmp_path):
-    """The jq failure: one unreadable container discarded six accepted batches.
+def test_an_unrepairable_acceptance_container_is_routed_to_repair(tmp_path):
+    """A container no normalizer can close is raised into the artifact repair loop.
 
-    The container cannot be repaired — its body does not tokenize, so no boundary is
-    inferable — and it must not cost the plan. It settles as a warning plus a blocking
-    decision against the story that owns it.
+    Its body does not tokenize, so no boundary is inferable. It was previously written as a
+    warning plus a blocking decision and the plan reported success; the criterion gated nothing
+    and Build stopped on it later. Validation now refuses it, and the repair-exhausted pass
+    (``enforce_criteria=False``) still returns the graph so the paid-for plan can be written for
+    the terminal buildability gate to fail.
     """
-    from drydock.planning_session import (
-        _malformed_acceptance_defects,
-        _validate_plan_output,
-        malformed_acceptance_decisions,
-    )
+    import pytest
+
+    from drydock.planning_session import CriteriaDefect, _validate_plan_output
 
     broken = (
         "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
@@ -4608,14 +4899,17 @@ def test_an_unrepairable_acceptance_container_keeps_the_plan(tmp_path):
         "MANIFEST.md": manifest,
     }
 
-    plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+    with pytest.raises(CriteriaDefect) as raised:
+        _validate_plan_output(dict(blocks), tmp_path, FakeRun(text=_llm_output(manifest)))
+    assert [(kind, item.source) for kind, item in raised.value.defects] == [
+        ("acceptance-malformed", "FEATURE-Status.md")
+    ]
 
+    plan, warnings = _validate_plan_output(
+        blocks, tmp_path, FakeRun(text=_llm_output(manifest)), enforce_criteria=False
+    )
     assert plan.blocks
     assert any("acceptance block is never closed" in warning for warning in warnings)
-    assert any("recorded as a blocking decision" in warning for warning in warnings)
-    decisions = malformed_acceptance_decisions(_malformed_acceptance_defects(blocks))
-    assert [item.id for item in decisions] == ["acceptance-FEATURE-Status.md-container-malformed"]
-    assert decisions[0].severity == "blocking"
 
 
 def test_unreadable_acceptance_declares_no_tooling_instead_of_raising(tmp_path):
@@ -4680,9 +4974,41 @@ def test_plan_splits_a_fused_acceptance_boundary_the_model_forgot_to_open():
     assert warnings[0].startswith("FEATURE-Date-and-Time.md [date-conformance]")
 
 
-def test_a_fused_boundary_with_no_second_closer_is_left_to_the_hard_error():
-    """The wrong-id closer appears only once — there is no real closer waiting for a synthetic
-    opener, so the shape is not the unambiguous fused case and nothing is inserted."""
+def test_plan_splits_a_chain_of_fused_acceptance_boundaries():
+    """The live Marina_Luna defect: three criteria fused, each closer naming the *next* one, so
+    every wrong id appears exactly once as a closer. The earlier single-fusion rule declined the
+    whole chain and shipped an unparseable Blueprint to Build."""
+    from drydock.planning_session import _normalize_fused_acceptance_boundaries
+
+    blocks = {
+        "SCREEN-Workflow.md": (
+            "# SCREEN: Workflow\n\n## Programmatic Acceptance\n\n"
+            "=== AC workflow-columns ===\nIntent: First.\n\nassert 1 == 1\n"
+            "=== END AC workflow-production-terminal ===\n"
+            "Intent: Second.\n\nassert 2 == 2\n"
+            "=== END AC workflow-catalog-boundary ===\n"
+            "Intent: Third.\n\nassert 3 == 3\n"
+            "=== END AC workflow-catalog-boundary ===\n"
+        )
+    }
+
+    warnings = _normalize_fused_acceptance_boundaries(blocks)
+
+    checks = parse_programmatic_acceptance_text(
+        blocks["SCREEN-Workflow.md"], source="SCREEN-Workflow.md"
+    )
+    assert [check.check_id for check in checks] == [
+        "workflow-columns",
+        "workflow-production-terminal",
+        "workflow-catalog-boundary",
+    ]
+    assert [check.code for check in checks] == ["assert 1 == 1", "assert 2 == 2", "assert 3 == 3"]
+    assert len(warnings) == 2
+
+
+def test_a_speculative_boundary_repair_that_does_not_alternate_is_discarded_whole():
+    """The wrong-id closer opens a synthetic block that nothing ever closes, so the repaired text
+    does not alternate and every insertion is dropped rather than handing Build a broken file."""
     from drydock.planning_session import _normalize_fused_acceptance_boundaries
 
     text = (
@@ -5306,3 +5632,807 @@ def test_the_authoring_contract_example_supplies_the_variables_it_documents():
     assert suite_checks, "the contract example no longer runs a staged suite runner"
 
     assert staged_asset_env_defects(suite_checks, {"tests/run_suite.py": asset}) == ()
+
+
+def test_stage_two_ledger_keeps_the_persistence_declaration_open_for_append():
+    # Every other Blueprint is frozen once accepted. This one is not: a Feature authored in a
+    # later batch may need a table, or a column on a table declared batches ago.
+    stories = (
+        PlannedStory(
+            story_id="story-1",
+            name="Persistence",
+            story_type="feature",
+            phase=1,
+            delivery_kind="capability",
+            acceptance_contract=True,
+            implements="DATABASE.md",
+        ),
+        PlannedStory(
+            story_id="story-2",
+            name="Items",
+            story_type="feature",
+            phase=1,
+            delivery_kind="capability",
+            acceptance_contract=True,
+            implements="FEATURE-ITEMS.md",
+        ),
+    )
+    blocks = {"TOPOLOGY.md": "complete", "DATABASE.md": "# DATABASE: X\n"}
+
+    ledger = ps._render_ledger(score_plan(stories, blocks))
+
+    assert "Open (DATABASE.md)" in ledger
+    assert "Accepted (0)" in ledger
+    assert "only the additions" in ledger
+    frozen_block = ledger.split("Open (DATABASE.md)")[0]
+    assert "DATABASE.md" not in frozen_block
+
+
+def test_the_persistence_declaration_is_seeded_from_the_template_and_the_imported_source(tmp_path):
+    blueprint_dir = tmp_path / "blueprint"
+    (blueprint_dir / "sources").mkdir(parents=True)
+    (blueprint_dir / "sources" / "DATABASE.md").write_text(
+        "# Database: Registry\n\n"
+        "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+        encoding="utf-8",
+    )
+    stories = (
+        PlannedStory(
+            story_id="story-1",
+            name="Persistence",
+            story_type="feature",
+            phase=1,
+            delivery_kind="capability",
+            acceptance_contract=True,
+            implements="DATABASE.md",
+        ),
+    )
+    blocks: dict[str, str] = {}
+
+    ps._seed_database_blueprint(blocks, declared=stories, blueprint_dir=blueprint_dir)
+
+    seeded = blocks["DATABASE.md"]
+    assert "## `settings`" in seeded
+    assert "| key | TEXT PK | |" in seeded
+    assert "## Access Patterns" in seeded
+    assert "FEATURE-EXAMPLE-001" not in seeded
+
+
+def test_no_persistence_story_leaves_the_declaration_unseeded(tmp_path):
+    stories = (
+        PlannedStory(
+            story_id="story-1",
+            name="Items",
+            story_type="feature",
+            phase=1,
+            delivery_kind="capability",
+            acceptance_contract=True,
+            implements="FEATURE-ITEMS.md",
+        ),
+    )
+    blocks: dict[str, str] = {}
+
+    ps._seed_database_blueprint(blocks, declared=stories, blueprint_dir=tmp_path / "blueprint")
+
+    assert blocks == {}
+
+
+def _empty_plan(tmp_path) -> object:
+    from drydock.manifest import DrydockManifest, ManifestMetadata
+
+    return DrydockManifest(
+        path=tmp_path / "MANIFEST.md",
+        metadata=ManifestMetadata(project="X"),
+        blocks=[],
+        preamble=[],
+    )
+
+
+def test_a_persistence_declaration_with_no_tables_fails_the_plan(tmp_path):
+    # A project without persistence has no DATABASE.md at all. One that exists and declares
+    # nothing is an empty contract, and Build fills that vacuum by inventing its own schema.
+    with pytest.raises(SpecificationError) as excinfo:
+        ps._integrity_check(
+            _empty_plan(tmp_path),
+            tmp_path,
+            emitted_files={"DATABASE.md": "# DATABASE: X\n\n## Guardrails\n\n- None.\n"},
+        )
+
+    assert "DATABASE.md: declares no tables" in str(excinfo.value)
+
+
+def test_a_persistence_declaration_with_tables_passes_the_plan(tmp_path):
+    warnings = ps._integrity_check(
+        _empty_plan(tmp_path),
+        tmp_path,
+        emitted_files={
+            "DATABASE.md": (
+                "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+                "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+            )
+        },
+    )
+
+    assert any("1 declared table(s)" in warning for warning in warnings)
+
+
+def test_a_persistence_declaration_build_cannot_parse_is_a_database_defect():
+    """The live Marina_Luna defect: the model wrote ``## Access Patterns`` as one flat table of
+    operations instead of a named section each. Build generates the persistence layer from that
+    surface, so it is repaired like every other persistence defect — recording it as a decision
+    also silenced the coverage and citation checks and let the plan report success."""
+    blocks = {
+        "DATABASE.md": (
+            "# DATABASE: X\n\n## Access Patterns\n\n"
+            "| ID | Owner | Access | Repository method | Compatibility |\n"
+            "|---|---|---|---|---|\n"
+            "| FEATURE-X-001 | S | read | `S.get` | unchanged |\n\n"
+            "## `settings`\n\n"
+            "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+        )
+    }
+
+    defects = ps._database_contract_defects(blocks)
+
+    assert [kind for kind, _ in defects] == ["database-contract-invalid"]
+    assert defects[0][1].source == "DATABASE.md"
+    assert "## Access Patterns has no named operation" in defects[0][1].reason
+
+
+def test_every_incomplete_access_pattern_is_reported_in_one_pass():
+    """Marina_Luna: a repair pass added thirteen patterns without Input/Output tables. The parser
+    stops at the first; the repair loop must see all thirteen, and the owners they name."""
+    incomplete = (
+        "### FEATURE-Y-00{n} — Store thing\n\n| Field | Value |\n|-------|-------|\n"
+        "| Owner | FEATURE-INVENTED.md |\n| Access | read-write |\n"
+        "| Repository operation | `settings.update` |\n| Compatibility | data |\n\n"
+    )
+    database = (
+        "# DATABASE: X\n\n"
+        + _ACCESS_PATTERNS.rstrip("\n")
+        + "\n\n"
+        + incomplete.format(n=1)
+        + incomplete.format(n=2)
+        + "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+    )
+    blocks = {"DATABASE.md": database, "FEATURE-Example.md": "# FEATURE: Example\n"}
+
+    contract = ps._database_contract_defects(blocks)
+    owners = ps._database_interface_defects(blocks)
+
+    assert [item.reason.split(" requires")[0] for _, item in contract] == [
+        "DATABASE.md: FEATURE-Y-001",
+        "DATABASE.md: FEATURE-Y-002",
+    ]
+    assert "`Input: <DtoName>`" in contract[0][1].reason
+    assert [(kind, "FEATURE-INVENTED.md" in item.reason) for kind, item in owners] == [
+        ("database-owner-unknown", True)
+    ]
+
+
+def test_a_combined_access_spelling_is_read_as_read_write():
+    """One cell reading ``read-write`` discarded a whole plan. A combined surface keeps both
+    levels rather than collapsing: once a Blueprint must cite the pattern it uses, a collapsed
+    level would reject the read-only consumer that cites it honestly."""
+    blocks = {
+        "DATABASE.md": _ACCESS_PATTERNS.replace("| Access | read |", "| Access | read/write |")
+    }
+
+    warnings = ps._normalize_database_access_values(blocks)
+
+    assert "| Access | read-write |" in blocks["DATABASE.md"]
+    assert len(warnings) == 1
+    assert "read as 'read-write'" in warnings[0]
+    assert ps._database_contract_defects(blocks) == ()
+
+
+def test_a_single_sided_access_synonym_keeps_its_side():
+    """``append`` writes and ``select`` reads; neither becomes the combined level."""
+    for written, settled in (("append", "write"), ("select", "read")):
+        blocks = {
+            "DATABASE.md": _ACCESS_PATTERNS.replace("| Access | read |", f"| Access | {written} |")
+        }
+        ps._normalize_database_access_values(blocks)
+        assert f"| Access | {settled} |" in blocks["DATABASE.md"]
+
+
+def test_an_access_value_drydock_cannot_read_is_left_for_the_contract_parser():
+    """An unrecognized spelling is never reinterpreted by guesswork; it reaches the parser and is
+    raised for repair there."""
+    blocks = {
+        "DATABASE.md": _ACCESS_PATTERNS.replace("| Access | read |", "| Access | telepathy |")
+    }
+
+    assert ps._normalize_database_access_values(blocks) == ()
+    assert "invalid Access: telepathy" in ps._database_contract_defects(blocks)[0][1].reason
+
+
+def _criterion(code: str, *, check_id: str = "c1") -> str:
+    return (
+        f"# FEATURE: Example\n\n## Programmatic Acceptance\n\n=== AC {check_id} ===\n"
+        f"Intent: Example.\n\n{code}\n=== END AC {check_id} ===\n"
+    )
+
+
+def test_a_criterion_admitting_not_found_beside_success_proves_nothing():
+    """The live shape: 37 criteria, 22% of a plan's gates, each satisfied by an application with
+    no routes at all. 404 means the endpoint is absent, so admitting it beside any other status
+    makes the criterion true of an implementation that does nothing."""
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code in {200, 404}")}
+
+    defects = ps._weak_acceptance_defects(blocks)
+
+    assert len(defects) == 1
+    assert "404 means the endpoint is absent" in defects[0].reason
+    assert ps.weak_acceptance_decisions(defects)[0].severity == "material"
+
+
+def test_a_stub_that_pins_the_status_it_answers_with_is_a_real_test():
+    """Specifying a stub is legitimate, and a stub that answers is a real contract. The criterion
+    is not the defect; one that declines to say what the stub answers is."""
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code == 200")}
+
+    assert ps._weak_acceptance_defects(blocks) == ()
+
+
+def test_a_not_found_probe_asserted_alone_is_one_of_the_strongest_checks():
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code == 404")}
+
+    assert ps._weak_acceptance_defects(blocks) == ()
+
+
+def test_a_criterion_admitting_success_and_server_failure_proves_nothing():
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code in (200, 503)")}
+
+    defects = ps._weak_acceptance_defects(blocks)
+
+    assert len(defects) == 1
+    assert "success and server failure" in defects[0].reason
+
+
+def test_a_determinate_pair_of_outcomes_is_not_weak():
+    """``created or already exists`` is one expectation stated over two codes; neither admits an
+    application that implements nothing, so it is left alone."""
+    blocks = {"FEATURE-Example.md": _criterion("assert response.status_code in [201, 409]")}
+
+    assert ps._weak_acceptance_defects(blocks) == ()
+
+
+_DATABASE = (
+    "# DATABASE: X\n\n"
+    + _ACCESS_PATTERNS
+    + "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+)
+#: The owner of ``FEATURE-X-001`` citing it correctly. Present in a case that is about some
+#: other Blueprint, so the declaration is coherent and only the Blueprint under test is at issue.
+_OWNER = (
+    "# FEATURE: Example\n\n## Database Interface\n\n"
+    "- `FEATURE-X-001` — read: read a setting - supplies: `key` - returns: `key`\n"
+)
+
+
+def test_a_blueprint_named_as_owner_that_cites_nothing_fails_the_plan():
+    """The boundary this section exists to enforce: the declaration says this Blueprint reaches
+    the repository and the Blueprint names no operation, so its storage access is unchecked.
+    Recording it as a decision left 17 of a live plan's Blueprints in exactly that state."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": "# FEATURE: Example\n\n## Guardrails\n\n- None.\n",
+    }
+
+    defects = ps._database_interface_defects(blocks)
+
+    assert [kind for kind, _ in defects] == ["database-interface-missing"]
+    # The repair loop chunks by source, so the defect names the Blueprint to re-emit — not
+    # DATABASE.md, which is correct as written.
+    assert defects[0][1].source == "FEATURE-Example.md"
+    assert "FEATURE-X-001" in defects[0][1].reason
+
+
+def test_a_blueprint_that_reaches_no_repository_declares_none_and_passes():
+    """A Screen that delegates persistence writes the heading because the claim is true of it.
+    With no declared form for the empty claim it had to write prose, and prose parsed as a
+    malformed citation — five repair passes that no message told how to repair."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
+        "SCREEN-Example.md": (
+            "# SCREEN: Example\n\n## Database Interface\n\n"
+            "- None — persistence is owned by FEATURE-Example.md.\n"
+        ),
+    }
+
+    assert ps._database_interface_defects(blocks) == ()
+
+
+def test_an_owner_cannot_escape_the_gate_by_declaring_none():
+    """``- None`` is the empty claim, available only to a Blueprint the declaration names
+    nowhere. An owner saying it contradicts the pattern that names it."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Database Interface\n\n- None — nothing is stored.\n"
+        ),
+    }
+
+    defects = ps._database_interface_defects(blocks)
+
+    assert [kind for kind, _ in defects] == ["database-interface-missing"]
+
+
+def test_ownership_is_read_from_the_declaration_not_from_the_story_stack():
+    """A stack selection says which technology the story is built with, not whether it reaches a
+    repository. Every Python story carries sqlalchemy.md and alembic.md, so the application shell
+    that only runs the startup migration was told to cite an operation it does not own — and a Go
+    or C++ Target was never gated at all."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
+        "FEATURE-Shell.md": (
+            "# FEATURE: Shell\n\n## Database Interface\n\n"
+            "- None — the shell runs the migration; FEATURE-Example.md owns the data.\n"
+        ),
+    }
+
+    assert ps._database_interface_defects(blocks) == ()
+
+
+def test_an_owner_that_names_no_blueprint_is_the_declarations_defect():
+    """Marina_Luna declared every Owner as a service name — `Workflow service` — and the check
+    compares it to a file name. Caught per citation it is one unrepairable defect in the first
+    Blueprint to notice, which is where four repair passes went. Caught here it is one message
+    against the one file that is wrong."""
+    blocks = {
+        "DATABASE.md": _DATABASE.replace(
+            "| Owner | FEATURE-Example.md |", "| Owner | Settings service |"
+        ),
+        "FEATURE-Example.md": _OWNER,
+    }
+
+    defects = ps._database_interface_defects(blocks)
+
+    assert "database-owner-unknown" in {kind for kind, _ in defects}
+    unknown = next(defect for kind, defect in defects if kind == "database-owner-unknown")
+    assert unknown.source == "DATABASE.md"
+    assert "Settings service" in unknown.reason
+
+
+def test_a_citation_conflict_repairs_both_sides():
+    """A citation conflict is a disagreement between two files. The repair loop re-emits exactly
+    the sources it is given, so a pass handed only the Blueprint has no legal move when the
+    declaration is the wrong side — four passes returning the same defect was the observed cost."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Database Interface\n\n"
+            "- `FEATURE-X-001` — write: write a setting - supplies: `key` - returns: `key`\n"
+        ),
+    }
+
+    defects = ps._database_interface_defects(blocks)
+
+    assert {kind for kind, _ in defects} == {"database-citation-conflict"}
+    assert sorted(defect.source for _, defect in defects) == [
+        "DATABASE.md",
+        "FEATURE-Example.md",
+    ]
+
+
+def test_prose_under_the_interface_heading_names_the_line_and_the_accepted_form():
+    """The repair prompt carries the defect message and nothing else, so the message is the
+    only place the grammar can reach the model that has to satisfy it."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Database Interface\n\n"
+            "- **Settings** — Read and write through the repository declared by DATABASE.md.\n"
+        ),
+    }
+
+    defects = ps._database_interface_defects(blocks)
+
+    assert [kind for kind, _ in defects] == ["database-interface-invalid"]
+    assert "**Settings**" in defects[0][1].reason
+    assert "supplies:" in defects[0][1].reason
+
+
+def test_a_citation_that_contradicts_the_declaration_fails_the_plan():
+    """The Blueprint names an operation the declaration does not grant it, so Build would
+    implement the disagreement."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": (
+            "# FEATURE: Example\n\n## Database Interface\n\n"
+            "- `FEATURE-NOPE-001` — read: invented - supplies: `key` - returns: `key`\n"
+        ),
+    }
+
+    defects = ps._database_interface_defects(blocks)
+
+    assert {kind for kind, _ in defects} == {"database-citation-conflict"}
+    assert "unknown database operation" in defects[0][1].reason
+
+
+def test_one_bad_citation_does_not_hide_another_blueprint():
+    """The validator raises on the first defect it finds. Calling it once per Blueprint is what
+    lets the repair loop see every file that needs re-emitting instead of one per pass."""
+    interface = (
+        "# FEATURE: {name}\n\n## Database Interface\n\n"
+        "- `FEATURE-NOPE-001` — read: invented - supplies: `key` - returns: `key`\n"
+    )
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": interface.format(name="Example"),
+        "FEATURE-Other.md": interface.format(name="Other"),
+    }
+
+    defects = ps._database_interface_defects(blocks)
+
+    assert sorted({defect.source for _, defect in defects}) == [
+        "DATABASE.md",
+        "FEATURE-Example.md",
+        "FEATURE-Other.md",
+    ]
+
+
+def test_a_declared_table_no_pattern_reaches_fails_the_plan():
+    """Four tables and three access patterns shipped in a live plan with nothing looking at the
+    fourth. The table is storage the declaration describes and no story can use."""
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n" + _ACCESS_PATTERNS + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n\n"
+        "## `activity_events`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| id | INTEGER PK | |\n",
+    }
+
+    defects = ps._database_table_defects(blocks)
+
+    assert [kind for kind, _ in defects] == ["database-table-uncited"]
+    assert defects[0][1].check_id == "activity_events"
+    assert defects[0][1].source == "DATABASE.md"
+
+
+def test_an_operation_on_an_undeclared_table_fails_the_plan():
+    """The same disagreement from the other side: Build would write a repository against a table
+    that will not exist."""
+    blocks = {
+        "DATABASE.md": "# DATABASE: X\n\n"
+        + _ACCESS_PATTERNS.replace("`settings.get`", "`audit.get`")
+        + "## `settings`\n\n"
+        "| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n",
+    }
+
+    defects = ps._database_table_defects(blocks)
+
+    assert sorted(kind for kind, _ in defects) == [
+        "database-table-uncited",
+        "database-table-undeclared",
+    ]
+
+
+def test_a_persistence_defect_is_not_forgiven_when_repair_is_exhausted():
+    """A criterion that cannot be repaired is recorded as a decision and the plan is kept. A
+    persistence defect is not: the amnesty at the end of the repair loop tests for CriteriaDefect,
+    and DatabaseDefect is deliberately a sibling rather than a subclass."""
+    defect = ps.DatabaseDefect("boom", defects=())
+
+    assert isinstance(defect, ps.SpecificationError)
+    assert not isinstance(defect, ps.CriteriaDefect)
+
+
+def test_a_blueprint_the_declaration_names_nowhere_needs_no_citation():
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
+        "SCREEN-Other.md": "# SCREEN: Other\n\n## Guardrails\n\n- None.\n",
+    }
+
+    assert ps._database_interface_defects(blocks) == ()
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        # The three shapes a live Marina_Luna repair loop alternated between for three passes.
+        "| Direction | Fields |\n|---|---|\n| Supplies | settings |\n",
+        "",
+        "- Access pattern: Reads and writes Marina-owned SQLite runtime state.\n",
+    ],
+)
+def test_an_owners_invalid_interface_is_rewritten_from_the_declaration(section):
+    """An owner may cite only what it owns, so its section is derivable from ``DATABASE.md``
+    and no LLM pass is spent on it."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": (
+            f"# FEATURE: Example\n\n## Database Interface\n\n{section}\n## Guardrails\n\n- None.\n"
+        ),
+    }
+
+    warnings = ps._normalize_database_interfaces(blocks)
+
+    assert len(warnings) == 1 and "FEATURE-Example.md" in warnings[0]
+    assert ps._database_interface_defects(blocks) == ()
+    assert "- `FEATURE-X-001` — " in blocks["FEATURE-Example.md"]
+    assert blocks["FEATURE-Example.md"].endswith("## Guardrails\n\n- None.\n")
+
+
+def test_an_owner_no_feature_answers_to_becomes_the_declarations_own():
+    """Marina_Luna's activity log: six Features append to it, none owns it, and a repair pass
+    invented `FEATURE-ACTIVITY-EVENTS.md` for the gap. The plan resolves it without an LLM."""
+    blocks = {
+        "DATABASE.md": _DATABASE.replace(
+            "| Owner | FEATURE-Example.md |", "| Owner | FEATURE-Activity-Events.md |", 1
+        ),
+        "FEATURE-Example.md": "# FEATURE: Example\n",
+        "SCREEN-Other.md": "# SCREEN: Other\n",
+    }
+
+    warnings = ps._normalize_database_owners(blocks)
+
+    assert len(warnings) == 1 and "FEATURE-Activity-Events.md" in warnings[0]
+    assert "| Owner | DATABASE.md |" in blocks["DATABASE.md"]
+    assert ps._database_interface_defects(blocks) == ()
+    # Shared, so no Blueprint is required to cite it and none is rewritten for it.
+    assert ps._normalize_database_interfaces(blocks) == ()
+
+
+def test_a_screen_may_not_own_a_table():
+    blocks = {
+        "DATABASE.md": _DATABASE.replace(
+            "| Owner | FEATURE-Example.md |", "| Owner | SCREEN-Example.md |", 1
+        ),
+        "SCREEN-Example.md": "# SCREEN: Example\n",
+    }
+
+    assert ps._normalize_database_owners(blocks)
+    assert "| Owner | DATABASE.md |" in blocks["DATABASE.md"]
+
+
+def test_an_unknown_owner_elsewhere_does_not_stop_a_real_owners_rewrite():
+    """Marina_Luna: one invented owner made this function bail on all of them, so four sections
+    it derives exactly were handed to the model instead, and the repair budget died on them."""
+    invented = _DATABASE.replace(
+        "### FEATURE-X-001",
+        "### FEATURE-Y-001 — Read setting\n\n| Field | Value |\n|---|---|\n"
+        "| Owner | FEATURE-Absent.md |\n| Access | read |\n"
+        "| Repository operation | `settings.get` |\n| Compatibility | rebuild |\n\n"
+        "Input: GetSetting\n\n| Field | Type | Required |\n|---|---|---|\n| key | str | yes |\n\n"
+        "Output: Setting\n\n| Field | Type |\n|---|---|\n| key | str |\n\n### FEATURE-X-001",
+        1,
+    )
+    blocks = {
+        "DATABASE.md": invented,
+        "FEATURE-Example.md": "# FEATURE: Example\n",
+        "SCREEN-Other.md": "# SCREEN: Other\n\n## Guardrails\n\n- None.\n",
+    }
+
+    warnings = ps._normalize_database_interfaces(blocks)
+
+    # The owner's own section is a function of the patterns that name it, so it is written.
+    assert [w.split(":")[0] for w in warnings] == ["FEATURE-Example.md"]
+    assert "- `FEATURE-X-001` — " in blocks["FEATURE-Example.md"]
+    # The Blueprint that owns nothing is left alone: the invented owner may be its name
+    # misspelled, and `- None` would overwrite the citations it is owed.
+    assert "## Database Interface" not in blocks["SCREEN-Other.md"]
+    # Only the declaration's own defect survives, for one repair pass that can fix it.
+    assert [kind for kind, _ in ps._database_interface_defects(blocks)] == [
+        "database-owner-unknown"
+    ]
+
+
+def test_a_database_repair_prompt_lists_the_blueprints_that_may_own_a_pattern():
+    """The invented owner came from a pass that was never told which Blueprints exist."""
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
+        "MANIFEST.md": "",
+        "DECISIONS.json": "[]",
+    }
+
+    rendered = ps._artifact_repair_assembly(
+        blocks=blocks, names=("DATABASE.md",), defect="d", pass_number=1
+    ).rendered_text
+
+    assert "- FEATURE-Example.md" in rendered
+    assert "- MANIFEST.md" not in rendered and "- DECISIONS.json" not in rendered
+    assert "- DATABASE.md" not in rendered
+    assert "`DATABASE.md` for a pattern no single Feature owns" in rendered
+
+
+def test_a_blueprint_only_repair_prompt_carries_no_owner_list():
+    rendered = ps._artifact_repair_assembly(
+        blocks={"DATABASE.md": _DATABASE, "FEATURE-Example.md": _OWNER},
+        names=("FEATURE-Example.md",),
+        defect="d",
+        pass_number=1,
+    ).rendered_text
+
+    assert "may own" not in rendered and "- FEATURE-Example.md" not in rendered
+
+
+def test_one_repair_pass_carries_every_defect_its_files_have():
+    """Three passes on one DATABASE.md, each shown one defect and failing on the next, is how a
+    live run spent its budget without ever validating."""
+    from drydock.acceptance import MalformedAcceptance
+    from drydock.planning_session import _PLAN_BLUEPRINT_BATCH_SIZE, _next_repair_chunk
+
+    class FakeCriteriaDefect(Exception):
+        defects: tuple
+
+    exc = FakeCriteriaDefect()
+    exc.defects = (
+        ("owner-unknown", MalformedAcceptance(check_id="a", source="DATABASE.md", reason="one")),
+        ("too-many-ops", MalformedAcceptance(check_id="b", source="DATABASE.md", reason="two")),
+        ("other", MalformedAcceptance(check_id="c", source="FEATURE-Other.md", reason="three")),
+    )
+
+    kind, names, text = _next_repair_chunk(
+        exc, {"DATABASE.md": "", "FEATURE-Other.md": ""}, _PLAN_BLUEPRINT_BATCH_SIZE
+    )
+
+    assert names == ("DATABASE.md",)
+    assert "one" in text and "two" in text
+    assert "three" not in text  # a file this pass does not re-emit is not its business
+
+
+def test_an_owner_missing_the_section_gains_it():
+    blocks = {"DATABASE.md": _DATABASE, "FEATURE-Example.md": "# FEATURE: Example\n"}
+
+    assert ps._normalize_database_interfaces(blocks)
+    assert ps._database_interface_defects(blocks) == ()
+
+
+def test_a_non_owners_prose_interface_becomes_none():
+    blocks = {
+        "DATABASE.md": _DATABASE,
+        "FEATURE-Example.md": _OWNER,
+        "SCREEN-Example.md": "# SCREEN\n\n## Database Interface\n\nDelegates to the feature.\n",
+    }
+
+    ps._normalize_database_interfaces(blocks)
+
+    assert "- None — persistence is owned by FEATURE-Example.md." in blocks["SCREEN-Example.md"]
+    assert ps._database_interface_defects(blocks) == ()
+
+
+def test_a_valid_narrowed_citation_is_left_alone():
+    blocks = {"DATABASE.md": _DATABASE, "FEATURE-Example.md": _OWNER}
+
+    assert ps._normalize_database_interfaces(blocks) == ()
+    assert blocks["FEATURE-Example.md"] == _OWNER
+
+
+def test_an_unknown_owner_is_left_to_the_repair_loop():
+    blocks = {
+        "DATABASE.md": _DATABASE.replace(
+            "| Owner | FEATURE-Example.md |", "| Owner | Settings service |"
+        ),
+        "FEATURE-Example.md": "# FEATURE: Example\n\n## Database Interface\n\nprose\n",
+    }
+
+    assert ps._normalize_database_interfaces(blocks) == ()
+
+
+def test_a_plan_build_cannot_execute_is_written_as_draft_and_fails(tmp_path):
+    """The Marina_Luna false positive: a plan with criteria that cannot run reported
+    ``PLAN CREATED`` pass and ``approved``. The terminal gate keeps the paid-for artifacts for
+    ``drydock plan repair`` but leaves the Manifest draft and fails the command."""
+    from drydock.build_plan import parse_build_plan
+    from drydock.metadata import get_sub_state
+    from drydock.planning_session import PlanNotBuildable
+
+    target_dir = _make_target(tmp_path)
+    (target_dir / "METADATA.md").write_text("name: Example\nbuild_sub_state: \n", encoding="utf-8")
+    broken = _llm_output().replace(
+        "### check-1\nThe Status route responds with HTTP 200.\n\n```python\nassert True\n```",
+        '=== AC status-open ===\nIntent: Never closed.\n\nsample = """\n',
+        1,
+    )
+    assert broken != _llm_output()
+
+    feature = broken[
+        broken.index("=== FEATURE-Status.md ===") : broken.index("=== MANIFEST.md ===")
+    ]
+    calls: list[str] = []
+
+    def runner(*args, **kwargs):
+        # The plan call, then repair calls that return the criterion still unclosed.
+        calls.append("call")
+        return FakeRun(text=broken if len(calls) == 1 else feature)
+
+    with pytest.raises(PlanNotBuildable, match="cannot be built as written"):
+        create_plan("Example", "Example", tmp_path, runner=runner, allow_diagnostic_recovery=True)
+
+    assert len(calls) > 1  # the criterion reached the repair loop before the plan was failed
+
+    assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+    assert parse_build_plan(target_dir / "MANIFEST.md").state == "draft"
+    assert get_sub_state(target_dir) == "unbuildable"
+    errors = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
+    assert "plan cannot be built as written" in errors
+    assert "status-open" in errors
+
+
+def test_an_idless_end_marker_is_a_terminator_not_a_missing_one():
+    """Treated as absent, the unterminated-block pass appended a terminator after the section's
+    prose, burying the bare marker and the prose inside the criterion's code."""
+    from drydock.planning_session import (
+        _normalize_fused_acceptance_boundaries,
+        _normalize_unterminated_acceptance_blocks,
+    )
+
+    text = "=== AC only ===\nIntent: One.\nassert 1\n=== END AC\n\n## Guardrails\n\n- None.\n"
+    blocks = {"FEATURE-Example.md": text}
+
+    assert _normalize_unterminated_acceptance_blocks(blocks) == ()
+    assert _normalize_fused_acceptance_boundaries(blocks)
+    assert "=== END AC only ===\n\n## Guardrails" in blocks["FEATURE-Example.md"]
+
+
+def test_a_pattern_without_dtos_is_completed_before_the_persistence_gate():
+    """Marina_Luna: fifteen repair-added patterns omitted their DTO tables and the gate ended the
+    run. The schema table fixes them, so normalization writes them and the gate sees none."""
+    database = (
+        "# DATABASE: Accounts\n\n## Access Patterns\n\n"
+        "### FEATURE-EXAMPLE-001 — Read account\n"
+        "| Field | Value |\n|-------|-------|\n| Owner | FEATURE-Example.md |\n"
+        "| Access | read |\n| Repository operation | `accounts.get` |\n"
+        "| Compatibility | unchanged |\n\n"
+        "## Schema\n\n## `accounts`\n\n| Field | Type | Notes |\n|---|---|---|\n"
+        "| id | INTEGER PK | |\n| login | TEXT NOT NULL | |\n"
+    )
+    blocks = {"DATABASE.md": database, "FEATURE-Example.md": "# FEATURE: Example\n"}
+    assert ps._database_contract_defects(blocks)
+
+    warnings = ps._normalize_database_dtos(blocks)
+
+    assert len(warnings) == 1 and "FEATURE-EXAMPLE-001" in warnings[0]
+    assert ps._database_contract_defects(blocks) == ()
+    assert ps._database_table_defects(blocks) == ()
+
+
+_UNMASKED_SCREEN_DEFECT = ps.SpecificationError(
+    "Plan integrity check failed:\n"
+    "  github-screen: SCREEN-SETUP-GITHUB.md: Programmatic Acceptance never calls route(s) "
+    "GET /api/setup/github/accounts/connect/{flow_id} — a SCREEN's assertions must call every "
+    "route it provides or consumes"
+)
+
+
+def test_a_pass_that_clears_its_files_buys_budget_for_the_defect_it_unmasked():
+    """Marina_Luna: three passes repaired DATABASE.md; the third succeeded and exposed a SCREEN
+    route-coverage defect that validation had masked. The run failed with no pass left for it."""
+    blocks = {"DATABASE.md": "", "SCREEN-SETUP-GITHUB.md": ""}
+
+    budget = ps._extended_repair_budget(
+        3, 3, ("DATABASE.md",), _UNMASKED_SCREEN_DEFECT, blocks, batch_size=5, floor=3
+    )
+
+    assert budget == 6
+    assert ps._repairable_artifact_names(blocks, str(_UNMASKED_SCREEN_DEFECT)) == (
+        "SCREEN-SETUP-GITHUB.md",
+    )
+
+
+def test_a_pass_that_leaves_its_own_file_defective_buys_no_budget():
+    blocks = {"DATABASE.md": "", "SCREEN-SETUP-GITHUB.md": ""}
+    still_broken = ps.SpecificationError("DATABASE.md: table `tags` has no access pattern")
+
+    assert (
+        ps._extended_repair_budget(
+            3, 2, ("DATABASE.md",), still_broken, blocks, batch_size=5, floor=3
+        )
+        == 3
+    )
+
+
+def test_unmasked_defects_cannot_extend_the_budget_past_its_ceiling():
+    blocks = {"DATABASE.md": "", "SCREEN-SETUP-GITHUB.md": ""}
+
+    budget = ps._extended_repair_budget(
+        8, 8, ("DATABASE.md",), _UNMASKED_SCREEN_DEFECT, blocks, batch_size=5, floor=3
+    )
+
+    assert budget == 3 * ps._REPAIR_BUDGET_CEILING_FACTOR

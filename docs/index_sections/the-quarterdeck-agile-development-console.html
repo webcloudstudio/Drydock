@@ -10,14 +10,17 @@
 :root {
   --ink: #17212b; --muted: #5b6875; --paper: #f8fafb; --panel: #ffffff;
   --navy: #123047; --green: #0a7650; --line: #d6dee4; --code: #eef3f5; --pre-bg: #f0f1f3;
+  --pre-ink: #17212b;
 }
 body.theme-slate {
   --ink: #26313d; --muted: #647180; --paper: #f4f6f8; --panel: #ffffff;
   --navy: #17212b; --green: #2cb67d; --line: #d7dee5; --code: #e8edf2; --pre-bg: #202a34;
+  --pre-ink: #7fdcb0;
 }
 body.theme-paper {
   --ink: #2e312d; --muted: #6a6f68; --paper: #fbfbf8; --panel: #ffffff;
   --navy: #2f3430; --green: #427a5b; --line: #dfe3dd; --code: #eceee9; --pre-bg: #f0f2ed;
+  --pre-ink: #2e312d;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--paper); color: var(--ink);
@@ -92,10 +95,10 @@ h1 .h1-sub { display: block; font-size: 22px; font-weight: 600; color: var(--mut
 #content p { margin: 6px 0 10px; }
 #content table { border-collapse: collapse; display: block; overflow-x: auto; width: 100%; margin: 8px 0; }
 #content th, #content td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
-#content th { background: var(--pre-bg); color: var(--ink); font-size: 13px; }
+#content th { background: var(--pre-bg); color: var(--pre-ink); font-size: 13px; }
 #content td { font-size: 13px; }
 #content code { background: var(--code); border-radius: 3px; padding: 1px 4px; font-size: 13px; }
-#content pre { background: var(--pre-bg); color: var(--ink); overflow-x: auto;
+#content pre { background: var(--pre-bg); color: var(--pre-ink); overflow-x: auto;
   padding: 10px 14px; margin: 6px 0 12px; border-left: 3px solid var(--line); font-size: 13px; }
 #content pre code { background: transparent; padding: 0; font-size: inherit; }
 #content blockquote { border-left: 4px solid var(--green); background: var(--paper);
@@ -245,7 +248,7 @@ header, footer {
 <div class="flat-brand-subtitle">The Complete Drydock Documentation</div>
 </div>
 <div class="flat-toc-title">Table of Contents</div>
-<nav class="flat-toc"><a href="introduction.html">Introduction</a><a href="what-is-drydock.html">What is Drydock</a><a href="drydock-features.html">Drydock Features</a><a href="the-drydock-cli.html">The drydock CLI</a><a href="end-to-end-command-flow.html">End-to-End Command Flow</a><a href="sail-phase-1-set-up-laying-the-keel.html">SAIL Phase 1<br>Set Up: Laying the Keel</a><a href="sail-phase-2-agile-analyze-charting-the-course.html">SAIL Phase 2<br>Agile Analyze: Charting the Course</a><a href="sail-phase-3-implement-sailing-the-frontier.html">SAIL Phase 3<br>Implement: Sailing the Frontier</a><a href="sail-phase-4-loop-the-refit.html">SAIL Phase 4<br>Loop: The Refit</a><a href="artifact-i-o-matrix.html">Artifact I/O Matrix</a><a href="directory-layout.html">Directory Layout</a><a href="the-manifest-graph-database.html">The Manifest Graph Database</a><a class="active" href="the-quarterdeck-agile-development-console.html">The QuarterDeck<br>Agile Development Console</a><a href="drydock-rigging-portfolio-governance.html">Drydock Rigging<br>Portfolio Governance</a><a href="drydock-document-project-documentation.html">Drydock Document<br>Project Documentation</a><a href="drydock-security.html">Drydock Security</a><a href="database-encapsulation.html">Database Encapsulation</a></nav>
+<nav class="flat-toc"><a href="introduction.html">Introduction</a><a href="what-is-drydock.html">What is Drydock</a><a href="the-drydock-cli.html">The drydock CLI</a><a href="sail-phase-1-set-up-laying-the-keel.html">SAIL Phase 1<br>Set Up: Laying the Keel</a><a href="sail-phase-2-agile-analyze-charting-the-course.html">SAIL Phase 2<br>Agile Analyze: Charting the Course</a><a href="sail-phase-3-implement-building-the-software.html">SAIL Phase 3<br>Implement: Building The Software</a><a href="sail-phase-4-loop-the-refit.html">SAIL Phase 4<br>Loop: The Refit</a><a href="directory-layout.html">Directory Layout</a><a href="the-manifest-graph-database.html">The Manifest Graph Database</a><a class="active" href="the-quarterdeck-agile-development-console.html">The QuarterDeck<br>Agile Development Console</a><a href="drydock-rigging-software-governance.html">Drydock Rigging<br>Software Governance</a><a href="drydock-security.html">Drydock Security</a></nav>
 </aside>
 <main>
 <section class="cover">
@@ -263,7 +266,7 @@ header, footer {
 </main>
 <footer>Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.</footer>
 <script>
-const BODY = "## The QuarterDeck \u2014 Agile Development Console\n\nThe QuarterDeck is the command surface where the product owner reviews LLM build output and makes\ndecisions. Evidence is presented using screens that track the Agile methodology.\n\nThe QuarterDeck is configuration-driven.  It uses a single `QuarterDeck/console.yaml` and per Target\nMarkdown and JSON inputs. It holds no logic of its own; it renders the LLM output using templates which allow\nthe Commander to change the markdown cleanly.  \n\nThe QuarterDeck is documented in `QuarterDeck/README.md`.\n\n**Page types.** \n\n| Type | Purpose |\n|---|---|\n| `markdown` | Renders a single `.md` file as HTML; `tabs: true` splits `##` headings into clickable tabs. |\n| `editable_markdown` | Renders a `.md` file with an EDIT control for in-place editing. |\n| `document` | Collapses `path_md` / `path_html` / `path_pdf` variants into a tab bar. |\n| `jsonl` | Read-only table from an append-only JSONL file. |\n| `kanban` | Renders `MANIFEST.md`-derived tickets as a four-column board. |\n| `questionnaire` | Form backed by a JSON file. |\n| `link` | External URL or local file; opens in a new tab. |\n| `command_status` | Derived read-only acceptance-readiness view from Core Docs. |\n| `compass` | The Build Compass: the live `MANIFEST.md` work graph \u2014 grouped, costed, state-badged (buildable now / review / done / failed with reason), and editable (reorder/regroup/rename/split). |\n\n**Standard artifacts.** Drydock QuarterDeck uses standard artifacts including:\n\n| Artifact | Purpose |\n|---|---|\n| **Commanders Chair** | Orientation and default view: mission and current state at a glance. |\n| **Soundings** | Acceptance-criteria checklist \u2014 each capability, its state, and evidence. |\n| **Sea Trials** | Objectives and success criteria \u2014 what the project must achieve to be declared delivered. |\n| **COMPASS Files** | Persistent Commander guidance. |\n\n`drydock init <Target>` enables the QuarterDeck for a `<Target>`. \n\nArtifacts are idempotent and use ID fields to prevent status from being overwritten.\n\n**Blockers.** `drydock analyze` emits `BLOCKERS.md` only when questions prevent planning; a healthy\nproject has no `BLOCKERS.md`. When present, the Blockers section appears first in the sidebar. The\nproduct owner answers the questions and re-runs `drydock analyze`; when all blockers are resolved\nthe file is deleted. Blockers are mandatory gate conditions, distinct from spikes.";
+const BODY = "## The QuarterDeck \u2014 Agile Development Console\n\nThe **QuarterDeck** is where the **Commander** reviews LLM build output and makes decisions. Its\nscreens follow the Agile methodology and are documented in `QuarterDeck/README.md`.\n\n**Standard artifacts.**\n\n| Artifact | Purpose |\n|---|---|\n| **Commanders Chair** | Default view. Shows the mission and current state. |\n| **Soundings** | Acceptance checklist. Shows each capability, its state, and evidence. |\n| **Sea Trials** | Objectives and success criteria for delivery |\n| **COMPASS Files** | Persistent **Commander** guidance |\n\n`drydock init <Target>` enables the **QuarterDeck**.\n\n**Blockers.** `drydock analyze` writes `BLOCKERS.md` when questions prevent planning. The\n**Commander** answers and reruns `drydock analyze`.";
 marked.setOptions({ gfm: true, breaks: false });
 const content = document.getElementById("content");
 content.innerHTML = marked.parse(BODY);

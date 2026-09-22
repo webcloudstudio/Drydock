@@ -378,6 +378,42 @@ def _run_one(code: str, tmp_path: Path):
     )[0]
 
 
+def test_a_criterion_against_an_unbuilt_foundation_fails_cleanly_without_running(tmp_path):
+    """No ``app_server/`` means no application: FAIL in one line, no traceback, no pytest."""
+    from drydock.acceptance import UNBUILT_FOUNDATION_FAILURE_PREFIX, is_terminal_check_failure
+
+    marker = tmp_path / "ran"
+    result = _run_one(
+        "import pathlib\n"
+        f"pathlib.Path({str(marker)!r}).write_text('ran')\n"
+        "from app_server.testing import web_client\n"
+        "assert web_client().get('/health').status_code == 200\n",
+        tmp_path,
+    )
+
+    assert not result.passed
+    assert result.outcome == "FAIL"
+    assert result.error.startswith(UNBUILT_FOUNDATION_FAILURE_PREFIX)
+    assert "`app_server`" in result.error and "web-server foundation" in result.error
+    assert result.stderr == ""
+    assert not marker.exists()
+    # Building the package is the build's job, so the failure stays repairable.
+    assert not is_terminal_check_failure(result.error)
+
+
+def test_a_criterion_against_a_built_foundation_runs(tmp_path):
+    package = tmp_path / "app_server"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "testing.py").write_text("def web_client():\n    return 'client'\n")
+
+    result = _run_one(
+        "from app_server.testing import web_client\nassert web_client() == 'client'\n", tmp_path
+    )
+
+    assert result.passed, result.stderr
+
+
 def test_failing_assertion_reports_its_source_line(tmp_path):
     result = _run_one('value = 1\nassert value == 2, "value drifted"', tmp_path)
     assert not result.passed
@@ -1721,3 +1757,94 @@ def test_a_step_keeps_the_criteria_of_its_readable_specs(tmp_path):
     assert [check.check_id for check in checks] == ["good-first"]
     assert len(defects) == 1
     assert defects[0].startswith("FEATURE-Broken.md")
+
+
+def test_a_fused_boundary_under_a_possessive_intent_is_split():
+    """Marina_Luna SCREEN-SETUP-WORKSPACE.md. The cut check tokenized the ``Intent:`` prose, and
+    the apostrophe in ``screen's`` read as an unterminated string, so the repair was refused."""
+    from drydock.acceptance import (
+        parse_programmatic_acceptance_text,
+        split_fused_acceptance_boundary,
+    )
+
+    text = (
+        "=== AC route ===\nIntent: Reachable.\nassert True\n=== END AC route ===\n\n"
+        "=== AC api ===\nIntent: The screen's inventory is reachable.\nassert 1\n"
+        "=== END AC empty ===\nIntent: Empty state.\nassert 2\n=== END AC empty ===\n"
+    )
+
+    repaired, messages = split_fused_acceptance_boundary(text)
+
+    assert len(messages) == 1
+    ids = [check.check_id for check in parse_programmatic_acceptance_text(repaired, source="S")]
+    assert ids == ["route", "api", "empty"]
+
+
+def test_a_fused_chain_closed_by_an_idless_end_marker_is_split():
+    """Five Marina_Luna Screens: a chain of wrong closers, the last criterion closed by a bare
+    ``=== END AC``. The bare marker closes whatever is open; without that the whole chain's
+    repair was discarded because the final block never closed."""
+    from drydock.acceptance import (
+        parse_programmatic_acceptance_text,
+        split_fused_acceptance_boundary,
+    )
+
+    text = (
+        "=== AC page ===\nIntent: Reachable.\nassert True\n"
+        "=== END AC list ===\nIntent: Lists.\nassert 1\n"
+        "=== END AC write ===\nIntent: Writes.\nassert 2\n"
+        "=== END AC\n\n## User Acceptance\n\n- A user's view.\n"
+    )
+
+    repaired, messages = split_fused_acceptance_boundary(text)
+
+    assert len(messages) == 3
+    ids = [check.check_id for check in parse_programmatic_acceptance_text(repaired, source="S")]
+    assert ids == ["page", "list", "write"]
+    assert repaired.endswith("=== END AC write ===\n\n## User Acceptance\n\n- A user's view.\n")
+
+
+def test_blueprint_read_defects_finds_every_path_taking_call(tmp_path):
+    """``open``, ``pathlib.Path`` and ``os.path.exists`` all name a path in the same position."""
+    from drydock.acceptance import blueprint_read_defects
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "ARCHITECTURE.md").write_text("FastAPI\n", encoding="utf-8")
+
+    for code in (
+        'open("ARCHITECTURE.md").read()',
+        'import pathlib\npathlib.Path("ARCHITECTURE.md").read_text()',
+        'import os\nassert os.path.exists("ARCHITECTURE.md")',
+        'import pathlib\npathlib.Path("./ARCHITECTURE.md").read_text()',
+        'import pathlib\npathlib.Path("blueprint/ARCHITECTURE.md").read_text()',
+        'import pathlib\nSPEC = "ARCHITECTURE.md"\npathlib.Path(SPEC).read_text()',
+    ):
+        assert blueprint_read_defects(code, blueprint), code
+
+
+def test_blueprint_read_defects_ignores_paths_the_build_directory_holds(tmp_path):
+    from drydock.acceptance import blueprint_read_defects
+
+    blueprint = tmp_path / "blueprint"
+    (blueprint / "sources").mkdir(parents=True)
+    (blueprint / "ARCHITECTURE.md").write_text("FastAPI\n", encoding="utf-8")
+    (blueprint / "sources" / "kit.py").write_text("print('ok')\n", encoding="utf-8")
+
+    for code in (
+        'open("marina_app/storage.py").read()',
+        'import pathlib\npathlib.Path("sources/kit.py").read_text()',
+        'import pathlib\npathlib.Path("/etc/ARCHITECTURE.md").read_text()',
+        'assert "ARCHITECTURE.md" in ["ARCHITECTURE.md"]',
+        "import pathlib\npathlib.Path(name).read_text()",
+    ):
+        assert blueprint_read_defects(code, blueprint) == (), code
+
+
+def test_blueprint_read_defects_tolerates_unparseable_code(tmp_path):
+    """Syntax is reported by its own check; this one stays silent rather than naming it twice."""
+    from drydock.acceptance import blueprint_read_defects
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    assert blueprint_read_defects("def (:", blueprint) == ()

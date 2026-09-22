@@ -1,7 +1,9 @@
 # Flask Best Practices
 
 **Version:** 20260410 V2  
+**Tier:** platform
 **Category:** Web Server
+**Foundation:** web-server
 **Description:** Flask web framework patterns: app package layout, routes, blueprints, templates, and error handling
 
 Technology reference for Flask web applications. This file does not change between projects.
@@ -10,9 +12,47 @@ Prerequisites: `stack/common.md`, `stack/python.md`
 
 ---
 
+## Foundation Contract
+
+The published shape of this foundation. Drydock synthesizes the story that builds it and every
+acceptance criterion writes against these names. Carried verbatim into `flask_compact.md`.
+
+- package: app_server
+- entry: create_app() -> Flask
+- fixture: web_client
+- fixture_source: app_server/testing.py
+
+```python
+# app_server/__init__.py
+def create_app() -> Flask:
+    ...
+
+# app_server/testing.py
+from app_server import create_app
+
+def web_client():
+    app = create_app()
+    app.config["TESTING"] = True
+    return app.test_client()
+
+# conftest.py
+import pytest
+from app_server import testing
+
+@pytest.fixture
+def web_client():
+    return testing.web_client()
+```
+
+A criterion imports `web_client` from `app_server.testing` and calls it — `client = web_client()` —
+which runs the built application in-process without pytest. The pytest suite receives the same
+client through the `conftest.py` fixture. Neither constructs a client of its own.
+
+---
+
 ## 1. Directory Layout
 
-**Rule**: Python application code lives in `app/`. The project root contains only `run.py` (entry point), `config.py`, and infrastructure files.
+**Rule**: Python application code lives in `app_server/`. The project root contains only `run.py` (entry point), `config.py`, and infrastructure files.
 
 ```
 project/
@@ -20,7 +60,7 @@ project/
   config.py                 # Config classes (Dev, Test, Prod)
   pytest.ini                # Pytest configuration
   requirements.txt
-  app/
+  app_server/
     __init__.py              # create_app() factory
     routes.py                # Blueprint route handlers
     ops.py                   # Business logic (no Flask imports needed)
@@ -48,20 +88,20 @@ project/
 
 Rules:
 - `run.py` is the only Python file executed directly — all other code is imported
-- `app/` is a Python package (`__init__.py` contains `create_app()`)
+- `app_server/` is a Python package (`__init__.py` contains `create_app()`)
 - `config.py` stays in root because `run.py` and tests both import it
 - `ops.py` holds business logic — no Flask imports, pure Python
 - `db.py` holds database initialization and `get_db()` helper
-- Additional modules (scanner, scheduler, etc.) go in `app/` — never in root
-- Templates and static files live under `app/` (Flask finds them automatically)
+- Additional modules (scanner, scheduler, etc.) go in `app_server/` — never in root
+- Templates and static files live under `app_server/` (Flask finds them automatically)
 
-**Why**: Flat root directories mix infrastructure with application code. The `app/` package keeps all application Python in one importable namespace.
+**Why**: Flat root directories mix infrastructure with application code. The `app_server/` package keeps all application Python in one importable namespace.
 
 ---
 
 ## 2. Application Factory
 
-**Rule**: Use a `create_app()` factory function in `app/__init__.py`. Initialize extensions and register blueprints inside it. Provide `run.py` as the entry point.
+**Rule**: Use a `create_app()` factory function in `app_server/__init__.py`. Initialize extensions and register blueprints inside it. Provide `run.py` as the entry point.
 
 ```python
 # run.py
@@ -69,7 +109,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from app import create_app
+from app_server import create_app
 
 application = create_app()
 
@@ -79,7 +119,7 @@ if __name__ == '__main__':
 ```
 
 ```python
-# app/__init__.py
+# app_server/__init__.py
 from flask import Flask
 
 def create_app(config=None):
@@ -87,20 +127,20 @@ def create_app(config=None):
     app.config.from_object(config or 'config.DevConfig')
 
     # Initialize database
-    from app.db import init_db
+    from app_server.db import init_db
     with app.app_context():
         init_db()
 
     # Register routes
-    from app.routes import bp
+    from app_server.routes import bp
     app.register_blueprint(bp)
 
     # Register error handlers
-    from app.errors import register_error_handlers
+    from app_server.errors import register_error_handlers
     register_error_handlers(app)
 
     # Startup validation
-    from app.startup import validate_startup
+    from app_server.startup import validate_startup
     validate_startup(app)
 
     return app
@@ -113,7 +153,7 @@ Rules:
 - `run.py` is importable without starting a server: the module level builds the application, and only the `if __name__ == '__main__':` guard calls `application.run()`.
 - The development server and production WSGI workers are threaded. Anything constructed once inside `create_app()` and then used from a view is shared across request threads and must be thread-safe. A `sqlite3.Connection` is the common trap: it is bound to the thread that opened it, so one opened during `create_app()` passes every single-threaded test and raises `ProgrammingError` on the first request. See `stack/persistence.md` §1 for the required per-thread connection ownership.
 
-**Why**: Factory pattern enables creating multiple app instances with different configs — essential for testing. Deferred imports prevent circular dependencies. `run.py` as entry point keeps `app/` a clean package. Loading `.env` at the entry point is what makes a delivered application start with no setup step.
+**Why**: Factory pattern enables creating multiple app instances with different configs — essential for testing. Deferred imports prevent circular dependencies. `run.py` as entry point keeps `app_server/` a clean package. Loading `.env` at the entry point is what makes a delivered application start with no setup step.
 
 ---
 
@@ -122,9 +162,9 @@ Rules:
 **Rule**: Keep route handlers thin. Extract business logic into separate modules. Group related routes with Blueprints.
 
 ```python
-# app/routes.py
+# app_server/routes.py
 from flask import Blueprint, render_template, request, jsonify
-from app import ops
+from app_server import ops
 
 bp = Blueprint('main', __name__)
 
@@ -140,8 +180,8 @@ def start_project(project_id):
 ```
 
 ```python
-# app/ops.py — business logic, no Flask imports needed
-from app.db import get_db
+# app_server/ops.py — business logic, no Flask imports needed
+from app_server.db import get_db
 
 def get_all_projects():
     db = get_db()
@@ -167,7 +207,7 @@ Rules:
 **Rule**: Register Flask error handlers for 404/500. Return JSON for API routes, HTML for page routes. Never expose stack traces.
 
 ```python
-# app/errors.py
+# app_server/errors.py
 from flask import render_template, jsonify, request
 
 def register_error_handlers(app):
@@ -199,7 +239,7 @@ def register_error_handlers(app):
 **Rule**: Use template inheritance with `base.html`. Prefix partials with `_`. Keep logic out of templates.
 
 ```html
-<!-- app/templates/base.html -->
+<!-- app_server/templates/base.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -218,7 +258,7 @@ def register_error_handlers(app):
 ```
 
 ```html
-<!-- app/templates/projects.html -->
+<!-- app_server/templates/projects.html -->
 {% extends 'base.html' %}
 {% block title %}Projects{% endblock %}
 {% block content %}
@@ -301,9 +341,9 @@ return response
 **Rule**: Test through the Flask test client. Use fixtures for app, client, and database.
 
 ```python
-# tests/conftest.py
+# conftest.py
 import pytest
-from app import create_app
+from app_server import create_app
 from config import TestConfig
 
 @pytest.fixture
@@ -317,7 +357,7 @@ def client(app):
 
 @pytest.fixture
 def db(app):
-    from app.db import get_db, init_db
+    from app_server.db import get_db, init_db
     with app.app_context():
         init_db()
         yield get_db()
@@ -391,7 +431,7 @@ def health():
 FLASK_DEBUG=1 flask run --port 5001
 
 # Production
-gunicorn "app:create_app()"
+gunicorn "app_server:create_app()"
 ```
 
 Key behaviors in debug mode:
@@ -460,7 +500,7 @@ Financial-professional nav with four injectable zones. Content (link text, URLs)
 | Nav links | 2 — primary nav | Center-left, hamburger on mobile | `nav_items` list |
 | CTA button | 2 — primary nav | Far right (optional) | `cta_label`, `cta_url` |
 
-**`app/templates/_nav.html`:**
+**`app_server/templates/_nav.html`:**
 
 ```html
 <!-- Zone 1: utility bar — right-justified, hidden on mobile -->
@@ -513,7 +553,7 @@ Financial-professional nav with four injectable zones. Content (link text, URLs)
 **Context processor** — injects all zones; values populated from project spec:
 
 ```python
-# app/__init__.py or app/routes.py
+# app_server/__init__.py or app_server/routes.py
 @app.context_processor
 def inject_nav():
     return {
@@ -544,8 +584,8 @@ def inject_nav():
 
 ## Summary Checklist
 
-- [ ] Directory layout: `app/` package, `run.py` entry point, `config.py` in root
-- [ ] Application factory with `create_app()` in `app/__init__.py`
+- [ ] Directory layout: `app_server/` package, `run.py` entry point, `config.py` in root
+- [ ] Application factory with `create_app()` in `app_server/__init__.py`
 - [ ] Blueprints with thin route handlers
 - [ ] Error handlers for 404/500 (JSON + HTML)
 - [ ] Template inheritance from `base.html`, partials prefixed with `_`

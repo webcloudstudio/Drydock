@@ -1,28 +1,49 @@
-<!-- Compacted from aws-sqs.md on 2026-06-22 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/aws-sqs.md sha256=bbc3020de24d7d672bfd38db00063d545b97e9b80331ba7e62b0e99c9657d68e on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
-# AWS SQS — Usage Surface
+# AWS SQS Best Practices — Contract Surface
 
-## Queue Client
+## Queue
 
-### client.queue.submit
+### client.queue.submit(...)
 
-Submits a work item to the durable queue for asynchronous processing.
+Submits work to the project queue through the cloud client library.
 
-No parameters documented in source.
+Constraints: Project code does not access raw boto3 clients or hold queue URLs.
 
-`Returns: void`
+### client.queue.drain(...)
 
----
+Drains queued messages through the cloud client library and processes each message idempotently.
 
-### client.queue.drain
+Returns: `{processed, succeeded, failed, expired}`.
 
-Drains all available messages from the queue, skipping already-processed messages and expiring stale ones; safe to run multiple times.
+Constraints: Honor `ttl_seconds`; expire stale messages rather than processing them. Delete messages only after successful processing. Failed messages remain available for retry.
 
-No parameters documented in source.
+### Rule: queue-receive
 
-| Field | Type | Description |
-|-------|------|-------------|
-| processed | int | Total messages received |
-| succeeded | int | Messages handled without error |
-| failed | int | Messages that raised an error |
-| expired | int | Messages discarded due to exceeded `ttl_seconds` |
+Receives messages using long polling.
+
+Constraints: `WaitTimeSeconds = 20`; `MaxNumberOfMessages = 10`; queue default `ReceiveMessageWaitTimeSeconds = 20`; short polling is not permitted.
+
+### Rule: queue-visibility
+
+Keeps messages invisible while processing.
+
+Constraints: `VisibilityTimeout` exceeds the longest expected processing time; extend visibility with `change_message_visibility` for long-running jobs.
+
+### Rule: queue-redrive
+
+Routes repeatedly failing messages to a dead-letter queue.
+
+Constraints: Every Standard queue has a DLQ with `maxReceiveCount = 3`; DLQ depth is monitored.
+
+### Rule: queue-type
+
+Uses a Standard queue unless strict ordering or exactly-once delivery is required.
+
+Constraints: FIFO is used only for a specifically ordered workflow.
+
+### Rule: queue-naming
+
+Names queues and dead-letter queues using the project prefix.
+
+Constraints: Queue name is `{project}-{queue}`; DLQ name is `{project}-{queue}-dlq`; standard tags apply to every queue and DLQ.

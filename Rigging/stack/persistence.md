@@ -1,6 +1,6 @@
 # Persistence & Service Encapsulation
 
-**Version:** 20260909 V2
+**Version:** 20260919 V3
 **Category:** Persistence
 **Description:** The single boundary rule for all persistent stores and external services — typed access classes, no raw access in application code
 
@@ -25,97 +25,81 @@ outside the wrapper fails review), generalized to every store.
 A code review that finds raw SQL, `os.environ`, `open()` on application data, or a cloud SDK
 import outside its encapsulation class fails.
 
-**ORM rule**: SQLAlchemy models are storage internals, not application interfaces. A project-owned
-repository returns DTOs and is the required application boundary; see `stack/sqlalchemy.md`.
+**Relational rule**: the relational layer is generated, not written. Drydock emits it from
+`DATABASE.md` and copies the engines in unchanged; the build writes callers. See section 1.
 
 ---
 
-## 1. Relational stores → repository interfaces
+## 1. Relational stores → the generated persistence package
 
-Each store has a project-owned repository whose methods return DTOs. Application code calls a
-service, which calls the repository — never raw SQL or an ORM model. Python relational Targets use
-SQLAlchemy 2 and Alembic; `stack/sqlalchemy.md` and `stack/alembic.md` are mandatory.
+**You do not write this layer.** Drydock generates it from `DATABASE.md` at the DATABASE build
+step and copies the engines in unchanged. Writing a repository, a connection helper, a session
+factory, or a migration by hand is a review failure: the generated package already implements the
+declaration, and a hand-written second path is storage access no Blueprint cites.
 
-**Legacy examples below do not govern Python relational Targets.** They remain background for
-non-ORM adapters only and must not be copied into a Python application.
+The build writes **callers**.
 
-**Caller contract**: `Database` presents single-threaded semantics. Callers construct one
-instance, share it freely, call methods synchronously, and never reason about threads,
-connections, or locking. Thread handling is internal to the class and may change without
-affecting any caller. Instance methods are safe to call concurrently; returned rows are plain
-dataclasses and carry no connection state. Everything below is how the class keeps that promise —
-a different implementation is acceptable only if it keeps it.
-
-**Connection lifetime rule**: `Database` owns **one connection per workflow**, opened on first use
-in that workflow. A connection is never stored on the instance and never handed to a table class;
-table classes receive a *connect provider* and call it on every operation.
-
-This is not concurrency. Queries stay sequential within a workflow — the rule only stops one
-connection from being shared across unrelated workflows. The mechanism is `threading.local()`
-because a web server is what defines a workflow: the application is constructed on the main
-thread and each request is dispatched on a worker thread, whether or not the application code
-ever uses threads itself. A `sqlite3.Connection` belongs to the thread that created it and raises
-`ProgrammingError` when used from another, so a single connection opened during construction is
-valid in no request at all.
-
-```python
-# db.py
-import sqlite3, threading
-from dataclasses import dataclass
-from pathlib import Path
-
-@dataclass
-class Item:
-    id: int | None
-    name: str
-    status: str = "active"
-    created_at: str | None = None
-
-class ItemTable:
-    def __init__(self, connect): self._connect = connect   # provider, not a connection
-    def create(self, name: str, status: str = "active") -> int:
-        c = self._connect()
-        cur = c.execute(
-            "INSERT INTO items (name, status) VALUES (?, ?)", (name, status))
-        c.commit(); return cur.lastrowid
-    def get(self, item_id: int) -> Item | None:
-        r = self._connect().execute(
-            "SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
-        return Item(**r) if r else None
-    def list(self) -> list[Item]:
-        return [Item(**r) for r in
-                self._connect().execute("SELECT * FROM items").fetchall()]
-    def update(self, item_id: int, **fields) -> None: ...
-    def delete(self, item_id: int) -> None: ...
-
-class Database:
-    def __init__(self, path: str):
-        self._path = path
-        self._local = threading.local()
-        self.items = ItemTable(self.connect)   # one attribute per table
-
-    def connect(self) -> sqlite3.Connection:
-        """The calling thread's connection, opened and configured on first use."""
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            if self._path != ":memory:":
-                Path(self._path).parent.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(self._path)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA foreign_keys=ON")
-            self._local.conn = conn
-        return conn
+```text
+route → service → db.<table>.<verb>(...) → generated package → database
 ```
 
-Schema creation and migrations run through `self.connect()` like every other operation, on
-whichever thread starts the application. That startup connection is not the one request handlers
-use, and nothing needs to share it.
+The package lands at `persistence/` in the build:
 
-PRAGMAs, JSON-column handling, and migrations (see `stack/sqlite.md`) live inside
-`Database`/the table classes, never in callers.
+| File | Origin |
+|---|---|
+| `db.py`, `sqlite.py`, `postgres.py` | shipped by Drydock, copied unchanged |
+| `schema.py` | generated from `DATABASE.md` — tables, operations, row dataclasses |
+| `schema.sql` (beside the package) | generated DDL, applied once at the DATABASE step |
 
----
+### Calling it
+
+```python
+from persistence import open_database
+
+db = open_database(config.database_url)
+
+ticket = db.tickets.get(id=ticket_id)          # returns a frozen dataclass, or None
+open_tickets = db.tickets.list(status="open")  # returns a list of them
+new_id = db.tickets.create(status="open", title=title)
+db.tickets.update(id=ticket_id, status="closed")
+db.tickets.delete(id=ticket_id)
+```
+
+One attribute per declared table, one method per declared access pattern. The method name is the
+verb of that pattern's `Repository operation` cell, and its keyword arguments are that pattern's
+`Input:` fields — nothing else is accepted. A verb the table does not declare raises
+`UnknownOperation` naming what it does grant.
+
+**The declaration fixes the surface.** `DATABASE.md` names every operation in the
+`Repository operation` cell of each access pattern, as `<table>.<verb>`. That is the persistence
+surface, not a suggestion for one. To reach the store differently, change the declaration and
+rebuild; there is no second door.
+
+**Why**: the declaration is the only description of the store the rest of the plan is allowed to
+depend on. Generating from it means the operations a Blueprint cites and the operations that exist
+cannot drift — they are the same list. Plan already refuses to write a plan whose tables,
+operations, and citations disagree; generating the layer keeps the built code in that agreement
+rather than trusting each build to re-derive it from prose.
+
+**Caller contract**: `Database` presents single-threaded semantics. Callers construct one instance,
+share it freely, call methods synchronously, and never reason about threads, connections, or
+locking. Connection lifetime is internal to the package and may change without affecting any
+caller. Returned rows are frozen dataclasses and carry no connection state.
+
+**Engine selection is runtime, not build time.** Both engines are copied into every build and
+chosen from the DSN, because the same build runs SQLite in development and test and PostgreSQL in
+production. `VARCHAR(n)` is declared once and emitted to both: PostgreSQL enforces the length,
+SQLite parses the same declaration and ignores it.
+
+**Schema is built once.** `schema.sql` is applied at the DATABASE build step and never again
+within a release. Application startup does not create or alter schema.
+
+**Guardrails**
+
+- Do not write a repository, DAO, ORM model, or session factory.
+- Do not import `sqlite3`, `psycopg`, or a SQL string anywhere outside `persistence/`.
+- Do not edit anything under `persistence/` — edit `DATABASE.md` and rebuild.
+- Do not create or alter schema at application startup.
 
 ## 2. Config / `.env` → one typed Config class
 
@@ -223,13 +207,13 @@ is the seam. Swapping the transport, or stubbing it in tests, changes one class.
 
 ## Summary Checklist
 
-- [ ] No raw SQL outside table/Database classes
+- [ ] No hand-written repository, DAO, ORM model, session factory, or migration
+- [ ] No raw SQL, `sqlite3`, or `psycopg` import outside the generated `persistence/` package
+- [ ] Nothing under `persistence/` edited by hand
+- [ ] No schema created or altered at application startup
 - [ ] No `os.environ` reads outside the Config class
 - [ ] No `open()`/`shutil` on application data outside FileStore
 - [ ] No cloud SDK import outside its service wrapper
-- [ ] Each table: row dataclass + CRUD class, composed in one Database class
-- [ ] No `sqlite3.Connection` stored on an instance or passed to a table class — one connection
-      per thread, table classes take a connect provider
 - [ ] One typed `Config`, ENV-driven, no Dev/Prod/Test subclasses
 - [ ] Service wrappers extend the `ServiceClient` base class
-- [ ] Downstream specs depend on the class interface, not the schema
+- [ ] Downstream specs depend on the declared operations, not the schema

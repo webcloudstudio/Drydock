@@ -2015,13 +2015,56 @@ def test_technology_stack_renders_one_row_per_technology(tmp_path, monkeypatch):
 
     rendered = quarterdeck.render_technology_stack(_stack_item())
 
-    assert rendered.count("class='ts-row'") == 2
-    assert "value='FastAPI'" in rendered
+    # The foundation rows leave the table: an exclusive choice is a radio, not free text.
+    assert rendered.count("class='ts-row'") == 1
     assert "value='marina-library'" in rendered
-    assert "<option value='fastapi.md' selected>" in rendered
+    assert "<input type='radio' name='ts-foundation-web-server' value='fastapi.md' checked>" in (
+        rendered
+    )
     # A technology with no Rigging file keeps the explicit "none" option selected.
     assert f"<option value='' selected>{technology_stack.NONE_CELL}</option>" in rendered
     assert "value='Internal.'" in rendered
+
+
+def test_technology_stack_offers_each_foundation_kind_once_in_build_order(tmp_path, monkeypatch):
+    """Language first, then the platform built into it in tier-2 sub-order — database, web
+    server, CLI. One radio group per exclusive kind."""
+    quarterdeck = _load_quarterdeck()
+
+    def _missing(_path):
+        raise quarterdeck.HTTPException(status_code=404, detail="Missing file")
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", _missing)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+    order = [
+        rendered.index(f"data-kind='{kind}'")
+        for kind in ("language", "database", "web-server", "cli")
+    ]
+
+    assert order == sorted(order)
+    assert rendered.count("class='ts-foundation'") == 4
+    assert "type='checkbox'" not in rendered
+
+
+def test_technology_stack_preselects_the_default_for_an_undecided_target(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+
+    def _missing(_path):
+        raise quarterdeck.HTTPException(status_code=404, detail="Missing file")
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", _missing)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+
+    for kind, default in (
+        ("language", "python.md"),
+        ("web-server", "fastapi.md"),
+        ("database", "sqlite.md"),
+    ):
+        assert f"name='ts-foundation-{kind}' value='{default}' checked" in rendered
+    # Nothing is chosen for the Commander beyond the starting point: CLI stays on None.
+    assert "name='ts-foundation-cli' value='' checked" in rendered
 
 
 def test_technology_stack_renders_empty_editor_when_file_is_absent(tmp_path, monkeypatch):
@@ -2214,11 +2257,29 @@ def test_approving_the_technology_stack_records_the_marker_without_changing_rows
     ]
 
 
-def test_technology_stack_requires_sqlalchemy_and_alembic_for_python_database(
-    tmp_path, monkeypatch
-):
+def test_technology_stack_refuses_a_database_in_a_language_with_no_adapter(tmp_path, monkeypatch):
     import pytest
 
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "TECHNOLOGY_STACK.md"
+    (tmp_path / "blueprint").mkdir()
+    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("Go", "go.md")])
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
+    monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
+
+    with pytest.raises(quarterdeck.HTTPException) as exc:
+        quarterdeck.api_approve_item("technology_stack", None)
+
+    assert exc.value.status_code == 400
+    assert "no persistence adapter for go" in str(exc.value.detail)
+
+
+def test_technology_stack_approves_a_python_database_without_an_orm_selection(
+    tmp_path, monkeypatch
+):
     from drydock import technology_stack
 
     quarterdeck = _load_quarterdeck()
@@ -2229,11 +2290,7 @@ def test_technology_stack_requires_sqlalchemy_and_alembic_for_python_database(
     monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
     monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
 
-    with pytest.raises(quarterdeck.HTTPException) as exc:
-        quarterdeck.api_approve_item("technology_stack", None)
-
-    assert exc.value.status_code == 400
-    assert "sqlalchemy.md, alembic.md" in str(exc.value.detail)
+    assert quarterdeck.api_approve_item("technology_stack", None)["state"] == "approved"
 
 
 def test_editing_the_technology_stack_preserves_an_existing_approval(tmp_path, monkeypatch):
@@ -2373,3 +2430,32 @@ def test_approve_rejects_an_item_that_is_not_approvable(tmp_path, monkeypatch):
     with pytest.raises(quarterdeck.HTTPException) as exc:
         quarterdeck.api_approve_item("compass_edit", None)
     assert exc.value.status_code == 400
+
+
+def test_technology_stack_labels_the_columns_and_shows_the_tier_chain(tmp_path, monkeypatch):
+    """Tiers 3-6 hold no exclusive choice and so have no radio group. Without the legend the
+    page shows two of six tiers and implies there are two."""
+    quarterdeck = _load_quarterdeck()
+
+    def _missing(_path):
+        raise quarterdeck.HTTPException(status_code=404, detail="Missing file")
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", _missing)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+
+    assert "<th>Technology Label</th><th>Rigging File</th>" in rendered
+    assert "Tier 1 · language" in rendered
+    assert "Tier 2.1 · platform" in rendered
+    assert "Tier 2.2 · platform" in rendered
+    for number, name in (
+        ("1", "language"),
+        ("2.1", "database"),
+        ("2.2", "web server"),
+        ("2.3", "cli"),
+        ("3", "branding"),
+        ("4", "interface"),
+        ("5", "screen foundation"),
+        ("6", "application"),
+    ):
+        assert f"Tier {number} · {name}" in rendered

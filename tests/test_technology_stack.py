@@ -250,37 +250,137 @@ def test_approve_defaults_to_today_and_re_dates_an_approved_stack(tmp_path):
     assert technology_stack.load_text(tmp_path).count("**Approved:**") == 1
 
 
-def test_python_relational_persistence_requires_sqlalchemy_and_alembic(tmp_path):
-    import pytest
-
+def test_a_python_target_with_a_database_needs_no_orm_selection(tmp_path):
     (tmp_path / "blueprint").mkdir()
     (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
     entries = [StackEntry("Python", "python.md")]
     technology_stack.write(tmp_path, entries)
 
-    assert technology_stack.required_rigging(tmp_path) == ("sqlalchemy.md", "alembic.md")
-    assert technology_stack.missing_required_rigging(tmp_path) == ("sqlalchemy.md", "alembic.md")
-    with pytest.raises(ValueError, match="sqlalchemy.md, alembic.md"):
-        technology_stack.approve(tmp_path)
-    assert not technology_stack.is_approved(tmp_path)
+    assert technology_stack.declared_language(tmp_path) == "python"
+    assert technology_stack.unsupported_persistence(tmp_path) is None
 
-
-def test_python_relational_persistence_approves_with_required_rigging(tmp_path):
-    (tmp_path / "blueprint").mkdir()
-    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
-    technology_stack.write(
-        tmp_path,
-        [
-            StackEntry("Python", "python.md"),
-            StackEntry("SQLAlchemy", "sqlalchemy.md"),
-            StackEntry("Alembic", "alembic.md"),
-        ],
-    )
-
-    technology_stack.approve(tmp_path, "2026-09-09")
+    technology_stack.approve(tmp_path, "2026-09-19")
 
     assert technology_stack.is_approved(tmp_path)
 
 
+def test_a_language_with_no_shipped_adapter_is_refused_rather_than_ignored(tmp_path):
+    import pytest
+
+    (tmp_path / "blueprint").mkdir()
+    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
+    technology_stack.write(tmp_path, [StackEntry("Go", "go.md")])
+
+    assert technology_stack.unsupported_persistence(tmp_path) == "go"
+    with pytest.raises(ValueError, match="ships no persistence adapter for go"):
+        technology_stack.approve(tmp_path)
+    assert not technology_stack.is_approved(tmp_path)
+
+
+def test_an_unsupported_language_without_a_database_is_not_gated(tmp_path):
+    technology_stack.write(tmp_path, [StackEntry("Go", "go.md")])
+
+    assert technology_stack.unsupported_persistence(tmp_path) is None
+
+    technology_stack.approve(tmp_path, "2026-09-19")
+
+    assert technology_stack.is_approved(tmp_path)
+
+
+def test_an_undeclared_language_leaves_the_stack_undecided_rather_than_blocked(tmp_path):
+    (tmp_path / "blueprint").mkdir()
+    (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
+    technology_stack.write(tmp_path, [StackEntry("Bootstrap 5", "bootstrap5.md")])
+
+    assert technology_stack.declared_language(tmp_path) is None
+    assert technology_stack.unsupported_persistence(tmp_path) is None
+
+
 def test_is_approved_is_false_for_a_missing_document(tmp_path):
     assert not technology_stack.is_approved(tmp_path / "absent")
+
+
+# ── Foundation selection ────────────────────────────────────────────────────────
+
+
+def test_foundation_groups_read_in_build_order():
+    """Language first: a web server or a database is built into the tree and the environment
+    only the language foundation lays down. Inside tier 2 the three kinds sub-order 2.1/2.2/2.3
+    by what imports what — a web server and a CLI import persistence, and it imports neither."""
+    groups = technology_stack.foundation_groups([])
+
+    assert [group["label"] for group in groups] == ["Language", "Database", "Web Server", "CLI"]
+    assert [group["tier"] for group in groups] == [
+        "language",
+        "platform",
+        "platform",
+        "platform",
+    ]
+    assert [group["tier_number"] for group in groups] == [1, 2, 2, 2]
+    assert [group["tier_label"] for group in groups] == ["1", "2.1", "2.2", "2.3"]
+
+
+def test_a_target_nobody_has_decided_for_gets_the_default_stack():
+    groups = {group["kind"]: group["selected"] for group in technology_stack.foundation_groups([])}
+
+    assert groups["language"] == "python.md"
+    assert groups["web-server"] == "fastapi.md"
+    assert groups["database"] == "sqlite.md"
+    assert groups["cli"] == ""
+
+
+def test_a_stack_that_names_no_web_server_has_decided_it_has_none():
+    """The default is a starting point for an undecided Target, never an override of a decision."""
+    entries = [technology_stack.StackEntry("Python", "python.md")]
+
+    groups = {
+        group["kind"]: group["selected"] for group in technology_stack.foundation_groups(entries)
+    }
+
+    assert groups["language"] == "python.md"
+    assert groups["web-server"] == ""
+
+
+def test_split_foundations_pulls_an_unanswered_foundation_row_into_the_selector():
+    """A half-answered foundation row belongs in the exclusive selector, not in the free-text
+    table where it can only stay half-answered."""
+    entries = [
+        technology_stack.StackEntry("FastAPI", None),
+        technology_stack.StackEntry("Redis", None),
+    ]
+
+    chosen, remaining = technology_stack.split_foundations(entries)
+
+    assert chosen == {"web-server": ""}
+    assert [entry.technology for entry in remaining] == ["Redis"]
+
+
+def test_with_foundations_replaces_the_choices_and_keeps_everything_else():
+    entries = [
+        technology_stack.StackEntry("FastAPI", "fastapi.md"),
+        technology_stack.StackEntry("Bootstrap 5", "bootstrap5.md"),
+        technology_stack.StackEntry("Redis", None, "cache"),
+    ]
+
+    result = technology_stack.with_foundations(
+        entries, {"language": "python.md", "web-server": "flask.md", "database": ""}
+    )
+
+    assert [(entry.technology, entry.rigging) for entry in result] == [
+        ("python", "python.md"),
+        ("flask", "flask.md"),
+        ("Bootstrap 5", "bootstrap5.md"),
+        ("Redis", None),
+    ]
+    assert result[-1].notes == "cache"
+
+
+def test_the_frontend_files_are_no_longer_offered_as_web_servers():
+    """bootstrap5.md is not a web server. It was filed under Web Server and shown to the
+    Commander next to the three files that are."""
+    groups = {group["label"]: group["options"] for group in technology_stack.rigging_groups()}
+
+    assert "bootstrap5.md" in groups["Frontend"]
+    assert "ui-flask.bootstrap-client.md" in groups["Frontend"]
+    assert groups["Web Server"] == ["django.md", "fastapi.md", "flask.md"]
+    assert groups["Language"] == ["go.md", "python.md", "typescript.md"]

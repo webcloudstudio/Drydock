@@ -721,7 +721,7 @@ def test_database_drift_resets_only_consumers_of_unbuilt_rebuild_operation(tmp_p
 |---|---|
 | Owner | FEATURE-Order.md |
 | Access | write |
-| Repository operation | OrderRepository.create(CreateOrder) -> Order |
+| Repository operation | `orders.create` |
 | Compatibility | rebuild |
 
 Input: CreateOrder

@@ -167,6 +167,22 @@ One shape, first established by `drydock rigging compact`:
 - **Registry:** `prompts/prompts.json` maps prompts to their target documentation and is read by
   `prompt_headers.py`. Update it when adding or renaming a prompt.
 
+## Notes
+
+`notes/notes_<command>.md` holds the working notes for one command. Each carries a
+`## Process Definition` section directly below its metadata table. That section is the agent's:
+write it, keep it current, and do not ask before updating it. Everything else in the file belongs
+to its authors — propose changes to those sections in chat rather than editing them. `/refit`
+updates `## Process Definition` the same way, without seeking approval for it.
+
+`## Process Definition` states how the command works now and why, so the next session does not
+re-derive it: what the command is for, the rules that govern its behavior, what each rule costs
+when broken, and the mechanism stage by stage. It records settled behavior, not proposals — those
+stay in `## Decisions` and `## Open Questions`.
+
+Update it in the same change that alters the command's behavior, and date each rule. A rule that
+governs one command lives there and never in this file, which is injected into every command.
+
 ## Changelog
 
 `CHANGELOG.md` is the maintained project history, written for an experienced reader who wants to

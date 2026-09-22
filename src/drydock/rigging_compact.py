@@ -31,6 +31,7 @@ from drydock.prompt_assembly import (
     system_preamble_part,
 )
 from drydock.prompts import load_prompt
+from drydock.rigging_contract import contract_section
 
 COMPACT_SUFFIX = "_compact"
 
@@ -430,12 +431,40 @@ def _strip_provenance(text: str) -> str:
     return _LEADING_PROVENANCE.sub("", text.strip()).strip()
 
 
-def _finalize(text: str, *, rel_source: str, today: str, source_sha: str) -> str:
+def _split_foundation_contract(source_text: str) -> tuple[str, str | None]:
+    """Return ``(text_for_the_model, contract_section)``.
+
+    A foundation contract is the API the rest of the Target writes against — the package name, the
+    entry point, and the fixture every acceptance criterion calls. Compaction exists to shorten
+    prose, and a shortened contract is a changed contract: the builder's copy and the Blueprint
+    author's copy drift, silently, and criteria start guessing again. Instructing the model to
+    preserve it is a request. Removing it before the model sees it and splicing it back afterwards
+    is a guarantee, so that is what this does.
+    """
+    section = contract_section(source_text)
+    if section is None:
+        return source_text, None
+    start = source_text.index(section.rstrip() if section.rstrip() in source_text else section)
+    return source_text[:start] + source_text[start + len(section.rstrip()) :], section
+
+
+def _finalize(
+    text: str,
+    *,
+    rel_source: str,
+    today: str,
+    source_sha: str,
+    contract: str | None = None,
+) -> str:
     body = text.strip()
     fenced = _OUTER_FENCE.match(body)
     if fenced:
         body = fenced.group(1).strip()
     body = _LEADING_PROVENANCE.sub("", body).strip()
+    if contract is not None:
+        # Placed ahead of the compacted surface: the contract is what a reader of the compact file
+        # needs first, and a fixed position keeps the splice verifiable byte for byte.
+        body = f"{contract.strip()}\n\n{body}"
     return f"{_provenance(rel_source, today, source_sha)}\n\n{body}\n"
 
 
@@ -510,6 +539,8 @@ def compact(
         rel_source = _rel(source, spec_dir)
         source_text = source.read_text(encoding="utf-8")
         source_bytes = len(source_text.encode("utf-8"))
+        # The foundation contract is withheld from the model and spliced back into the output.
+        model_text, foundation = _split_foundation_contract(source_text)
         existing_compact = (
             compact_path.read_text(encoding="utf-8") if compact_path.is_file() else None
         )
@@ -525,7 +556,7 @@ def compact(
             rel_source=rel_source,
             today=today,
             objective=role.objective,
-            source_text=source_text,
+            source_text=model_text,
             existing_compact=existing_compact,
         )
         result = run(
@@ -584,7 +615,11 @@ def compact(
             continue
 
         finalized = _finalize(
-            result.text, rel_source=rel_source, today=today, source_sha=source_sha
+            result.text,
+            rel_source=rel_source,
+            today=today,
+            source_sha=source_sha,
+            contract=foundation,
         )
         if existing_compact is not None and _strip_provenance(finalized) == _strip_provenance(
             existing_compact

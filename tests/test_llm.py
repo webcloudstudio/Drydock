@@ -977,6 +977,32 @@ def test_run_telemetry_is_recorded_in_the_llm_log(tmp_path, monkeypatch, capsys)
     assert sorted((tmp_path / "logs").glob("*.stderr.log")) == []
 
 
+def test_sub_command_labels_console_progress_but_not_the_evidence_command(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command,
+            stdout_text=json.dumps({"type": "result", "result": "OK"}) + "\n",
+            **kwargs,
+        ),
+    )
+
+    run_prompt(
+        "Work", tmp_path, llm="claude", model="m", command_name="plan", sub_command="topology"
+    )
+    out = capsys.readouterr().out
+
+    assert "Calling CLAUDE/m (plan · topology)..." in out
+    assert "Completed CLAUDE/m (plan · topology)  rc=0" in out
+    record = (tmp_path / "logs" / "llm.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+    job = json.loads(record)["job"]
+    assert job["command_name"] == "plan"
+    assert job["sub_command"] == "topology"
+
+
 def test_debug_details_print_to_console_without_debug_log(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         subprocess,

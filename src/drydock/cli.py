@@ -768,16 +768,27 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     exclude_files = [Path(f) for f in (args.exclude_file or [])]
     include_dirs = [Path(d) for d in (args.include_dir or [])]
 
-    explicit_only = bool(include_files or include_dirs) and args.Target is None
-    if explicit_only:
-        # No Target: use cwd as the anchor; auto-discovery finds nothing there, explicit paths drive all work.
+    # Rigging is Drydock's own tree and has no Target. --all is a standalone refresh of its
+    # stale compacts; a Target, when given, adds that Blueprint's scope on top.
+    no_target = args.Target is None
+    scoped_without_target = (
+        bool(include_files or include_dirs or args.include_rigging) and no_target
+    )
+    if scoped_without_target:
+        # No Target: anchor on cwd. The Blueprint scan is suppressed, so --all and the
+        # explicit paths are the only sources.
         spec_dir = Path.cwd()
-        label = str(spec_dir)
+        label = (
+            "Drydock Rigging"
+            if args.include_rigging and not (include_files or include_dirs)
+            else str(spec_dir)
+        )
         compact_target = ""
     else:
-        if args.Target is None:
+        if no_target:
             print(
-                "error: <Target> is required unless --include-file or --include-dir is provided.",
+                "error: <Target> is required unless --all, --include-file, "
+                "or --include-dir is provided.",
                 file=sys.stderr,
             )
             return 2
@@ -818,7 +829,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         include_files=include_files or None,
         exclude_files=exclude_files or None,
         include_dirs=include_dirs or None,
-        skip_autodiscovery=explicit_only,
+        skip_autodiscovery=scoped_without_target,
         log_dir=log_dir,
         target=compact_target,
         on_text=_stream_stdout,
@@ -1142,6 +1153,18 @@ def _fail_standing_plan(target: str, target_dir: Path, result) -> None:
     )
 
 
+def _settle_plan_state(target_dir: Path, *, buildable: bool) -> None:
+    """Mark the Manifest approved only when the Blueprint it builds passes ``plan verify``."""
+    from drydock.build_plan import set_plan_state
+    from drydock.metadata import set_sub_state
+
+    manifest = target_dir / "MANIFEST.md"
+    if not manifest.is_file():
+        return
+    set_plan_state(manifest, "approved" if buildable else "draft")
+    set_sub_state(target_dir, "approved" if buildable else "unbuildable")
+
+
 def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
     """Make unrunnable criteria runnable in one pass, then report what is still broken."""
     from drydock.config import get_model, get_workspace, require_target_dir
@@ -1161,14 +1184,17 @@ def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:
     )
     print(render(result))
     if result.nothing_to_repair:
+        _settle_plan_state(target_dir, buildable=True)
         record_status(
             target_dir, "PLAN REPAIRED", passed=True, command=f"drydock plan repair {target}"
         )
         return 0
     # Re-verify from disk rather than trusting the repair's own bookkeeping. The plan is about to
     # be built against these files, so the last word belongs to the same check the build uses.
-    print(render_verify(verify(target, target_dir)))
-    exit_code = result.exit_code()
+    verified = verify(target, target_dir)
+    print(render_verify(verified))
+    exit_code = result.exit_code() or verified.exit_code()
+    _settle_plan_state(target_dir, buildable=not exit_code)
     if exit_code:
         record_status(
             target_dir,
@@ -1236,24 +1262,31 @@ def cmd_plan(args: argparse.Namespace) -> int:
     if continue_attempts < 0:
         raise UsageError("--continue-attempts must be zero or greater.")
     plan_started = time.monotonic()
-    with commanders_chair_command(target_dir, f"drydock plan {args.Target}"):
-        result = create_plan(
-            args.Target,
-            args.Target,
-            target_directory,
-            overwrite=getattr(args, "overwrite", False),
-            conform=not getattr(args, "no_conform", False),
-            model=model,
-            lineage_model=lineage_model,
-            llm_provider=llm_provider,
-            log_dir=log_dir,
-            on_text=_progress,
-            allow_diagnostic_recovery=(
-                get_diagnose_enabled() and not getattr(args, "no_diagnose", False)
-            ),
-            continue_attempts=continue_attempts,
-            override=bool(getattr(args, "override", False)),
-        )
+    from drydock.project_status import record_failure
+
+    try:
+        with commanders_chair_command(target_dir, f"drydock plan {args.Target}"):
+            result = create_plan(
+                args.Target,
+                args.Target,
+                target_directory,
+                overwrite=getattr(args, "overwrite", False),
+                conform=not getattr(args, "no_conform", False),
+                model=model,
+                lineage_model=lineage_model,
+                llm_provider=llm_provider,
+                log_dir=log_dir,
+                on_text=_progress,
+                allow_diagnostic_recovery=(
+                    get_diagnose_enabled() and not getattr(args, "no_diagnose", False)
+                ),
+                continue_attempts=continue_attempts,
+                override=bool(getattr(args, "override", False)),
+            )
+    except Exception as exc:
+        # A run that did not produce a buildable Manifest never stands at PLAN CREATED.
+        record_failure(target_dir, "PLAN CREATED", exc, command=f"drydock plan {args.Target}")
+        raise
     if isinstance(result, PlanDeferredResult):
         print()
         print(_render_plan_deferred(result, target=args.Target))
@@ -3666,13 +3699,19 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=None,
         metavar="<Target>",
-        help="Blueprint target name. Optional when --include-file or --include-dir is provided.",
+        help=(
+            "Blueprint target name. Optional when --all, --include-file, "
+            "or --include-dir is provided."
+        ),
     )
     p_rig_c.add_argument(
         "--all",
         dest="include_rigging",
         action="store_true",
-        help="Also refresh Drydock's own Rigging engine compacts.",
+        help=(
+            "Refresh stale compacts in Drydock's own Rigging tree. "
+            "Runs without a <Target>; with one, adds to that Blueprint's scope."
+        ),
     )
     p_rig_c.add_argument(
         "--force", action="store_true", help="Ignore the freshness gate and recompact everything."
@@ -5124,8 +5163,9 @@ def _command_log_name(args: argparse.Namespace) -> str:
 
 #: Commands that only observe a Target. They neither create its Git store nor checkpoint it: a
 #: query must not mutate what it reports on, and the store's one-line banners would corrupt the
-#: machine-readable stdout of ``status --check``/``--ready`` that scripts consume verbatim.
-_READ_ONLY_COMMANDS = frozenset({"status"})
+#: machine-readable stdout that scripts consume verbatim: ``status --check``/``--ready``, and
+#: ``config env``, whose assignments a caller passes straight to ``eval``.
+_READ_ONLY_COMMANDS = frozenset({"status", "config"})
 
 
 def _is_score_query(args: argparse.Namespace) -> bool:

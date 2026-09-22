@@ -5,11 +5,15 @@ import pytest
 from drydock.database_contract import (
     changed_operation_ids_since,
     create_ticket_migration_records,
+    database_contract_defects,
     database_operation_fingerprints,
+    derive_missing_dtos,
+    derived_indexes,
     mark_migrations_built,
     migration_records,
     parse_database_contract,
     parse_database_interface,
+    schema_sql,
     sqlite_schema_sql,
     sqlite_schema_tables,
     staged_operation_ids,
@@ -28,7 +32,7 @@ _DATABASE = """# DATABASE: Orders
 |---|---|
 | Owner | FEATURE-Order.md |
 | Access | write |
-| Repository operation | OrderRepository.create(CreateOrder) -> Order |
+| Repository operation | `orders.create` |
 | Compatibility | rebuild |
 
 Input: CreateOrder
@@ -51,7 +55,7 @@ Output: Order
 |---|---|
 | Owner | FEATURE-Order.md |
 | Access | read |
-| Repository operation | OrderRepository.get(UUID) -> Order |
+| Repository operation | `orders.get` |
 | Compatibility | data |
 
 Input: FindOrder
@@ -127,6 +131,63 @@ def test_interface_validates_owner_access_and_fields():
     use = parse_database_interface(_INTERFACE, source="FEATURE-Order.md")
 
     validate_database_interfaces(contract, {"FEATURE-Order.md": use})
+
+
+def test_a_shared_pattern_may_be_cited_by_any_blueprint():
+    """A log is owned by no single Feature: every Feature appends to it. `DATABASE.md` as Owner
+    says exactly that, and a citation of one is legal from anywhere."""
+    shared = _DATABASE.replace("| Owner | FEATURE-Order.md |", "| Owner | DATABASE.md |", 1)
+    contract = parse_database_contract(shared)
+
+    validate_database_interfaces(
+        contract,
+        {
+            "FEATURE-Shipping.md": parse_database_interface(
+                "## Database Interface\n\n- `FEATURE-ORDER-001` — write: create an order "
+                "- supplies: `customer_id`, `items` - returns: `id`\n",
+                source="FEATURE-Shipping.md",
+            )
+        },
+    )
+
+
+def test_a_feature_owned_pattern_is_still_cited_only_by_its_owner():
+    """The boundary shared ownership must not dissolve."""
+    contract = parse_database_contract(_DATABASE)
+
+    with pytest.raises(SpecificationError, match="is owned by 'FEATURE-Order.md'"):
+        validate_database_interfaces(
+            contract,
+            {"FEATURE-Shipping.md": parse_database_interface(_INTERFACE)},
+        )
+
+
+def test_only_a_feature_in_the_plan_or_the_declaration_may_own_a_pattern():
+    from drydock.database_contract import legal_owner
+
+    blueprints = {"FEATURE-Order.md", "SCREEN-Orders.md"}
+
+    assert legal_owner("FEATURE-Order.md", blueprints)
+    assert legal_owner("DATABASE.md", blueprints)
+    # A Screen renders data through a Feature's service; it never holds a repository.
+    assert not legal_owner("SCREEN-Orders.md", blueprints)
+    assert not legal_owner("order_service", blueprints)
+    assert not legal_owner("FEATURE-Absent.md", blueprints)
+
+
+def test_an_owner_that_owns_no_data_in_the_plan_is_rewritten_to_the_declaration():
+    """Deterministic, because nothing is left to decide: no Feature here claims the pattern."""
+    from drydock.database_contract import declared_owners, rewrite_illegal_owners
+
+    text = _DATABASE.replace("| Owner | FEATURE-Order.md |", "| Owner | order_service |", 1)
+
+    rewritten, changed = rewrite_illegal_owners(text, {"FEATURE-Order.md"})
+
+    assert changed == ("order_service",)
+    assert declared_owners(rewritten) == ("DATABASE.md", "FEATURE-Order.md")
+    # The table around the cell is untouched.
+    assert rewritten.count("| Access | write |") == text.count("| Access | write |")
+    assert rewrite_illegal_owners(rewritten, {"FEATURE-Order.md"}) == (rewritten, ())
 
 
 def test_interface_cannot_escape_repository_contract():
@@ -206,7 +267,7 @@ def test_public_contract_fingerprint_excludes_private_database_sections():
     assert database_operation_fingerprints(_DATABASE) == database_operation_fingerprints(
         private_edit
     )
-    changed_contract = _DATABASE.replace("OrderRepository.create", "OrderRepository.create_v2")
+    changed_contract = _DATABASE.replace("orders.create", "orders.update")
     assert database_operation_fingerprints(_DATABASE) != database_operation_fingerprints(
         changed_contract
     )
@@ -282,3 +343,399 @@ def test_git_contract_diff_names_only_changed_operations(tmp_path: Path):
     )
 
     assert changed_operation_ids_since(blueprint, baseline) == ("FEATURE-ORDER-001",)
+
+
+def test_a_combined_repository_surface_declares_read_write():
+    """``settings.get``/``set``/``delete`` is one repository surface. Forcing it into two patterns
+    invents a split the declaration never intended, so ``read-write`` is a declared level."""
+    contract = parse_database_contract(
+        _DATABASE.replace("| Access | write |", "| Access | read-write |")
+    )
+
+    assert contract.by_id()["FEATURE-ORDER-001"].access == "read-write"
+
+
+def test_a_citation_may_claim_less_access_than_the_pattern_grants():
+    """A read-only consumer of a read-write surface is a real and useful claim."""
+    contract = parse_database_contract(
+        _DATABASE.replace("| Access | write |", "| Access | read-write |")
+    )
+
+    for claimed in ("read", "write", "read-write"):
+        use = parse_database_interface(
+            _INTERFACE.replace("— write:", f"— {claimed}:"), source="FEATURE-Order.md"
+        )
+        validate_database_interfaces(contract, {"FEATURE-Order.md": use})
+
+
+def test_a_citation_may_never_claim_more_access_than_the_pattern_grants():
+    contract = parse_database_contract(_DATABASE)
+    use = parse_database_interface(
+        _INTERFACE.replace("— write:", "— read-write:"), source="FEATURE-Order.md"
+    )
+
+    with pytest.raises(SpecificationError, match="which write does not grant"):
+        validate_database_interfaces(contract, {"FEATURE-Order.md": use})
+
+
+def test_a_blueprint_that_reaches_no_repository_declares_none():
+    """A Screen that delegates persistence must be able to say so without failing the plan."""
+    interface = _INTERFACE.replace(
+        "- `FEATURE-ORDER-001` — write: create an order"
+        " - supplies: `customer_id`, `items` - returns: `id`, `status`",
+        "- None — persistence is owned by FEATURE-Order.md.",
+    )
+
+    assert parse_database_interface(interface, source="SCREEN-Orders.md") == ()
+
+
+def test_prose_in_the_interface_section_names_the_line_and_the_accepted_form():
+    interface = _INTERFACE.replace(
+        "- `FEATURE-ORDER-001` — write: create an order"
+        " - supplies: `customer_id`, `items` - returns: `id`, `status`",
+        "- **Orders** — Read and write through the order repository declared by DATABASE.md.",
+    )
+
+    with pytest.raises(SpecificationError) as excinfo:
+        parse_database_interface(interface, source="FEATURE-Order.md")
+    message = str(excinfo.value)
+    assert "**Orders**" in message
+    assert "supplies:" in message
+    assert "- None" in message
+
+
+def test_every_bullet_must_parse_not_merely_one_of_them():
+    """One well-formed citation must not license prose beside it."""
+    interface = _INTERFACE + "- The remaining state lives in the session, not the database.\n"
+
+    with pytest.raises(SpecificationError, match="malformed ## Database Interface entry"):
+        parse_database_interface(interface, source="FEATURE-Order.md")
+
+
+def test_none_cannot_be_declared_beside_a_citation():
+    interface = _INTERFACE + "- None — nothing else is persisted.\n"
+
+    with pytest.raises(SpecificationError, match="declares None and also cites"):
+        parse_database_interface(interface, source="FEATURE-Order.md")
+
+
+_COLUMN_GRAMMAR = """# DATABASE: Grammar
+
+## `projects`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| name | VARCHAR(80) NOT NULL UNIQUE | |
+| status | TEXT NOT NULL DEFAULT 'active' | |
+| created_at | TEXT DEFAULT CURRENT_TIMESTAMP | |
+
+## `tickets`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| project_id | INTEGER NOT NULL REFERENCES projects(id) | |
+| title | VARCHAR(200) NOT NULL | |
+| opened_on | TEXT | |
+
+- UNIQUE (project_id, title)
+- INDEX (project_id, opened_on)
+"""
+
+
+def test_column_grammar_renders_every_declared_constraint():
+    tables = validate_sqlite_schema(_COLUMN_GRAMMAR)
+    sql = sqlite_schema_sql(tables)
+
+    assert '"name" VARCHAR(80) NOT NULL UNIQUE' in sql
+    assert "\"status\" TEXT NOT NULL DEFAULT 'active'" in sql
+    assert '"created_at" TEXT DEFAULT CURRENT_TIMESTAMP' in sql
+    assert '"project_id" INTEGER NOT NULL REFERENCES "projects"("id")' in sql
+    assert 'UNIQUE ("project_id", "title")' in sql
+    assert 'CREATE INDEX IF NOT EXISTS "tickets_project_id_opened_on_idx"' in sql
+
+
+def test_a_referenced_table_is_created_before_the_table_citing_it():
+    reversed_order = _COLUMN_GRAMMAR.replace("# DATABASE: Grammar\n", "")
+    head, _, tail = reversed_order.partition("## `tickets`")
+    tables = sqlite_schema_tables("# DATABASE: Grammar\n\n## `tickets`" + tail + "\n" + head)
+    sql = sqlite_schema_sql(tables)
+
+    assert sql.index('CREATE TABLE IF NOT EXISTS "projects"') < sql.index(
+        'CREATE TABLE IF NOT EXISTS "tickets"'
+    )
+
+
+def test_a_foreign_key_to_an_undeclared_table_fails():
+    orphan = _COLUMN_GRAMMAR.replace("REFERENCES projects(id)", "REFERENCES clients(id)")
+
+    with pytest.raises(SpecificationError, match="references table 'clients'"):
+        sqlite_schema_tables(orphan)
+
+
+def test_a_foreign_key_to_an_undeclared_column_fails():
+    orphan = _COLUMN_GRAMMAR.replace("REFERENCES projects(id)", "REFERENCES projects(slug)")
+
+    with pytest.raises(SpecificationError, match="which projects does not declare"):
+        sqlite_schema_tables(orphan)
+
+
+def test_a_foreign_key_cycle_is_named_rather_than_rendered():
+    cyclic = _COLUMN_GRAMMAR.replace(
+        "| opened_on | TEXT | |", "| opened_on | TEXT | |\n| owner_id | INTEGER | |"
+    ).replace(
+        "| created_at | TEXT DEFAULT CURRENT_TIMESTAMP | |",
+        "| created_at | TEXT | |\n| lead_ticket | INTEGER REFERENCES tickets(id) | |",
+    )
+
+    with pytest.raises(SpecificationError, match="foreign keys form a cycle"):
+        sqlite_schema_sql(sqlite_schema_tables(cyclic))
+
+
+def test_an_unknown_column_modifier_names_the_accepted_form():
+    bogus = _COLUMN_GRAMMAR.replace(
+        "| title | VARCHAR(200) NOT NULL |", "| title | VARCHAR(200) AUTOINCREMENT |"
+    )
+
+    with pytest.raises(SpecificationError, match="unknown column modifier.*VARCHAR\\(<n>\\)"):
+        sqlite_schema_tables(bogus)
+
+
+def test_bracketed_modifiers_copied_from_the_form_are_unwrapped():
+    bracketed = _COLUMN_GRAMMAR.replace(
+        "| title | VARCHAR(200) NOT NULL |", "| title | VARCHAR(200) [NOT NULL] [UNIQUE] |"
+    ).replace("DEFAULT 'active'", "[DEFAULT '[]']")
+
+    sql = sqlite_schema_sql(sqlite_schema_tables(bracketed))
+
+    assert '"title" VARCHAR(200) NOT NULL UNIQUE' in sql
+    assert "\"status\" TEXT NOT NULL DEFAULT '[]'" in sql
+
+
+def test_blob_is_no_longer_a_declarable_type():
+    blob = _COLUMN_GRAMMAR.replace("| opened_on | TEXT | |", "| payload | BLOB | |")
+
+    with pytest.raises(SpecificationError, match="unsupported type 'BLOB'"):
+        sqlite_schema_tables(blob)
+
+
+def test_an_unquoted_default_literal_is_refused():
+    injected = _COLUMN_GRAMMAR.replace("DEFAULT 'active'", "DEFAULT active")
+
+    with pytest.raises(SpecificationError, match="unreadable DEFAULT value"):
+        sqlite_schema_tables(injected)
+
+
+def test_a_composite_constraint_over_an_undeclared_column_fails():
+    bogus = _COLUMN_GRAMMAR.replace("- UNIQUE (project_id, title)", "- UNIQUE (project_id, slug)")
+
+    with pytest.raises(SpecificationError, match="constrains undeclared column"):
+        sqlite_schema_tables(bogus)
+
+
+def test_a_single_column_composite_constraint_is_refused():
+    single = _COLUMN_GRAMMAR.replace("- UNIQUE (project_id, title)", "- UNIQUE (title)")
+
+    with pytest.raises(SpecificationError, match="composite UNIQUE over 1 column"):
+        sqlite_schema_tables(single)
+
+
+def test_one_access_pattern_declares_one_repository_operation():
+    paired = _DATABASE.replace("| `orders.create` |", "| `orders.create`, `orders.update` |")
+
+    with pytest.raises(SpecificationError, match="names 2 repository operations"):
+        parse_database_contract(paired)
+
+
+def test_a_verb_outside_the_closed_set_is_refused():
+    invented = _DATABASE.replace("| `orders.create` |", "| `orders.archive` |")
+
+    with pytest.raises(SpecificationError, match="get, list, create, update, delete"):
+        parse_database_contract(invented)
+
+
+_DERIVATION = """# DATABASE: Derivation
+
+## Access Patterns
+
+### FEATURE-TICKET-001 — Find tickets
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-Ticket.md |
+| Access | read |
+| Repository operation | `tickets.list` |
+| Compatibility | unchanged |
+
+Input: FindTickets
+
+| Field | Type | Required |
+|---|---|---|
+| status | str | yes |
+| ignored_by_schema | str | no |
+
+Output: Ticket
+
+| Field | Type |
+|---|---|
+| id | int |
+
+### FEATURE-TICKET-002 — Save ticket
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-Ticket.md |
+| Access | write |
+| Repository operation | `tickets.update` |
+| Compatibility | unchanged |
+
+Input: SaveTicket
+
+| Field | Type | Required |
+|---|---|---|
+| title | str | yes |
+
+Output: Ticket
+
+| Field | Type |
+|---|---|
+| id | int |
+
+## `projects`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+
+## `tickets`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| project_id | INTEGER NOT NULL REFERENCES projects(id) | |
+| status | TEXT NOT NULL | |
+| title | VARCHAR(200) | |
+"""
+
+
+def test_indexes_are_derived_from_foreign_keys_and_read_predicates():
+    tables = sqlite_schema_tables(_DERIVATION)
+    contract = parse_database_contract(_DERIVATION)
+
+    assert derived_indexes(tables, contract) == (
+        ("tickets", ("project_id",)),
+        ("tickets", ("status",)),
+    )
+
+
+def test_a_write_pattern_contributes_no_index():
+    sql = schema_sql(_DERIVATION)
+
+    assert '"tickets_title_idx"' not in sql
+
+
+def test_a_derived_index_is_not_repeated_when_already_declared():
+    declared = _DERIVATION.replace(
+        "| status | TEXT NOT NULL | |", "| status | TEXT NOT NULL UNIQUE | |"
+    )
+    tables = sqlite_schema_tables(declared)
+
+    assert ("tickets", ("status",)) not in derived_indexes(
+        tables, parse_database_contract(declared)
+    )
+
+
+def test_the_rendered_schema_creates_tables_and_indexes_on_sqlite():
+    import sqlite3
+
+    with sqlite3.connect(":memory:") as connection:
+        connection.executescript(schema_sql(_DERIVATION))
+        indexes = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='index'")
+        }
+
+    assert "tickets_project_id_idx" in indexes
+    assert "tickets_status_idx" in indexes
+
+
+_BARE_PATTERNS = """# DATABASE: Accounts
+
+## Access Patterns
+
+### FEATURE-GITHUB-001 — Update accounts
+| Field | Value |
+|-------|-------|
+| Owner | FEATURE-GITHUB.md |
+| Access | read-write |
+| Repository operation | `git_accounts.update` |
+| Compatibility | data |
+
+### FEATURE-GITHUB-002 — Add accounts
+| Field | Value |
+|-------|-------|
+| Owner | FEATURE-GITHUB.md |
+| Access | write |
+| Repository operation | `git_accounts.create` |
+| Compatibility | data |
+
+### FEATURE-GITHUB-003 — List accounts
+| Field | Value |
+|-------|-------|
+| Owner | FEATURE-GITHUB.md |
+| Access | read |
+| Repository operation | `git_accounts.list` |
+| Compatibility | unchanged |
+
+Input: `AccountQuery`
+| Field | Type |
+|-------|------|
+| login | TEXT |
+
+## Schema
+
+## `git_accounts`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| id | INTEGER PK | |
+| login | TEXT NOT NULL | |
+| verified_at | TEXT | |
+"""
+
+
+def test_missing_dtos_are_derived_from_the_schema_table():
+    """Marina_Luna: a repair pass told to reach fifteen uncited tables added fifteen patterns with
+    no DTO tables, and the run died on its last pass. The table fixes the DTOs; code writes them."""
+    assert len(database_contract_defects(_BARE_PATTERNS)) == 3
+
+    text, completed = derive_missing_dtos(_BARE_PATTERNS)
+
+    assert completed == ("FEATURE-GITHUB-001", "FEATURE-GITHUB-002", "FEATURE-GITHUB-003")
+    assert database_contract_defects(text) == ()
+    patterns = parse_database_contract(text).by_id()
+    update, create, listing = (patterns[f"FEATURE-GITHUB-00{n}"] for n in (1, 2, 3))
+    assert update.input_name == "GitAccountsUpdate"
+    assert [(f.name, f.required) for f in update.inputs] == [
+        ("id", True),
+        ("login", False),
+        ("verified_at", False),
+    ]
+    assert [(f.name, f.required) for f in create.inputs] == [
+        ("login", True),
+        ("verified_at", False),
+    ]
+    assert [f.name for f in update.outputs] == ["id", "login", "verified_at"]
+    # A declared DTO is kept; only the missing half is derived.
+    assert listing.input_name == "AccountQuery" and listing.output_name == "GitAccountsRow"
+    assert derive_missing_dtos(text) == (text, ())
+
+
+def test_dtos_are_not_invented_for_an_undeclared_table():
+    text = _BARE_PATTERNS.replace("`git_accounts.update`", "`ghosts.update`")
+
+    derived, completed = derive_missing_dtos(text)
+
+    assert "FEATURE-GITHUB-001" not in completed
+    assert "requires Input and Output tables" in "".join(database_contract_defects(derived))
