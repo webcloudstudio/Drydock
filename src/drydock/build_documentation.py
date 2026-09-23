@@ -475,58 +475,14 @@ def split_publish_sections(body: str) -> tuple[FlattenedSection, ...]:
     return tuple(flattened)
 
 
-def _frontmatter_intro_markdown(metadata: dict[str, object]) -> str:
-    lines: list[str] = ["## Introduction", ""]
-    for key in ("eyebrow", "subtitle", "author", "studio", "year", "copyright"):
-        value = str(metadata.get(key, "")).strip()
-        if value:
-            label = key.replace("_", " ").title()
-            lines.append(f"**{label}:** {value}")
-            lines.append("")
-
-    ideas_title = str(metadata.get("ideas_title", "")).strip()
-    ideas = metadata.get("ideas", [])
-    sail_lead = metadata.get("sail_lead", [])
-    if ideas_title:
-        lines.append(f"### {ideas_title}")
-        lines.append("")
-    if isinstance(sail_lead, list):
-        for item in sail_lead:
-            lines.append(str(item))
-            lines.append("")
-    if isinstance(ideas, list):
-        for item in ideas:
-            if not isinstance(item, dict):
-                continue
-            title = str(item.get("title", "")).strip()
-            if title:
-                lines.append(f"#### {title}")
-                lines.append("")
-            sub_list = item.get("sub_list", [])
-            if isinstance(sub_list, list):
-                for value in sub_list:
-                    lines.append(f"- {value}")
-                if sub_list:
-                    lines.append("")
-    return "\n".join(lines).strip()
-
-
 def _with_frontmatter_intro(
-    metadata: dict[str, object],
     sections: tuple[FlattenedSection, ...],
 ) -> tuple[FlattenedSection, ...]:
-    intro = _frontmatter_intro_markdown(metadata)
-    if not intro:
-        return sections
+    """Ensure an introduction page exists to carry the rendered cover and ideas."""
     if sections and sections[0].slug == "introduction":
-        merged = FlattenedSection(
-            title=sections[0].title,
-            slug=sections[0].slug,
-            markdown=f"{intro}\n\n{sections[0].markdown}".strip(),
-        )
-        return (merged, *sections[1:])
+        return sections
     return (
-        FlattenedSection(title="Introduction", slug="introduction", markdown=intro),
+        FlattenedSection(title="Introduction", slug="introduction", markdown=""),
         *sections,
     )
 
@@ -770,7 +726,7 @@ def build_flattened_documentation(
     """Read Markdown and write a landing page plus one page per H1/H2 section."""
     metadata, body = parse_source(source.read_text(encoding="utf-8"))
     selected_theme = _resolve_theme(metadata, theme)
-    sections = _with_frontmatter_intro(metadata, split_publish_sections(body))
+    sections = _with_frontmatter_intro(split_publish_sections(body))
     logo_data_uri = _logo_data_uri(source, metadata)
     section_dir = output.parent / f"{output.stem}_sections"
     output.parent.mkdir(parents=True, exist_ok=True)

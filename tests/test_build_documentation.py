@@ -235,8 +235,8 @@ Second body.
     assert "flat-card" not in landing
     assert '<article id="content"></article>' not in landing
     intro_page = section_paths[0].read_text(encoding="utf-8")
-    assert "## Introduction" in intro_page
-    assert "**Subtitle:** Example subtitle" in intro_page
+    assert '<div class="subtitle">Example subtitle</div>' in intro_page
+    assert "**Subtitle:**" not in intro_page
     first_page = section_paths[2].read_text(encoding="utf-8")
     assert 'class="active" href="first-long-h2-section-title-that-can-wrap.html"' in first_page
     assert "First Long H2 Section<br>Title That Can Wrap" in first_page
@@ -256,9 +256,11 @@ def test_build_flattened_documentation_publishes_frontmatter_ideas_in_introducti
     _html_path, section_paths = build_flattened_documentation(source, output)
 
     intro = section_paths[0].read_text(encoding="utf-8")
-    assert "### The SAIL Method" in intro
+    assert 'class="ideas ideas-sail"' in intro
     assert "Your Compass (constitution/intent) guides your build" in intro
     assert "Setup and Install Drydock" in intro
+    assert "### The SAIL Method" not in intro
+    assert "**Eyebrow:**" not in intro
 
 
 def test_publish_document_flatten_returns_section_paths(tmp_path: Path):
