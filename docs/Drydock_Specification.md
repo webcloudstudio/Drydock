@@ -320,7 +320,7 @@ Imported source files must be UTF-8. a file that fails UTF-8 decoding is not ana
 
 ### drydock score spec
 
-`drydock score spec <Target>` diagnoses potential specification errors.  This optional step attempts to find specification errors before you start.
+`drydock score spec <Target>` prints potential specification errors.  This optional step attempts to find specification errors before you start.
 
 ### drydock analyze
 
@@ -544,6 +544,21 @@ drydock publish docs/Drydock_Specification.md --output docs/index.html
 drydock publish docs/Drydock_Specification.md --output dist/Drydock_Whitepaper.html --theme sail --pdf
 ```
 
+### drydock diagnose
+
+```bash
+drydock diagnose <Target>
+drydock diagnose <Target> --apply
+drydock diagnose <Target> --no-apply
+drydock diagnose <Target> --run <stamp>
+```
+
+`drydock diagnose` writes a report explaining failed builds and authorizes the LLM to create **Blueprint** diffs that let the next build proceed.
+
+The report contains Root Cause, Details, Commander Feedback Requested, and a Repair Proposal.  Commander Feedback Requested lists the next steps and asks how to proceed.
+
+`--apply` applies the diffs and records decisions in `DECISIONS.json`.
+
 ## SAIL Phase 4 — Loop: The Refit
 
 A **Refit** updates the **Manifest** from **Blueprint** changes and change tickets, creating new nodes for a normal build.
@@ -551,11 +566,6 @@ A **Refit** updates the **Manifest** from **Blueprint** changes and change ticke
 ### Build Commands
 
 ```text
-drydock diagnose <Target>
-drydock diagnose <Target> --apply
-drydock diagnose <Target> --no-apply
-drydock diagnose <Target> --run <stamp>
-
 drydock refit <Target>
 ```
 
@@ -575,14 +585,6 @@ flowchart LR
   REFIT --> SPECOUT(["Drydock Change Blueprints"]):::md
   REFIT --> SOFTWARE(["Updated Manifest"]):::output
 ```
-
-### drydock diagnose
-
-`drydock diagnose` writes a report explaining failed builds and authorizes the LLM to create **Blueprint** diffs that let the next build proceed.
-
-The report contains Root Cause, Details, Commander Feedback Requested, and a Repair Proposal.  Commander Feedback Requested lists the next steps and asks how to proceed.
-
-`--apply` applies the diffs and records decisions in `DECISIONS.json`.
 
 ### drydock refit
 
