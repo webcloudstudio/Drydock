@@ -73,6 +73,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-22: **Bootstrap 5, Django, and Flask Rigging now contain only shared build contracts.**
+  `bootstrap5.md` defers theme and asset delivery to Target UI guidance; `django.md` and
+  `flask.md` retain their application and callable test client contracts. Their compact
+  derivatives drop sample routes, settings, branding, and command scripts. Django acceptance
+  now names `app_server.wsgi` as the `create_app` import module.
+
 - 2026-09-22: **Python and FastAPI Rigging now publish only shared build contracts.**
   `stack/python.md` defines the language environment, dependency manifest, and test command;
   `stack/fastapi.md` defines the application factory, package, and callable test client.

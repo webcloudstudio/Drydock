@@ -340,6 +340,7 @@ def test_the_entry_module_is_the_one_the_contract_imports_from():
 
     assert contracts["fastapi.md"].entry_module == "app_server.main"
     assert contracts["flask.md"].entry_module == "app_server"
+    assert contracts["django.md"].entry_module == "app_server.wsgi"
 
 
 def test_every_published_fixture_is_a_callable_in_its_package_testing_module():
