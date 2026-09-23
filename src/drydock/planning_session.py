@@ -6457,8 +6457,8 @@ def create_plan(
         _write_text(dest, content)
         authored.append(dest)
 
-    # Imported sources remain immutable provenance.  Planning projects build-facing assets
-    # into Blueprint paths and routes author intent into the persistent Compass.
+    # Imported sources remain immutable provenance. Planning projects build-facing assets
+    # into Blueprint paths; Analyze owns the sole synthesized Compass.
     promote_imported_sources(blueprint_dir, source_roles, target_dir)
 
     # 1.5. Reconcile significant design decisions Plan disclosed against retained

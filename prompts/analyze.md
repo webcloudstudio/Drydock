@@ -379,9 +379,11 @@ stories. Use concise cited paths such as `sources/tests/test_parser.py`.
 
 ## Source Roles
 
-Classify every imported file cited above. `author intent` is routed to COMPASS and is not a
-standalone build-context file. Test suites and harnesses are context/staged assets, never
-implements files.
+Classify every imported file cited above. Reserve `author intent | compass` for a document whose
+primary purpose is Commander direction. Ordinary project descriptions, metadata, feature indexes,
+and READMEs supply facts for the synthesized COMPASS.md; they are not additional Compass documents.
+Plan never appends imported source text to COMPASS.md. Test suites and harnesses are context/staged
+assets, never implements files.
 
 | Path | Role | Plan disposition | Build disposition |
 |---|---|---|---|

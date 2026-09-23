@@ -123,6 +123,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-22: **`drydock plan create` preserves the short Compass produced by Analyze.** Imported
+  Markdown classified as author intent remains source provenance and is no longer appended verbatim
+  to `COMPASS.md`. Build steps receive one project orientation instead of repeated source pages.
+
 - 2026-09-21: **`drydock plan` derives omitted access-pattern DTOs from `## Schema`.** A
   `DATABASE.md` pattern whose Repository operation names one declared table and one verb
   (`get`, `list`, `create`, `update`, `delete`) now receives any missing `Input:`/`Output:` table
