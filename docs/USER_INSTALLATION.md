@@ -128,7 +128,8 @@ playwright install chromium
 
 Drydock ships the `/ddk-refit` skill. Every `drydock init <Target>` installs or upgrades it in the
 workspace's `.claude/skills/` (Claude Code) and `.agents/skills/` (Codex and Gemini).
-`/ddk-refit <Target> <change text>` turns a plain-text change into REFIT tickets and updates the
+`/ddk-refit <Target> <change request>` accepts a page URL, API route, CLI command, error message,
+or plain description. It resolves the owning Blueprints, creates REFIT tickets, and updates the
 Manifest. Run `drydock build <Target>` to build them.
 
 ## Upgrade or Remove Drydock

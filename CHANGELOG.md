@@ -73,6 +73,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-22: **`/ddk-refit` resolves user-known surfaces to Blueprint owners.** A request may
+  identify a page URL, API route, CLI command, screen, feature, file, error, or desired behavior.
+  The skill uses Blueprint routes and contracts to assign tickets and adds service or database
+  tickets only when the requested change requires them. A page request does not require the user
+  to know its backing API.
+
 - 2026-09-22: **Refit automatically groups accumulated unbuilt work by shared context savings.**
   `drydock refit` and `drydock refit add` run the deterministic optimizer on computed Manifests;
   `/ddk-refit` receives the same behavior through `refit add`. REFIT stories inherit explicit

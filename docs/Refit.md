@@ -76,4 +76,4 @@ Drydock ships agent skills in `Rigging/skills/`. Every `drydock init <Target>` c
 
 | Skill | Use |
 |---|---|
-| `/ddk-refit <Target> <change text>` | Matches each change to one **Blueprint**, writes the change as acceptance criteria in the **Blueprint's** own Programmatic Acceptance and User Acceptance form, and runs `drydock refit add` once per **Blueprint**. It prints only the command output. It shows no drafts and never builds. |
+| `/ddk-refit <Target> <change request>` | Accepts a page URL, API route, CLI command, screen, feature, file, error message, or plain description. Matches each change to its owning **Blueprint** using the Target's routes and contracts; splits a request only when multiple contracts must change. Writes acceptance criteria in each **Blueprint's** own Programmatic Acceptance and User Acceptance form and runs `drydock refit add` once per **Blueprint**. It prints only the command output. It shows no drafts and never builds. |
