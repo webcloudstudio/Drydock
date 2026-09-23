@@ -73,6 +73,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-22: **Python and FastAPI Rigging now publish only shared build contracts.**
+  `stack/python.md` defines the language environment, dependency manifest, and test command;
+  `stack/fastapi.md` defines the application factory, package, and callable test client.
+  Both files and their compact derivatives drop example applications, routes, settings, shell
+  process commands, and framework-specific guidance unrelated to the selected Target.
+
 - 2026-09-22: **`/ddk-refit` resolves user-known surfaces to Blueprint owners.** A request may
   identify a page URL, API route, CLI command, screen, feature, file, error, or desired behavior.
   The skill uses Blueprint routes and contracts to assign tickets and adds service or database
