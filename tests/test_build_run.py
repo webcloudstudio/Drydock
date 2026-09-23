@@ -1965,8 +1965,6 @@ def test_dependency_legitimacy_gate_blocks_new_package_and_skips_applied_updates
 
     target_dir, build_dir = _setup(tmp_path, manifest=_WITH_STACK)
     (target_dir / "blueprint" / "common.md").write_text("stack content\n", encoding="utf-8")
-    monkeypatch.setattr(br, "_git_head", lambda p: "commitabc")
-    monkeypatch.setattr(br, "_is_dirty", lambda p: False)
 
     def runner(prompt, working_directory, **kwargs):
         path = Path(working_directory) / "requirements.txt"
@@ -2003,7 +2001,6 @@ def test_dependency_legitimacy_gate_blocks_new_package_and_skips_applied_updates
     assert result.steps[0].status == "failed"
     assert "dependency legitimacy gate failed" in (result.steps[0].error or "")
     plan = parse_build_plan(target_dir / "MANIFEST.md")
-    assert "common.md" not in plan.applied_registry
     assert "DATABASE.md" not in plan.applied_specs
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
     assert "fresh-package [newly-published]" in evidence
@@ -2130,142 +2127,77 @@ state: pending
 """
 
 
-class TestDirtyGuard:
-    def test_dirty_stack_dir_proceeds_without_provenance(self, tmp_path, monkeypatch):
-        """A dirty stack no longer blocks the build; it just yields no registry provenance."""
-        import drydock.build_run as br
-        from drydock.build_plan import parse_build_plan
+_COMPACT_ORDER_MANIFEST = """# MANIFEST: Demo
+state: draft
 
-        monkeypatch.setattr(br, "_git_head", lambda p: "abc123")
-        monkeypatch.setattr(br, "_is_dirty", lambda p: True)
-
-        target_dir, build_dir = _setup(tmp_path, manifest=_WITH_STACK)
-        (target_dir / "blueprint" / "common.md").write_text("stack content\n", encoding="utf-8")
-
-        result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
-
-        assert result.exit_code() == 0
-        plan = parse_build_plan(target_dir / "MANIFEST.md")
-        assert "common.md" not in plan.applied_registry
-
-    def test_clean_stack_dir_proceeds(self, tmp_path, monkeypatch):
-        import drydock.build_run as br
-
-        monkeypatch.setattr(br, "_git_head", lambda p: "abc123")
-        monkeypatch.setattr(br, "_is_dirty", lambda p: False)
-
-        target_dir, build_dir = _setup(tmp_path, manifest=_WITH_STACK)
-        result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
-        assert result.exit_code() == 0
-
-    def test_no_git_repo_skips_guard(self, tmp_path, monkeypatch):
-        import drydock.build_run as br
-
-        monkeypatch.setattr(br, "_git_head", lambda p: None)
-
-        target_dir, build_dir = _setup(tmp_path, manifest=_WITH_STACK)
-        result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
-        assert result.exit_code() == 0
-
-    def test_no_applied_registry_written_when_no_file_delta(self, tmp_path, monkeypatch):
-        import drydock.build_run as br
-        from drydock.build_plan import parse_build_plan
-
-        monkeypatch.setattr(br, "_git_head", lambda p: "abc123")
-        monkeypatch.setattr(br, "_is_dirty", lambda p: False)
-
-        target_dir, build_dir = _setup(tmp_path, manifest=_WITH_STACK)
-        (target_dir / "blueprint" / "common.md").write_text("stack content\n", encoding="utf-8")
-        build_target(
-            "Demo",
-            target_dir,
-            build_dir=build_dir,
-            runner=make_runner(write_files=False),
-        )
-
-        plan = parse_build_plan(target_dir / "MANIFEST.md")
-        assert "common.md" not in plan.applied_registry
-
-
-class TestAppliedRegistryIntegration:
-    def _manifest_with_stack(self, tmp_path, applied=""):
-        from drydock.compass_guardrail import apply_guardrail
-
-        preamble = "# MANIFEST: Demo\nstate: draft\n"
-        if applied:
-            preamble += f"applied: {applied}\n"
-        body = (
-            preamble
-            + """
 ## story 1: Foundation
 id: foundation
 implements: DATABASE.md
 stack: common.md
-instructions: Build it.
+instructions: Build the database.
+state: {first_state}
+
+## story 2: Service
+id: service
+implements: SERVICE.md
+stack: common.md
+instructions: Build the service.
 state: pending
 """
-        )
-        target_dir = tmp_path / "target"
-        build_dir = tmp_path / "build"
-        blueprint = target_dir / "blueprint"
-        blueprint.mkdir(parents=True)
-        (target_dir / "MANIFEST.md").write_text(body, encoding="utf-8")
-        (target_dir / "COMPASS.md").write_text(
-            apply_guardrail("Compass.", "Demo", target_dir, build_dir=build_dir),
-            encoding="utf-8",
-        )
-        (blueprint / "DATABASE.md").write_text("DB SPEC\n", encoding="utf-8")
-        return target_dir, build_dir
 
-    def test_applied_registry_written_after_successful_step(self, tmp_path, monkeypatch):
-        import drydock.build_run as br
-        from drydock.build_plan import parse_build_plan
 
-        monkeypatch.setattr(br, "_git_head", lambda p: "commitabc")
-        monkeypatch.setattr(br, "_is_dirty", lambda p: False)
-
-        target_dir, build_dir = self._manifest_with_stack(tmp_path)
-        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
-
-        plan = parse_build_plan(target_dir / "MANIFEST.md")
-        assert plan.applied_registry.get("common.md") == "commitabc"
-
-    def test_compact_used_when_file_in_registry_with_matching_commit(self, tmp_path, monkeypatch):
+class TestCompactStackOrder:
+    def _run(self, tmp_path, monkeypatch, *, first_state, compact_text):
         import drydock.build_run as br
 
-        monkeypatch.setattr(br, "_git_head", lambda p: "commitabc")
-        monkeypatch.setattr(br, "_is_dirty", lambda p: False)
-
-        target_dir, build_dir = self._manifest_with_stack(tmp_path, applied="common.md=commitabc")
-        # create a compact sibling so substitution can actually happen
-        stack_check_calls = []
-
+        stack = tmp_path / "stack"
+        stack.mkdir()
+        (stack / "common.md").write_text("FULL COMMON STACK\n", encoding="utf-8")
+        (stack / "common_compact.md").write_text(compact_text, encoding="utf-8")
+        monkeypatch.setattr(br, "get_stack_dir", lambda: stack)
+        target_dir, build_dir = _setup(
+            tmp_path, manifest=_COMPACT_ORDER_MANIFEST.format(first_state=first_state)
+        )
+        prompts: list[str] = []
         runner = make_runner()
-        original_runner = runner
 
-        def capturing_runner(prompt, wd, **kwargs):
-            stack_check_calls.append(prompt)
-            return original_runner(prompt, wd, **kwargs)
+        def capturing(prompt, wd, **kwargs):
+            prompts.append(prompt)
+            return runner(prompt, wd, **kwargs)
 
-        build_target("Demo", target_dir, build_dir=build_dir, runner=capturing_runner)
-        # compact sibling doesn't exist in this test's stack_dir so it falls through to full —
-        # but the compact_stack set IS built from the registry; verify no error raised
-        assert len(stack_check_calls) == 1
+        lines: list[str] = []
+        build_target(
+            "Demo",
+            target_dir,
+            build_dir=build_dir,
+            runner=capturing,
+            step_id="service",
+            on_text=lines.append,
+        )
+        return prompts[0], "\n".join(lines)
 
-    def test_stale_commit_uses_full_file(self, tmp_path, monkeypatch):
-        import drydock.build_run as br
-        from drydock.build_plan import parse_build_plan
+    def test_compact_used_after_earlier_finished_block(self, tmp_path, monkeypatch):
+        prompt, _ = self._run(
+            tmp_path, monkeypatch, first_state="closed/verified", compact_text="COMPACT COMMON\n"
+        )
+        assert 'filename="common_compact.md"' in prompt
+        assert "FULL COMMON STACK" not in prompt
 
-        monkeypatch.setattr(br, "_git_head", lambda p: "newcommit")
-        monkeypatch.setattr(br, "_is_dirty", lambda p: False)
+    def test_full_file_when_earlier_block_unfinished(self, tmp_path, monkeypatch):
+        prompt, _ = self._run(
+            tmp_path, monkeypatch, first_state="closed/failed", compact_text="COMPACT COMMON\n"
+        )
+        assert 'filename="common.md"' in prompt
+        assert "COMPACT COMMON" not in prompt
 
-        # registry has old commit → stale → compact_stack will be empty
-        target_dir, build_dir = self._manifest_with_stack(tmp_path, applied="common.md=oldcommit")
-        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
-
-        plan = parse_build_plan(target_dir / "MANIFEST.md")
-        # after build, registry updated with new commit
-        assert plan.applied_registry.get("common.md") == "newcommit"
+    def test_stale_compact_warns_and_uses_full_file(self, tmp_path, monkeypatch):
+        stale = "<!-- Compacted from common.md sha256=" + "0" * 64 + " on x -->\nOLD\n"
+        prompt, output = self._run(
+            tmp_path, monkeypatch, first_state="closed/verified", compact_text=stale
+        )
+        assert "FULL COMMON STACK" in prompt
+        assert "WARNING: common_compact.md is stale (common.md changed)" in output
+        assert "drydock rigging compact --include-file" in output
 
 
 class TestAppliedSpecProvenance:

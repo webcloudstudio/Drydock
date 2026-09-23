@@ -15,6 +15,7 @@ from drydock.build import (
     assemble_steps,
     band_for,
     band_of,
+    compact_stack_for,
     group_duplicate_flags,
     group_steps,
     make_step_group,
@@ -570,6 +571,80 @@ state: pending
         assert s2_rules.name == "CLAUDE_RULES_compact.md"
         assert s2_rules.compact_substituted is True
 
+    def _plan_with_states(self, tmp_path: Path, s1_state: str):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(
+            _TWO_STORY_MANIFEST.replace("state: pending", f"state: {s1_state}", 1),
+            encoding="utf-8",
+        )
+        return parse_build_plan(path)
+
+    def test_compact_stack_for_uses_earlier_finished_blocks(self, tmp_path):
+        plan = self._plan_with_states(tmp_path, "closed/verified")
+        assert compact_stack_for(plan, plan.by_id()["s2"]) == {"common.md", "python.md"}
+
+    def test_compact_stack_for_ignores_unfinished_earlier_blocks(self, tmp_path):
+        plan = self._plan_with_states(tmp_path, "closed/failed")
+        assert compact_stack_for(plan, plan.by_id()["s2"]) == frozenset()
+
+    def test_compact_stack_for_ignores_own_and_later_blocks(self, tmp_path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(
+            _TWO_STORY_MANIFEST.replace("state: pending", "state: closed/verified"),
+            encoding="utf-8",
+        )
+        plan = parse_build_plan(path)
+        # Rebuilding the root: its own finished state and later blocks never count.
+        assert compact_stack_for(plan, plan.by_id()["s1"]) == frozenset()
+
+    def test_compact_stack_for_excludes_implements_and_context(self, tmp_path):
+        plan = self._plan_with_states(tmp_path, "closed/verified")
+        assert "ARCHITECTURE.md" not in compact_stack_for(plan, plan.by_id()["s2"])
+
+    def test_implements_never_compacted_even_when_named_in_compact_stack(self, tmp_path):
+        roots = self._roots_with_compacts(tmp_path)
+        (roots.blueprint_dir / "ARCHITECTURE_compact.md").write_text("a", encoding="utf-8")
+        plan = self._plan_with_states(tmp_path, "pending")
+        step = assemble_step(
+            plan.by_id()["s1"], roots, compact_stack=frozenset({"ARCHITECTURE.md"})
+        )
+        implements = [f.name for f in step.files if f.role == "implements"]
+        assert implements == ["ARCHITECTURE.md"]
+
+    def test_stale_stack_compact_falls_back_to_full_file(self, tmp_path):
+        roots = self._roots_with_compacts(tmp_path)
+        (roots.stack_dir / "common_compact.md").write_text(
+            "<!-- Compacted from Rigging/stack/common.md sha256=" + "0" * 64 + " on x -->\n\nold",
+            encoding="utf-8",
+        )
+        plan = self._plan_with_states(tmp_path, "closed/verified")
+        step = assemble_step(
+            plan.by_id()["s2"], roots, compact_stack=compact_stack_for(plan, plan.by_id()["s2"])
+        )
+        common = next(f for f in step.files if "common" in f.name)
+        assert common.name == "common.md"
+        assert common.compact_substituted is False
+        assert common.stale_compact == "common_compact.md"
+        # Story points measure the file actually injected.
+        assert common.byte_count == len("common_full" * 100)
+
+    def test_fresh_stack_compact_is_used(self, tmp_path):
+        from hashlib import sha256
+
+        roots = self._roots_with_compacts(tmp_path)
+        digest = sha256((roots.stack_dir / "common.md").read_bytes()).hexdigest()
+        (roots.stack_dir / "common_compact.md").write_text(
+            f"<!-- Compacted from Rigging/stack/common.md sha256={digest} on x -->\n\nnew",
+            encoding="utf-8",
+        )
+        plan = self._plan_with_states(tmp_path, "closed/verified")
+        step = assemble_step(
+            plan.by_id()["s2"], roots, compact_stack=compact_stack_for(plan, plan.by_id()["s2"])
+        )
+        common = next(f for f in step.files if "common" in f.name)
+        assert common.name == "common_compact.md"
+        assert common.stale_compact is None
+
 
 _CONTEXT_COMPACT_MANIFEST = """# MANIFEST: Demo
 state: approved
@@ -647,6 +722,33 @@ class TestContextCompactSubstitution:
         b_file = next(f for f in step.files if f.role == "context" and "FEATURE-B" in f.name)
         assert b_file.name == "FEATURE-B_compact.md"
         assert b_file.compact_substituted is True
+
+    def test_refit_lineage_context_is_never_compacted(self, tmp_path):
+        roots = self._roots(tmp_path)
+        blueprint = roots.blueprint_dir
+        for name in ("SCREEN-X.md", "SCREEN-X_compact.md", "SCREEN-X_refit_001.md"):
+            (blueprint / name).write_text(name, encoding="utf-8")
+        (blueprint / "SCREEN-X_refit_001_compact.md").write_text("c", encoding="utf-8")
+        path = tmp_path / "REFIT.md"
+        path.write_text(
+            """# MANIFEST: Demo
+state: approved
+
+## story 1: Refit
+id: r2
+implements: SCREEN-X_refit_002.md
+context: SCREEN-X.md, SCREEN-X_refit_001.md, FEATURE-B.md
+state: pending
+""",
+            encoding="utf-8",
+        )
+        (blueprint / "SCREEN-X_refit_002.md").write_text("ticket", encoding="utf-8")
+        step = assemble_step(parse_build_plan(path).by_id()["r2"], roots)
+        context = [f.name for f in step.files if f.role == "context"]
+        assert "SCREEN-X.md" in context
+        assert "SCREEN-X_refit_001.md" in context
+        # Unrelated context still prefers its compact sibling.
+        assert "FEATURE-B_compact.md" in context
 
     def test_context_entry_dropped_when_source_is_in_implements(self, tmp_path):
         # s2 implements FEATURE-B.md; both FEATURE-B.md and FEATURE-B_compact.md

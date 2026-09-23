@@ -18,12 +18,13 @@ never written back. A step whose story-point total exceeds the configured
 is reliably built in one prompt. The ceiling and every displayed cost are the same
 unit — tokens.
 
-Compact substitution: stack files have ``*_compact.md`` derivatives that contain
-only the caller-facing surface (types, config, contracts). The first story to use
-a stack file receives the full version; subsequent stories receive the compact
-sibling when one exists. ``assemble_steps`` tracks the first-use set and passes
-``compact_stack`` to each ``assemble_step`` call. ``build_run`` uses the applied
-registry from the manifest instead of a forward-scan set.
+Compact substitution: stack and rules files have ``*_compact.md`` derivatives that
+contain only the caller-facing surface (types, config, contracts). A step receives the
+compact sibling for a file an earlier finished block in Manifest order already named;
+otherwise it receives the full file. ``build_run`` applies that rule at run time via
+``compact_stack_for``; ``assemble_steps`` previews it assuming earlier blocks finish.
+A compact whose provenance hash no longer matches its source is stale: the step falls
+back to the full file and records the stale compact for a warning.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
 
-from drydock.build_plan import BuildPlan, PlanBlock
+from drydock.build_plan import FINISHED_STATES, BuildPlan, PlanBlock
 from drydock.compass_sources import is_compass_file
 from drydock.config import get_prompt_error_tokens, get_prompt_warn_tokens
 from drydock.errors import ConfigurationError
@@ -49,6 +50,7 @@ from drydock.prompt_assembly import (
     system_preamble_part,
 )
 from drydock.prompt_headers import prompt_header_for_file
+from drydock.refit_ticket import parse_ticket_name
 from drydock.source_roles import StagedAsset
 
 
@@ -152,6 +154,7 @@ class StepFile:
     source: Path | None = None
     compact_substituted: bool = False
     prompt_role: str | None = None
+    stale_compact: str | None = None
 
 
 @dataclass(frozen=True)
@@ -457,16 +460,34 @@ def reusable_build_compact_sources(
     )
 
 
+def _compact_is_stale(compact: Path, source: Path) -> bool:
+    """True when ``compact``'s provenance hash names content other than ``source``'s.
+
+    A compact without a provenance header, or whose source is absent, is not provably stale.
+    """
+    try:
+        lines = compact.read_text(encoding="utf-8").splitlines()
+        match = _COMPACT_PROVENANCE_SHA_RE.match(lines[0]) if lines else None
+        if match is None or not source.is_file():
+            return False
+        return match.group(1) != sha256(source.read_bytes()).hexdigest()
+    except OSError:
+        return False
+
+
 def _measure_compact(
     canonical: str,
     role: str,
     roots: tuple[Path, ...],
+    *,
+    check_fresh: bool = False,
 ) -> StepFile:
     """Resolve a file, preferring the ``*_compact.md`` sibling when it exists on disk.
 
-    Falls through to the full file when no compact sibling is found. An existing compact is
-    used regardless of its provenance header; compaction is an explicit, separate operation.
-    Compass files are never substituted: they are never compacted.
+    Falls through to the full file when no compact sibling is found. With ``check_fresh``,
+    a compact whose provenance hash no longer matches its source falls back to the full file
+    and is reported through ``stale_compact``. Compass files are never substituted: they are
+    never compacted.
     """
     if is_compass_file(canonical):
         return _measure(canonical, role, roots)
@@ -477,6 +498,8 @@ def _measure_compact(
             byte_count = _file_size(candidate)
             if byte_count is None:
                 continue
+            if check_fresh and _compact_is_stale(candidate, root / canonical):
+                return replace(_measure(canonical, role, roots), stale_compact=compact)
             return StepFile(
                 name=compact,
                 role=role,
@@ -536,16 +559,18 @@ def assemble_step(
     Reads files only; writes nothing. Files named by a block but not found are
     reported ``missing`` and contribute zero cost.
 
-    ``compact_stack`` is the set of canonical file names (as written in the
-    manifest, any role) that should use their ``*_compact.md`` sibling for this
-    step. When ``None``, no compact substitution is applied. The caller —
-    either ``assemble_steps`` (forward-scan) or ``build_run`` (applied registry)
-    — supplies the set.
+    ``compact_stack`` is the set of ``stack`` and ``rules`` file names that should
+    use their ``*_compact.md`` sibling for this step. When ``None``, no compact
+    substitution is applied. The caller — ``assemble_steps`` (preview) or
+    ``build_run`` (``compact_stack_for``) — supplies the set. Other roles never
+    take it: ``implements`` is the file being built.
 
     The ``context`` role always prefers each file's ``*_compact.md`` sibling and
-    falls through to the full file, independent of ``compact_stack``. A context
-    entry whose source file is also in this block's ``implements:`` is dropped —
-    the step already carries the authoritative full file.
+    falls through to the full file, independent of ``compact_stack``, except the
+    lineage of a refit ticket this block implements (its parent specification and
+    earlier tickets), which is always full. A context entry whose source file is
+    also in this block's ``implements:`` is dropped — the step already carries the
+    authoritative full file.
     """
     if warn_tokens is None:
         warn_tokens = resolve_warn_tokens()
@@ -554,6 +579,7 @@ def assemble_step(
         _canonical_spec_name(name)
         for name in _role_names(block, "implements", blueprint_dir=roots.blueprint_dir)
     }
+    lineage = _refit_lineage_stems(implements_canonical)
     for role in _ROLE_ORDER:
         names: list[str] = []
         if role == "context":
@@ -568,16 +594,15 @@ def assemble_step(
                     names.append(name)
         for name in names:
             if role == "context":
-                measured = _measure_compact(
-                    name,
-                    role,
-                    roots.roots_for(role),
-                )
+                if _in_refit_lineage(name, lineage):
+                    measured = _measure(name, role, roots.roots_for(role))
+                else:
+                    measured = _measure_compact(name, role, roots.roots_for(role))
                 files.append(
                     replace(measured, prompt_role=_context_roles(block).get(name, "context"))
                 )
-            elif compact_stack is not None and name in compact_stack:
-                files.append(_measure_compact(name, role, roots.roots_for(role)))
+            elif role in _COMPACT_ROLES and compact_stack is not None and name in compact_stack:
+                files.append(_measure_compact(name, role, roots.roots_for(role), check_fresh=True))
             else:
                 files.append(_measure(name, role, roots.roots_for(role)))
 
@@ -607,6 +632,48 @@ def assemble_step(
     )
 
 
+_COMPACT_ROLES = ("stack", "rules")
+
+
+def _refit_lineage_stems(implements_canonical: Iterable[str]) -> frozenset[str]:
+    """Return the specification stems of refit tickets this block implements."""
+    stems: set[str] = set()
+    for name in implements_canonical:
+        parsed = parse_ticket_name(name)
+        if parsed is not None:
+            stems.add(parsed[0])
+    return frozenset(stems)
+
+
+def _in_refit_lineage(name: str, stems: frozenset[str]) -> bool:
+    """True when ``name`` is the parent specification or a ticket of a refit lineage."""
+    if not stems:
+        return False
+    canonical = _canonical_spec_name(name)
+    parsed = parse_ticket_name(canonical)
+    stem = parsed[0] if parsed is not None else canonical.removesuffix(".md")
+    return stem in stems
+
+
+def _compact_role_names(block: PlanBlock) -> tuple[str, ...]:
+    return tuple(name for role in _COMPACT_ROLES for name in _role_names(block, role))
+
+
+def compact_stack_for(plan: BuildPlan, block: PlanBlock) -> frozenset[str]:
+    """Return the stack and rules files an earlier finished block in Manifest order named.
+
+    A file a finished block was built with is established in the Target, so later steps
+    receive its compact sibling. The block's own earlier runs never count.
+    """
+    names: set[str] = set()
+    for earlier in plan.blocks:
+        if earlier.block_id == block.block_id:
+            break
+        if earlier.block_type in STEP_TYPES and earlier.state in FINISHED_STATES:
+            names.update(_compact_role_names(earlier))
+    return frozenset(names)
+
+
 def assemble_steps(
     plan: BuildPlan,
     roots: StepRoots,
@@ -615,11 +682,11 @@ def assemble_steps(
 ) -> tuple[StepAssembly, ...]:
     """Assemble every executable step in the plan, in manifest order.
 
-    Performs a forward scan for compact substitution across all roles: the first
-    step that names any file receives the full version; every subsequent step
-    receives the compact sibling (``*_compact.md``) when one exists on disk.
-    Steps show the resolved name so the QuarterDeck displays honest token costs
-    before the build runs.
+    Previews ``compact_stack_for`` assuming every earlier block finishes: the first
+    step that names a stack or rules file receives the full version; every
+    subsequent step receives the compact sibling (``*_compact.md``) when one exists
+    on disk. Steps show the resolved name so the QuarterDeck displays honest token
+    costs before the build runs.
     """
     if warn_tokens is None:
         warn_tokens = resolve_warn_tokens()
@@ -631,9 +698,7 @@ def assemble_steps(
         step = assemble_step(
             block, roots, warn_tokens=warn_tokens, compact_stack=frozenset(files_seen)
         )
-        for role in _ROLE_ORDER:
-            for name in _role_names(block, role, blueprint_dir=roots.blueprint_dir):
-                files_seen.add(name)
+        files_seen.update(_compact_role_names(block))
         result.append(step)
     return tuple(result)
 

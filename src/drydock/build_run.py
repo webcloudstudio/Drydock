@@ -21,7 +21,7 @@ import re
 import shutil
 import subprocess
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from hashlib import sha256
@@ -60,9 +60,11 @@ from drydock.acceptance_requirements import (
 )
 from drydock.build import (
     StepAssembly,
+    StepFile,
     StepGroup,
     StepRoots,
     assemble_step,
+    compact_stack_for,
     make_step_group,
     render_build_group_prompt_assembly,
     render_build_prompt_assembly,
@@ -83,7 +85,6 @@ from drydock.build_plan import (
     PlanBlock,
     build_relevant_sha256,
     parse_build_plan,
-    set_applied_registry,
     set_applied_specs,
     stale_applied_specs,
 )
@@ -225,22 +226,18 @@ class FileFingerprint:
     digest: str
 
 
-def _git_head(path: Path) -> str | None:
-    """Return HEAD commit of the git repo containing path, or None if not in git."""
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(path), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return None
+def _stale_compact_warnings(assemblies: Iterable[StepAssembly]) -> list[str]:
+    """Return one warning per stale compact a step fell back from, in first-seen order."""
+    seen: dict[str, StepFile] = {}
+    for assembly in assemblies:
+        for step_file in assembly.files:
+            if step_file.stale_compact and step_file.stale_compact not in seen:
+                seen[step_file.stale_compact] = step_file
+    return [
+        f"WARNING: {compact} is stale ({f.name} changed) — using full file; "
+        f"run drydock rigging compact --include-file {f.source or f.name}"
+        for compact, f in seen.items()
+    ]
 
 
 def _git_file_commit(path: Path) -> str:
@@ -271,22 +268,6 @@ def _git_file_commit(path: Path) -> str:
     except (OSError, ValueError, subprocess.TimeoutExpired):
         pass
     return "-"
-
-
-def _is_dirty(path: Path) -> bool:
-    """True if the git repo containing path has uncommitted changes in that directory."""
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(path), "status", "--porcelain", "--", "."],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
-        )
-        return result.returncode == 0 and bool(result.stdout.strip())
-    except (OSError, subprocess.TimeoutExpired):
-        return False
 
 
 @dataclass(frozen=True)
@@ -2298,12 +2279,6 @@ def build_target(
         rigging_dir=get_rigging_root(),
     )
 
-    # Read-only provenance for the dependency registry: record which stack commit a step
-    # was built against, when the stack happens to be a clean git checkout. A dirty or
-    # non-git stack simply yields no provenance; the build never blocks on it.
-    stack_head = _git_head(stack_dir)
-    if stack_head is not None and _is_dirty(stack_dir):
-        stack_head = None
     plan = synchronized_plan
     if step_id is not None:
         step_id = _resolve_step_selector(plan, step_id)
@@ -2355,16 +2330,12 @@ def build_target(
 
         block_started = time.monotonic()
         block_started_at = _wall_time()
-        compact_stack: frozenset[str] | None = None
-        if stack_head is not None:
-            compact_stack = frozenset(
-                name for name, commit in plan.applied_registry.items() if commit == stack_head
-            )
         assemblies = tuple(
-            assemble_step(block, roots, compact_stack=compact_stack) for block in unit.steps
+            assemble_step(block, roots, compact_stack=compact_stack_for(plan, block))
+            for block in unit.steps
         )
         regression_assemblies = tuple(
-            assemble_step(block, roots, compact_stack=compact_stack)
+            assemble_step(block, roots, compact_stack=compact_stack_for(plan, block))
             for block in unit.already_verified
         )
         group = make_step_group(
@@ -2383,6 +2354,8 @@ def build_target(
             f"{len(unit.already_verified)} verified · {story_points_summary}",
         )
         _emit(on_text, f"workdir: {resolved_build_dir}")
+        for stale in _stale_compact_warnings((*assemblies, *regression_assemblies)):
+            _emit(on_text, stale)
         _emit(on_text, f"started at {block_started_at}")
         if unit.already_verified:
             _emit(
@@ -3804,18 +3777,6 @@ def build_target(
                     "evidence": _rel(evidence_path, target_dir),
                 }
         batch_set_block_fields(manifest_path, manifest_updates)
-        if status not in {"failed", "blocked"} and stack_head is not None:
-            updated_registry = dict(plan.applied_registry)
-            changed = False
-            for block in unit.steps:
-                for field_key in ("stack", "rules", "context", "implements"):
-                    field_val = block.fields.get(field_key, ())
-                    if isinstance(field_val, tuple):
-                        for name in field_val:
-                            updated_registry[name] = stack_head
-                            changed = True
-            if changed:
-                set_applied_registry(manifest_path, updated_registry)
         if status not in {"failed", "blocked"}:
             database_built = any(
                 "DATABASE.md" in step.fields.get("implements", ()) for step in unit.steps

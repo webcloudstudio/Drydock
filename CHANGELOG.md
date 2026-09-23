@@ -144,6 +144,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-22: **`drydock build` compacts stack and rules files by Manifest order, not git HEAD.**
+  A step receives `<file>_compact.md` for a `stack:` or `rules:` file that an earlier
+  `closed/verified` or `closed/implemented` block named; the first block, a rebuilt root, and
+  blocks after an unfinished predecessor receive the full file. Previously eligibility required
+  the manifest `applied:` registry entry to equal the Drydock repository HEAD, so any unrelated
+  commit re-injected full stack files (observed on refit blocks). A compact whose provenance
+  sha256 no longer matches its source now falls back to the full file with a
+  `WARNING: <file>_compact.md is stale` line naming `drydock rigging compact --include-file`.
+  `implements:` files are never compacted, and a refit ticket's parent specification and earlier
+  tickets always enter `context:` in full. The `applied:` manifest field is no longer read or
+  written.
 - 2026-09-21: **`drydock plan` derives omitted access-pattern DTOs from `## Schema`.** A
   `DATABASE.md` pattern whose Repository operation names one declared table and one verb
   (`get`, `list`, `create`, `update`, `delete`) now receives any missing `Input:`/`Output:` table

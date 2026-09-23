@@ -351,15 +351,6 @@ _NODE_TYPES = {
 PlanBlock = ManifestNode
 
 
-def _parse_applied_registry(text: str) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for entry in text.split(","):
-        name, separator, commit = entry.strip().partition("=")
-        if separator and name.strip() and commit.strip():
-            result[name.strip()] = commit.strip()
-    return result
-
-
 def _parse_applied_specs(text: str) -> dict[str, AppliedSpecRecord]:
     result: dict[str, AppliedSpecRecord] = {}
     for raw in text.splitlines():
@@ -406,7 +397,6 @@ class DrydockManifest:
     metadata: ManifestMetadata
     blocks: list[ManifestNode]
     preamble: list[str]
-    applied_registry: dict[str, str] = field(default_factory=dict)
     applied_specs: dict[str, AppliedSpecRecord] = field(default_factory=dict)
     source_lineage: dict[str, object] = field(default_factory=dict)
     _trailing_newline: bool = True
@@ -643,7 +633,6 @@ class DrydockManifest:
             metadata=ManifestMetadata(project=project, fields=metadata_fields),
             blocks=blocks,
             preamble=lines[:first_block],
-            applied_registry=_parse_applied_registry(metadata_fields.get("applied", "")),
             applied_specs=_parse_applied_specs(metadata_fields.get("applied_specs", "")),
             source_lineage=_parse_source_lineage(metadata_fields.get("source_lineage", "")),
             _trailing_newline=text.endswith("\n"),
