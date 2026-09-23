@@ -142,6 +142,28 @@ def test_legacy_taxonomy_manifest_projects_to_nothing():
     assert stories_from_manifest(manifest.blocks) == ()
 
 
+def test_manifest_projection_preserves_cost_inputs_and_build_lifecycle():
+    manifest = DrydockManifest.parse(
+        "# MANIFEST: Demo\n\n"
+        "## story 1: Refitted screen\n"
+        "id: screen-refit-001\ntype: service\nphase: 2\nblock: 7\n"
+        "implements: SCREEN-HOME_refit_001.md\n"
+        "context: DATABASE_compact.md, SCREEN-HOME.md\n"
+        "rules: python-style.md, security.md\nstack: python.md\n"
+        "instructions: |\n  Preserve the database contract.\n  Apply the ticket.\n"
+        "state: closed/verified\n",
+        source="MANIFEST.md",
+    )
+    (recovered,) = stories_from_manifest(manifest.blocks)
+    assert recovered.implements == "SCREEN-HOME_refit_001.md"
+    assert recovered.fields["context"] == "DATABASE_compact.md, SCREEN-HOME.md"
+    assert recovered.fields["rules"] == "python-style.md, security.md"
+    assert recovered.fields["instructions"] == "Preserve the database contract.\nApply the ticket."
+    assert recovered.stack == ("python.md",)
+    assert recovered.state == "closed/verified"
+    assert recovered.block == 7
+
+
 def test_computed_field_updates_only_carry_computed_facts():
     stories = (PlannedStory(story_id="a", stack_mode="consumer", block=3),)
     assert computed_field_updates(stories) == {

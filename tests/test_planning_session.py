@@ -6436,3 +6436,62 @@ def test_unmasked_defects_cannot_extend_the_budget_past_its_ceiling():
     )
 
     assert budget == 3 * ps._REPAIR_BUDGET_CEILING_FACTOR
+
+
+def test_schedule_cost_uses_compact_context_and_counts_shared_rules_once(tmp_path, isolated_config):
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "DOMAIN.md").write_text("full contract " * 4000)
+    (blueprint / "DOMAIN_compact.md").write_text("compact contract " * 400)
+    (tmp_path / "local-rules.md").write_text("rules " * 400)
+    a_text, b_text = "A specification\n", "B specification\n"
+    (blueprint / "A.md").write_text(a_text)
+    (blueprint / "B.md").write_text(b_text)
+    declared = [
+        PlannedStory(
+            story_id=name,
+            story_type="service",
+            implements=f"{name.upper()}.md",
+            fields={"context": "DOMAIN.md", "rules": "local-rules.md"},
+        )
+        for name in ("a", "b")
+    ]
+    computation = ps._compute_schedule(declared, blueprint_dir=blueprint, emitted_files={})
+    assert not computation.fatal
+    assert len(computation.blocks) == 1
+    expected = sum(
+        ps.estimate_tokens(len(text.encode()))
+        for text in (a_text, b_text, "compact contract " * 400, "rules " * 400)
+    )
+    assert computation.blocks[0].size_tokens == expected
+
+
+def test_schedule_full_implementation_wins_over_compact_context(tmp_path, isolated_config):
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "A.md").write_text("A specification\n")
+    (blueprint / "B.md").write_text("B implementation " * 400)
+    (blueprint / "B_compact.md").write_text("B interface\n")
+    declared = [
+        PlannedStory(
+            story_id="a",
+            story_type="service",
+            implements="A.md",
+            fields={"context": "B.md", "rules": "local-rules.md"},
+        ),
+        PlannedStory(
+            story_id="b",
+            story_type="service",
+            implements="B.md",
+            fields={"rules": "local-rules.md"},
+        ),
+    ]
+    (tmp_path / "local-rules.md").write_text("rule " * 2000)
+    computation = ps._compute_schedule(declared, blueprint_dir=blueprint, emitted_files={})
+    assert not computation.fatal
+    assert len(computation.blocks) == 1
+    expected = sum(
+        ps.estimate_tokens(len(text.encode()))
+        for text in ("A specification\n", "B implementation " * 400, "rule " * 2000)
+    )
+    assert computation.blocks[0].size_tokens == expected

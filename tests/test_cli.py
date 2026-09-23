@@ -2654,6 +2654,35 @@ class TestRefit:
         rc, out, err = run_cli("refit", "add", "MyProject", "SCREEN-HOME", str(tmp_path / "no.md"))
         assert rc == 2
 
+    def test_successive_add_calls_optimize_accumulated_tickets(self, tmp_path, monkeypatch):
+        from drydock.manifest import DrydockManifest
+
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        target = tmp_path / "targets" / "MyProject"
+        blueprint = target / "blueprint"
+        blueprint.mkdir(parents=True)
+        (blueprint / "SCREEN-HOME.md").write_text("# Home\n" + "Context. " * 800)
+        path = target / "MANIFEST.md"
+        path.write_text(
+            "# MANIFEST: MyProject\nstate: approved\nblocks: 1\n\n"
+            "## story 1: Home\nid: home\nsummary: Home\ntype: service\n"
+            "phase: 1\nblock: 1\nimplements: SCREEN-HOME.md\nstate: closed/verified\n"
+        )
+        body = tmp_path / "body.md"
+        body.write_text("# Rename\n\n- The button reads Go.\n")
+        for number in (1, 2, 3):
+            rc, out, err = run_cli("refit", "add", "MyProject", "SCREEN-HOME", str(body))
+            assert rc == 0, out + err
+            assert f"Ticket SCREEN-HOME_refit_{number:03d} created" in out
+        plan = DrydockManifest.load(path, compatibility=True)
+        assert plan.node("home").state == "closed/verified"
+        assert plan.node("home").block == 1
+        assert [plan.node(f"screen-home-refit-{number:03d}").block for number in (1, 2, 3)] == [
+            2,
+            2,
+            2,
+        ]
+
 
 class TestDocumentAssemble:
     """drydock document assemble renders Target DOC files."""

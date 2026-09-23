@@ -27,6 +27,64 @@ def codes(defects) -> set[str]:
     return {defect.code for defect in defects}
 
 
+@pytest.mark.parametrize(
+    "state",
+    ["closed/verified", "closed/implemented", "implemented", "closed/failed", "blocked/questions"],
+)
+def test_regrouping_preserves_started_blocks_and_chains_pending_work(state):
+    declared = [
+        story("original", block=7, state=state),
+        story("r1", block=8, depends=("original",)),
+        story("r2", block=9, depends=("r1",)),
+        story("r3", block=10, depends=("r2",)),
+    ]
+    result = compute_plan(
+        declared,
+        preserve_existing=True,
+        min_savings=1,
+        target_tokens=250,
+        block_size_fn=lambda members: 100 + 50 * len(members),
+    )
+    assert not result.fatal
+    assert [block.story_ids for block in result.blocks] == [("original",), ("r1", "r2", "r3")]
+    assert [s.block for s in result.stories] == [7, 8, 8, 8]
+
+
+def test_regrouping_respects_acceptance_limits_and_does_not_cross_started_work():
+    declared = [
+        story("original", block=1, state="closed/verified"),
+        story("r1", block=2, depends=("original",)),
+        story("r2", block=3, depends=("r1",)),
+        story("r3", block=4, depends=("r2",)),
+    ]
+    result = compute_plan(
+        declared,
+        preserve_existing=True,
+        min_savings=1,
+        acceptance_limit=2,
+        acceptance_count_fn=lambda _: 1,
+        block_size_fn=lambda members: 100 + 50 * len(members),
+    )
+    assert not result.fatal
+    assert [block.story_ids for block in result.blocks] == [("original",), ("r1", "r2"), ("r3",)]
+
+    # A fixed block between two pending stories is still an ordering barrier.
+    declared[2] = story("r2", block=3, state="implemented", depends=("r1",))
+    result = compute_plan(
+        declared,
+        preserve_existing=True,
+        min_savings=1,
+        block_size_fn=lambda members: 100 + 50 * len(members),
+    )
+    assert not result.fatal
+    assert [block.story_ids for block in result.blocks] == [
+        ("original",),
+        ("r1",),
+        ("r2",),
+        ("r3",),
+    ]
+
+
 # ── Verification ────────────────────────────────────────────────────────────────────
 
 

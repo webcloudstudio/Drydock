@@ -3586,6 +3586,7 @@ def _compute_schedule(
     *,
     blueprint_dir: Path,
     emitted_files: dict[str, str],
+    preserve_existing: bool = False,
 ) -> PlanComputation:
     """Verify a declared graph and compute everything positional about it.
 
@@ -3611,25 +3612,24 @@ def _compute_schedule(
 
     def named_file_tokens(name: str, key: str) -> int:
         names = [name]
-        if name.endswith("_compact.md"):
+        if key == "context" and name.endswith(".md") and not name.endswith("_compact.md"):
+            names.insert(0, name.removesuffix(".md") + "_compact.md")
+        elif name.endswith("_compact.md"):
             names.append(name.replace("_compact.md", ".md"))
-        candidates = [
-            root / candidate
-            for candidate in names
-            for root in (blueprint_dir, blueprint_dir.parent)
-        ]
+        roots = (blueprint_dir, blueprint_dir.parent)
         if key == "rules":
-            try:
-                from drydock.paths import get_rigging_root
+            from drydock.paths import get_rigging_root
 
-                rigging = get_rigging_root()
-                candidates[0:0] = [rigging / candidate for candidate in names]
-            except Exception:
-                pass
-        emitted = emitted_files.get(name)
-        if emitted is not None:
-            return estimate_tokens(len(emitted.encode()))
+            roots = (get_rigging_root(), blueprint_dir.parent)
+        candidates = [root / candidate for candidate in names for root in roots]
         for path in candidates:
+            emitted = (
+                emitted_files.get(path.relative_to(blueprint_dir).as_posix())
+                if path.is_relative_to(blueprint_dir)
+                else None
+            )
+            if emitted is not None:
+                return estimate_tokens(len(emitted.encode()))
             try:
                 return estimate_tokens(path.stat().st_size)
             except OSError:
@@ -3642,12 +3642,11 @@ def _compute_schedule(
 
     def block_size_fn(stories: Sequence[PlannedStory]) -> int:
         total = compass_tokens
-        seen_files: set[str] = set()
+        # Full implementation inputs win over compact context, independent of story order.
+        seen_files = {story.implements for story in stories}
+        total += sum(specification_tokens(name) for name in seen_files)
         stack_modes: dict[str, str] = {}
         for story in stories:
-            if story.implements not in seen_files:
-                seen_files.add(story.implements)
-                total += specification_tokens(story.implements)
             for key in ("context", "rules"):
                 names = list(field_names(story, key))
                 if key == "context" and story.implements.startswith(("FEATURE-", "SCREEN-")):
@@ -3699,6 +3698,7 @@ def _compute_schedule(
         size_fn=lambda story: block_size_fn((story,)),
         acceptance_count_fn=acceptance_count_fn,
         block_size_fn=block_size_fn,
+        preserve_existing=preserve_existing,
     )
 
 
@@ -4288,6 +4288,7 @@ def _apply_computed_schedule(
     *,
     blueprint_dir: Path,
     emitted_files: dict[str, str],
+    preserve_existing: bool = False,
 ) -> list[str]:
     """Compute and stamp the schedule fields the model must never author.
 
@@ -4309,20 +4310,37 @@ def _apply_computed_schedule(
         return []
 
     computation = _compute_schedule(
-        declared, blueprint_dir=blueprint_dir, emitted_files=emitted_files
+        declared,
+        blueprint_dir=blueprint_dir,
+        emitted_files=emitted_files,
+        preserve_existing=preserve_existing,
     )
     if computation.fatal:
+        if preserve_existing:
+            raise SpecificationError(
+                "Cannot optimize build blocks: "
+                + "; ".join(defect.rendered() for defect in computation.fatal)
+            )
         return [defect.rendered() for defect in computation.fatal]
-    computed_ids = {story.story_id for story in computation.stories}
+    frozen_numbers = {
+        story.block for story in declared if preserve_existing and story.state != "pending"
+    } - {0}
+    computed_ids = {
+        story.story_id for story in computation.stories if story.block not in frozen_numbers
+    }
     computed_nodes = {node.block_id: node for node in plan.blocks if node.block_id in computed_ids}
-    ordered_nodes = [computed_nodes[story.story_id] for story in computation.stories]
+    ordered_nodes = [
+        computed_nodes[story.story_id]
+        for story in computation.stories
+        if story.story_id in computed_ids
+    ]
     ordered = iter(ordered_nodes)
     plan.blocks[:] = [
         next(ordered) if node.block_id in computed_ids else node for node in plan.blocks
     ]
     story_number = 0
     spike_number = 0
-    for node in plan.blocks:
+    for node in () if preserve_existing else plan.blocks:
         if node.block_type == "story":
             story_number += 1
             if node.number != story_number:
@@ -4334,7 +4352,8 @@ def _apply_computed_schedule(
                 node.number = spike_number
                 node.dirty = True
     for story_id, updates in computed_field_updates(computation.stories).items():
-        plan.set_fields(story_id, **updates)
+        if story_id in computed_ids:
+            plan.set_fields(story_id, **updates)
     plan.set_metadata(blocks=str(len(computation.blocks)))
     return [defect.rendered() for defect in computation.warnings]
 

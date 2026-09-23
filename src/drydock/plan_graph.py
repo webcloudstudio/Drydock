@@ -109,6 +109,8 @@ class PlannedStory:
     #: Assigned by :func:`group_blocks`; ephemeral, Manifest-only, regenerated every run.
     block: int = 0
     fields: Mapping[str, str] = field(default_factory=dict)
+    #: Existing build lifecycle; initial declarations default to untouched work.
+    state: str = "pending"
 
     @property
     def is_feature(self) -> bool:
@@ -475,6 +477,7 @@ def group_blocks(
     acceptance_limit: int = DEFAULT_BLOCK_ACCEPTANCE_LIMIT,
     min_savings: int = DEFAULT_BLOCK_MIN_SAVINGS,
     block_size_fn: Callable[[Sequence[PlannedStory]], int] | None = None,
+    preserve_existing: bool = False,
 ) -> tuple[tuple[PlannedStory, ...], tuple[Block, ...]]:
     """Optimize blocks from the dependency frontier using deduplicated assembled cost.
 
@@ -490,6 +493,10 @@ def group_blocks(
     criteria it owes. Cost is the wrong proxy for the second — the cheapest merge on offer is
     often two stories that each carry a full conformance section, and the merged block then owes
     both against one flat repair budget.
+
+    ``preserve_existing`` retains every block containing non-pending work as an indivisible
+    dependency barrier. Only wholly pending blocks are regrouped; new numbers follow the
+    retained numbers. The graph remains whole so prerequisites still constrain grouping.
     """
     if block_size_fn is None:
 
@@ -504,16 +511,49 @@ def group_blocks(
     completed: set[str] = set()
     blocks: list[Block] = []
     stamped: list[PlannedStory] = []
+    # A started block is an execution/evidence unit. Freeze the entire group, including any
+    # still-pending members, rather than moving work out from under a resumable build.
+    frozen_numbers = {
+        story.block for story in ordered if preserve_existing and story.state != "pending"
+    } - {0}
+    frozen = {story.story_id: story.block for story in ordered if story.block in frozen_numbers}
+    next_number = max(frozen_numbers, default=0) + 1
+
+    def ready_to_schedule(sid: str) -> bool:
+        members = (
+            [item for item in ordered if item.block == frozen[sid]]
+            if sid in frozen
+            else [known[sid]]
+        )
+        internal = {item.story_id for item in members}
+        return all(
+            dep in completed or dep in internal or dep not in known
+            for item in members
+            for dep in item.depends
+        )
 
     while remaining:
-        ready = [
-            known[sid]
-            for sid in remaining
-            if all(dep in completed or dep not in known for dep in known[sid].depends)
-        ]
+        ready = [known[sid] for sid in remaining if ready_to_schedule(sid)]
         if not ready:
             raise ValueError("plan graph has no ready dependency frontier")
         seed = min(ready, key=lambda story: (story.phase, declaration[story.story_id]))
+        if seed.story_id in frozen:
+            members = tuple(story for story in ordered if story.block == seed.block)
+            member_ids = tuple(story.story_id for story in members)
+            blocks.append(
+                Block(
+                    number=seed.block,
+                    story_type=seed.story_type,
+                    phase=seed.phase,
+                    stack=tuple(dict.fromkeys(name for story in members for name in story.stack)),
+                    story_ids=member_ids,
+                    size_tokens=max(0, block_size_fn(members)),
+                )
+            )
+            stamped.extend(members)
+            remaining.difference_update(member_ids)
+            completed.update(member_ids)
+            continue
         current = [seed]
         current_ids = {seed.story_id}
         key = _partition_key(seed)
@@ -529,7 +569,8 @@ def group_blocks(
             candidates = [
                 known[sid]
                 for sid in remaining - current_ids
-                if _partition_key(known[sid]) == key
+                if sid not in frozen
+                and _partition_key(known[sid]) == key
                 and all(dep in active_done or dep not in known for dep in known[sid].depends)
             ]
             ranked: list[tuple[int, int, int, PlannedStory, int]] = []
@@ -571,7 +612,8 @@ def group_blocks(
             current_ids.add(candidate.story_id)
             current_size = combined
 
-        number = len(blocks) + 1
+        number = next_number
+        next_number += 1
         union_stack = tuple(dict.fromkeys(name for story in current for name in story.stack))
         blocks.append(
             Block(
@@ -620,6 +662,7 @@ def compute_plan(
     size_fn: Callable[[PlannedStory], int] | None = None,
     acceptance_count_fn: Callable[[PlannedStory], int] | None = None,
     block_size_fn: Callable[[Sequence[PlannedStory]], int] | None = None,
+    preserve_existing: bool = False,
 ) -> PlanComputation:
     """Verify, order, assign stack modes, size, and block a declared plan.
 
@@ -651,6 +694,7 @@ def compute_plan(
             acceptance_limit=acceptance_limit,
             min_savings=min_savings,
             block_size_fn=block_size_fn,
+            preserve_existing=preserve_existing,
         )
     except ValueError as exc:
         return PlanComputation(

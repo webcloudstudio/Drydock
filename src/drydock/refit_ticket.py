@@ -25,7 +25,7 @@ _REFIT_RE = re.compile(r"^(?P<stem>.+)_refit_(?P<number>\d{3,})\.md$")
 _H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 #: Fields a ticket story inherits from the Blueprint's own story, so the build places it in the
 #: same stack and taxonomy the Blueprint was built with.
-_INHERITED_FIELDS = ("type", "kind", "stack", "stack_mode")
+_INHERITED_FIELDS = ("type", "kind", "stack", "stack_mode", "rules")
 
 
 @dataclass(frozen=True)
@@ -129,6 +129,7 @@ def add_ticket(
     blueprint = _resolve_blueprint(blueprint_dir, blueprint)
     stem = blueprint[: -len(".md")]
     manifest = DrydockManifest.load(manifest_path, compatibility=True)
+    before = manifest_path.read_text(encoding="utf-8")
 
     owners = _story_ids_implementing(manifest, blueprint)
     if not owners:
@@ -199,7 +200,11 @@ def add_ticket(
     )
     try:
         manifest.save()
+        from drydock.manifest_edit import optimize_build_blocks
+
+        optimize_build_blocks(manifest_path, pending_only=True)
     except Exception:
         ticket_path.unlink(missing_ok=True)
+        manifest_path.write_text(before, encoding="utf-8", newline="\n")
         raise
     return AddedTicket(path=ticket_path, story_id=story_id, depends=depends)

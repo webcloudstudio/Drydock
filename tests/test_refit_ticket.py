@@ -8,6 +8,7 @@ import pytest
 
 from drydock.errors import SpecificationError
 from drydock.manifest import DrydockManifest
+from drydock.manifest_edit import optimize_build_blocks
 from drydock.refit_ticket import add_ticket, parse_ticket_name, ticket_chain
 
 _MANIFEST = """# MANIFEST: Demo
@@ -137,3 +138,116 @@ def test_rejects_empty_text_and_unowned_blueprint(tmp_path):
 def test_parse_ticket_name():
     assert parse_ticket_name("SCREEN-A_refit_012.md") == ("SCREEN-A", 12)
     assert parse_ticket_name("SCREEN-A.md") is None
+
+
+def test_successive_tickets_group_by_inherited_context_without_moving_built_work(
+    tmp_path, isolated_config
+):
+    target = _target(tmp_path)
+    manifest_path = target / "MANIFEST.md"
+    # No stack savings: the inherited rules and context alone must justify this grouping.
+    manifest_path.write_text(
+        _MANIFEST.replace("stack: python.md", "rules: local-rules.md"), encoding="utf-8"
+    )
+    (target / "blueprint" / "ARCHITECTURE_compact.md").write_text("context " * 800)
+    (target / "local-rules.md").write_text("rule " * 800)
+    before = DrydockManifest.load(manifest_path, compatibility=True)
+    original_nodes = {node.block_id: list(node.lines) for node in before.blocks}
+
+    tickets = [add_ticket(target, "SCREEN-HOME", f"# Change {number}\n") for number in range(3)]
+
+    plan = DrydockManifest.load(manifest_path, compatibility=True)
+    nodes = [plan.node(ticket.story_id) for ticket in tickets]
+    assert [node.block for node in nodes] == [3, 3, 3]
+    assert [node.depends for node in nodes] == [
+        ("home-screen",),
+        (tickets[0].story_id,),
+        (tickets[1].story_id,),
+    ]
+    assert all(node.fields["rules"] == ("local-rules.md",) for node in nodes)
+    assert all("ARCHITECTURE_compact.md" in node.fields["context"] for node in nodes)
+    for node_id, lines in original_nodes.items():
+        assert plan.node(node_id).lines == lines
+    # Another pass sees the same inputs and leaves the file byte-for-byte unchanged.
+    assert optimize_build_blocks(manifest_path, pending_only=True) is False
+
+
+def test_new_ticket_does_not_join_a_partially_built_block(tmp_path, isolated_config):
+    target = _target(tmp_path)
+    (target / "blueprint" / "ARCHITECTURE_compact.md").write_text("context " * 800)
+    first = add_ticket(target, "SCREEN-HOME", "# First\n")
+    second = add_ticket(target, "SCREEN-HOME", "# Second\n")
+    path = target / "MANIFEST.md"
+    plan = DrydockManifest.load(path, compatibility=True)
+    assert plan.node(first.story_id).block == plan.node(second.story_id).block
+    plan.set_fields(first.story_id, state="closed/implemented")
+    plan.save()
+    before = DrydockManifest.load(path, compatibility=True)
+    original = {node.block_id: list(node.lines) for node in before.blocks}
+
+    third = add_ticket(target, "SCREEN-HOME", "# Third\n")
+
+    after = DrydockManifest.load(path, compatibility=True)
+    assert after.node(third.story_id).block > after.node(second.story_id).block
+    for node_id, lines in original.items():
+        assert after.node(node_id).lines == lines
+
+
+def test_optimizer_failure_restores_manifest_and_ticket_number(tmp_path, monkeypatch):
+    target = _target(tmp_path)
+    path = target / "MANIFEST.md"
+    original = path.read_bytes()
+
+    def fail(*args, **kwargs):
+        raise SpecificationError("Cannot optimize build blocks: test limit")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("drydock.manifest_edit.optimize_build_blocks", fail)
+        with pytest.raises(SpecificationError, match="test limit"):
+            add_ticket(target, "SCREEN-HOME", "# First\n")
+    assert path.read_bytes() == original
+    assert ticket_chain(target / "blueprint", "SCREEN-HOME") == []
+    assert add_ticket(target, "SCREEN-HOME", "# First\n").path.name.endswith("_001.md")
+
+
+def test_plain_refit_regroups_existing_unbuilt_tickets(tmp_path, isolated_config):
+    from drydock.refit import refit_target
+
+    target = _target(tmp_path)
+    (target / "blueprint" / "ARCHITECTURE_compact.md").write_text("context " * 800)
+    first = add_ticket(target, "SCREEN-HOME", "# First\n")
+    second = add_ticket(target, "SCREEN-HOME", "# Second\n")
+    path = target / "MANIFEST.md"
+    plan = DrydockManifest.load(path, compatibility=True)
+    plan.set_fields(second.story_id, block="4")
+    plan.set_metadata(blocks="4")
+    plan.save()
+
+    def no_agent(*args, **kwargs):
+        pytest.fail("Regrouping existing tickets must not invoke an agent")
+
+    result = refit_target(target, runner=no_agent)
+
+    assert result.exit_code() == 0
+    after = DrydockManifest.load(path, compatibility=True)
+    assert after.node(first.story_id).block == after.node(second.story_id).block == 3
+
+
+def test_plain_refit_restores_manifest_on_optimization_failure(
+    tmp_path, isolated_config, monkeypatch
+):
+    from drydock.refit import refit_target
+
+    target = _target(tmp_path)
+    path = target / "MANIFEST.md"
+    original = path.read_bytes()
+
+    def fail(*args, **kwargs):
+        path.write_text("partial optimization\n")
+        raise SpecificationError("Cannot optimize build blocks: test limit")
+
+    monkeypatch.setattr("drydock.manifest_edit.optimize_build_blocks", fail)
+    with pytest.raises(SpecificationError, match="test limit"):
+        refit_target(target, runner=lambda *a, **k: pytest.fail("Unexpected agent invocation"))
+    assert path.read_bytes() == original
+    assert "test limit" in (target / "BLOCKERS.md").read_text()

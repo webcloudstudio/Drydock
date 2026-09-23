@@ -409,6 +409,13 @@ def stories_from_manifest(blocks: Sequence[object]) -> tuple[PlannedStory, ...]:
                 provides=_node_list(node, "provides"),
                 consumes=_node_list(node, "consumes"),
                 stack=_node_list(node, "stack"),
+                state=str(getattr(node, "state", "pending")),
+                block=int(getattr(node, "block", 0) or 0),
+                fields={
+                    key: ", ".join(value) if isinstance(value, tuple) else str(value)
+                    for key, value in getattr(node, "fields", {}).items()
+                    if key in _PASSTHROUGH_FIELDS
+                },
             )
         )
     return tuple(stories)

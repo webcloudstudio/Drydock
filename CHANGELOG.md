@@ -73,6 +73,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-22: **Refit automatically groups accumulated unbuilt work by shared context savings.**
+  `drydock refit` and `drydock refit add` run the deterministic optimizer on computed Manifests;
+  `/ddk-refit` receives the same behavior through `refit add`. REFIT stories inherit explicit
+  Rigging rules as well as Blueprint context and stack guidance. The optimizer retains Manifest
+  context, rules, and instructions, prefers compact context, and counts full implementation
+  inputs once. Ordered tickets from separate calls can share a block within the existing token
+  and acceptance limits. Blocks containing non-pending work keep their membership, numbering,
+  state, and recorded fields. Optimization errors roll back the refit transaction.
+
 - 2026-09-21: **Foundation clients are plain functions criteria call against the built
   application.** A Programmatic Acceptance criterion runs as a standalone script, so the pytest
   fixtures the Foundation Contracts published (`web_client`, `db_session`, `cli_runner`) could not

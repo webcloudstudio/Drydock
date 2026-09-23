@@ -560,8 +560,12 @@ def normalize_order(doc: ManifestDoc) -> None:
     doc.blocks[:] = _flatten(doc, order_dependencies=True)
 
 
-def optimize_build_blocks(path: Path, *, persist: bool = True) -> bool:
-    """Run the shared Python optimizer for computed manifests; retain legacy normalization."""
+def optimize_build_blocks(path: Path, *, persist: bool = True, pending_only: bool = False) -> bool:
+    """Run the shared optimizer; ``pending_only`` freezes started execution units.
+
+    Legacy normalization is available only for explicit, whole-plan normalization. Refit leaves
+    legacy groups alone rather than resetting their states through that older path.
+    """
     from drydock.build_plan import parse_build_plan
 
     plan = parse_build_plan(path)
@@ -569,8 +573,17 @@ def optimize_build_blocks(path: Path, *, persist: bool = True) -> bool:
     if plan.uses_computed_blocks:
         from drydock.planning_session import _apply_computed_schedule
 
-        _apply_computed_schedule(plan, blueprint_dir=path.parent / "blueprint", emitted_files={})
+        _apply_computed_schedule(
+            plan,
+            blueprint_dir=path.parent / "blueprint",
+            emitted_files={},
+            preserve_existing=pending_only,
+        )
         after = plan.render()
+    elif pending_only:
+        # Legacy groups have no computed story taxonomy; do not reset failed work or regroup
+        # their historical execution units as a side effect of adding a ticket.
+        return False
     else:
         doc = split_manifest(path)
         normalize_order(doc)

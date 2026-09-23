@@ -1015,6 +1015,10 @@ def refit_target(
         if errors:
             _restore_refit_files(snapshot, target_dir, changes_dir)
             _write_unincorporated_notification(target_dir, errors)
+        elif (target_dir / "MANIFEST.md").is_file():
+            from drydock.manifest_edit import optimize_build_blocks
+
+            optimize_build_blocks(target_dir / "MANIFEST.md", pending_only=True)
         return result
     except Exception as exc:
         _restore_refit_files(snapshot, target_dir, changes_dir)
