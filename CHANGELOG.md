@@ -150,6 +150,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-09-22: **`drydock plan create` preserves the short Compass produced by Analyze.** Imported
+  Markdown classified as author intent remains source provenance and is no longer appended verbatim
+  to `COMPASS.md`. Build steps receive one project orientation instead of repeated source pages.
+
 - 2026-09-22: **`drydock build` compacts stack and rules files by Manifest order, not git HEAD.**
   A step receives `<file>_compact.md` for a `stack:` or `rules:` file that an earlier
   `closed/verified` or `closed/implemented` block named; the first block, a rebuilt root, and

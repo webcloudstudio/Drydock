@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
-from drydock.compass_sources import compass_is_authored
 from drydock.errors import SpecificationError
 from drydock.source_files import iter_source_files
 
@@ -95,10 +94,9 @@ def promote_imported_sources(
         rel = source.relative_to(sources_dir).as_posix()
         role = source_role_for(rel, roles)
         if role is not None and role.plan_disposition == "compass":
-            # An authored Compass is the only Compass. Appending to it would give the project a
-            # second set of governing rules in the same file, positioned after the first.
-            if not compass_is_authored(target_dir):
-                _append_compass(target_dir / "COMPASS.md", source)
+            # Analyze synthesizes the sole Compass from imported intent. Plan must not append
+            # source pages to the short per-step orientation, even when Analyze misclassifies
+            # an imported file as author intent.
             continue
         if source.suffix.lower() == ".md":
             continue
@@ -114,22 +112,6 @@ def promote_imported_sources(
         temporary.replace(destination)
         promoted.append(destination)
     return promoted
-
-
-def _append_compass(compass: Path, source: Path) -> None:
-    content = source.read_text(encoding="utf-8").strip()
-    if not content:
-        return
-    digest = hashlib.sha256(content.encode()).hexdigest()
-    marker = f"<!-- Drydock author intent sha256={digest} source={source.name} -->"
-    existing = compass.read_text(encoding="utf-8") if compass.is_file() else ""
-    if marker in existing:
-        return
-    compass.parent.mkdir(parents=True, exist_ok=True)
-    suffix = "\n\n" if existing.strip() else ""
-    compass.write_text(
-        existing.rstrip() + suffix + marker + "\n\n" + content + "\n", encoding="utf-8"
-    )
 
 
 def _reject_escaping_rel(rel: str) -> str:

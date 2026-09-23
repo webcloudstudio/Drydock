@@ -13,12 +13,14 @@ from drydock.source_roles import (
 )
 
 
-def test_promotes_assets_and_routes_author_intent_to_compass(tmp_path):
+def test_promotes_assets_without_appending_author_intent_to_compass(tmp_path):
     blueprint = tmp_path / "blueprint"
     sources = blueprint / "sources"
     sources.mkdir(parents=True)
     (sources / "spec.txt").write_text("example", encoding="utf-8")
     (sources / "ED_INSTRUCTIONS.md").write_text("# Author Intent\n\nBuild it.\n", encoding="utf-8")
+    compass = tmp_path / "COMPASS.md"
+    compass.write_text("# Compass\n\n## Compass\nShort orientation.\n", encoding="utf-8")
     roles = parse_source_roles(
         """## Source Roles
 
@@ -34,7 +36,30 @@ def test_promotes_assets_and_routes_author_intent_to_compass(tmp_path):
     assert (blueprint / "spec.txt").read_text(encoding="utf-8") == "example"
     assert (sources / "spec.txt").read_text(encoding="utf-8") == "example"
     assert not (blueprint / "ED_INSTRUCTIONS.md").exists()
-    assert "Build it." in (tmp_path / "COMPASS.md").read_text(encoding="utf-8")
+    assert compass.read_text(encoding="utf-8") == "# Compass\n\n## Compass\nShort orientation.\n"
+
+
+def test_misclassified_source_pages_do_not_expand_compass(tmp_path):
+    blueprint = tmp_path / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    for name in ("FUNCTIONALITY.md", "METADATA.md", "README.md"):
+        (sources / name).write_text(f"# {name}\n\n" + "Details.\n" * 100, encoding="utf-8")
+    compass = tmp_path / "COMPASS.md"
+    compass.write_text("# Compass\n\n## Compass\nOne paragraph.\n", encoding="utf-8")
+    roles = parse_source_roles(
+        "## Source Roles\n\n"
+        "| Path | Role | Plan disposition | Build disposition |\n"
+        "|---|---|---|---|\n"
+        + "".join(
+            f"| sources/{name} | author intent | compass | prompt-only |\n"
+            for name in ("FUNCTIONALITY.md", "METADATA.md", "README.md")
+        )
+    )
+
+    promote_imported_sources(blueprint, roles, tmp_path)
+
+    assert compass.read_text(encoding="utf-8") == "# Compass\n\n## Compass\nOne paragraph.\n"
 
 
 def test_markdown_source_is_interpreted_not_promoted_over_blueprint(tmp_path):

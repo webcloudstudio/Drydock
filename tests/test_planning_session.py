@@ -1364,8 +1364,8 @@ def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
 def test_compass_routed_source_is_dropped_from_manifest_context(tmp_path):
     """A sources/ context ref to a compass-routed (non-promoted) file is dropped, not rewritten.
 
-    ED_INSTRUCTIONS.md is author intent: analyze routes it to COMPASS.md and it is never
-    emitted into blueprint/. The LLM still references ``sources/ED_INSTRUCTIONS.md`` as build
+    ED_INSTRUCTIONS.md is author intent: Analyze has synthesized it into COMPASS.md, so Plan
+    neither appends it nor emits it into blueprint/. The LLM still references it as build
     context. The written Manifest must not carry a phantom ``ED_INSTRUCTIONS.md`` context that
     points at nothing in blueprint/.
     """
@@ -1376,6 +1376,8 @@ def test_compass_routed_source_is_dropped_from_manifest_context(tmp_path):
         "| sources/ED_INSTRUCTIONS.md | instruction | compass | none |\n"
     )
     target_dir = _make_target(tmp_path, analysis=analysis)
+    compass = target_dir / "COMPASS.md"
+    compass.write_text("# COMPASS\n\n## Compass\nShort orientation.\n", encoding="utf-8")
     (target_dir / "blueprint" / "sources" / "ED_INSTRUCTIONS.md").write_text(
         "# Author Intent\n\nBuild it exactly this way.\n", encoding="utf-8"
     )
@@ -1389,8 +1391,7 @@ def test_compass_routed_source_is_dropped_from_manifest_context(tmp_path):
     text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
     assert "ED_INSTRUCTIONS.md" not in text
     assert "sources/" not in text
-    # It landed in the Compass, which is correct.
-    assert "Build it exactly this way." in (target_dir / "COMPASS.md").read_text(encoding="utf-8")
+    assert compass.read_text(encoding="utf-8") == "# COMPASS\n\n## Compass\nShort orientation.\n"
     assert not (target_dir / "blueprint" / "ED_INSTRUCTIONS.md").exists()
     assert any("ED_INSTRUCTIONS.md" in w for w in result.warnings)
 
