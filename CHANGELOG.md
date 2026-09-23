@@ -61,6 +61,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-09-22: **Python and FastAPI Rigging now publish only shared build contracts.**
+  `stack/python.md` defines the language environment, dependency manifest, and test command;
+  `stack/fastapi.md` defines the application factory, package, and callable test client.
+  Both files and their compact derivatives drop example applications, routes, settings, shell
+  process commands, and framework-specific guidance unrelated to the selected Target.
+
 - 2026-09-21: **Foundation clients are plain functions criteria call against the built
   application.** A Programmatic Acceptance criterion runs as a standalone script, so the pytest
   fixtures the Foundation Contracts published (`web_client`, `db_session`, `cli_runner`) could not
