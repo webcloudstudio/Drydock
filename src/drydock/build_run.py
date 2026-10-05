@@ -10,9 +10,9 @@ automatically. A step advances only when the agent returns a structured success
 report and the build directory shows real file changes.
 
 The module owns evidence and state writes. The agent writes application files and
-returns a summary. The build performs no git operations of its own; version control
-is the user's responsibility. Tests inject a fake runner so no credits or network
-are used.
+returns a summary. Mechanical lineage checkpoints application changes and Target
+evidence after every execution and completed step. Tests inject a fake runner so
+no credits or network are used.
 """
 
 from __future__ import annotations
@@ -78,6 +78,8 @@ from drydock.build_decisions import (
     record_skipped_acceptance_decisions,
 )
 from drydock.build_environment import EnvMaterialization, materialize_env_file
+from drydock.build_lineage import BuildLineage, node_record
+from drydock.build_lineage import now as lineage_now
 from drydock.build_plan import (
     FINISHED_STATES,
     AppliedSpecRecord,
@@ -826,11 +828,12 @@ def _written_files(
     before: dict[str, FileFingerprint],
     after: dict[str, FileFingerprint],
 ) -> tuple[str, ...]:
-    """Return created/modified files under the build directory."""
+    """Return created, modified, or deleted files under the build directory."""
     changed: list[str] = []
     for rel, fp in after.items():
         if before.get(rel) != fp:
             changed.append(rel)
+    changed.extend(rel for rel in before if rel not in after)
     return tuple(changed)
 
 
@@ -2163,9 +2166,8 @@ def build_target(
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates.
 
-    The build performs no git operations of its own: it never initializes a repository,
-    commits, or gates on a dirty working tree. Version control of the build directory and
-    the Drydock checkout is the user's responsibility.
+    Application changes and Target evidence are checkpointed after each execution and
+    step. Existing changes receive a separate baseline checkpoint before attribution.
     """
     run = runner if runner is not None else run_prompt
     waivers: list[WaivedGate] = []
@@ -2201,6 +2203,7 @@ def build_target(
         clear_error_record(target_dir)
 
     resolved_build_dir = build_dir or build_dir_for(target)
+    lineage = BuildLineage(target, target_dir, resolved_build_dir, on_text)
 
     # Full reset (``--reset`` with no selector): a clean slate. Reset every block to pending
     # and wipe the build directory before anything is staged or observed, so the rebuild
@@ -2213,8 +2216,17 @@ def build_target(
                 f"dry run: would reset all blocks to pending and wipe {resolved_build_dir}",
             )
         else:
+            if target_dir.resolve().is_relative_to(resolved_build_dir.resolve()):
+                raise SpecificationError("Full reset requires a build directory outside the Target")
+            lineage.prepare()
             reset_count = reset_all_states(manifest_path)
-            shutil.rmtree(resolved_build_dir, ignore_errors=True)
+            for child in resolved_build_dir.iterdir():
+                if child.name == ".git":
+                    continue
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
             # Applied-spec provenance describes work that no longer exists: every block is
             # pending and the build directory is gone. Keeping the stamps would block the
             # rebuild on Blueprint drift against code that was just discarded.
@@ -2606,6 +2618,7 @@ def build_target(
                 "authorized acceptance prerequisites pending Target provisioning: "
                 + ", ".join(f"{r.kind}={r.name}" for _, r, _ in authorized_missing),
             )
+        lineage.begin(unit.block_id, unit.name, unit.steps, assemblies)
         pre_acceptance = (
             tuple(
                 AcceptanceObservation(
@@ -2810,6 +2823,7 @@ def build_target(
             elif agent_report is not None:
                 _emit(on_text, "    fixing=agent-reported")
             _emit(on_text, f"{_clock()}  calling {llm_provider}/{attempt_model or '-'} …")
+            execution_started_at = lineage_now()
             try:
                 runner_kwargs: dict[str, object] = {
                     "llm": llm_provider,
@@ -2820,6 +2834,8 @@ def build_target(
                         "step_type": unit.block_type,
                         "steps": tuple(block.block_id for block in unit.steps),
                         "attempt": attempt,
+                        "build_run_id": lineage.run_id,
+                        "build_step_id": lineage.context["step_id"],
                     },
                     "allow_tools": True,
                     "log_dir": log_dir,
@@ -2856,6 +2872,19 @@ def build_target(
                 from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
 
                 _refresh_chair(target_dir)
+                lineage.record(
+                    started_at=execution_started_at,
+                    result=None,
+                    attempt=attempt,
+                    status="error",
+                    event="execution_error",
+                    details={
+                        "error": str(exc),
+                        "model": attempt_model,
+                        "llm": llm_provider,
+                        "evidence": evidence_path,
+                    },
+                )
                 raise
             after_files = _snapshot_files(resolved_build_dir)
             changed_files = _written_files(before_files, after_files)
@@ -3441,6 +3470,23 @@ def build_target(
                     reason=_clip(error or "", 160) if status == "failed" else "",
                 )
             )
+            lineage.record(
+                started_at=execution_started_at,
+                result=result,
+                attempt=attempt,
+                status=status or "built",
+                details={
+                    "attempt": attempt_records[-1],
+                    "llm": llm_provider,
+                    "model": attempt_model,
+                    "acceptance": acceptance,
+                    "pre_acceptance": pre_acceptance,
+                    "gates": gate_results,
+                    "regressed_checks": regressed_checks,
+                    "error": error,
+                    "failure_detail": failure_detail,
+                },
+            )
             feedback_checks = tuple(check for check in acceptance if not check.passed)
             if (
                 status == "failed"
@@ -3899,6 +3945,24 @@ def build_target(
                 from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
 
                 _refresh_chair(target_dir)
+        final_plan = parse_build_plan(manifest_path)
+        lineage.record(
+            started_at=str(lineage.context["step_started_at"]),
+            result=None,
+            attempt=None,
+            status=status,
+            event="step_completed",
+            details={
+                "nodes": [node_record(final_plan.by_id()[block.block_id]) for block in unit.steps],
+                "attempts": attempt_records,
+                "acceptance": acceptance,
+                "gates": gate_results,
+                "evidence": evidence_path,
+                "elapsed_seconds": block_seconds,
+                "error": error,
+                "failure_detail": failure_detail,
+            },
+        )
         if status == "failed" or step_id is not None or story_id is not None:
             break
 
@@ -3928,6 +3992,8 @@ def build_target(
 
     unique_waivers = dedupe_waivers(waivers)
     stamp_override(target_dir, unique_waivers)
+    if not dry_run:
+        lineage.finish()
 
     return BuildResult(
         target=target,

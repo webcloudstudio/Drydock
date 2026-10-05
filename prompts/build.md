@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20260817 V7
+version: 20261005 V8
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 output: evidence summary
@@ -98,8 +98,10 @@ Operating contract:
    the build working directory. If you cannot write files or cannot complete the
    step, report failure explicitly.
 12. Do not run `git add`, `git commit`, create branches, create tags, rewrite
-   history, or otherwise mutate Git history. Drydock owns the final build
-   directory commit after you return.
+   history, or otherwise mutate Git history. Drydock checkpoints application changes
+   and Target evidence after each execution and completed step. File lineage comes
+   from Git and the Manifest's `implements:` entries; no additional attribution
+   response is required.
 13. End your response with this exact closing structure:
 
 ```text

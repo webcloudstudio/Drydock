@@ -193,6 +193,29 @@ fixed list of models, printing that list with each model's cost when given anyth
 The loop ends at verified build completion; scoring is separate. `status --ready` retains its
 boolean buildability contract, and `status --check` supplies the separate completion check.
 
+`drydock build` checkpoints the application and Target Git repositories after each agent
+execution (including repairs and failures) and completed step. Existing changes receive a
+separate baseline checkpoint. Git uses the configured author identity, respects ignored files,
+and never pushes. Full resets preserve application Git history.
+
+`<Target>/BUILD_LINEAGE.jsonl` appends mechanical execution and `step_completed` records:
+UTC run/execution timestamps, run and step IDs, Manifest nodes with their original fields,
+`implements:` specification paths and hashes, acceptance results, available token statistics,
+execution artifact paths, the command transcript, application commit SHAs, and Git file changes
+(added, modified, deleted, renamed). Context, dependencies, and compacts are not attributed as
+built specifications. Repeated executions retain separate rows; no model attribution is requested.
+Completed-step records capture final story states and deterministic outputs; their statistics are
+null so token totals count execution rows once. Ignored files and byte-identical rewrites have no
+committed delta. The association is between an execution's specification set and its file delta.
+
+Commit lines use the same block and `implements:` names as lineage:
+`git: block-3 | SCREEN.md, SERVICE.md | call=2 | app=<sha> target=<sha>`.
+An unchanged application reports `app=unchanged`. Target commits carry `Build-Lineage-Id`
+and `Build-Run-Id` trailers: the receipt cannot contain the SHA of the commit containing itself.
+Pending receipts survive checkpoint failures. The next build completes a confirmed application
+checkpoint's Target receipt; an unconfirmed application commit stops for inspection instead of
+inventing attribution. Command epilogue outputs receive a separate completion checkpoint.
+
 ```text
     drydock build status      MyApp            # Show build state
 ai  drydock diagnose          [MyApp] --apply  # Delegated repair; important decisions enter QuarterDeck review

@@ -120,6 +120,7 @@ def _stream_build_summary(text: str) -> None:
         "    acceptance=",
         "  STOP ",
         "WARNING:",
+        "git:",
     )):
         _stream_build(text)
 

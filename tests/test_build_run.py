@@ -162,6 +162,10 @@ class FakeResult:
 
 @pytest.fixture(autouse=True)
 def fake_compactor(monkeypatch):
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "Build test")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "build@example.invalid")
+
     def fake(prompt, working_directory, **kwargs):
         return FakeResult(text="# Compact\n\nBody\n", execution_id="compact-fake")
 
@@ -275,8 +279,8 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert (target_dir / "evidence" / "foundation.md").is_file()
     assert (target_dir / "evidence" / "service.md").is_file()
     assert result.exit_code() == 0
-    # The build performs no git operations of its own: no repo is created.
-    assert not (build_dir / ".git").exists()
+    assert (build_dir / ".git").exists()
+    assert (target_dir / "BUILD_LINEAGE.jsonl").is_file()
 
 
 def test_build_failure_writes_current_error_and_retry_clears_prior_error(tmp_path):
@@ -630,6 +634,8 @@ def test_dry_run_assembles_prompt_without_runner_or_writes(tmp_path):
     assert len(runner.calls) == 0
     assert not build_dir.exists()
     assert not (target_dir / "evidence").exists()
+    assert not (target_dir / "BUILD_LINEAGE.jsonl").exists()
+    assert not (target_dir / ".git").exists()
     assert (target_dir / "MANIFEST.md").read_text(encoding="utf-8") == original_manifest
     assert "dry run assembled files" in log
     assert any(line.startswith("  Role") for line in log)
@@ -1016,9 +1022,8 @@ def test_allow_tools_enabled_and_runs_in_build_dir(tmp_path):
     assert build_dir.is_dir()
 
 
-def test_build_leaves_existing_git_repo_untouched(tmp_path):
-    """The build never commits, so a pre-existing repo keeps a clean working tree entry
-    only for whatever the build wrote — Drydock adds no commits of its own."""
+def test_build_checkpoints_existing_git_repo(tmp_path):
+    """Each executed unit checkpoints application changes in its existing repository."""
     target_dir, build_dir = _setup(tmp_path)
     build_dir.mkdir(parents=True)
     subprocess.run(
@@ -1033,8 +1038,8 @@ def test_build_leaves_existing_git_repo_untouched(tmp_path):
         capture_output=True,
         text=True,
     )
-    # No commits were created by the build.
-    assert log.stdout.strip() == ""
+    assert "Build foundation: DATABASE.md" in log.stdout
+    assert "Build service: SERVICE.md" in log.stdout
 
 
 def test_step_with_child_ac_auto_verifies_legacy_manifest_ac(tmp_path):
@@ -1682,8 +1687,7 @@ state: pending
 
 def test_failed_step_preserves_artifact_on_disk(tmp_path):
     # A failed build leaves the generated artifact on disk so it is preserved for inspection,
-    # diagnosis, and the next rebuild. The build does not commit it; version control is the
-    # user's responsibility.
+    # diagnosis, and the next rebuild, with a failed execution checkpoint.
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner(ok=False, text="", write_files=True)
 
@@ -2527,6 +2531,18 @@ def test_repair_loop_fixes_failed_acceptance_on_second_pass(tmp_path):
     assert "reason: programmatic acceptance failed" in evidence
     assert "attempt 1 (repair 1): built" in evidence
     assert "; reason:" not in evidence.split("attempt 1 (repair 1)")[1]
+    lineage = [
+        json.loads(line) for line in (target_dir / "BUILD_LINEAGE.jsonl").read_text().splitlines()
+    ]
+    executions = [row for row in lineage if row["event"] == "execution"]
+    assert [row["attempt"] for row in executions] == [0, 1]
+    assert [row["status"] for row in executions] == ["failed", "built"]
+    assert executions[0]["application"]["files"] == [{"path": "foundation.txt", "status": "A"}]
+    assert executions[1]["application"]["files"] == [{"path": "foundation.txt", "status": "M"}]
+    assert all(row["implements"] == ["DATABASE.md"] for row in lineage)
+    assert lineage[-1]["event"] == "step_completed"
+    assert lineage[-1]["details"]["nodes"][0]["state"] == "closed/verified"
+    assert runner.calls[0]["parameters"]["build_run_id"] == executions[0]["run_id"]
 
 
 def test_repair_loop_continues_while_deterministic_score_improves(tmp_path):
@@ -4647,3 +4663,51 @@ def test_build_refuses_a_persistence_declaration_it_cannot_read(tmp_path):
         build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
     assert runner.calls == []
+
+
+def test_build_lineage_records_deletion_only_execution(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    build_dir.mkdir()
+    (build_dir / "obsolete.py").write_text("obsolete\n")
+
+    def runner(prompt, working_directory, **kwargs):
+        (Path(working_directory) / "obsolete.py").unlink()
+        return FakeResult(text=_success_report(changed=("obsolete.py",)))
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation"
+    )
+    assert result.exit_code() == 0
+    rows = [
+        json.loads(line) for line in (target_dir / "BUILD_LINEAGE.jsonl").read_text().splitlines()
+    ]
+    assert rows[0]["application"]["files"] == [{"path": "obsolete.py", "status": "D"}]
+    assert result.steps[0].written_files == ("obsolete.py",)
+
+
+def test_full_reset_preserves_commits_and_appends_lineage(tmp_path):
+    from drydock.build_git import git
+
+    target_dir, build_dir = _setup(tmp_path)
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+    prior = (target_dir / "BUILD_LINEAGE.jsonl").read_text()
+    old_commit = json.loads(prior.splitlines()[0])["application"]["after_commit"]
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), reset=True)
+    assert (target_dir / "BUILD_LINEAGE.jsonl").read_text().startswith(prior)
+    assert git(build_dir, "show", f"{old_commit}:foundation.txt") == "built foundation\n"
+
+
+def test_runner_exception_checkpoints_partial_work_and_error(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+
+    def runner(prompt, working_directory, **kwargs):
+        (Path(working_directory) / "partial.py").write_text("partial\n")
+        raise RuntimeError("Agent process stopped")
+
+    with pytest.raises(RuntimeError, match="Agent process stopped"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+    row = json.loads((target_dir / "BUILD_LINEAGE.jsonl").read_text().splitlines()[0])
+    assert row["event"] == "execution_error"
+    assert row["status"] == "error"
+    assert row["application"]["files"] == [{"path": "partial.py", "status": "A"}]
+    assert row["details"]["error"] == "Agent process stopped"

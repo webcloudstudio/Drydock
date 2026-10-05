@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-05: **`drydock build` records mechanical specification-to-code lineage.** Each agent
+  execution, including repairs and failures, checkpoints application changes and appends
+  `BUILD_LINEAGE.jsonl` in the Target. Records preserve runtime Manifest fields, implemented
+  specification paths and hashes, timestamps, available token usage, acceptance results, execution
+  and command-log links, and committed file deltas including deletions and renames. Completed-step
+  records capture final states and generated outputs. Console commit lines name the block and
+  only its `implements:` files. Target checkpoint trailers link receipts without a circular SHA;
+  interrupted confirmed checkpoints recover their receipt. Existing changes receive a baseline
+  checkpoint, and full resets preserve Git history. The build agent makes no attribution calls.
+
 - 2026-09-22: **`drydock refit add` appends a REFIT ticket from plain text, and `/ddk-refit` drives
   it from chat.** `drydock refit add <Target> <Blueprint> <File>` writes
   `blueprint/<Blueprint>_refit_<NNN>.md` and appends one `pending` Manifest story. The filename is

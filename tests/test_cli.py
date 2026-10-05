@@ -1536,8 +1536,18 @@ class TestLlmOverrideFlags:
 class TestPlanInspection:
     @pytest.fixture(autouse=True)
     def _guardrail_is_not_the_subject_of_plan_inspection(self, monkeypatch):
+        from types import SimpleNamespace
+
         monkeypatch.setattr(
             "drydock.compass_guardrail.validate_guardrail", lambda *args, **kwargs: None
+        )
+        # Build failures can request diagnosis after the injected build runner returns.
+        # Keep that second adapter offline too; its dedicated test overrides this fake.
+        monkeypatch.setattr(
+            "drydock.llm.run_prompt",
+            lambda *args, **kwargs: SimpleNamespace(
+                ok=False, text="", execution_id="diagnosis-fake"
+            ),
         )
 
     PLAN = """# MANIFEST: Example
@@ -1615,8 +1625,10 @@ state: pending
     def test_build_executes_buildable_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
+        import json
         from types import SimpleNamespace
 
+        monkeypatch.setenv("DRYDOCK_TEST_COMMAND_LOGGING", "1")
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
         (target / "MANIFEST.md").write_text(
@@ -1663,6 +1675,13 @@ state: pending
         assert "Target - setup project workspace git store" in out
         assert "Target - committed project workspace git store" in out
         assert (target / "evidence" / "foundation.md").is_file()
+        assert re.search(
+            r"git: foundation \| DATABASE.md \| call=1 \| app=[0-9a-f]{12} target=[0-9a-f]{12}",
+            out,
+        )
+        row = json.loads((target / "BUILD_LINEAGE.jsonl").read_text().splitlines()[0])
+        assert row["execution_id"] == "exec-fake"
+        assert "git: foundation | DATABASE.md" in Path(row["run_log"]).read_text()
 
     def test_build_reports_failed_block_as_resume_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
