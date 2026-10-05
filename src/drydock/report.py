@@ -209,7 +209,11 @@ def report_help() -> str:
         f"{item.name.ljust(widths[0])} | {item.command.ljust(widths[1])} | {item.description}"
         for item in REPORT_TYPES
     )
-    lines.extend(["", "All reports: drydock report --all <Target>"])
+    lines.extend([
+        "",
+        "All Targets: drydock report --all",
+        "One Target: drydock report --all <Target>",
+    ])
     return "\n".join(lines)
 
 

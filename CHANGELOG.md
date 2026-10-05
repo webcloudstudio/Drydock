@@ -13,8 +13,10 @@ command surface and Typed Specification contract are unstable and may change bet
 - 2026-10-05: **`drydock report` publishes deterministic Target reports.** A report registry
   exposes status, Manifest progress, recorded run state, build evidence, command history, LLM
   usage, and score history through `drydock report help`. `drydock report <name> <Target>` writes
-  one text artifact; `drydock report --all <Target>` writes all seven under
-  `targets/<Target>/reports/` and prints paths relative to the current directory when possible.
+  one text artifact; `drydock report --all` writes all seven for every initialized Target under
+  `targets/<Target>/reports/`, and `--all <Target>` limits the run to one Target. Paths print
+  relative to the current directory when possible. A workspace sweep continues past a Target
+  whose report fails and exits nonzero after naming the failure.
   Reports reuse recorded projections and evidence without executing builds, checks, UAT, or models.
 
 - 2026-10-05: **`drydock build` records mechanical specification-to-code lineage.** Each agent

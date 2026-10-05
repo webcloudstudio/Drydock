@@ -3583,7 +3583,8 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock report help             — list ReportName | Command | Description\n"
             "drydock report <name> <Target>  — write one report\n"
-            "drydock report --all <Target>   — write every report"
+            "drydock report --all            — write every report for every Target\n"
+            "drydock report --all <Target>   — write every report for one Target"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -4075,30 +4076,60 @@ def _dispatch_report(args: argparse.Namespace) -> int:
     if not args.all and (tokens == ["help"] or not tokens):
         print(report_help())
         return 0
-    if args.all and len(tokens) == 1:
-        name, target = "--all", tokens[0]
+    if args.all and len(tokens) <= 1:
+        name, target = "--all", tokens[0] if tokens else ""
     elif not args.all and len(tokens) == 2 and tokens[0] in {item.name for item in REPORT_TYPES}:
         name, target = tokens
     else:
         raise UsageError(
             "Usage: drydock report help | drydock report <name> <Target> | "
-            "drydock report --all <Target>"
+            "drydock report --all [<Target>]"
         )
-    if target in {".", ".."} or Path(target).name != target:
+    if target and (target in {".", ".."} or Path(target).name != target):
         raise UsageError("Report Target must be a name under the configured targets directory")
-    target_dir = require_target_dir(target)
-    ctx = ReportContext(target, target_dir, get_workspace())
+    workspace = get_workspace()
+    if target:
+        target_dirs = (require_target_dir(target),)
+    else:
+        targets_root = workspace / "targets"
+        target_dirs = (
+            tuple(
+                path
+                for path in sorted(targets_root.iterdir())
+                if path.is_dir() and (path / "METADATA.md").is_file()
+            )
+            if targets_root.is_dir()
+            else ()
+        )
+        if not target_dirs:
+            raise DrydockError(f"No initialized Targets found under {targets_root}")
     names = tuple(item.name for item in REPORT_TYPES) if name == "--all" else (name,)
-    paths = write_reports(ctx, names)
     cwd = Path.cwd().resolve()
-    for path in paths:
-        resolved = path.resolve()
+    failures = 0
+    for target_dir in target_dirs:
         try:
-            display = resolved.relative_to(cwd)
-        except ValueError:
-            display = resolved
-        print(f"Report: {display}")
-    return 0
+            ctx = ReportContext(target_dir.name, target_dir, workspace)
+            paths = write_reports(ctx, names)
+            if not target:
+                from drydock.target_git import commit_target, setup_target
+
+                if setup_target(target_dir):
+                    commit_target(target_dir, "Initialize project workspace")
+                commit_target(target_dir, "Complete drydock report")
+        except Exception as exc:
+            if target:
+                raise
+            print(f"error: {target_dir.name}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            failures += 1
+            continue
+        for path in paths:
+            resolved = path.resolve()
+            try:
+                display = resolved.relative_to(cwd)
+            except ValueError:
+                display = resolved
+            print(f"Report: {display}")
+    return 1 if failures else 0
 
 
 def _dispatch_document(args: argparse.Namespace) -> int:
@@ -5044,6 +5075,8 @@ def _standoff_diagnosis(
 
     Advisory only: any failure here is swallowed so the original error and exit code stand.
     """
+    if getattr(args, "command", None) == "report":
+        return
     try:
         from drydock.config import get_diagnose_enabled, get_model, get_workspace
         from drydock.diagnose import diagnose, render_standoff_banner, should_diagnose

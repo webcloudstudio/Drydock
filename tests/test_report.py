@@ -35,6 +35,7 @@ def test_help_lists_registered_commands_without_creating_reports(
         assert report_type.command in out
     assert not (tmp_workspace / "targets" / "reports").exists()
     assert "drydock report --all <Target>" in report_help()
+    assert "drydock report --all" in report_help()
 
 
 def test_manifest_report_uses_plan_state_without_editing_manifest(tmp_workspace):
@@ -68,6 +69,46 @@ def test_all_reports_write_target_report_artifacts(tmp_workspace, isolated_confi
         assert path.is_file()
         assert f"Report: targets/Demo/reports/{report_type.name}.txt" in out
     assert not (tmp_workspace / "uat").exists()
+
+
+def test_all_without_target_covers_every_initialized_target(
+    tmp_workspace, isolated_config, monkeypatch
+):
+    monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+    monkeypatch.chdir(tmp_workspace)
+    for name in ("Alpha", "Beta"):
+        target_dir = tmp_workspace / "targets" / name
+        target_dir.mkdir()
+        (target_dir / "METADATA.md").write_text(f"# {name}\n", encoding="utf-8")
+        (target_dir / "MANIFEST.md").write_text(_PLAN, encoding="utf-8")
+
+    rc, out, err = run_cli("report", "--all")
+
+    assert rc == 0, err
+    for name in ("Alpha", "Beta"):
+        for report_type in REPORT_TYPES:
+            path = tmp_workspace / "targets" / name / "reports" / f"{report_type.name}.txt"
+            assert path.is_file()
+            assert f"Report: targets/{name}/reports/{report_type.name}.txt" in out
+
+
+def test_workspace_sweep_continues_after_one_target_fails(
+    tmp_workspace, isolated_config, monkeypatch
+):
+    monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+    monkeypatch.chdir(tmp_workspace)
+    for name, plan in (("Alpha", "not a manifest\n"), ("Beta", _PLAN)):
+        target_dir = tmp_workspace / "targets" / name
+        target_dir.mkdir()
+        (target_dir / "METADATA.md").write_text(f"# {name}\n", encoding="utf-8")
+        (target_dir / "MANIFEST.md").write_text(plan, encoding="utf-8")
+
+    rc, out, err = run_cli("report", "--all")
+
+    assert rc == 1
+    assert "error: Alpha:" in err
+    assert "Report: targets/Beta/reports/manifest.txt" in out
+    assert not (tmp_workspace / "targets" / "Alpha" / "reports").exists()
 
 
 def test_run_report_uses_recorded_lifecycle_state(tmp_workspace):
