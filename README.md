@@ -148,6 +148,9 @@ that was cut, and the setting to change. Nothing from the response is written.
     drydock init              MyApp            # Create the target workspace
     drydock status                             # Status dashboard
     drydock status            MyApp            # Summary and plan state
+    drydock report help                        # List deterministic Target reports
+    drydock report manifest  MyApp             # Write a compact Manifest report
+    drydock report --all     MyApp             # Write all reports under targets/MyApp/reports/
 
 # ── A ── ANALYZE ─────────────────────────────────────────────────────────
     drydock import            MyApp <file|dir> # Import sources into the workspace
@@ -245,6 +248,16 @@ ai  drydock score drydock                      # Adversarial self-assessment
 
 Each selected `uat/<Project>/` directory is an independent Git repository. `drydock uat`, resume
 stages, and `drydock uat report` initialize it when absent and commit all kit changes before exit.
+
+## Target reports
+
+`drydock report help` lists report names, commands, and descriptions. `drydock report <name>
+<Target>` writes one deterministic text report; `drydock report --all <Target>` writes status,
+Manifest, run state, build evidence, command history, LLM usage, and score history under
+`targets/<Target>/reports/`. The CLI prints each path relative to the current directory when it
+can. These reports read recorded evidence and do not run models, builds, acceptance checks, or
+UAT. Existing QuarterDeck views and published receipts remain available through their current
+commands.
 
 ## The QuarterDeck Web Server
 

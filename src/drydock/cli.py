@@ -3577,6 +3577,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_status.add_argument("args", nargs=argparse.REMAINDER, metavar="[<Target>]")
 
+    p_report = sub.add_parser(
+        "report",
+        help="Write deterministic Target reports from recorded state and evidence.",
+        description=(
+            "drydock report help             — list ReportName | Command | Description\n"
+            "drydock report <name> <Target>  — write one report\n"
+            "drydock report --all <Target>   — write every report"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_report.add_argument(
+        "--all", action="store_true", help="Write every registered Target report."
+    )
+    p_report.add_argument(
+        "args", nargs=argparse.REMAINDER, metavar="[help|--all|<name>] [<Target>]"
+    )
+
     # ── validate ─────────────────────────────────────────────────────────────
     # ── diagnose ─────────────────────────────────────────────────────────────
     p_diag = sub.add_parser(
@@ -4050,6 +4067,40 @@ def _dispatch_status(args: argparse.Namespace) -> int:
         raise UsageError("Usage: drydock status [<Target>] [--check | --ready]")
 
 
+def _dispatch_report(args: argparse.Namespace) -> int:
+    from drydock.config import get_workspace, require_target_dir
+    from drydock.report import REPORT_TYPES, ReportContext, report_help, write_reports
+
+    tokens = args.args
+    if not args.all and (tokens == ["help"] or not tokens):
+        print(report_help())
+        return 0
+    if args.all and len(tokens) == 1:
+        name, target = "--all", tokens[0]
+    elif not args.all and len(tokens) == 2 and tokens[0] in {item.name for item in REPORT_TYPES}:
+        name, target = tokens
+    else:
+        raise UsageError(
+            "Usage: drydock report help | drydock report <name> <Target> | "
+            "drydock report --all <Target>"
+        )
+    if target in {".", ".."} or Path(target).name != target:
+        raise UsageError("Report Target must be a name under the configured targets directory")
+    target_dir = require_target_dir(target)
+    ctx = ReportContext(target, target_dir, get_workspace())
+    names = tuple(item.name for item in REPORT_TYPES) if name == "--all" else (name,)
+    paths = write_reports(ctx, names)
+    cwd = Path.cwd().resolve()
+    for path in paths:
+        resolved = path.resolve()
+        try:
+            display = resolved.relative_to(cwd)
+        except ValueError:
+            display = resolved
+        print(f"Report: {display}")
+    return 0
+
+
 def _dispatch_document(args: argparse.Namespace) -> int:
     tokens = args.args
     if not tokens:
@@ -4295,6 +4346,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if command == "status":
         return _dispatch_status(args)
 
+    if command == "report":
+        return _dispatch_report(args)
+
     if command == "config":
         if args.config_command == "show":
             return cmd_config_show(args)
@@ -4443,7 +4497,7 @@ def _log_command_history(
     command = getattr(args, "command", None)
     if command is None:
         return  # bare `drydock` / help text
-    if command in {"status", "validate"}:
+    if command in {"status", "validate", "report"}:
         return  # pure report
     if command == "config" and getattr(args, "config_command", None) in {"show", "env"}:
         return  # pure report
@@ -5097,6 +5151,15 @@ def _log_target(args: argparse.Namespace) -> str:
     if declared:
         return str(declared)
     tokens = list(getattr(args, "args", None) or [])
+    if getattr(args, "command", None) == "report":
+        from drydock.report import REPORT_TYPES
+
+        if getattr(args, "all", False):
+            target = tokens[0] if len(tokens) == 1 else ""
+        else:
+            names = {item.name for item in REPORT_TYPES}
+            target = tokens[1] if len(tokens) == 2 and tokens[0] in names else ""
+        return target if target not in {"", ".", ".."} and Path(target).name == target else ""
     index = 0
     while index < len(tokens):
         token = tokens[index]

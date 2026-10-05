@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-05: **`drydock report` publishes deterministic Target reports.** A report registry
+  exposes status, Manifest progress, recorded run state, build evidence, command history, LLM
+  usage, and score history through `drydock report help`. `drydock report <name> <Target>` writes
+  one text artifact; `drydock report --all <Target>` writes all seven under
+  `targets/<Target>/reports/` and prints paths relative to the current directory when possible.
+  Reports reuse recorded projections and evidence without executing builds, checks, UAT, or models.
+
 - 2026-10-05: **`drydock build` records mechanical specification-to-code lineage.** Each agent
   execution, including repairs and failures, checkpoints application changes and appends
   `BUILD_LINEAGE.jsonl` in the Target. Records preserve runtime Manifest fields, implemented

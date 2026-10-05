@@ -1,0 +1,107 @@
+"""Deterministic report registry and Target artifact contracts."""
+
+from __future__ import annotations
+
+from drydock.project_status import record_status
+from drydock.report import REPORT_TYPES, ReportContext, report_help, write_reports
+from tests.test_cli import run_cli
+
+_PLAN = """# MANIFEST: Demo
+state: approved
+updated: 2026-10-05T00:00:00
+plan_hash: example
+
+## story 1: Foundation
+id: foundation
+state: closed/verified
+
+## story 2: Screen
+id: screen
+depends: foundation
+state: pending
+"""
+
+
+def test_help_lists_registered_commands_without_creating_reports(
+    tmp_workspace, isolated_config, monkeypatch
+):
+    monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+
+    rc, out, err = run_cli("report", "help")
+
+    assert rc == 0, err
+    assert "ReportName | Command | Description" in out
+    for report_type in REPORT_TYPES:
+        assert report_type.command in out
+    assert not (tmp_workspace / "targets" / "reports").exists()
+    assert "drydock report --all <Target>" in report_help()
+
+
+def test_manifest_report_uses_plan_state_without_editing_manifest(tmp_workspace):
+    target_dir = tmp_workspace / "targets" / "Demo"
+    target_dir.mkdir()
+    manifest = target_dir / "MANIFEST.md"
+    manifest.write_text(_PLAN, encoding="utf-8")
+    ctx = ReportContext("Demo", target_dir, tmp_workspace)
+
+    (report_path,) = write_reports(ctx, ("manifest",))
+
+    body = report_path.read_text(encoding="utf-8")
+    assert "foundation: closed/verified" in body
+    assert "screen: pending · ready" in body
+    assert "Buildable now: screen" in body
+    assert manifest.read_text(encoding="utf-8") == _PLAN
+
+
+def test_all_reports_write_target_report_artifacts(tmp_workspace, isolated_config, monkeypatch):
+    monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+    target_dir = tmp_workspace / "targets" / "Demo"
+    target_dir.mkdir()
+    (target_dir / "MANIFEST.md").write_text(_PLAN, encoding="utf-8")
+    monkeypatch.chdir(tmp_workspace)
+
+    rc, out, err = run_cli("report", "--all", "Demo")
+
+    assert rc == 0, err
+    for report_type in REPORT_TYPES:
+        path = target_dir / "reports" / f"{report_type.name}.txt"
+        assert path.is_file()
+        assert f"Report: targets/Demo/reports/{report_type.name}.txt" in out
+    assert not (tmp_workspace / "uat").exists()
+
+
+def test_run_report_uses_recorded_lifecycle_state(tmp_workspace):
+    target_dir = tmp_workspace / "targets" / "Demo"
+    target_dir.mkdir()
+    record_status(target_dir, "INITIALIZED", passed=True, command="drydock init Demo")
+    record_status(
+        target_dir, "ANALYZED", passed=False, detail="blocked", command="drydock analyze Demo"
+    )
+
+    (path,) = write_reports(ReportContext("Demo", target_dir, tmp_workspace), ("run",))
+
+    body = path.read_text(encoding="utf-8")
+    assert "Current: ANALYZED · FAIL" in body
+    assert "Detail: blocked" in body
+    assert "INITIALIZED: PASS" in body
+
+
+def test_unknown_report_is_usage_error_without_output(tmp_workspace, isolated_config, monkeypatch):
+    monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+    target_dir = tmp_workspace / "targets" / "Demo"
+    target_dir.mkdir()
+
+    rc, _out, err = run_cli("report", "mystery", "Demo")
+
+    assert rc == 2
+    assert "Usage: drydock report" in err
+    assert not (target_dir / "reports").exists()
+
+
+def test_target_path_is_rejected_before_access(tmp_workspace, isolated_config, monkeypatch):
+    monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+
+    rc, _out, err = run_cli("report", "manifest", "../Other")
+
+    assert rc == 2
+    assert "Target must be a name" in err
