@@ -370,12 +370,19 @@ def _isolate_gemini_env(process_env: dict[str, str]) -> None:
     process_env["HOME"] = str(build_home)
 
 
-def _is_haiku(model: str | None) -> bool:
-    return bool(model) and "haiku" in str(model).lower()
+# Model families that take a fixed thinking budget instead of effort. Haiku 5.5 and later
+# size thinking from effort and reject a budget, so only Haiku 4.x and older are named. The
+# bare ``haiku`` alias selects the current Haiku and therefore gets no budget.
+_FIXED_THINKING_BUDGET_MODELS = ("haiku-4", "haiku-3")
+
+
+def _takes_thinking_budget(model: str | None) -> bool:
+    name = (model or "").lower()
+    return any(family in name for family in _FIXED_THINKING_BUDGET_MODELS)
 
 
 def _apply_claude_token_limits(process_env: dict[str, str], model: str | None) -> None:
-    """Set the Claude CLI's output ceiling and, for Haiku only, its thinking budget.
+    """Set the Claude CLI's output ceiling and, for Haiku 4.x only, its thinking budget.
 
     Drydock owns both, so a value inherited from the caller's shell is replaced. The CLI caps
     ``CLAUDE_CODE_MAX_OUTPUT_TOKENS`` at the model's maximum. A fixed thinking budget never
@@ -384,7 +391,7 @@ def _apply_claude_token_limits(process_env: dict[str, str], model: str | None) -
     Mutates ``process_env`` in place.
     """
     process_env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(get_max_output_tokens())
-    if _is_haiku(model):
+    if _takes_thinking_budget(model):
         process_env["MAX_THINKING_TOKENS"] = str(get_haiku_thinking_tokens())
     else:
         process_env.pop("MAX_THINKING_TOKENS", None)
@@ -586,7 +593,7 @@ def _truncation_detail(truncation: OutputTruncation) -> str:
 
 def _truncation_actions(truncation: OutputTruncation, model: str | None) -> tuple[str, ...]:
     lines: list[str] = []
-    if _is_haiku(model):
+    if _takes_thinking_budget(model):
         budget = get_haiku_thinking_tokens()
         if budget > 0:
             lines.append(f"Lower the Haiku thinking budget (now {budget}), then rerun:")

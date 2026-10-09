@@ -61,7 +61,7 @@ _NUMERIC_BOUND_KEYS = {
     ),
     "DRYDOCK_HAIKU_THINKING_TOKENS": (
         0,
-        "a non-negative integer count of thinking tokens (0 disables Haiku thinking)",
+        "a non-negative integer count of thinking tokens (0 disables Haiku 4.x thinking)",
     ),
     "DRYDOCK_BLOCK_MIN_SAVINGS": (
         0,
@@ -525,17 +525,18 @@ def get_max_output_tokens() -> int:
 
 
 def get_haiku_thinking_tokens() -> int:
-    """Thinking budget for Haiku runs; ``0`` disables Haiku thinking.
+    """Thinking budget for Haiku 4.x runs; ``0`` disables their thinking.
 
-    Haiku is the only Claude model with a fixed thinking budget. Every other model sizes its
-    thinking from the requested effort, so this setting never reaches them.
+    Haiku 4.x is the only Claude family with a fixed thinking budget. Every other model,
+    Haiku 5.5 included, sizes its thinking from the requested effort, so this setting never
+    reaches them.
     """
     return _bounded_int(
         "haiku_thinking_tokens",
         "DRYDOCK_HAIKU_THINKING_TOKENS",
         DEFAULT_HAIKU_THINKING_TOKENS,
         minimum=0,
-        units="a non-negative integer count of thinking tokens (0 disables Haiku thinking)",
+        units="a non-negative integer count of thinking tokens (0 disables Haiku 4.x thinking)",
     )
 
 

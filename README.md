@@ -119,7 +119,7 @@ replaces any value inherited from the shell.
 | Key | Default | Effect |
 |---|---|---|
 | `max_output_tokens` | 128000 | Output tokens per response (`CLAUDE_CODE_MAX_OUTPUT_TOKENS`); the CLI caps it at the model maximum (Haiku 64000) |
-| `haiku_thinking_tokens` | 16000 | Haiku thinking budget (`MAX_THINKING_TOKENS`), drawn from the output limit; 0 disables it. Other models size thinking from `--effort` |
+| `haiku_thinking_tokens` | 16000 | Haiku 4.x thinking budget (`MAX_THINKING_TOKENS`), drawn from the output limit; 0 disables it. Other models, including Haiku 5.5 and the `haiku` alias, size thinking from `--effort` |
 
 A text-only command whose response reaches the output limit fails with exit 1 and a
 `FATAL ERROR - LLM OUTPUT TRUNCATED` block naming the limit, the thinking spent, the artifact

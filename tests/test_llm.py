@@ -1632,6 +1632,7 @@ def _capture_env(monkeypatch, raw: str) -> dict:
     captured: dict = {}
 
     def fake_popen(command, **kwargs):
+        captured["command"] = command
         captured["env"] = kwargs["env"]
         return FakePopen(command, stdout_text=raw, **kwargs)
 
@@ -1639,7 +1640,7 @@ def _capture_env(monkeypatch, raw: str) -> dict:
     return captured
 
 
-def test_run_claude_haiku_gets_the_output_ceiling_and_a_fixed_thinking_budget(
+def test_run_claude_haiku_4_gets_the_output_ceiling_and_a_fixed_thinking_budget(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
@@ -1650,11 +1651,32 @@ def test_run_claude_haiku_gets_the_output_ceiling_and_a_fixed_thinking_budget(
     monkeypatch.setenv("MAX_THINKING_TOKENS", "999")
     captured = _capture_env(monkeypatch, _claude_stream(_text("READY")))
 
-    result = run_prompt("Reply READY", tmp_path, llm="claude", model="haiku", announce=False)
+    result = run_prompt(
+        "Reply READY", tmp_path, llm="claude", model="claude-haiku-4-5", announce=False
+    )
 
     assert result.ok
     assert captured["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "128000"
     assert captured["env"]["MAX_THINKING_TOKENS"] == "16000"
+
+
+@pytest.mark.parametrize("model", ["claude-haiku-5-5", "haiku"])
+def test_run_claude_haiku_5_5_sizes_thinking_from_effort_not_a_budget(tmp_path, monkeypatch, model):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.delenv("DRYDOCK_MAX_OUTPUT_TOKENS", raising=False)
+    # Haiku 5.5 rejects a fixed thinking budget, so an inherited one is removed.
+    monkeypatch.setenv("MAX_THINKING_TOKENS", "999")
+    captured = _capture_env(monkeypatch, _claude_stream(_text("READY")))
+
+    result = run_prompt(
+        "Reply READY", tmp_path, llm="claude", model=model, effort="low", announce=False
+    )
+
+    assert result.ok
+    assert captured["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "128000"
+    assert "MAX_THINKING_TOKENS" not in captured["env"]
+    assert captured["command"][captured["command"].index("--model") + 1] == model
+    assert captured["command"][captured["command"].index("--effort") + 1] == "low"
 
 
 def test_run_claude_sonnet_gets_the_output_ceiling_and_never_a_thinking_budget(
@@ -1676,7 +1698,9 @@ def test_run_claude_fails_a_text_response_cut_at_the_output_limit(tmp_path, monk
     monkeypatch.setenv("DRYDOCK_HAIKU_THINKING_TOKENS", "16000")
     _capture_env(monkeypatch, _truncated_analyze_stream())
 
-    result = run_prompt("Analyze", tmp_path, llm="claude", model="haiku", command_name="analyze")
+    result = run_prompt(
+        "Analyze", tmp_path, llm="claude", model="claude-haiku-4-5", command_name="analyze"
+    )
 
     # The CLI continued the response, so the process succeeded; the response is still unusable.
     assert result.returncode == 0

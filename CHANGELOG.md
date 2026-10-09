@@ -92,6 +92,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-09: **Claude Haiku 5.5 runs as an effort-sized model.** `--model claude-haiku-5-5`
+  and the bare `haiku` alias no longer receive the fixed `MAX_THINKING_TOKENS` budget, which
+  Haiku 5.5 rejects. They size thinking from `--effort` like other current Claude models, and
+  an inherited budget is removed from the subprocess environment. `haiku_thinking_tokens` now
+  applies only to Haiku 4.x and older (`claude-haiku-4-5`). Output-truncation advice for Haiku
+  5.5 names `--effort` instead of the thinking budget.
+
 - 2026-09-22: **Bootstrap 5, Django, and Flask Rigging now contain only shared build contracts.**
   `bootstrap5.md` defers theme and asset delivery to Target UI guidance; `django.md` and
   `flask.md` retain their application and callable test client contracts. Their compact
