@@ -320,3 +320,74 @@ def test_a_vacuous_criterion_is_always_passes_even_when_red_at_baseline():
     code = "try:\n    assert run() == 3\nexcept Exception:\n    pass\n"
     status = classify_baseline(_observation(stderr="NameError"), _check(code=code))
     assert status.status == STATUS_ALWAYS_PASSES
+
+
+# --- Empty-directory baseline ----------------------------------------------------------------
+
+
+def test_passing_with_no_product_is_prebuild_passes_and_excluded():
+    from drydock.acceptance_status import ERROR_EMPTY_TREE, excluded_criteria
+
+    check = _check()
+    status = classify_baseline(_observation(passed=True), check, empty=_observation(passed=True))
+    assert (status.status, status.error_code) == (STATUS_PREBUILD_PASSES, ERROR_EMPTY_TREE)
+    assert "ac" in excluded_criteria({"ac": status}, [check])
+
+
+def test_existing_behavior_is_valid_prepassed_and_keeps_running():
+    from drydock.acceptance_status import ERROR_EXISTING_BEHAVIOR, excluded_criteria
+
+    check = _check()
+    status = classify_baseline(_observation(passed=True), check, empty=_observation())
+    assert (status.status, status.error_code) == (STATUS_VALID, ERROR_EXISTING_BEHAVIOR)
+    assert prepassed_ids({"ac": status}, [check]) == frozenset({"ac"})
+    assert excluded_criteria({"ac": status}, [check]) == {}
+
+
+def test_without_an_empty_run_a_current_pass_keeps_running():
+    from drydock.acceptance_status import ERROR_CURRENT_TREE, excluded_criteria
+
+    check = _check()
+    status = classify_baseline(_observation(passed=True), check)
+    assert status.error_code == ERROR_CURRENT_TREE
+    assert excluded_criteria({"ac": status}, [check]) == {}
+
+
+def test_a_resumed_empty_tree_pass_is_still_recorded(tmp_path):
+    check = _check()
+    merged = record_baseline_status(
+        tmp_path,
+        {
+            "ac": classify_baseline(
+                _observation(passed=True), check, empty=_observation(passed=True)
+            )
+        },
+        resume=True,
+    )
+    assert merged["ac"].status == STATUS_PREBUILD_PASSES
+
+
+def test_the_empty_baseline_holds_staged_inputs_and_no_product(tmp_path):
+    from drydock.acceptance_status import observe_empty_baseline
+    from drydock.source_roles import StagedAsset
+
+    asset = tmp_path / "suite.txt"
+    asset.write_text("cases\n", encoding="utf-8")
+    product = tmp_path / "build" / "app.txt"
+    product.parent.mkdir()
+    product.write_text("built\n", encoding="utf-8")
+    checks = (
+        _check("staged", "from pathlib import Path\nassert Path('sources/suite.txt').is_file()\n"),
+        _check("product", "from pathlib import Path\nassert Path('app.txt').is_file()\n"),
+    )
+    staged = (StagedAsset(source=asset, relative_path="sources/suite.txt", sha256=""),)
+
+    observed = {
+        item.check_id: item
+        for item in observe_empty_baseline(
+            checks, target_dir=tmp_path, blueprint_dir=tmp_path, staged=staged
+        )
+    }
+
+    assert observed["staged"].passed
+    assert not observed["product"].passed

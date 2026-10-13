@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-12: **Empty-directory acceptance baseline.** Before each block, `drydock build` also runs
+  its criteria in an empty temporary directory holding only the staged `sources/` inputs and no
+  Target `.venv`. A criterion green there records `PREBUILD_PASSES` (`empty-tree`) and is
+  excluded from later runs; one red there and green on the current tree records `VALID`
+  (`existing-behavior`), keeps running, and still cannot verify the story that owns it. Baseline
+  runtime roughly doubles.
+
 - 2026-10-12: **Binding detection covers assembled and cited expectations.** An f-string, a `+`
   concatenation with a string, `"..." % args`, or `"...".format(...)` on either side of `==`/`!=`
   is a re-typed expectation unless the same expression is supplied as input, so such criteria

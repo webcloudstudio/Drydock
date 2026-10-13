@@ -66,6 +66,7 @@ from drydock.acceptance_status import (
     CriterionStatus,
     classify_baseline,
     excluded_criteria,
+    observe_empty_baseline,
     record_baseline_status,
     record_status,
 )
@@ -2851,11 +2852,31 @@ def build_target(
         # repair. A resumed block's tree already holds its own partial work, so a criterion green
         # now may be green because of it; the status recorded when the block first built stands.
         check_by_id = {check.check_id: check for check in checks}
+        # The same criteria in an empty directory separate "passes with nothing" from "measures
+        # what an earlier block delivered", which the current tree alone cannot.
+        empty_by_id = (
+            {
+                observation.check_id: observation
+                for observation in observe_empty_baseline(
+                    checks,
+                    target_dir=target_dir,
+                    blueprint_dir=blueprint_dir,
+                    staged=staged_assets,
+                )
+            }
+            if checks and not authorized_missing and not dry_run
+            else {}
+        )
         baseline_statuses = {
             observation.check_id: status
             for observation in pre_acceptance
             if (check := check_by_id.get(observation.check_id)) is not None
-            and (status := classify_baseline(observation, check)) is not None
+            and (
+                status := classify_baseline(
+                    observation, check, empty=empty_by_id.get(observation.check_id)
+                )
+            )
+            is not None
         }
         acceptance_statuses = (
             record_baseline_status(evidence_dir, baseline_statuses, resume=unit.resume)

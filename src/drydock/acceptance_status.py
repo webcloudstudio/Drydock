@@ -9,6 +9,8 @@ criterion is re-classified rather than inheriting a verdict about code it no lon
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -22,8 +24,10 @@ from drydock.acceptance import (
     UNVERIFIED_FAILURE_PREFIX,
     AcceptanceObservation,
     ProgrammaticAcceptance,
+    observe_programmatic_acceptance,
 )
 from drydock.proof_integrity import analyze_proof
+from drydock.source_roles import StagedAsset
 
 #: Where the build records each criterion's status, under the Target's ``evidence/``.
 ACCEPTANCE_STATUS_EVIDENCE = "acceptance-status.json"
@@ -67,6 +71,16 @@ ERROR_PRODUCT_MISSING = "product-missing"
 ERROR_BASELINE_RED = "baseline-red"
 ERROR_VACUOUS = "vacuous"
 ERROR_VERDICT_CHANGED = "verdict-changed"
+#: PREBUILD_PASSES observed in an empty directory: the criterion passes with no product at all.
+ERROR_EMPTY_TREE = "empty-tree"
+#: PREBUILD_PASSES observed only against the current tree, with no empty-directory run to tell
+#: "passes with nothing" from "measures something already delivered".
+ERROR_CURRENT_TREE = "current-tree"
+#: VALID, red with no product and green on the current tree: an earlier block delivered it.
+ERROR_EXISTING_BEHAVIOR = "existing-behavior"
+ERROR_REPAIRED = "repaired"
+ERROR_REPAIR_IMPOSSIBLE = "repair-impossible"
+ERROR_REPAIR_REJECTED = "repair-rejected"
 
 #: Signatures of a criterion reaching for product code or output that does not exist yet. Before
 #: the build that is the expected red, and it is what proves the criterion exercises the product.
@@ -98,9 +112,18 @@ def code_digest(code: str) -> str:
 
 
 def classify_baseline(
-    observation: AcceptanceObservation, check: ProgrammaticAcceptance, *, at: str | None = None
+    observation: AcceptanceObservation,
+    check: ProgrammaticAcceptance,
+    *,
+    empty: AcceptanceObservation | None = None,
+    at: str | None = None,
 ) -> CriterionStatus | None:
-    """Classify one criterion from its pre-build observation, or ``None`` when it cannot be.
+    """Classify one criterion from its pre-build observations, or ``None`` when it cannot be.
+
+    ``observation`` ran against the current tree; ``empty`` ran in an empty directory holding
+    only the staged inputs. A pass with nothing is PREBUILD_PASSES; red with nothing and green on
+    the current tree is VALID existing behavior an earlier block delivered. Without ``empty`` the
+    two cannot be told apart, and a current-tree pass is recorded as PREBUILD_PASSES.
 
     "Product missing" and "environment missing" both fail before the build and mean opposite
     things: the first is the red that proves the criterion measures the product, the second is a
@@ -118,11 +141,15 @@ def classify_baseline(
     error = observation.error or ""
     if error.startswith("baseline unavailable"):
         return None
-    if observation.passed:
-        if observation.integrity_ok:
-            return CriterionStatus(STATUS_PREBUILD_PASSES, "", digest, stamp)
+    if observation.passed and not observation.integrity_ok:
         reasons = "; ".join(observation.integrity_reasons)
         return CriterionStatus(STATUS_ALWAYS_PASSES, ERROR_VACUOUS, digest, stamp, reasons)
+    if empty is not None and empty.passed:
+        return CriterionStatus(STATUS_PREBUILD_PASSES, ERROR_EMPTY_TREE, digest, stamp)
+    if observation.passed:
+        if empty is not None:
+            return CriterionStatus(STATUS_VALID, ERROR_EXISTING_BEHAVIOR, digest, stamp)
+        return CriterionStatus(STATUS_PREBUILD_PASSES, ERROR_CURRENT_TREE, digest, stamp)
     if error.startswith(MALFORMED_FAILURE_PREFIX):
         return CriterionStatus(STATUS_ERROR, ERROR_MALFORMED, digest, stamp, error)
     if observation.skipped or error.startswith((SKIPPED_FAILURE_PREFIX, UNVERIFIED_FAILURE_PREFIX)):
@@ -186,8 +213,8 @@ def record_baseline_status(
     for check_id, status in incoming.items():
         existing = known.get(check_id)
         # Green on a resumed tree may be the block's own partial work, so it is never evidence
-        # that the criterion was green before the block.
-        if resume and status.status == STATUS_PREBUILD_PASSES:
+        # that the criterion was green before the block. Green in the empty directory still is.
+        if resume and status.error_code in {ERROR_CURRENT_TREE, ERROR_EXISTING_BEHAVIOR}:
             continue
         if existing is not None and existing.code_sha256 == status.code_sha256:
             if existing.status in TERMINAL_STATUSES:
@@ -232,7 +259,7 @@ def prepassed_ids(
         check.check_id
         for check in checks
         if (entry := current_status(statuses, check)) is not None
-        and entry.status in PREPASSED_STATUSES
+        and (entry.status in PREPASSED_STATUSES or entry.error_code == ERROR_EXISTING_BEHAVIOR)
     )
 
 
@@ -288,5 +315,40 @@ def excluded_criteria(
         check.check_id: entry
         for check in checks
         if (entry := current_status(statuses, check)) is not None
-        and entry.status in EXCLUDED_STATUSES
+        and (
+            entry.status in EXCLUDED_STATUSES
+            # Passing with no product measures nothing. Passing only against the current tree
+            # may be coverage of existing behavior, so that kind keeps running.
+            or (entry.status == STATUS_PREBUILD_PASSES and entry.error_code == ERROR_EMPTY_TREE)
+        )
     }
+
+
+def observe_empty_baseline(
+    checks: tuple[ProgrammaticAcceptance, ...],
+    *,
+    target_dir: Path,
+    blueprint_dir: Path,
+    staged: Iterable[StagedAsset] = (),
+) -> tuple[AcceptanceObservation, ...]:
+    """Run ``checks`` in an empty directory holding only the staged inputs, never the product.
+
+    The directory has no Target ``.venv``: an editable install there would put the product back
+    on the path. Acceptance therefore resolves the interpreter Drydock itself runs on, which is
+    what a new build uses before it owns an environment.
+    """
+    if not checks:
+        return ()
+    with tempfile.TemporaryDirectory(prefix="drydock-empty-baseline-") as directory:
+        empty = Path(directory)
+        for asset in staged:
+            destination = empty / asset.relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(asset.source, destination)
+        return observe_programmatic_acceptance(
+            checks,
+            build_dir=empty,
+            target_dir=target_dir,
+            blueprint_dir=blueprint_dir,
+            strict_target=True,
+        )
