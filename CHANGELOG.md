@@ -10,6 +10,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-13: **The regression sweep covers every finished block.** After each green block,
+  `drydock build` re-runs the criteria of every `closed/verified` or `closed/implemented` block,
+  read from the Manifest, not only those proven earlier in the same invocation, so a build started
+  by the outer loop still detects an earlier pass's deliverable being broken. A criterion whose last
+  recorded run passed counts as green for attribution. Sweep results are recorded in
+  `BUILD_LINEAGE.jsonl` as `swept` and feed per-criterion history (`drydock score ac`, AC repair).
+  Criteria with an excluded status and blocks closed failed are not swept.
+
 - 2026-10-12: **AC repair in `drydock diagnose`; DISPUTED holds `drydock status --check`.**
   Before diagnosing, `diagnose --apply` and the interactive default mode select criteria the build could not use as evidence:
   those whose last run settled DISPUTED and whose code is still non-binding, and those recorded

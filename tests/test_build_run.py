@@ -1583,6 +1583,35 @@ def test_a_later_block_that_breaks_an_earlier_criterion_fails_on_the_regression(
     assert "earlier blocks had already proven" in detail
 
 
+def test_a_block_finished_by_an_earlier_build_is_swept_by_the_next(tmp_path):
+    """The outer loop starts a new build per pass. A criterion an earlier build proved must
+    still be swept, so a later build that breaks it fails on the regression."""
+    target_dir, build_dir = _setup(tmp_path)
+    _with_guard_criterion(target_dir)
+    runner = _regression_runner(tmp_path)
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation")
+    assert _state(target_dir, "foundation") == "closed/verified"
+
+    lines: list[str] = []
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        repair_attempts=0,
+        on_text=lines.append,
+    )
+
+    assert _state(target_dir, "service") == "closed/failed"
+    assert "db-guard" in (_finding(target_dir, "service") or "")
+    assert any("regression sweep: 1 prior criteria · 1 regressed" in line for line in lines)
+    # The sweep's own results are history: the criterion last ran, and missed, in service.
+    from drydock.acceptance_status import OUTCOME_FAIL, acceptance_history
+
+    past = acceptance_history(target_dir)["db-guard"]
+    assert (past.last_block, past.last_outcome) == ("service", OUTCOME_FAIL)
+
+
 def test_a_non_binding_regression_does_not_fail_the_later_block(tmp_path):
     """A re-typed expectation cannot attribute a miss to the product, so it cannot attribute a
     regression to the block either. It is still swept and reported."""

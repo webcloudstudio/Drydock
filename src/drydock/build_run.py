@@ -62,11 +62,14 @@ from drydock.acceptance_requirements import (
 )
 from drydock.acceptance_status import (
     ERROR_VERDICT_CHANGED,
+    OUTCOME_PASS,
     STATUS_FLAKY,
     CriterionStatus,
+    acceptance_history,
     classify_baseline,
     excluded_criteria,
     observe_empty_baseline,
+    read_acceptance_status,
     record_baseline_status,
     record_status,
 )
@@ -2655,6 +2658,35 @@ def build_target(
             for message in dict.fromkeys(acceptance_defects):
                 on_text(f"[build] WARNING {message}\n")
         checks = tuple(gathered_checks)
+        # Every finished block's criteria join the sweep, not only those this invocation proved:
+        # the outer loop starts a new build per pass, and an in-memory set alone would sweep
+        # nothing a previous pass delivered. The lineage says which were green when last run.
+        graded_ids = {block.block_id for block in graded_blocks}
+        finished = [
+            block
+            for block in plan.blocks
+            if block.state in FINISHED_STATES and block.block_id not in graded_ids
+        ]
+        if finished:
+            history = acceptance_history(target_dir)
+            seeded: dict[str, ProgrammaticAcceptance] = {}
+            for block in finished:
+                for check in programmatic_acceptance_for_step(block, blueprint_dir, defects=[]):
+                    if check.check_id in proven_checks or check.check_id in seeded:
+                        continue
+                    seeded[check.check_id] = check
+                    proven_owner[check.check_id] = block
+                    past = history.get(check.check_id)
+                    if past is not None and past.last_outcome == OUTCOME_PASS:
+                        proven_green.add(check.check_id)
+            unrunnable = excluded_criteria(
+                read_acceptance_status(target_dir / "evidence"), seeded.values()
+            )
+            proven_checks.update(
+                (check_id, check)
+                for check_id, check in seeded.items()
+                if check_id not in unrunnable
+            )
         # A criterion that invokes a staged asset without the environment that asset declares
         # required cannot be satisfied by any build: a repair pass may not rewrite a criterion,
         # and the asset is restored before grading. Left alone it spends the whole repair budget
@@ -2941,6 +2973,7 @@ def build_target(
         state = status = error = failure_detail = ""
         acceptance: tuple[AcceptanceRunResult, ...] = ()
         regressed_checks: tuple[AcceptanceRunResult, ...] = ()
+        swept: tuple[AcceptanceRunResult, ...] = ()
         agent_report: tuple[str, str] | None = None
         changed_files: tuple[str, ...] = ()
         execution_id: str | None = None
@@ -3512,6 +3545,7 @@ def build_target(
                         # since, so a criterion that was green then and is red now was broken
                         # here.
                         regressed_checks = ()
+                        swept = ()
                         if regression_checks and status == "built":
                             swept = _settle_empty_selections(
                                 run_programmatic_acceptance(
@@ -3746,6 +3780,7 @@ def build_target(
                     "pre_acceptance": pre_acceptance,
                     "gates": gate_results,
                     "regressed_checks": regressed_checks,
+                    "swept": swept,
                     "error": error,
                     "failure_detail": failure_detail,
                 },

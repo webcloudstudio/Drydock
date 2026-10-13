@@ -280,8 +280,9 @@ class CriterionHistory:
 def acceptance_history(target_dir: Path) -> dict[str, CriterionHistory]:
     """Project ``BUILD_LINEAGE.jsonl`` into per-criterion history, read once.
 
-    ``previously_passed`` is true when any recorded build pass saw the criterion pass;
-    ``last_block`` names the block whose pass last ran it. UNVERIFIED results ran nothing.
+    ``previously_passed`` is true when any recorded build pass saw the criterion pass, in its own
+    block or in a later block's regression sweep; ``last_block`` names the block whose pass last
+    ran it. UNVERIFIED results ran nothing.
     """
     path = target_dir / "BUILD_LINEAGE.jsonl"
     try:
@@ -297,9 +298,15 @@ def acceptance_history(target_dir: Path) -> dict[str, CriterionHistory]:
         except ValueError:
             continue
         details = row.get("details") if isinstance(row, dict) else None
-        results = details.get("acceptance") if isinstance(details, dict) else None
-        if not isinstance(results, list):
+        if not isinstance(details, dict):
             continue
+        # A block's own criteria, then the earlier criteria its regression sweep re-ran.
+        results = [
+            result
+            for key in ("acceptance", "swept")
+            if isinstance(details.get(key), list)
+            for result in details[key]
+        ]
         block = str(row.get("block") or "")
         for result in results:
             if not isinstance(result, dict) or result.get("skipped"):
