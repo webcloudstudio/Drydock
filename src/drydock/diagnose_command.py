@@ -117,8 +117,13 @@ def run(
         out(NEXT_STEP.format(command="drydock config set llm-provider <name>"))
         return Result(exit_code=2)
 
-    if mode == "apply":
-        repaired = _ac_repair(target, target_dir, llm, model, runner, out, style)
+    if mode == "apply" or (mode == "confirm" and _interactive(confirm)):
+        accept = None
+        if mode == "confirm":
+            from drydock.diagnose_apply import _terminal_confirm
+
+            accept = confirm if confirm is not None else _terminal_confirm
+        repaired = _ac_repair(target, target_dir, llm, model, runner, out, style, accept)
         if repaired is not None:
             return repaired
 
@@ -250,8 +255,11 @@ def _ac_repair(
     runner: Callable[..., object] | None,
     out: Callable[[str], None],
     style: Style,
+    accept: Callable[[str], bool] | None = None,
 ) -> Result | None:
     """Repair DISPUTED and malformed criteria first; return a Result when that settles the run.
+
+    ``accept`` confirms each verified repair; ``None`` keeps every one (``--apply``).
 
     Selection is deterministic, so a Target with nothing to repair spends nothing and falls
     through to the diagnosis. A repaired criterion changes its Blueprint, which resets the stories
@@ -272,6 +280,7 @@ def _ac_repair(
         model=model,
         llm_provider=llm,
         candidates=candidates,
+        accept=accept,
     )
     if result.error:
         out(INDENT + style.paint(f"✗ AC repair could not run: {result.error}", RED, BOLD))

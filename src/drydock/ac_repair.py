@@ -303,8 +303,13 @@ def repair(
     model: str | None = None,
     llm_provider: str | None = None,
     candidates: tuple[RepairCandidate, ...] | None = None,
+    accept: Callable[[str], bool] | None = None,
 ) -> AcRepairResult:
-    """Repair every selected criterion in one call; keep only repairs that record VALID."""
+    """Repair every selected criterion in one call; keep only repairs that record VALID.
+
+    ``accept`` is asked about each verified repair before it is kept. A declined repair leaves the
+    criterion as it was and records nothing, so it stays selected for the next pass.
+    """
     blueprint_dir = target_dir / "blueprint"
     selected = select_repairs(target_dir) if candidates is None else candidates
     if not selected:
@@ -401,6 +406,14 @@ def repair(
                 )
             if reason is not None or repaired is None:
                 unfixable(ERROR_REPAIR_REJECTED, reason or "rejected")
+                continue
+            if accept is not None and not accept(
+                f"AC repair: {filename} [{check.check_id}] ({candidate.kind})\n"
+                f"{_plain_block(check.check_id, body).rstrip()}\n"
+                "Apply this repair? [y/N] "
+            ):
+                items.append(AcRepairItem(filename, check.check_id, "declined", candidate.kind))
+                emit(f"  ·  {filename} [{check.check_id}]: declined")
                 continue
             kept_text = trial
             record_status(evidence_dir, repaired, STATUS_VALID, ERROR_REPAIRED, candidate.kind)

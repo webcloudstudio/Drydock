@@ -325,13 +325,15 @@ def test_a_vacuous_criterion_is_always_passes_even_when_red_at_baseline():
 # --- Empty-directory baseline ----------------------------------------------------------------
 
 
-def test_passing_with_no_product_is_prebuild_passes_and_excluded():
+def test_passing_with_no_product_is_prebuild_passes_and_still_runs():
     from drydock.acceptance_status import ERROR_EMPTY_TREE, excluded_criteria
 
     check = _check()
     status = classify_baseline(_observation(passed=True), check, empty=_observation(passed=True))
     assert (status.status, status.error_code) == (STATUS_PREBUILD_PASSES, ERROR_EMPTY_TREE)
-    assert "ac" in excluded_criteria({"ac": status}, [check])
+    # It runs after the block, but a pass with nothing built cannot verify its story.
+    assert excluded_criteria({"ac": status}, [check]) == {}
+    assert prepassed_ids({"ac": status}, [check]) == frozenset({"ac"})
 
 
 def test_existing_behavior_is_valid_prepassed_and_keeps_running():

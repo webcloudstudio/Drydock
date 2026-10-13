@@ -10,14 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-10-12: **AC repair in `drydock diagnose --apply`; DISPUTED holds `drydock status --check`.**
-  Before diagnosing, `diagnose --apply` selects criteria the build could not use as evidence:
+- 2026-10-12: **AC repair in `drydock diagnose`; DISPUTED holds `drydock status --check`.**
+  Before diagnosing, `diagnose --apply` and the interactive default mode select criteria the build could not use as evidence:
   those whose last run settled DISPUTED and whose code is still non-binding, and those recorded
   `ERROR malformed`. One `diagnose_ac_repair` call receives each criterion's declarations, code,
   and fault, its specification, and the imported `sources/` with line numbers — never the build
   tree or product output. A repair is kept only when it parses under the same id, runs, is binding,
   cites truthfully, is not vacuous, and records `VALID` on the empty-directory baseline (an
-  environment error is retried once); its Blueprint consumers reset for rebuild and the Target is
+  environment error is retried once). The default mode confirms each verified repair; a declined
+  one changes nothing and stays selected, and `--no-apply` or a session that cannot prompt skips
+  AC repair. A kept repair's Blueprint consumers reset for rebuild and the Target is
   committed. A rejected repair or `REPAIR_IMPOSSIBLE` reverts the criterion and records
   `UNFIXABLE`. `status --check` is RETRYABLE while a DISPUTED criterion remains selectable;
   `UNFIXABLE` criteria no longer hold it. A citation resolves to the cited source text including
@@ -25,8 +27,8 @@ command surface and Typed Specification contract are unstable and may change bet
 
 - 2026-10-12: **Empty-directory acceptance baseline.** Before each block, `drydock build` also runs
   its criteria in an empty temporary directory holding only the staged `sources/` inputs and no
-  Target `.venv`. A criterion green there records `PREBUILD_PASSES` (`empty-tree`) and is
-  excluded from later runs; one red there and green on the current tree records `VALID`
+  Target `.venv`. A criterion green there records `PREBUILD_PASSES` (`empty-tree`), keeps
+  running, and cannot verify its story; one red there and green on the current tree records `VALID`
   (`existing-behavior`), keeps running, and still cannot verify the story that owns it. Baseline
   runtime roughly doubles.
 
@@ -42,7 +44,7 @@ command surface and Typed Specification contract are unstable and may change bet
 - 2026-10-12: **`drydock build` runs only criteria that can measure the product.** A criterion
   whose current status is `ALWAYS_PASSES`, `ERROR`, `UNFIXABLE`, or `FLAKY` is not run after a
   block; it settles UNVERIFIED under the terminal `excluded check` prefix and the console lists it.
-  `PREBUILD_PASSES` criteria keep running as possible coverage of existing behavior. Vacuity
+  `PREBUILD_PASSES` criteria keep running but cannot verify their story. Vacuity
   detection now prunes control flow decided by the source text: assertions under a constant-false
   branch or after `return`/`raise`/`break`/`continue`, and assertions inside a `try` whose
   `AssertionError`/`Exception`/bare handler does not re-raise or inside `suppress(...)`. A vacuous

@@ -327,13 +327,10 @@ def excluded_criteria(
     return {
         check.check_id: entry
         for check in checks
+        # PREBUILD_PASSES still runs: running costs nothing and can still catch a break, and
+        # ``prepassed_ids`` already keeps it from verifying the story that owns it.
         if (entry := current_status(statuses, check)) is not None
-        and (
-            entry.status in EXCLUDED_STATUSES
-            # Passing with no product measures nothing. Passing only against the current tree
-            # may be coverage of existing behavior, so that kind keeps running.
-            or (entry.status == STATUS_PREBUILD_PASSES and entry.error_code == ERROR_EMPTY_TREE)
-        )
+        and entry.status in EXCLUDED_STATUSES
     }
 
 

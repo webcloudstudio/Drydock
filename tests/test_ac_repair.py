@@ -254,3 +254,54 @@ def test_diagnose_apply_repairs_disputed_criteria_before_diagnosing(tmp_path, mo
     # The repaired Blueprint resets its consumer so the next build runs the new criterion.
     plan = parse_build_plan(target_dir / "MANIFEST.md")
     assert plan.by_id()["greeting"].state == "pending"
+
+
+def _diagnose(tmp_path, monkeypatch, *, confirm):
+    import drydock.config as config
+    import drydock.diagnose_command as command
+    from drydock.diagnose_console import Style
+
+    workspace = tmp_path / "ws"
+    (workspace / "logs").mkdir(parents=True)
+    target_dir = _target(workspace / "targets")
+    monkeypatch.setattr(config, "get_workspace", lambda: workspace)
+    monkeypatch.setattr(config, "get_target_directory", lambda: workspace / "targets")
+    monkeypatch.setattr(command, "_provider_unavailable", lambda llm=None: "")
+    printed: list[str] = []
+    result = command.run(
+        "Demo",
+        mode="confirm",
+        runner=_runner(_BINDING_REPAIR),
+        out=printed.append,
+        style=Style(width=1000),
+        confirm=confirm,
+    )
+    return result, target_dir, "\n".join(printed)
+
+
+def test_diagnose_confirm_mode_asks_before_keeping_a_repair(tmp_path, monkeypatch):
+    questions: list[str] = []
+
+    def confirm(question):
+        questions.append(question)
+        return True
+
+    result, target_dir, output = _diagnose(tmp_path, monkeypatch, confirm=confirm)
+
+    assert result.exit_code == 0
+    (question,) = questions
+    assert "FEATURE-Greeting.md [greets] (disputed)" in question
+    assert "Cite: sources/banner.txt:1" in question
+    assert "repaired (disputed)" in output
+    assert _check(target_dir).binding
+
+
+def test_a_declined_repair_leaves_the_criterion_selected(tmp_path, monkeypatch):
+    result, target_dir, output = _diagnose(tmp_path, monkeypatch, confirm=lambda question: False)
+
+    assert "declined" in output
+    assert _check(target_dir).code == _DISPUTED_CODE
+    assert read_acceptance_status(target_dir / "evidence") == {}
+    assert [candidate.kind for candidate in ac_repair.select_repairs(target_dir)] == [
+        ac_repair.KIND_DISPUTED
+    ]
