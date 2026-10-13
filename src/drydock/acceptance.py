@@ -1034,7 +1034,7 @@ _CITE_RE = re.compile(r"(?P<path>sources/[^:]+):(?P<start>\d+)(?:-(?P<end>\d+))?
 
 
 def resolve_citation(cite: str, blueprint_dir: Path) -> str | None:
-    """Return the cited lines of a ``Cite:`` declaration, or ``None`` when it does not resolve.
+    """Return the cited source text of a ``Cite:`` declaration, or ``None`` when it does not resolve.
 
     A citation names one line or an inclusive range of lines of a file under the Blueprint's
     ``sources/``. Anything outside ``sources/``, or past the end of the file, does not resolve.
@@ -1049,12 +1049,14 @@ def resolve_citation(cite: str, blueprint_dir: Path) -> str | None:
     start = int(match.group("start"))
     end = int(match.group("end") or start)
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        # Line terminators are kept: an expected program output usually ends in one, and the
+        # cited text must contain the literal exactly as the source states it.
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
     except (OSError, UnicodeDecodeError):
         return None
     if start < 1 or end < start or end > len(lines):
         return None
-    return "\n".join(lines[start - 1 : end])
+    return "".join(lines[start - 1 : end])
 
 
 def citation_defect(check: ProgrammaticAcceptance, blueprint_dir: Path) -> str | None:

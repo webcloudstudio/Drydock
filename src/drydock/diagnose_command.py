@@ -117,6 +117,11 @@ def run(
         out(NEXT_STEP.format(command="drydock config set llm-provider <name>"))
         return Result(exit_code=2)
 
+    if mode == "apply":
+        repaired = _ac_repair(target, target_dir, llm, model, runner, out, style)
+        if repaired is not None:
+            return repaired
+
     out(style.rule("Diagnosing"))
     try:
         diagnosis = diagnose_run(bundle, llm=llm, model=model, runner=runner)
@@ -235,6 +240,75 @@ def run(
     if command:
         _next(out, style, command)
     return Result(exit_code=code, report_path=report_path, outcome=outcome)
+
+
+def _ac_repair(
+    target: str,
+    target_dir: Path,
+    llm: str | None,
+    model: str | None,
+    runner: Callable[..., object] | None,
+    out: Callable[[str], None],
+    style: Style,
+) -> Result | None:
+    """Repair DISPUTED and malformed criteria first; return a Result when that settles the run.
+
+    Selection is deterministic, so a Target with nothing to repair spends nothing and falls
+    through to the diagnosis. A repaired criterion changes its Blueprint, which resets the stories
+    consuming it so the next build runs the new criterion. ``None`` means continue diagnosing.
+    """
+    from drydock import ac_repair
+    from drydock.status import completion_check, execution_state
+
+    candidates = ac_repair.select_repairs(target_dir)
+    if not candidates:
+        return None
+    out(style.rule("AC repair"))
+    result = ac_repair.repair(
+        target,
+        target_dir,
+        runner=runner,
+        on_text=lambda message: out(INDENT + message),
+        model=model,
+        llm_provider=llm,
+        candidates=candidates,
+    )
+    if result.error:
+        out(INDENT + style.paint(f"✗ AC repair could not run: {result.error}", RED, BOLD))
+        return None
+    if result.changed_files:
+        from drydock.config import blueprint_dir_for
+        from drydock.refit import reset_blueprint_consumers
+
+        blueprint_dir = blueprint_dir_for(target_dir)
+        for name in result.changed_files:
+            (blueprint_dir / f"{Path(name).stem}_compact.md").unlink(missing_ok=True)
+        resets = reset_blueprint_consumers(
+            target_dir / "MANIFEST.md", blueprint_dir, list(result.changed_files)
+        )
+        reset_ids = tuple(
+            dict.fromkeys(block_id for reset in resets for block_id in reset.reset_ids)
+        )
+        if reset_ids:
+            out(f"{INDENT}Reset for rebuild: {', '.join(reset_ids)}.")
+    if result.items:
+        from drydock.target_git import commit_target
+
+        commit = commit_target(
+            target_dir,
+            f"Apply drydock AC repair: {len(result.repaired)} of {len(result.items)} criteria",
+            quiet=True,
+        )
+        if commit:
+            out(f"{INDENT}{style.paint('✓', GREEN)} Committed AC repair as {commit}.")
+    state, reason = execution_state(target_dir)
+    if result.repaired:
+        out(f"{INDENT}Repair outcome: {state} — {reason}.")
+        return Result(exit_code=1 if state == "stalled" else 0)
+    if completion_check(target, target_dir).complete:
+        out(f"{INDENT}Repair outcome: complete — every remaining criterion is UNFIXABLE.")
+        return Result(exit_code=0)
+    return None
 
 
 def parse_mode(*, apply_all: bool, no_apply: bool) -> str:

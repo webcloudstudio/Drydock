@@ -595,7 +595,8 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
     * ``COMPLETE`` (exit 0) — every executable block is ``closed/verified`` and no open
       blocking decision remains.
     * ``RETRYABLE`` (exit 1) — the Manifest is approved and executable work remains pending,
-      implemented, or failed. This says nothing about whether another build can advance it.
+      implemented, or failed, or a DISPUTED acceptance criterion awaits AC repair. This says
+      nothing about whether another build can advance it.
     * ``BLOCKED`` (exit 2) — no Manifest, an unparsable or draft Manifest, or a Manifest with no
       executable work, or a verified Manifest with outstanding blocking decisions.
 
@@ -635,6 +636,12 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
         )
     if total == 0:
         return CompletionCheck(target, BLOCKED, "Manifest has no executable work")
+    from drydock.ac_repair import disputed_criteria
+
+    # A DISPUTED criterion is open work even under a verified story: nothing has settled whether
+    # the product or the criterion is wrong, and AC repair is what settles it. UNFIXABLE is not
+    # selected, so a criterion repair could not fix stops holding the gate.
+    disputed = disputed_criteria(target_dir)
     if remaining:
         counts = Counter(block.state for block in remaining)
         detail = ", ".join(f"{count} {state}" for state, count in sorted(counts.items()))
@@ -643,8 +650,20 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
         failures = [block.block_id for block in remaining if block.state.endswith("/failed")]
         if failures:
             detail += f"; failed: {', '.join(failures)}"
+        if disputed:
+            detail += f"; disputed: {', '.join(disputed)}"
         return CompletionCheck(
             target, RETRYABLE, detail, total, verified, len(remaining), state_counts
+        )
+    if disputed:
+        return CompletionCheck(
+            target,
+            RETRYABLE,
+            f"disputed acceptance criteria: {', '.join(disputed)}",
+            total,
+            verified,
+            0,
+            state_counts,
         )
     from drydock.decisions import load_decisions
 

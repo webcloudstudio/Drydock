@@ -58,8 +58,8 @@ def _blueprint(tmp_path, spec: str, source: str = "Title\n<b>Welcome</b>\n"):
 
 def test_a_citation_resolves_one_line_or_a_range(tmp_path):
     blueprint = _blueprint(tmp_path, _CITED)
-    assert resolve_citation("sources/spec.txt:2", blueprint) == "<b>Welcome</b>"
-    assert resolve_citation("sources/spec.txt:1-2", blueprint) == "Title\n<b>Welcome</b>"
+    assert resolve_citation("sources/spec.txt:2", blueprint) == "<b>Welcome</b>\n"
+    assert resolve_citation("sources/spec.txt:1-2", blueprint) == "Title\n<b>Welcome</b>\n"
     assert resolve_citation("sources/spec.txt:9", blueprint) is None
     assert resolve_citation("sources/../FEATURE_Cited.md:1", blueprint) is None
     assert resolve_citation("FEATURE_Cited.md:1", blueprint) is None

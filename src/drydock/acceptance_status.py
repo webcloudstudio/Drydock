@@ -263,10 +263,18 @@ def prepassed_ids(
     )
 
 
+#: The verdicts of a criterion's last recorded run.
+OUTCOME_PASS = "PASS"
+OUTCOME_FAIL = "FAIL"
+OUTCOME_DISPUTED = "DISPUTED"
+
+
 @dataclass(frozen=True)
 class CriterionHistory:
     previously_passed: bool
     last_block: str
+    #: PASS, FAIL, or DISPUTED from the last build pass that ran it.
+    last_outcome: str = ""
 
 
 def acceptance_history(target_dir: Path) -> dict[str, CriterionHistory]:
@@ -282,6 +290,7 @@ def acceptance_history(target_dir: Path) -> dict[str, CriterionHistory]:
         return {}
     passed: set[str] = set()
     last_block: dict[str, str] = {}
+    last_outcome: dict[str, str] = {}
     for line in lines:
         try:
             row = json.loads(line)
@@ -301,8 +310,12 @@ def acceptance_history(target_dir: Path) -> dict[str, CriterionHistory]:
             last_block[check_id] = block
             if result.get("passed"):
                 passed.add(check_id)
+                last_outcome[check_id] = OUTCOME_PASS
+            else:
+                binding = result.get("binding", True) is not False
+                last_outcome[check_id] = OUTCOME_FAIL if binding else OUTCOME_DISPUTED
     return {
-        check_id: CriterionHistory(check_id in passed, block)
+        check_id: CriterionHistory(check_id in passed, block, last_outcome[check_id])
         for check_id, block in last_block.items()
     }
 
