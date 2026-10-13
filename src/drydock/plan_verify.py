@@ -30,6 +30,7 @@ from pathlib import Path
 from drydock.acceptance import (
     blueprint_read_defects,
     captures_without_reporting,
+    citation_defect,
     dynamic_selector_advisory,
     imported_modules,
     parse_programmatic_acceptance,
@@ -305,6 +306,11 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
             if (probe := selection_probe_reason(check, blueprint_dir=blueprint_dir)) is not None:
                 kind, reason = probe
                 defects.append(Defect(path.name, check.check_id, kind, reason))
+                continue
+            if (reason := citation_defect(check, blueprint_dir)) is not None:
+                # A citation exists to make a literal derived. One that names nothing, or names
+                # lines that do not state the expectation, would launder a re-typed value.
+                defects.append(Defect(path.name, check.check_id, "bad-citation", reason))
                 continue
             if names := unresolved_globals(check.code):
                 rendered = ", ".join(f"`{name}`" for name in sorted(names))

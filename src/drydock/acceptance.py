@@ -17,7 +17,7 @@ import tempfile
 import tokenize
 import warnings
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path, PurePosixPath
 
@@ -685,6 +685,12 @@ class ProgrammaticAcceptance:
     #: How to read the probe's stdout: ``lines`` (one case per non-blank line) or ``summary`` (the
     #: count is parsed from the trailing non-blank line), from ``Probe Count:``.
     probe_count: str = ""
+    #: Where the source material states this criterion's expected value, from its ``Cite:``
+    #: declaration: ``sources/<file>:<line>`` or ``sources/<file>:<start>-<end>``.
+    cite: str = ""
+    #: The cited lines, resolved under the Blueprint's ``sources/`` when the criterion was parsed
+    #: from a file. ``None`` when nothing is cited or the citation does not resolve.
+    cited_text: str | None = None
 
     @property
     def timeout_seconds(self) -> int:
@@ -706,9 +712,14 @@ class ProgrammaticAcceptance:
     def retyped_expectations(self) -> tuple[str, ...]:
         """Expected values this criterion re-typed instead of binding to its input.
 
-        A re-typed string literal or a reconstructed path, rendered as source text either way.
+        A re-typed string literal, an assembled string, or a reconstructed path, rendered as
+        source text. A literal found verbatim in the cited source material is derived: the
+        source is the authority, and copying it is not a second escaping decision.
         """
-        return retyped_expectations(self.code)
+        found = retyped_expectations(self.code)
+        if self.cited_text:
+            found = tuple(value for value in found if value not in self.cited_text)
+        return found
 
     @property
     def binding(self) -> bool:
@@ -955,6 +966,7 @@ _AC_META_KEYS = frozenset({
     "encoding",
     "probe",
     "probe count",
+    "cite",
 })
 
 
@@ -1014,7 +1026,66 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
         encoding=" ".join(meta.get("encoding", ())).strip().lower(),
         probe=" ".join(meta.get("probe", ())).strip(),
         probe_count=" ".join(meta.get("probe count", ())).strip().lower(),
+        cite=" ".join(meta.get("cite", ())).strip(),
     )
+
+
+_CITE_RE = re.compile(r"(?P<path>sources/[^:]+):(?P<start>\d+)(?:-(?P<end>\d+))?\Z")
+
+
+def resolve_citation(cite: str, blueprint_dir: Path) -> str | None:
+    """Return the cited lines of a ``Cite:`` declaration, or ``None`` when it does not resolve.
+
+    A citation names one line or an inclusive range of lines of a file under the Blueprint's
+    ``sources/``. Anything outside ``sources/``, or past the end of the file, does not resolve.
+    """
+    match = _CITE_RE.match(cite.strip())
+    if match is None:
+        return None
+    sources = (blueprint_dir / "sources").resolve()
+    path = (blueprint_dir / match.group("path")).resolve()
+    if not path.is_relative_to(sources) or not path.is_file():
+        return None
+    start = int(match.group("start"))
+    end = int(match.group("end") or start)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if start < 1 or end < start or end > len(lines):
+        return None
+    return "\n".join(lines[start - 1 : end])
+
+
+def citation_defect(check: ProgrammaticAcceptance, blueprint_dir: Path) -> str | None:
+    """Return why a criterion's ``Cite:`` does not support it, or ``None`` when it does.
+
+    A citation exists to make a literal derived, so one that resolves to nothing, or to lines
+    containing none of the criterion's expected literals, is a plan defect rather than a no-op.
+    """
+    if not check.cite:
+        return None
+    text = resolve_citation(check.cite, blueprint_dir)
+    if text is None:
+        return (
+            f"Cite: {check.cite} does not resolve to lines of a file under sources/; "
+            "cite sources/<file>:<line> or sources/<file>:<start>-<end>"
+        )
+    literals = retyped_expectations(check.code)
+    if not any(value in text for value in literals):
+        return (
+            f"Cite: {check.cite} contains none of this criterion's expected literals verbatim; "
+            "cite the lines that state the expected value"
+        )
+    return None
+
+
+def _blueprint_root(path: Path) -> Path:
+    """Return the Blueprint directory a criterion file belongs to: the nearest with ``sources/``."""
+    for parent in path.parents:
+        if (parent / "sources").is_dir():
+            return parent
+    return path.parent
 
 
 def body_is_a_complete_cut(body: str) -> bool:
@@ -1283,6 +1354,22 @@ def _supplied_literals(tree: ast.AST) -> frozenset[str]:
     return frozenset(supplied)
 
 
+def _supplied_expressions(tree: ast.AST) -> frozenset[str]:
+    """Return the structural dump of every expression bound to a name or passed as input.
+
+    An assembled string that is itself the input — built once, fed in, asserted on the way out —
+    is the round trip, exactly as a supplied literal is.
+    """
+    supplied: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            supplied.add(ast.dump(node.value))
+        elif isinstance(node, ast.Call):
+            for argument in (*node.args, *(keyword.value for keyword in node.keywords)):
+                supplied.add(ast.dump(argument))
+    return frozenset(supplied)
+
+
 def _is_reconstructed_path(node: ast.AST) -> bool:
     """True for ``a / b [/ c ...]`` — a path rebuilt with the pathlib join operator.
 
@@ -1293,6 +1380,37 @@ def _is_reconstructed_path(node: ast.AST) -> bool:
     both are correct.
     """
     return isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)
+
+
+def _is_string_piece(node: ast.AST) -> bool:
+    return isinstance(node, ast.JoinedStr) or (
+        isinstance(node, ast.Constant) and isinstance(node.value, str)
+    )
+
+
+def _is_assembled_string(node: ast.AST) -> bool:
+    """True for an expected string built in the criterion rather than typed or read back.
+
+    An f-string, a ``+`` concatenation with a string piece, ``"..." % args``, or
+    ``"...".format(...)`` states expected bytes exactly as a literal does, with extra steps.
+    """
+    if isinstance(node, ast.JoinedStr):
+        return True
+    if isinstance(node, ast.BinOp):
+        if isinstance(node.op, ast.Add):
+            return any(
+                _is_string_piece(side) or _is_assembled_string(side)
+                for side in (node.left, node.right)
+            )
+        if isinstance(node.op, ast.Mod):
+            return _is_string_piece(node.left)
+        return False
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "format"
+        and _is_string_piece(node.func.value)
+    )
 
 
 def _is_computed_attribute(node: ast.AST) -> bool:
@@ -1321,6 +1439,8 @@ def _comparison_expectations(tree: ast.AST) -> tuple[ast.expr, ...]:
                     continue
                 for side in (inner.left, comparator):
                     if isinstance(side, ast.Constant) and isinstance(side.value, str):
+                        found.append(side)
+                    elif _is_assembled_string(side):
                         found.append(side)
                 if _is_reconstructed_path(inner.left) and _is_computed_attribute(comparator):
                     found.append(inner.left)
@@ -1357,12 +1477,13 @@ def retyped_expectations(code: str) -> tuple[str, ...]:
         # Not parseable is a separate, already-reported fact. Nothing to classify.
         return ()
     supplied = _supplied_literals(tree)
+    supplied_expressions = _supplied_expressions(tree)
     offending: list[str] = []
     for node in _comparison_expectations(tree):
         if isinstance(node, ast.Constant):
             if _is_escapable(node.value) and node.value not in supplied:
                 offending.append(node.value)
-        else:
+        elif ast.dump(node) not in supplied_expressions:
             offending.append(ast.unparse(node))
     return tuple(dict.fromkeys(offending))
 
@@ -1378,8 +1499,17 @@ def _parse_programmatic_acceptance_file(
     path: str, _mtime_ns: int, _size: int
 ) -> tuple[ProgrammaticAcceptance, ...]:
     source = Path(path)
-    return parse_programmatic_acceptance_text(
+    checks = parse_programmatic_acceptance_text(
         source.read_text(encoding="utf-8"), source=source.name
+    )
+    if not any(check.cite for check in checks):
+        return checks
+    blueprint_dir = _blueprint_root(source)
+    return tuple(
+        replace(check, cited_text=resolve_citation(check.cite, blueprint_dir))
+        if check.cite
+        else check
+        for check in checks
     )
 
 

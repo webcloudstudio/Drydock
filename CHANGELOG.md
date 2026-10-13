@@ -10,6 +10,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-12: **Binding detection covers assembled and cited expectations.** An f-string, a `+`
+  concatenation with a string, `"..." % args`, or `"...".format(...)` on either side of `==`/`!=`
+  is a re-typed expectation unless the same expression is supplied as input, so such criteria
+  settle DISPUTED rather than FAIL. An AC block may declare `Cite: sources/<file>:<line>` or
+  `sources/<file>:<start>-<end>`; a literal found verbatim in the cited lines counts as derived.
+  `drydock plan verify` reports a `bad-citation` defect when a citation does not resolve under
+  `sources/` or its lines contain none of the criterion's expected literals. The Blueprints
+  contract documents both rules.
+
 - 2026-10-12: **`drydock build` runs only criteria that can measure the product.** A criterion
   whose current status is `ALWAYS_PASSES`, `ERROR`, `UNFIXABLE`, or `FLAKY` is not run after a
   block; it settles UNVERIFIED under the terminal `excluded check` prefix and the console lists it.

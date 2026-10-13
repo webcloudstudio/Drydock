@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260921 V21
+version: 20261012 V22
 ---
 
 ## Overview
@@ -228,8 +228,17 @@ single largest source of wasted build budget on record.
 
 The forbidden row is judged mechanically: a string expectation carrying anything escapable —
 whitespace, a backslash, a quote, a newline, a non-ASCII character — that the criterion did not
-also supply as input. A criterion that breaks the rule still runs and is still reported, but it
-settles `DISPUTED` and gates nothing, so it buys the story no coverage at all.
+also supply as input. An expectation assembled in the criterion — an f-string, a `+`
+concatenation with a string, `"..." % args`, or `"...".format(...)` — is forbidden the same way,
+unless that same expression is what the criterion supplied as input. A criterion that breaks the
+rule still runs and is still reported, but it settles `DISPUTED` and gates nothing, so it buys the
+story no coverage at all.
+
+One exception is mechanical too. When the source material under `sources/` states the exact
+expected value, cite it: `Cite: sources/<file>:<line>` or `Cite: sources/<file>:<start>-<end>`. A
+literal that appears verbatim in the cited lines is derived, not re-typed, because the source is
+the authority. `drydock plan verify` refuses a citation that does not resolve or whose lines
+contain none of the criterion's expected literals.
 
 The case this comes from. Wrong:
 
