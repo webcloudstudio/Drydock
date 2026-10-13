@@ -30,6 +30,7 @@ from pathlib import Path
 from drydock.acceptance import (
     MALFORMED_FAILURE_PREFIX,
     MEMORY_FAILURE_PREFIX,
+    OUTCOME_DISPUTED,
     TIMEOUT_FAILURE_PREFIX,
     UNVERIFIED_FAILURE_PREFIX,
     AcceptanceObservation,
@@ -42,6 +43,7 @@ from drydock.acceptance import (
     is_terminal_check_failure,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
+    read_prepassed_acceptance,
     record_prepassed_acceptance,
     run_programmatic_acceptance,
 )
@@ -162,6 +164,54 @@ UNEXAMINED_FINDING = (
     "UNVERIFIED, so nothing was measured against the built code. Repair the criteria in "
     "the Blueprint and rebuild to obtain a verdict."
 )
+
+#: Recorded on a block whose criteria ran but none binds: each re-typed its expected value, so a
+#: pass is as likely to be the criterion agreeing with itself as the product being right.
+NON_BINDING_FINDING = (
+    "ADVISORY: implemented, not verified — no criterion this story declared is binding; each "
+    "re-typed its expected value instead of deriving it. Repair the criteria in the Blueprint "
+    "to derive their expectations and rebuild to obtain a verdict."
+)
+
+#: Recorded on a block whose every passing binding criterion was already green before the block
+#: built. A criterion that passes without the work proves nothing about the work.
+PREPASSED_FINDING = (
+    "ADVISORY: implemented, not verified — every binding criterion this story passed was "
+    "already green before the story built, so none measured the work. Repair the criteria in "
+    "the Blueprint to exercise this story and rebuild to obtain a verdict."
+)
+
+
+def _unverified_finding(
+    own_checks: tuple[AcceptanceRunResult, ...], prepassed_ids: frozenset[str]
+) -> str | None:
+    """Return why a story's own criteria cannot verify it, or ``None`` when they can.
+
+    A story verifies only on a binding criterion that passed and was not green before the build.
+    The three findings name three different repairs, so they are kept apart.
+    """
+    if not own_checks:
+        return None
+    ran = tuple(check for check in own_checks if not check.skipped)
+    if not ran:
+        return UNEXAMINED_FINDING
+    binding = tuple(check for check in ran if check.binding)
+    if not binding:
+        return NON_BINDING_FINDING
+    if any(check.passed and check.check_id not in prepassed_ids for check in binding):
+        return None
+    if any(check.passed for check in binding):
+        return PREPASSED_FINDING
+    return UNEXAMINED_FINDING
+
+
+def _drives_repair(check: AcceptanceRunResult) -> bool:
+    """True when an unmet criterion is evidence a repair pass can act on.
+
+    A DISPUTED miss is withheld: feeding a possibly wrong expectation to the agent invites it to
+    fit the product to the criterion, which is exactly what binding exists to prevent.
+    """
+    return not check.passed and check.outcome != OUTCOME_DISPUTED
 
 
 def _ungoverned_finding(gate: GateResult | None) -> str | None:
@@ -1258,6 +1308,9 @@ class AttemptRecord:
     case_tallies: tuple[tuple[str, int, int], ...]
     status: str
     stop_reason: str | None = None
+    #: Binding criteria that ran (not UNVERIFIED) on this pass. Progress compares two passes only
+    #: over the same executed set, so a criterion dropping out cannot read as movement.
+    executed_check_ids: tuple[str, ...] = ()
     #: Why this pass did not close the block. A pass can meet every acceptance criterion and
     #: still be overturned — by a governed gate, a regression sweep, a dependency gate — and
     #: without this the record reads as a bare contradiction: failed, all criteria green.
@@ -1490,6 +1543,45 @@ def _settle_empty_selections(
         else:
             settled.append(result)
     return tuple(settled)
+
+
+def _binding_progress_view(
+    acceptance: tuple[AcceptanceRunResult, ...],
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[tuple[str, int, int], ...]]:
+    """Return the executed ids, passed ids, and case tallies of the binding criteria only.
+
+    A non-binding criterion flipping says nothing about the product, so it never counts as
+    progress or as its absence.
+    """
+    binding = tuple(check for check in acceptance if check.binding and not check.skipped)
+    return (
+        tuple(check.check_id for check in binding),
+        tuple(check.check_id for check in binding if check.passed),
+        _acceptance_case_tallies(binding),
+    )
+
+
+def _acceptance_progress(
+    previous: AttemptRecord | None, acceptance: tuple[AcceptanceRunResult, ...]
+) -> tuple[bool, bool]:
+    """Return ``(criterion_progress, case_progress)`` of a pass against the one before it.
+
+    Both compare binding criteria only and require the identical executed set. Criterion progress
+    is a strict superset of passed ids; case progress is a per-criterion tally gain with the
+    passed ids unchanged.
+    """
+    if previous is None:
+        return False, False
+    executed, passed, tallies = _binding_progress_view(acceptance)
+    if frozenset(executed) != frozenset(previous.executed_check_ids):
+        return False, False
+    previous_passed = frozenset(previous.passed_check_ids)
+    current_passed = frozenset(passed)
+    return (
+        current_passed > previous_passed,
+        current_passed == previous_passed
+        and _quantitative_acceptance_progress(previous.case_tallies, tallies),
+    )
 
 
 def _quantitative_acceptance_progress(
@@ -2660,14 +2752,17 @@ def build_target(
         # so cannot observe it. Recording only — a criterion green here is either exercising
         # nothing or measuring a deliverable that legitimately already existed, and the baseline
         # cannot tell those apart, so failing on it would break correct builds.
-        record_prepassed_acceptance(
-            evidence_dir,
-            (
+        # A resumed block's tree already holds its own partial work, so a criterion green now may
+        # be green because of it. The set recorded when the block first built is the baseline.
+        if unit.resume:
+            prepassed_ids = read_prepassed_acceptance(evidence_dir) & owned_check_ids
+        else:
+            prepassed_ids = frozenset(
                 check.check_id
                 for check in pre_acceptance
                 if check.passed and check.check_id in owned_check_ids
-            ),
-        )
+            )
+            record_prepassed_acceptance(evidence_dir, prepassed_ids)
         if pre_acceptance:
             baseline_red = sum(1 for check in pre_acceptance if not check.passed)
             weak_checks = [check.check_id for check in pre_acceptance if check.passed]
@@ -2736,13 +2831,11 @@ def build_target(
                 )
             )
             resume_failed = tuple(
-                check for check in resume_live if not check.passed and not check.skipped
+                check for check in resume_live if _drives_repair(check) and not check.skipped
             )
             if not resume_failed:
                 acceptance = resume_live
-                unexamined_resume = bool(resume_live) and not any(
-                    check.passed for check in resume_live
-                )
+                unexamined_resume = _unverified_finding(resume_live, prepassed_ids) is not None
                 state = "closed/implemented" if unexamined_resume else "closed/verified"
                 status, error, failure_detail = "built", None, ""
                 _emit(
@@ -3248,11 +3341,14 @@ def build_target(
                                     strict_target=True,
                                 )
                             )
+                            # Only a binding criterion can attribute a regression: a
+                            # DISPUTED miss is as likely the criterion's fault as this block's.
                             regressed_checks = tuple(
                                 result
                                 for result in swept
                                 if not result.passed
                                 and not result.skipped
+                                and result.binding
                                 and result.check_id in proven_green
                             )
                             # The observed state replaces the recorded one, so a criterion
@@ -3352,25 +3448,10 @@ def build_target(
                     if gate.blocks
                 )
             previous_record = attempt_records[-1] if attempt_records else None
-            passed_check_ids = tuple(check.check_id for check in acceptance if check.passed)
-            passed_checks = len(passed_check_ids)
+            passed_checks = sum(1 for check in acceptance if check.passed)
             passed_cases, total_cases = _acceptance_case_totals(acceptance)
-            case_tallies = _acceptance_case_tallies(acceptance)
-            previous_passed_ids = (
-                frozenset(previous_record.passed_check_ids) if previous_record is not None else None
-            )
-            current_passed_ids = frozenset(passed_check_ids)
-            ac_progress = (
-                previous_passed_ids is not None and current_passed_ids > previous_passed_ids
-            )
-            quantitative_progress = (
-                previous_record is not None
-                and current_passed_ids == previous_passed_ids
-                and _quantitative_acceptance_progress(
-                    previous_record.case_tallies,
-                    case_tallies,
-                )
-            )
+            executed_check_ids, passed_check_ids, case_tallies = _binding_progress_view(acceptance)
+            ac_progress, quantitative_progress = _acceptance_progress(previous_record, acceptance)
             stalled = (
                 status == "failed"
                 and _is_repairable(error)
@@ -3423,7 +3504,7 @@ def build_target(
                     + ", ".join(defective_ids)
                     + (f" — in {', '.join(sources)}" if sources else ""),
                 )
-            unmet_checks = tuple(check for check in acceptance if not check.passed)
+            unmet_checks = tuple(check for check in acceptance if _drives_repair(check))
             terminal_ids = (
                 tuple(
                     check.check_id
@@ -3467,6 +3548,7 @@ def build_target(
                     case_tallies=case_tallies,
                     status=status or "built",
                     stop_reason=stop_reason,
+                    executed_check_ids=executed_check_ids,
                     reason=_clip(error or "", 160) if status == "failed" else "",
                 )
             )
@@ -3487,7 +3569,7 @@ def build_target(
                     "failure_detail": failure_detail,
                 },
             )
-            feedback_checks = tuple(check for check in acceptance if not check.passed)
+            feedback_checks = tuple(check for check in acceptance if _drives_repair(check))
             if (
                 status == "failed"
                 and _is_repairable(error)
@@ -3693,7 +3775,8 @@ def build_target(
             # closing it green would report a single-criterion conformance story as verified
             # with its suite never executed. ``implemented`` is the state that already means
             # exactly this: the work is done and nothing with standing examined it.
-            unexamined = bool(own_checks) and not any(check.passed for check in own_checks)
+            unverified_finding = _unverified_finding(own_checks, prepassed_ids)
+            unexamined = unverified_finding is not None
             if ac_attributable:
                 # Per-block attribution: only the story whose own governed gate failed is
                 # closed/failed. A group-mate that passed its own gate, or has none, does not
@@ -3729,7 +3812,7 @@ def build_target(
                         own_checks,
                     )
                 elif unexamined:
-                    block_state, block_finding = "closed/implemented", UNEXAMINED_FINDING
+                    block_state, block_finding = "closed/implemented", unverified_finding
                 elif acceptance_contract.declared:
                     block_state, block_finding = "closed/implemented", UNGOVERNED_FINDING
                 else:
@@ -3742,7 +3825,7 @@ def build_target(
                 block_finding = None
             elif gate is None and unexamined:
                 block_state = "closed/implemented"
-                block_finding = UNEXAMINED_FINDING
+                block_finding = unverified_finding
             elif gate is not None:
                 # The gate could not run. That is a fault in the kit, not the product, so it
                 # never fails the block — but it also cannot verify it.

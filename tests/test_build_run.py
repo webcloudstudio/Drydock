@@ -15,6 +15,7 @@ from drydock.acceptance import MEMORY_FAILURE_PREFIX, UNVERIFIED_FAILURE_PREFIX,
 from drydock.build_plan import parse_build_plan, stale_applied_specs
 from drydock.build_run import (
     INTERRUPTED_VERIFICATION_PREFIX,
+    PREPASSED_FINDING,
     _assertion_summary,
     _classify_failure,
     _is_repairable,
@@ -1479,13 +1480,15 @@ def test_ac_failure_fails_only_the_owning_story_not_its_group_mate(tmp_path):
     # acceptance check failed is closed/failed; a group-mate whose own checks all passed verifies
     # instead of inheriting the failure. The parent feature still fails until every child verifies.
     target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    # The group builds in one pass under the feature's id; the criterion is red until it does.
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         "DB SPEC CONTENT\n\n"
         "## Programmatic Acceptance\n\n"
         "### db-ok\n"
-        "Database sanity.\n\n"
+        "Database output exists.\n\n"
         "```python\n"
-        "assert 1 + 1 == 2\n"
+        "from pathlib import Path\n"
+        "assert Path('feature-catalog.txt').exists()\n"
         "```\n",
         encoding="utf-8",
     )
@@ -1573,6 +1576,35 @@ def test_a_later_block_that_breaks_an_earlier_criterion_fails_on_the_regression(
     detail = result.steps[-1].failure_detail
     assert "db-guard" in detail
     assert "earlier blocks had already proven" in detail
+
+
+def test_a_non_binding_regression_does_not_fail_the_later_block(tmp_path):
+    """A re-typed expectation cannot attribute a miss to the product, so it cannot attribute a
+    regression to the block either. It is still swept and reported."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### db-guard\n"
+        "The guard file the foundation installs stays installed.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        'assert Path("guard.txt").exists() and "<on>" == "<on>"\n'
+        'assert Path("guard.txt").read_text().strip() + "," == "on,"\n'
+        "```\n",
+        encoding="utf-8",
+    )
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=_regression_runner(tmp_path),
+        repair_attempts=0,
+    )
+
+    assert _state(target_dir, "service") != "closed/failed"
+    assert "acceptance regression" not in (_finding(target_dir, "service") or "")
 
 
 def test_the_repair_pass_restores_what_the_block_regressed(tmp_path):
@@ -3700,8 +3732,8 @@ def test_idempotent_rewrite_still_grades_acceptance(tmp_path):
 
 
 def test_no_file_delta_is_advisory_when_acceptance_passes(tmp_path):
-    # A step whose deliverable is already byte-correct changes nothing and is still done. With
-    # criteria to measure, the deterministic gate is authoritative.
+    # A step whose deliverable is already byte-correct changes nothing and is still done. Its
+    # criterion was green before the build, so it measured nothing: implemented, not verified.
     messages: list[str] = []
     target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
@@ -3717,8 +3749,8 @@ def test_no_file_delta_is_advisory_when_acceptance_passes(tmp_path):
     )
 
     assert result.steps[0].status == "built"
-    assert _state(target_dir, "foundation") == "closed/verified"
-    assert _finding(target_dir, "foundation") is None
+    assert _state(target_dir, "foundation") == "closed/implemented"
+    assert _finding(target_dir, "foundation") == PREPASSED_FINDING
     assert any("no files changed (advisory)" in message for message in messages)
 
 

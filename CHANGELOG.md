@@ -92,6 +92,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-12: **`drydock build` verifies, progresses, and repairs on binding criteria only.** An
+  ungoverned story reaches `closed/verified` only when an own binding criterion passes that was
+  not green before the build; otherwise it closes `closed/implemented` with a finding naming the
+  cause: no criterion ran, none is binding, or every binding pass was prepassed. Repair progress
+  compares binding criteria only and requires an identical executed set between passes. DISPUTED
+  misses no longer enter repair feedback, the resume seed, or the kit-fault stop test, and a
+  non-binding criterion no longer fails a later block as a regression. A resumed block reads its
+  prepassed set from `evidence/prepassed-acceptance.json` instead of re-baselining its own partial
+  work. Verified counts drop for builds whose criteria were already green or re-typed.
+
 - 2026-10-09: **Claude Haiku 5.5 runs as an effort-sized model.** `--model claude-haiku-5-5`
   and the bare `haiku` alias no longer receive the fixed `MAX_THINKING_TOKENS` budget, which
   Haiku 5.5 rejects. They size thinking from `--effort` like other current Claude models, and
