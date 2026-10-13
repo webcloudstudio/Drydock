@@ -4743,3 +4743,18 @@ def test_runner_exception_checkpoints_partial_work_and_error(tmp_path):
     assert row["status"] == "error"
     assert row["application"]["files"] == [{"path": "partial.py", "status": "A"}]
     assert row["details"]["error"] == "Agent process stopped"
+
+
+def test_build_records_each_criterion_baseline_status(tmp_path):
+    from drydock.acceptance_status import STATUS_VALID, read_acceptance_status
+
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _marker_spec("built foundation"), encoding="utf-8"
+    )
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    statuses = read_acceptance_status(target_dir / "evidence")
+    assert statuses["foundation-file"].status == STATUS_VALID
+    assert _state(target_dir, "foundation") == "closed/verified"

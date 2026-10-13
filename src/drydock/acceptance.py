@@ -6,7 +6,6 @@ import ast
 import builtins
 import contextlib
 import io
-import json
 import os
 import re
 import shutil
@@ -100,6 +99,9 @@ UNVERIFIED_FAILURE_PREFIX = "unverified acceptance"
 # A check that died inside its own snippet rather than inside the code under test. No
 # implementation can turn it green, so a repair pass on it is wasted.
 MALFORMED_FAILURE_PREFIX = "malformed check"
+# A criterion whose verdict changed between two runs on an unchanged build tree. It disagrees
+# with itself, so neither verdict is evidence about the product and no repair pass can settle it.
+FLAKY_FAILURE_PREFIX = "flaky check"
 
 # A criterion importing a foundation package the build directory does not contain. The application
 # it exercises is not built, so it is not run: the verdict is FAIL, stated in one line instead of a
@@ -122,6 +124,7 @@ TERMINAL_FAILURE_PREFIXES = (
     SKIPPED_FAILURE_PREFIX,
     UNVERIFIED_FAILURE_PREFIX,
     MALFORMED_FAILURE_PREFIX,
+    FLAKY_FAILURE_PREFIX,
 )
 
 
@@ -2187,42 +2190,6 @@ def captures_without_reporting(code: str) -> bool:
         elif name in _CAPTURING_CALLS:
             captures = True
     return captures and not reports
-
-
-#: Where a build records criteria that were already green at their block's baseline — before that
-#: block's code existed. Two different situations produce it: a criterion that exercises nothing
-#: (a suite selector matching no cases exits zero), and a deliverable that legitimately already
-#: existed. Only the baseline can observe either, and only the build takes a baseline, so the fact
-#: is written here for ``drydock score ac`` to report. It is reported, never gated: the two causes
-#: are indistinguishable from the baseline alone, and failing the second would break correct
-#: builds. A missing file simply means no baseline has been recorded yet.
-PREPASSED_ACCEPTANCE_EVIDENCE = "prepassed-acceptance.json"
-
-
-def record_prepassed_acceptance(evidence_dir: Path, check_ids: Iterable[str]) -> None:
-    """Merge ``check_ids`` into the target's record of criteria green before their block built."""
-    incoming = set(check_ids)
-    if not incoming:
-        return
-    known = set(read_prepassed_acceptance(evidence_dir)) | incoming
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-    (evidence_dir / PREPASSED_ACCEPTANCE_EVIDENCE).write_text(
-        json.dumps({"prepassed": sorted(known)}, indent=2) + "\n", encoding="utf-8", newline="\n"
-    )
-
-
-def read_prepassed_acceptance(evidence_dir: Path) -> frozenset[str]:
-    """Return criterion ids a build found green at baseline, or an empty set."""
-    try:
-        payload = json.loads(
-            (evidence_dir / PREPASSED_ACCEPTANCE_EVIDENCE).read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
-        return frozenset()
-    entries = payload.get("prepassed") if isinstance(payload, dict) else None
-    if not isinstance(entries, list):
-        return frozenset()
-    return frozenset(str(entry) for entry in entries)
 
 
 def malformed_criteria(

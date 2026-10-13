@@ -28,6 +28,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from drydock.acceptance import (
+    FLAKY_FAILURE_PREFIX,
     MALFORMED_FAILURE_PREFIX,
     MEMORY_FAILURE_PREFIX,
     OUTCOME_DISPUTED,
@@ -43,8 +44,6 @@ from drydock.acceptance import (
     is_terminal_check_failure,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
-    read_prepassed_acceptance,
-    record_prepassed_acceptance,
     run_programmatic_acceptance,
 )
 from drydock.acceptance_contract import (
@@ -59,6 +58,16 @@ from drydock.acceptance_requirements import (
     is_automatic_test_requirement,
     record_requirement_decision,
     requirement_available,
+)
+from drydock.acceptance_status import (
+    ERROR_VERDICT_CHANGED,
+    STATUS_FLAKY,
+    classify_baseline,
+    record_baseline_status,
+    record_status,
+)
+from drydock.acceptance_status import (
+    prepassed_ids as recorded_prepassed_ids,
 )
 from drydock.build import (
     StepAssembly,
@@ -203,6 +212,53 @@ def _unverified_finding(
     if any(check.passed for check in binding):
         return PREPASSED_FINDING
     return UNEXAMINED_FINDING
+
+
+def _settle_flaky(
+    acceptance: tuple[AcceptanceRunResult, ...],
+    checks: tuple[ProgrammaticAcceptance, ...],
+    *,
+    rerun: Callable[[tuple[ProgrammaticAcceptance, ...]], tuple[AcceptanceRunResult, ...]],
+    tree_before: Mapping[str, object],
+    snapshot: Callable[[], Mapping[str, object]],
+) -> tuple[tuple[AcceptanceRunResult, ...], tuple[str, ...]]:
+    """Rerun each binding FAIL once and settle the ones that disagree with themselves as FLAKY.
+
+    FLAKY needs the build tree identical before the first run and after the rerun: a changed tree
+    means the code moved, and the original FAIL stands. Suite-bound criteria are not rerun, since a
+    staged runner can cost minutes and is rarely the flaky party. A FLAKY result settles as
+    UNVERIFIED with a terminal prefix, so it is charged to nothing and never repaired.
+    """
+    check_by_id = {check.check_id: check for check in checks}
+    candidates = tuple(
+        check_by_id[result.check_id]
+        for result in acceptance
+        if not result.passed
+        and not result.skipped
+        and result.binding
+        and result.check_id in check_by_id
+        and not check_by_id[result.check_id].suite_bound
+    )
+    if not candidates:
+        return acceptance, ()
+    rerun_results = rerun(candidates)
+    if snapshot() != tree_before:
+        return acceptance, ()
+    flaky = tuple(result.check_id for result in rerun_results if result.passed)
+    if not flaky:
+        return acceptance, ()
+    settled = tuple(
+        replace(
+            result,
+            passed=False,
+            skipped=True,
+            error=f"{FLAKY_FAILURE_PREFIX}: failed, then passed on an unchanged build tree",
+        )
+        if result.check_id in flaky
+        else result
+        for result in acceptance
+    )
+    return settled, flaky
 
 
 def _drives_repair(check: AcceptanceRunResult) -> bool:
@@ -2752,17 +2808,25 @@ def build_target(
         # so cannot observe it. Recording only — a criterion green here is either exercising
         # nothing or measuring a deliverable that legitimately already existed, and the baseline
         # cannot tell those apart, so failing on it would break correct builds.
-        # A resumed block's tree already holds its own partial work, so a criterion green now may
-        # be green because of it. The set recorded when the block first built is the baseline.
-        if unit.resume:
-            prepassed_ids = read_prepassed_acceptance(evidence_dir) & owned_check_ids
-        else:
-            prepassed_ids = frozenset(
-                check.check_id
-                for check in pre_acceptance
-                if check.passed and check.check_id in owned_check_ids
-            )
-            record_prepassed_acceptance(evidence_dir, prepassed_ids)
+        # Each criterion's baseline status is recorded for later blocks, ``score ac``, and AC
+        # repair. A resumed block's tree already holds its own partial work, so a criterion green
+        # now may be green because of it; the status recorded when the block first built stands.
+        check_by_id = {check.check_id: check for check in checks}
+        baseline_statuses = {
+            observation.check_id: status
+            for observation in pre_acceptance
+            if (check := check_by_id.get(observation.check_id)) is not None
+            and (status := classify_baseline(observation, check)) is not None
+        }
+        acceptance_statuses = (
+            record_baseline_status(evidence_dir, baseline_statuses, resume=unit.resume)
+            if not dry_run
+            else baseline_statuses
+        )
+        prepassed_ids = recorded_prepassed_ids(
+            acceptance_statuses,
+            (check for check in checks if check.check_id in owned_check_ids),
+        )
         if pre_acceptance:
             baseline_red = sum(1 for check in pre_acceptance if not check.passed)
             weak_checks = [check.check_id for check in pre_acceptance if check.passed]
@@ -3158,6 +3222,9 @@ def build_target(
                             failure_detail = ", ".join(
                                 f"{item.kind}={item.name}" for item in unavailable_after_provision
                             )
+                        tree_before_acceptance = (
+                            _snapshot_files(resolved_build_dir) if status != "failed" else {}
+                        )
                         acceptance = (
                             _settle_empty_selections(
                                 run_programmatic_acceptance(
@@ -3214,6 +3281,36 @@ def build_target(
                                     for check in skipped_checks
                                 ),
                                 target_dir=target_dir,
+                            )
+                        acceptance, flaky_ids = _settle_flaky(
+                            acceptance,
+                            checks,
+                            rerun=lambda selected: _settle_empty_selections(
+                                run_programmatic_acceptance(
+                                    selected,
+                                    build_dir=resolved_build_dir,
+                                    target_dir=target_dir,
+                                    blueprint_dir=blueprint_dir,
+                                    strict_target=True,
+                                )
+                            ),
+                            tree_before=tree_before_acceptance,
+                            snapshot=lambda: _snapshot_files(resolved_build_dir),
+                        )
+                        for check in checks:
+                            if check.check_id in flaky_ids:
+                                record_status(
+                                    evidence_dir,
+                                    check,
+                                    STATUS_FLAKY,
+                                    ERROR_VERDICT_CHANGED,
+                                    "failed, then passed on an unchanged build tree",
+                                )
+                        if flaky_ids:
+                            _emit(
+                                on_text,
+                                "flaky: " + ", ".join(flaky_ids) + " — verdict changed on an "
+                                "unchanged build tree; settled UNVERIFIED, repair the criterion",
                             )
                         # A criterion that missed its expectation splits two ways. If its
                         # expected value is one it could not have invented, the miss is evidence
@@ -3943,7 +4040,7 @@ def build_target(
         block_elapsed = _elapsed_text(block_seconds)
         graded = acceptance or pre_acceptance
         if graded:
-            prepassed_ids = {
+            baseline_green_ids = {
                 check.check_id for check in pre_acceptance if check.passed and check.integrity_ok
             }
             vacuous_ids = {
@@ -3957,7 +4054,7 @@ def build_target(
                 # "X" reads as a ticked checkbox under Markdown convention — exactly wrong
                 # directly above "result: FAILED". "!" cannot be misread as done.
                 mark = "ok" if check.passed else "!!"
-                if check.check_id in prepassed_ids:
+                if check.check_id in baseline_green_ids:
                     note = "  (prepassed)"
                 elif check.check_id in vacuous_ids:
                     note = "  (vacuous)"

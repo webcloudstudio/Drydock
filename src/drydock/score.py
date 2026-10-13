@@ -37,10 +37,15 @@ from drydock.acceptance import (
     failure_detail,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
-    read_prepassed_acceptance,
 )
 from drydock.acceptance_contract import GateResult, load_contract, run_gate
 from drydock.acceptance_requirements import authorization_for, requirement_available
+from drydock.acceptance_status import (
+    acceptance_history,
+    current_status,
+    prepassed_ids,
+    read_acceptance_status,
+)
 from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.errors import SpecificationError
 from drydock.gate_policy import (
@@ -580,7 +585,10 @@ def verify_acs(
     # Grading runs against a built tree, where a criterion satisfied by the product and one
     # satisfied by its absence look identical. Only the build's baseline separates them, so this
     # reports what the build recorded instead of re-deriving it from output.
-    prepassed = read_prepassed_acceptance(target_dir / "evidence")
+    statuses = read_acceptance_status(target_dir / "evidence")
+    prepassed = prepassed_ids(statuses, checks)
+    history = acceptance_history(target_dir)
+    check_by_id = {check.check_id: check for check in checks}
     # The criterion's own source, so a failure report can quote the code that raised rather than
     # naming a line number in a file the reader has to go find.
     code_by_id = {check.check_id: check.code for check in checks}
@@ -599,6 +607,9 @@ def verify_acs(
             )
         stamp = verified_at if status != UNVERIFIED else ""
         story, feature = owners.get(obs.source, ("", ""))
+        check = check_by_id.get(obs.check_id)
+        recorded = current_status(statuses, check) if check is not None else None
+        past = history.get(obs.check_id)
         verdicts.append(
             AcVerdict(
                 obs.check_id, obs.intent, status, evidence, obs.source, story, feature, detail
@@ -612,6 +623,14 @@ def verify_acs(
                 verified=_VERIFIED_LABEL[status],
                 evidence=evidence,
                 verified_at=stamp,
+                binding=("yes" if check.binding else "no") if check is not None else "",
+                baseline=(
+                    f"{recorded.status} {recorded.error_code}".strip()
+                    if recorded is not None
+                    else ""
+                ),
+                previously_passed=("yes" if past.previously_passed else "no") if past else "",
+                last_block=past.last_block if past else "",
             )
         )
 

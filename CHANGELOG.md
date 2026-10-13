@@ -10,6 +10,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-12: **Per-criterion acceptance status and FLAKY detection.** `drydock build` records
+  each criterion's baseline status in `evidence/acceptance-status.json` (`VALID`, `ERROR`,
+  `ALWAYS_PASSES`, `PREBUILD_PASSES`, `UNFIXABLE`, `FLAKY`) with an error code that separates
+  `product-missing` (a valid red) from `environment` and `malformed` (the criterion could not
+  run). Entries are bound to a digest of the criterion code, so an edited criterion is
+  re-classified; `ALWAYS_PASSES`, `UNFIXABLE`, and `FLAKY` survive later baselines otherwise. The
+  file replaces `evidence/prepassed-acceptance.json`. After each pass, a binding FAIL that is not
+  suite-bound is rerun once; when the rerun passes and the build tree is byte-identical, the
+  criterion records `FLAKY`, settles UNVERIFIED under the terminal `flaky check` prefix, and is
+  never repaired. `drydock score ac` adds Binding, Baseline, Previously Passed, and Last Block
+  columns to `SOUNDINGS.md`, the last two projected from `BUILD_LINEAGE.jsonl`; boards are read by
+  column name, so older boards still load.
+
 - 2026-10-05: **`drydock report` publishes deterministic Target reports.** A report registry
   exposes status, Manifest progress, recorded run state, build evidence, command history, LLM
   usage, and score history through `drydock report help`. `drydock report <name> <Target>` writes
@@ -98,9 +111,9 @@ command surface and Typed Specification contract are unstable and may change bet
   cause: no criterion ran, none is binding, or every binding pass was prepassed. Repair progress
   compares binding criteria only and requires an identical executed set between passes. DISPUTED
   misses no longer enter repair feedback, the resume seed, or the kit-fault stop test, and a
-  non-binding criterion no longer fails a later block as a regression. A resumed block reads its
-  prepassed set from `evidence/prepassed-acceptance.json` instead of re-baselining its own partial
-  work. Verified counts drop for builds whose criteria were already green or re-typed.
+  non-binding criterion no longer fails a later block as a regression. A resumed block keeps the
+  baseline recorded when it first built instead of re-baselining its own partial work. Verified
+  counts drop for builds whose criteria were already green or re-typed.
 
 - 2026-10-09: **Claude Haiku 5.5 runs as an effort-sized model.** `--model claude-haiku-5-5`
   and the bare `haiku` alias no longer receive the fixed `MAX_THINKING_TOKENS` budget, which

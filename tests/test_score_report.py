@@ -57,10 +57,11 @@ def _soundings(target_dir: Path, statuses: list[str]) -> None:
         "# Soundings",
         "",
         "| " + " | ".join(SOUNDINGS_HEADER) + " |",
-        "|---|---|---|---|---|---|",
+        "|" + "---|" * len(SOUNDINGS_HEADER),
     ]
     lines += [
-        f"| {status} | SPEC.md | ac-{index} | Criterion {index}. |  | 2026-01-01T09:00:00+00:00 |"
+        f"| {status} | SPEC.md | ac-{index} | Criterion {index}. | yes | VALID |  |  |  "
+        "| 2026-01-01T09:00:00+00:00 |"
         for index, status in enumerate(statuses, start=1)
     ]
     (target_dir / "SOUNDINGS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

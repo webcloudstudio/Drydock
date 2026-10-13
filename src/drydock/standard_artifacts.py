@@ -9,7 +9,18 @@ from pathlib import Path
 
 from drydock.prompt_headers import prompt_header_for_file, prompt_headers
 
-SOUNDINGS_HEADER = ("Status", "Blueprint", "AC Id", "Text", "Evidence", "Verified At")
+SOUNDINGS_HEADER = (
+    "Status",
+    "Blueprint",
+    "AC Id",
+    "Text",
+    "Binding",
+    "Baseline",
+    "Previously Passed",
+    "Last Block",
+    "Evidence",
+    "Verified At",
+)
 
 # Trust-but-verify vocabulary. ``score ac`` sets these from deterministic proof results so the
 # Commander can scan the board and see exactly which acceptance criteria are proven.
@@ -31,6 +42,14 @@ class Sounding:
     verified: str = VERIFIED_UNVERIFIED
     evidence: str = ""
     verified_at: str = ""
+    #: ``yes`` when a miss is evidence about the product, ``no`` when the criterion re-typed it.
+    binding: str = ""
+    #: The criterion's recorded status and error code, e.g. ``VALID product-missing``.
+    baseline: str = ""
+    #: ``yes`` when any build pass in ``BUILD_LINEAGE.jsonl`` saw it pass.
+    previously_passed: str = ""
+    #: The block whose build pass last ran it.
+    last_block: str = ""
 
 
 def _escape_cell(value: str) -> str:
@@ -46,13 +65,27 @@ def render_soundings(rows: list[Sounding]) -> str:
         "Status column from deterministic proof results. A rerun of `drydock plan` resets Status to",
         "`— UNVERIFIED`; rescore to refresh.",
         "",
-        "| Status | Blueprint | AC Id | Text | Evidence | Verified At |",
-        "|---|---|---|---|---|---|",
+        "| " + " | ".join(SOUNDINGS_HEADER) + " |",
+        "|" + "---|" * len(SOUNDINGS_HEADER),
     ]
     lines.extend(
-        f"| {_escape_cell(row.verified)} | {_escape_cell(row.blueprint)} | "
-        f"{_escape_cell(row.criterion_id)} | {_escape_cell(row.summary)} | "
-        f"{_escape_cell(row.evidence)} | {_escape_cell(row.verified_at)} |"
+        "| "
+        + " | ".join(
+            _escape_cell(value)
+            for value in (
+                row.verified,
+                row.blueprint,
+                row.criterion_id,
+                row.summary,
+                row.binding,
+                row.baseline,
+                row.previously_passed,
+                row.last_block,
+                row.evidence,
+                row.verified_at,
+            )
+        )
+        + " |"
         for row in rows
     )
     return "\n".join(lines) + "\n"
@@ -67,22 +100,31 @@ def load_soundings(path: Path) -> dict[str, Sounding]:
         return {}
     lines = path.read_text(encoding="utf-8").splitlines()
     for index, line in enumerate(lines):
-        if tuple(_split_row(line)) != SOUNDINGS_HEADER or index + 1 >= len(lines):
+        header = tuple(_split_row(line))
+        # Columns are read by name, so a board written before a column existed still loads.
+        if not {"Status", "AC Id"} <= set(header) or index + 1 >= len(lines):
             continue
         rows: dict[str, Sounding] = {}
         for row_line in lines[index + 2 :]:
             if "|" not in row_line:
                 break
             cells = _split_row(row_line)
-            if len(cells) != len(SOUNDINGS_HEADER) or not cells[2]:
+            if len(cells) != len(header):
                 continue
-            rows[cells[2]] = Sounding(
-                criterion_id=cells[2],
-                blueprint=cells[1],
-                summary=cells[3],
-                verified=cells[0],
-                evidence=cells[4],
-                verified_at=cells[5],
+            cell = dict(zip(header, cells, strict=True))
+            if not cell["AC Id"]:
+                continue
+            rows[cell["AC Id"]] = Sounding(
+                criterion_id=cell["AC Id"],
+                blueprint=cell.get("Blueprint", ""),
+                summary=cell.get("Text", ""),
+                verified=cell["Status"],
+                evidence=cell.get("Evidence", ""),
+                verified_at=cell.get("Verified At", ""),
+                binding=cell.get("Binding", ""),
+                baseline=cell.get("Baseline", ""),
+                previously_passed=cell.get("Previously Passed", ""),
+                last_block=cell.get("Last Block", ""),
             )
         return rows
     return {}
