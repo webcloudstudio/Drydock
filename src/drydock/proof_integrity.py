@@ -108,6 +108,119 @@ def _vacuous_assert_reason(node: ast.Assert) -> str | None:
     return None
 
 
+#: Exception types whose handler, when it does not re-raise, swallows a failing assertion.
+_SWALLOWING_TYPES = frozenset({"AssertionError", "Exception", "BaseException"})
+
+_UNREACHABLE = "assertion is unreachable"
+_SWALLOWED = "assertion failure is swallowed by an exception handler"
+
+
+def _type_names(node: ast.expr | None) -> set[str]:
+    if node is None:
+        return {"BaseException"}
+    if isinstance(node, ast.Tuple):
+        return {name for item in node.elts for name in _type_names(item)}
+    if isinstance(node, ast.Attribute):
+        return {node.attr}
+    if isinstance(node, ast.Name):
+        return {node.id}
+    return set()
+
+
+def _swallows(handler: ast.ExceptHandler) -> bool:
+    """True when a handler catches assertion failures and never re-raises."""
+    if not _type_names(handler.type) & _SWALLOWING_TYPES:
+        return False
+    return not any(isinstance(node, ast.Raise) for stmt in handler.body for node in ast.walk(stmt))
+
+
+def _suppresses(item: ast.withitem) -> bool:
+    """True for ``with suppress(AssertionError):`` or an equally broad suppression."""
+    call = item.context_expr
+    return (
+        isinstance(call, ast.Call)
+        and _call_name(call) == "suppress"
+        and any(_type_names(arg) & _SWALLOWING_TYPES for arg in call.args)
+    )
+
+
+def _carries_failure(stmts: list[ast.stmt]) -> bool:
+    return any(
+        isinstance(node, (ast.Assert, ast.Raise))
+        or (isinstance(node, ast.Call) and (_is_checker_call(node) or _is_meaningful_exit(node)))
+        for stmt in stmts
+        for node in ast.walk(stmt)
+    )
+
+
+def _skip(stmts: list[ast.stmt], reason: str, dead: list[str]) -> None:
+    if _carries_failure(stmts):
+        dead.append(reason)
+
+
+def _live_block(stmts: list[ast.stmt], dead: list[str]):
+    """Yield every node that can execute with its failure observed, in statement order.
+
+    Only constructs whose outcome is decided by the source text are pruned: a constant branch,
+    code after an unconditional jump, and a body whose assertion failure a handler swallows.
+    Anything undetermined is treated as live, so the analysis can withhold credit but never
+    invent a failure path.
+    """
+    for index, stmt in enumerate(stmts):
+        yield from _live_stmt(stmt, dead)
+        if isinstance(stmt, (ast.Return, ast.Raise, ast.Continue, ast.Break)):
+            _skip(stmts[index + 1 :], _UNREACHABLE, dead)
+            return
+
+
+def _live_stmt(stmt: ast.stmt, dead: list[str]):
+    if isinstance(stmt, (ast.If, ast.While)):
+        yield stmt
+        yield from ast.walk(stmt.test)
+        truth = bool(stmt.test.value) if isinstance(stmt.test, ast.Constant) else None
+        if truth is False:
+            _skip(stmt.body, _UNREACHABLE, dead)
+        else:
+            yield from _live_block(stmt.body, dead)
+        if truth is True:
+            _skip(stmt.orelse, _UNREACHABLE, dead)
+        else:
+            yield from _live_block(stmt.orelse, dead)
+        return
+    if isinstance(stmt, ast.Try) or type(stmt).__name__ == "TryStar":
+        yield stmt
+        if any(_swallows(handler) for handler in stmt.handlers):
+            _skip(stmt.body, _SWALLOWED, dead)
+        else:
+            yield from _live_block(stmt.body, dead)
+        for handler in stmt.handlers:
+            yield handler
+            yield from _live_block(handler.body, dead)
+        yield from _live_block(stmt.orelse, dead)
+        yield from _live_block(stmt.finalbody, dead)
+        return
+    if isinstance(stmt, (ast.With, ast.AsyncWith)) and any(_suppresses(i) for i in stmt.items):
+        yield stmt
+        for item in stmt.items:
+            yield from ast.walk(item)
+        _skip(stmt.body, _SWALLOWED, dead)
+        return
+    yield stmt
+    for value in ast.iter_child_nodes(stmt):
+        if isinstance(value, (ast.stmt, ast.match_case)):
+            continue
+        yield from ast.walk(value)
+    for field in ("body", "orelse", "finalbody"):
+        block = getattr(stmt, field, None)
+        if isinstance(block, list) and block and isinstance(block[0], ast.stmt):
+            yield from _live_block(block, dead)
+    for case in getattr(stmt, "cases", ()):
+        yield from ast.walk(case.pattern)
+        if case.guard is not None:
+            yield from ast.walk(case.guard)
+        yield from _live_block(case.body, dead)
+
+
 def analyze_proof(code: str) -> ProofIntegrity:
     """Judge whether a Programmatic Acceptance proof body can meaningfully fail."""
     try:
@@ -124,7 +237,8 @@ def analyze_proof(code: str) -> ProofIntegrity:
 
     asserts: list[ast.Assert] = []
     has_meaningful = False
-    for node in ast.walk(tree):
+    dead: list[str] = []
+    for node in _live_block(tree.body, dead):
         if isinstance(node, ast.Assert):
             asserts.append(node)
         elif isinstance(node, ast.Raise):
@@ -141,7 +255,7 @@ def analyze_proof(code: str) -> ProofIntegrity:
     if has_meaningful or effective_asserts > 0:
         return ProofIntegrity(True)
 
-    if asserts:
-        # Every assertion present is vacuous and nothing else can fail.
-        return ProofIntegrity(False, tuple(dict.fromkeys(vacuous_reasons)))
+    if asserts or dead:
+        # Every assertion that can run is vacuous, and the rest cannot run or cannot fail.
+        return ProofIntegrity(False, tuple(dict.fromkeys(vacuous_reasons + dead)))
     return ProofIntegrity(False, ("proof contains no assertion, raise, or failing exit",))

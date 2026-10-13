@@ -10,6 +10,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-12: **`drydock build` runs only criteria that can measure the product.** A criterion
+  whose current status is `ALWAYS_PASSES`, `ERROR`, `UNFIXABLE`, or `FLAKY` is not run after a
+  block; it settles UNVERIFIED under the terminal `excluded check` prefix and the console lists it.
+  `PREBUILD_PASSES` criteria keep running as possible coverage of existing behavior. Vacuity
+  detection now prunes control flow decided by the source text: assertions under a constant-false
+  branch or after `return`/`raise`/`break`/`continue`, and assertions inside a `try` whose
+  `AssertionError`/`Exception`/bare handler does not re-raise or inside `suppress(...)`. A vacuous
+  criterion records `ALWAYS_PASSES` from its code whatever its baseline outcome.
+
 - 2026-10-12: **Per-criterion acceptance status and FLAKY detection.** `drydock build` records
   each criterion's baseline status in `evidence/acceptance-status.json` (`VALID`, `ERROR`,
   `ALWAYS_PASSES`, `PREBUILD_PASSES`, `UNFIXABLE`, `FLAKY`) with an error code that separates

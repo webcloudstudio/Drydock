@@ -23,6 +23,7 @@ from drydock.acceptance import (
     AcceptanceObservation,
     ProgrammaticAcceptance,
 )
+from drydock.proof_integrity import analyze_proof
 
 #: Where the build records each criterion's status, under the Target's ``evidence/``.
 ACCEPTANCE_STATUS_EVIDENCE = "acceptance-status.json"
@@ -52,6 +53,10 @@ STATUSES = (
 #: Statuses no baseline overwrites while the criterion's code is unchanged. Only editing the
 #: criterion clears one, because nothing else can change what it found.
 TERMINAL_STATUSES = frozenset({STATUS_ALWAYS_PASSES, STATUS_UNFIXABLE, STATUS_FLAKY})
+
+#: Statuses whose criterion is not run after a block: it cannot measure the product. ERROR is
+#: re-checked by the next baseline; the others hold until the criterion is edited.
+EXCLUDED_STATUSES = frozenset({STATUS_ALWAYS_PASSES, STATUS_ERROR, STATUS_UNFIXABLE, STATUS_FLAKY})
 
 #: Statuses green before the build, which therefore cannot verify the story that owns them.
 PREPASSED_STATUSES = frozenset({STATUS_PREBUILD_PASSES, STATUS_ALWAYS_PASSES})
@@ -104,6 +109,12 @@ def classify_baseline(
     """
     stamp = at or _now()
     digest = code_digest(check.code)
+    # Vacuity is a property of the code, not of this run: a swallowed assertion can be red today
+    # only because the product is absent, and will pass whatever the product does once it exists.
+    integrity = analyze_proof(check.code)
+    if not integrity.ok:
+        reasons = "; ".join(integrity.reasons)
+        return CriterionStatus(STATUS_ALWAYS_PASSES, ERROR_VACUOUS, digest, stamp, reasons)
     error = observation.error or ""
     if error.startswith("baseline unavailable"):
         return None
@@ -266,4 +277,16 @@ def acceptance_history(target_dir: Path) -> dict[str, CriterionHistory]:
     return {
         check_id: CriterionHistory(check_id in passed, block)
         for check_id, block in last_block.items()
+    }
+
+
+def excluded_criteria(
+    statuses: Mapping[str, CriterionStatus], checks: Iterable[ProgrammaticAcceptance]
+) -> dict[str, CriterionStatus]:
+    """Return the criteria among ``checks`` whose current status keeps them from running."""
+    return {
+        check.check_id: entry
+        for check in checks
+        if (entry := current_status(statuses, check)) is not None
+        and entry.status in EXCLUDED_STATUSES
     }

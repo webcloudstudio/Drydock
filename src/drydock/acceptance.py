@@ -102,6 +102,8 @@ MALFORMED_FAILURE_PREFIX = "malformed check"
 # A criterion whose verdict changed between two runs on an unchanged build tree. It disagrees
 # with itself, so neither verdict is evidence about the product and no repair pass can settle it.
 FLAKY_FAILURE_PREFIX = "flaky check"
+# A criterion not run because its recorded status says it cannot measure the product.
+EXCLUDED_FAILURE_PREFIX = "excluded check"
 
 # A criterion importing a foundation package the build directory does not contain. The application
 # it exercises is not built, so it is not run: the verdict is FAIL, stated in one line instead of a
@@ -125,6 +127,7 @@ TERMINAL_FAILURE_PREFIXES = (
     UNVERIFIED_FAILURE_PREFIX,
     MALFORMED_FAILURE_PREFIX,
     FLAKY_FAILURE_PREFIX,
+    EXCLUDED_FAILURE_PREFIX,
 )
 
 

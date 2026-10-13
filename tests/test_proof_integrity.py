@@ -87,3 +87,56 @@ def test_vacuous_reasons_are_deduplicated():
 
 
 # --- analyze_literals -------------------------------------------------------
+
+
+# --- Control flow: unreachable and swallowed assertions ------------------------------------
+
+
+def test_assertion_under_constant_false_branch_is_flagged():
+    result = analyze_proof("if False:\n    assert run() == 3\n")
+    assert not result.ok
+    assert "assertion is unreachable" in result.reasons
+
+
+def test_assertion_after_return_is_flagged():
+    code = "def probe():\n    return\n    assert run() == 3\nprobe()\n"
+    assert not analyze_proof(code).ok
+
+
+def test_assertion_swallowed_by_assertion_handler_is_flagged():
+    code = "try:\n    assert run() == 3\nexcept AssertionError:\n    pass\n"
+    result = analyze_proof(code)
+    assert not result.ok
+    assert "assertion failure is swallowed by an exception handler" in result.reasons
+
+
+def test_assertion_swallowed_by_broad_handler_is_flagged():
+    assert not analyze_proof("try:\n    assert run() == 3\nexcept Exception:\n    pass\n").ok
+
+
+def test_assertion_inside_suppress_is_flagged():
+    code = (
+        "from contextlib import suppress\nwith suppress(AssertionError):\n    assert run() == 3\n"
+    )
+    assert not analyze_proof(code).ok
+
+
+def test_handler_that_reraises_is_not_swallowing():
+    code = "try:\n    assert run() == 3\nexcept AssertionError:\n    log()\n    raise\n"
+    assert analyze_proof(code).ok
+
+
+def test_narrow_handler_is_not_swallowing():
+    assert analyze_proof("try:\n    assert run() == 3\nexcept KeyError:\n    pass\n").ok
+
+
+def test_undetermined_branch_is_live():
+    assert analyze_proof("if flag():\n    assert run() == 3\n").ok
+
+
+def test_else_of_constant_true_branch_is_unreachable():
+    assert not analyze_proof("if True:\n    pass\nelse:\n    assert run() == 3\n").ok
+
+
+def test_live_assertion_beside_dead_one_is_ok():
+    assert analyze_proof("if False:\n    assert run() == 2\nassert run() == 3\n").ok

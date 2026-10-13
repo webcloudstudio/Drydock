@@ -28,6 +28,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from drydock.acceptance import (
+    EXCLUDED_FAILURE_PREFIX,
     FLAKY_FAILURE_PREFIX,
     MALFORMED_FAILURE_PREFIX,
     MEMORY_FAILURE_PREFIX,
@@ -62,7 +63,9 @@ from drydock.acceptance_requirements import (
 from drydock.acceptance_status import (
     ERROR_VERDICT_CHANGED,
     STATUS_FLAKY,
+    CriterionStatus,
     classify_baseline,
+    excluded_criteria,
     record_baseline_status,
     record_status,
 )
@@ -259,6 +262,42 @@ def _settle_flaky(
         for result in acceptance
     )
     return settled, flaky
+
+
+def _run_valid_criteria(
+    checks: tuple[ProgrammaticAcceptance, ...],
+    excluded: Mapping[str, CriterionStatus],
+    run: Callable[[tuple[ProgrammaticAcceptance, ...]], tuple[AcceptanceRunResult, ...]],
+) -> tuple[AcceptanceRunResult, ...]:
+    """Run the criteria that can measure the product; settle the rest UNVERIFIED unrun.
+
+    An excluded criterion still appears in the results, in declaration order, so the story that
+    owns it reports why nothing measured it rather than silently losing a criterion.
+    """
+    if not any(check.check_id in excluded for check in checks):
+        return run(checks) if checks else ()
+    selected = tuple(check for check in checks if check.check_id not in excluded)
+    ran = {result.check_id: result for result in run(selected)} if selected else {}
+    results: list[AcceptanceRunResult] = []
+    for check in checks:
+        if (entry := excluded.get(check.check_id)) is not None:
+            results.append(
+                AcceptanceRunResult(
+                    check_id=check.check_id,
+                    source=check.source,
+                    intent=check.intent,
+                    passed=False,
+                    return_code=None,
+                    stdout="",
+                    stderr="",
+                    error=f"{EXCLUDED_FAILURE_PREFIX}: {entry.status} {entry.error_code}".strip(),
+                    skipped=True,
+                    binding=check.binding,
+                )
+            )
+        elif (result := ran.get(check.check_id)) is not None:
+            results.append(result)
+    return tuple(results)
 
 
 def _drives_repair(check: AcceptanceRunResult) -> bool:
@@ -2827,6 +2866,16 @@ def build_target(
             acceptance_statuses,
             (check for check in checks if check.check_id in owned_check_ids),
         )
+        excluded = excluded_criteria(acceptance_statuses, checks)
+        if excluded:
+            _emit(
+                on_text,
+                "excluded: "
+                + ", ".join(
+                    f"{check_id} ({entry.status})" for check_id, entry in sorted(excluded.items())
+                )
+                + " — cannot measure the product; not run",
+            )
         if pre_acceptance:
             baseline_red = sum(1 for check in pre_acceptance if not check.passed)
             weak_checks = [check.check_id for check in pre_acceptance if check.passed]
@@ -2885,14 +2934,18 @@ def build_target(
             # same feedback repair passes use — rather than a clean prompt that must rediscover
             # it. If the checks already pass (a step fixed out of band), close green with no
             # LLM pass.
-            resume_live = _settle_empty_selections(
-                run_programmatic_acceptance(
-                    checks,
-                    build_dir=resolved_build_dir,
-                    target_dir=target_dir,
-                    blueprint_dir=blueprint_dir,
-                    strict_target=True,
-                )
+            resume_live = _run_valid_criteria(
+                checks,
+                excluded,
+                lambda selected: _settle_empty_selections(
+                    run_programmatic_acceptance(
+                        selected,
+                        build_dir=resolved_build_dir,
+                        target_dir=target_dir,
+                        blueprint_dir=blueprint_dir,
+                        strict_target=True,
+                    )
+                ),
             )
             resume_failed = tuple(
                 check for check in resume_live if _drives_repair(check) and not check.skipped
@@ -3226,14 +3279,18 @@ def build_target(
                             _snapshot_files(resolved_build_dir) if status != "failed" else {}
                         )
                         acceptance = (
-                            _settle_empty_selections(
-                                run_programmatic_acceptance(
-                                    checks,
-                                    build_dir=resolved_build_dir,
-                                    target_dir=target_dir,
-                                    blueprint_dir=blueprint_dir,
-                                    strict_target=True,
-                                )
+                            _run_valid_criteria(
+                                checks,
+                                excluded,
+                                lambda selected: _settle_empty_selections(
+                                    run_programmatic_acceptance(
+                                        selected,
+                                        build_dir=resolved_build_dir,
+                                        target_dir=target_dir,
+                                        blueprint_dir=blueprint_dir,
+                                        strict_target=True,
+                                    )
+                                ),
                             )
                             if status != "failed"
                             else ()
@@ -3299,6 +3356,12 @@ def build_target(
                         )
                         for check in checks:
                             if check.check_id in flaky_ids:
+                                excluded = {
+                                    **excluded,
+                                    check.check_id: CriterionStatus(
+                                        STATUS_FLAKY, ERROR_VERDICT_CHANGED, "", ""
+                                    ),
+                                }
                                 record_status(
                                     evidence_dir,
                                     check,

@@ -277,3 +277,46 @@ def test_a_resumed_baseline_never_records_prebuild_passes_for_a_gap(tmp_path):
         tmp_path, {"ac": classify_baseline(_observation(passed=True), check)}, resume=True
     )
     assert "ac" not in merged
+
+
+# --- Exclusion -------------------------------------------------------------------------------
+
+
+def test_only_criteria_that_can_measure_the_product_run(tmp_path):
+    from drydock.acceptance import EXCLUDED_FAILURE_PREFIX
+    from drydock.acceptance_status import STATUS_UNFIXABLE, excluded_criteria
+    from drydock.build_run import _run_valid_criteria
+
+    checks = (_check("valid"), _check("dead"), _check("prebuilt"), _check("broken"))
+    record_baseline_status(
+        tmp_path,
+        {
+            "valid": classify_baseline(_observation("valid"), checks[0]),
+            "prebuilt": classify_baseline(_observation("prebuilt", passed=True), checks[2]),
+            "broken": classify_baseline(
+                _observation("broken", error=f"{MALFORMED_FAILURE_PREFIX}: x"), checks[3]
+            ),
+        },
+    )
+    record_status(tmp_path, checks[1], STATUS_UNFIXABLE, "repair-impossible", "")
+    excluded = excluded_criteria(read_acceptance_status(tmp_path), checks)
+    ran: list = []
+
+    def run(selected):
+        ran.extend(check.check_id for check in selected)
+        return tuple(_result(check.check_id, passed=True) for check in selected)
+
+    results = _run_valid_criteria(checks, excluded, run)
+
+    # PREBUILD_PASSES keeps running: it may be regression coverage of existing behavior.
+    assert ran == ["valid", "prebuilt"]
+    assert [result.check_id for result in results] == ["valid", "dead", "prebuilt", "broken"]
+    dead = results[1]
+    assert dead.skipped and dead.error.startswith(EXCLUDED_FAILURE_PREFIX)
+    assert "UNFIXABLE" in dead.error
+
+
+def test_a_vacuous_criterion_is_always_passes_even_when_red_at_baseline():
+    code = "try:\n    assert run() == 3\nexcept Exception:\n    pass\n"
+    status = classify_baseline(_observation(stderr="NameError"), _check(code=code))
+    assert status.status == STATUS_ALWAYS_PASSES

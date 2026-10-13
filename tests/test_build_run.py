@@ -16,6 +16,7 @@ from drydock.build_plan import parse_build_plan, stale_applied_specs
 from drydock.build_run import (
     INTERRUPTED_VERIFICATION_PREFIX,
     PREPASSED_FINDING,
+    UNEXAMINED_FINDING,
     _assertion_summary,
     _classify_failure,
     _is_repairable,
@@ -1342,7 +1343,7 @@ def test_blueprint_programmatic_prepass_is_informational(tmp_path):
     assert "PASS: foundation-file" in evidence
 
 
-def test_blueprint_programmatic_vacuous_prepass_is_informational(tmp_path):
+def test_blueprint_programmatic_vacuous_criterion_is_excluded_and_unexamined(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         "DB SPEC CONTENT\n\n"
@@ -1365,7 +1366,11 @@ def test_blueprint_programmatic_vacuous_prepass_is_informational(tmp_path):
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
     assert "GREEN (vacuous): foundation-file" in evidence
     assert "assertion on constant literal True is always true" in evidence
-    assert "PASS: foundation-file" in evidence
+    # ALWAYS_PASSES is excluded from the post-build run, so nothing measured the story.
+    assert "PASS: foundation-file" not in evidence
+    assert "excluded check: ALWAYS_PASSES vacuous" in evidence
+    assert _state(target_dir, "foundation") == "closed/implemented"
+    assert _finding(target_dir, "foundation") == UNEXAMINED_FINDING
 
 
 def test_blueprint_programmatic_acceptance_failure_stops_dependents(tmp_path):
