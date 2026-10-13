@@ -43,7 +43,6 @@ def test_build_running_command_includes_explicit_flags():
         # Unset, not "happens to equal the default": the budget is configurable, so the echoed
         # command must not freeze this run's value into a flag the operator never typed.
         repair_attempts=None,
-        escalate_model=None,
         model=None,
         llm_provider=None,
         effort=None,
@@ -67,7 +66,6 @@ def test_build_running_command_echoes_an_explicit_repair_budget():
         dry_run=False,
         show_prompt=False,
         repair_attempts=12,
-        escalate_model=None,
         model=None,
         llm_provider=None,
         effort=None,
@@ -1092,7 +1090,7 @@ class TestAnalyzeCommand:
         assert "--show-prompt" in out
         assert "--repair-attempts" in out
         assert "default 6" in out
-        assert "--escalate-model" in out
+        assert "--escalate-model" not in out
         assert "Build operands:" not in out
         assert "drydock config set repair_attempts" not in out
         assert "—" not in out

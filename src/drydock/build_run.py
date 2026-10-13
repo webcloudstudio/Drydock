@@ -2350,7 +2350,6 @@ def build_target(
     dry_run: bool = False,
     show_prompt: bool = False,
     repair_attempts: int = DEFAULT_REPAIR_ATTEMPTS,
-    escalate_model: str | None = None,
     dependency_registry_client: RegistryClient | None = None,
     ungate: bool = False,
     override: bool = False,
@@ -3038,8 +3037,6 @@ def build_target(
                 attempt_model = base_model
             else:
                 attempt_model = base_model
-                if attempt == max_attempt and escalate_model:
-                    attempt_model = escalate_model
                 _emit(
                     on_text,
                     f"repair: attempt {attempt}/{max_attempt} · "
@@ -3079,8 +3076,6 @@ def build_target(
                 f"  [call {attempt + 1}/{max_attempt + 1}]  kind={call_kind}  "
                 f"llm={llm_provider}/{attempt_model or '-'}"
             )
-            if attempt and attempt == max_attempt and escalate_model:
-                call_line += "  escalated=yes"
             _emit(on_text, call_line)
             if feedback_checks:
                 _emit(on_text, "    fixing=" + _acceptance_failure_details(feedback_checks))

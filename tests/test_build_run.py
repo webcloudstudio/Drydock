@@ -3111,26 +3111,6 @@ def test_terminal_failure_is_not_repaired(tmp_path):
     assert len(runner.calls) == 1
 
 
-def test_repair_stall_stops_before_final_model_escalation(tmp_path):
-    target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
-    runner = make_attempt_runner(fix_at=None)
-
-    build_target(
-        "Demo",
-        target_dir,
-        build_dir=build_dir,
-        runner=runner,
-        model="sonnet",
-        step_id="foundation",
-        repair_attempts=3,
-        escalate_model="opus",
-    )
-
-    models = [c["model"] for c in runner.calls]
-    assert models == ["sonnet", "sonnet", "sonnet"]
-
-
 def test_is_repairable_only_for_acceptance_and_agent_reports():
     assert _is_repairable("programmatic acceptance failed: x") is True
     assert _is_repairable("agent-reported failure: incomplete") is True

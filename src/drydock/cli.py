@@ -2211,7 +2211,6 @@ def cmd_build(args: argparse.Namespace) -> int:
         build_target,
     )
     from drydock.config import (
-        get_escalate_model,
         get_model,
         get_workspace,
         require_target_dir,
@@ -2240,11 +2239,6 @@ def cmd_build(args: argparse.Namespace) -> int:
     conflict = provider_model_conflict(llm_provider, model)
     if conflict is not None:
         raise UsageError(conflict)
-    escalate_model = get_escalate_model(getattr(args, "escalate_model", None))
-    if escalate_model:
-        escalate_conflict = provider_model_conflict(llm_provider, escalate_model)
-        if escalate_conflict is not None:
-            raise UsageError(f"escalate model: {escalate_conflict}")
     if getattr(args, "repair_attempts", None) is not None and args.repair_attempts < 0:
         raise UsageError("--repair-attempts must be zero or greater.")
     _apply_bound_overrides(args)
@@ -2292,7 +2286,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"Started: {_wall_time()}")
         print(f"Provider: {llm_provider} / {model}")
         attempts_word = "attempt" if repair_attempts == 1 else "attempts"
-        print(f"Repair: {repair_attempts} {attempts_word} · escalate {escalate_model or 'off'}")
+        print(f"Repair: {repair_attempts} {attempts_word}")
     if getattr(args, "story", None):
         print(f"scope: story {args.story}")
     elif getattr(args, "step", None):
@@ -2377,7 +2371,6 @@ def cmd_build(args: argparse.Namespace) -> int:
             dry_run=bool(getattr(args, "dry_run", False)),
             show_prompt=bool(getattr(args, "show_prompt", False)),
             repair_attempts=repair_attempts,
-            escalate_model=escalate_model,
             ungate=bool(getattr(args, "ungate", False)),
             override=bool(getattr(args, "override", False)),
         )
@@ -2500,7 +2493,6 @@ def _build_running_command(args: argparse.Namespace) -> str:
             "value",
             getattr(args, "repair_attempts", None),
         ),
-        ("--escalate-model", "value", getattr(args, "escalate_model", None)),
         ("--model", "value", getattr(args, "model", None)),
         ("--llm-provider", "value", getattr(args, "llm_provider", None)),
         ("--effort", "value", getattr(args, "effort", None)),
@@ -3317,14 +3309,6 @@ def _add_build_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     _add_bound_arguments(parser)
-    parser.add_argument(
-        "--escalate-model",
-        dest="escalate_model",
-        default=None,
-        metavar="<model>",
-        help="Model used on the final repair attempt "
-        "(default: DRYDOCK_BUILD_ESCALATE_MODEL env or off).",
-    )
     _add_llm_override_flags(parser)
 
 
@@ -4213,7 +4197,6 @@ def _dispatch_build(args: argparse.Namespace) -> int:
             "dry_run": ("--dry-run",),
             "show_prompt": ("--show-prompt",),
             "repair_attempts": ("--repair-attempts",),
-            "escalate_model": ("--escalate-model",),
             "model": ("--model",),
             "llm_provider": ("--llm-provider",),
             "effort": ("--effort",),
@@ -5150,7 +5133,6 @@ _LOG_TARGET_SUBVERBS = frozenset({
 _LOG_VALUE_OPTIONS = frozenset({
     "--build-dir",
     "--effort",
-    "--escalate-model",
     "--llm-provider",
     "--model",
     "--repair-attempts",

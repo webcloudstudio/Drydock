@@ -314,6 +314,12 @@ command surface and Typed Specification contract are unstable and may change bet
   Session` means the module and is still reported by `drydock plan verify`. In Marina_Luna this
   repaired the four criteria that failed the plan and touched nothing else in 47 Blueprints.
 
+### Removed
+
+- 2026-10-13: **`drydock build --escalate-model` and the `drydock_build_escalate_model`
+  configuration key (`DRYDOCK_BUILD_ESCALATE_MODEL`).** Every repair pass now runs on the step's
+  model, and the build call line no longer carries `escalated=yes`.
+
 ### Changed
 
 - 2026-09-19: Table ownership has one rule: only a Feature owns an access pattern, and a pattern no

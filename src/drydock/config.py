@@ -19,7 +19,6 @@ _KEY_MAP = {
     "change_ticket_directory": "DRYDOCK_CHANGE_TICKET_DIRECTORY",
     "drydock_model": "DRYDOCK_MODEL",
     "drydock_effort": "DRYDOCK_EFFORT",
-    "drydock_build_escalate_model": "DRYDOCK_BUILD_ESCALATE_MODEL",
     "llm_provider": "LLM_PROVIDER",
     "codex_sandbox": "DRYDOCK_CODEX_SANDBOX",
     "prompt_warn_tokens": "PROMPT_WARN_TOKENS",
@@ -291,19 +290,6 @@ def get_effort(cli_override: str | None = None) -> str | None:
     return normalize_effort(value, "drydock_effort")
 
 
-def get_escalate_model(cli_override: str | None = None) -> str | None:
-    """Resolve the fallback model used on a build's final repair attempt.
-
-    Resolution order: cli_override → DRYDOCK_BUILD_ESCALATE_MODEL (env or config
-    file) → unset. An empty or unset value returns ``None``: no escalation, the
-    repair loop stays on the base model for every attempt.
-    """
-    if cli_override is not None:
-        return cli_override.strip() or None
-    value, _source = _get("DRYDOCK_BUILD_ESCALATE_MODEL")
-    return (value or "").strip() or None
-
-
 #: Every provider Drydock can execute. ``claude`` and ``codex`` authenticate against a
 #: subscription; ``gemini`` is metered and reads ``GEMINI_API_KEY`` from the environment.
 LLM_PROVIDERS = ("claude", "codex", "gemini")
@@ -564,7 +550,6 @@ def config_show() -> list[tuple[str, str, str]]:
         ),
         ("drydock_model", "DRYDOCK_MODEL", "(not set)"),
         ("drydock_effort", "DRYDOCK_EFFORT", "(provider default)"),
-        ("drydock_build_escalate_model", "DRYDOCK_BUILD_ESCALATE_MODEL", "(not set)"),
         ("llm_provider", "LLM_PROVIDER", "(from the model)"),
         ("codex_sandbox", "DRYDOCK_CODEX_SANDBOX", DEFAULT_CODEX_SANDBOX),
         ("prompt_warn_tokens", "PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS)),
@@ -650,9 +635,6 @@ def config_set(key: str, value: str) -> Path:
     elif upper == "DRYDOCK_EFFORT":
         # Empty clears the setting: no effort is requested and the provider default stands.
         stored_value = normalize_effort(value, "drydock_effort") or ""
-    elif upper == "DRYDOCK_BUILD_ESCALATE_MODEL":
-        # Empty clears the setting: no escalation. A non-empty value is a model name.
-        stored_value = value.strip()
     elif upper == "DRYDOCK_CHANGE_TICKET_DIRECTORY":
         candidate = Path(value.strip())
         if not value.strip() or candidate.is_absolute() or ".." in candidate.parts:
