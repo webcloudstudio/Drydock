@@ -12,8 +12,10 @@ _BACKTICK_RUN_RE = re.compile(r"`+")
 
 
 def estimate_tokens(byte_count: int) -> int:
-    """Return Drydock's coarse token estimate: ``ceil(bytes / 4)``."""
-    return (byte_count + 3) // 4
+    """Return the active model's token estimate for ``byte_count`` prompt bytes."""
+    from drydock.build import story_points_for
+
+    return story_points_for(byte_count)
 
 
 def fenced_body(body: str, language: str = "") -> str:

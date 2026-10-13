@@ -3594,7 +3594,7 @@ def _compute_schedule(
     specifications, context, stack, rules, and instructions. The preferred threshold guides
     grouping; the configured error threshold is an absolute gate.
     """
-    from drydock.config import get_prompt_error_tokens
+    from drydock.build import resolve_warning_tokens
     from drydock.plan_graph import compute_plan
     from drydock.plan_stack import block_min_savings, block_target_tokens, resolve_stack_set
 
@@ -3693,7 +3693,7 @@ def _compute_schedule(
     return compute_plan(
         declared,
         target_tokens=block_target_tokens(),
-        limit_tokens=get_prompt_error_tokens(),
+        limit_tokens=resolve_warning_tokens(),
         min_savings=block_min_savings(),
         size_fn=lambda story: block_size_fn((story,)),
         acceptance_count_fn=acceptance_count_fn,

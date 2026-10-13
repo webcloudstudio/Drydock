@@ -15,9 +15,9 @@ The earlier framing sized a *story* by "what one build agent can implement and v
 pass". That was never a decomposition boundary: a model will accept a whole epic in one pass and
 build it badly, so capacity says nothing about whether the unit of work is a story.
 
-The target is the existing ``prompt_warn_tokens`` configuration key, which already means *the
-maximum assembled prompt cost of one build step* — the same quantity measured here at plan time. A
-second key would be the same number under a second name, defaulting differently and drifting.
+The target is the active model's ``prompt_target_tokens`` from ``model_config.jsonl``, which
+already means *the maximum assembled prompt cost of one build step* — the same quantity measured
+here at plan time. A second key would be the same number under a second name, drifting.
 """
 
 from __future__ import annotations
@@ -27,14 +27,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock import technology_stack
-from drydock.build import PROMPT_WARN_TOKENS, resolve_warn_tokens
+from drydock.build import PROMPT_TARGET_TOKENS, resolve_target_tokens
 from drydock.errors import ConfigurationError
 from drydock.paths import get_stack_dir
 from drydock.prompt_assembly import estimate_tokens
 
-#: Fallback target when ``prompt_warn_tokens`` is unreadable. Mirrors the build-time default so
+#: Fallback target when ``model_config.jsonl`` is unreadable. Mirrors the build-time default so
 #: plan-time and build-time sizing cannot disagree.
-DEFAULT_BLOCK_TARGET_TOKENS = PROMPT_WARN_TOKENS
+DEFAULT_BLOCK_TARGET_TOKENS = PROMPT_TARGET_TOKENS
 
 #: Prior spelling, retained for callers. The old name attached the measurement to a story; tokens
 #: are a property of the block a story is built in.
@@ -47,12 +47,12 @@ _SKIP_SUFFIX = "_compact.skip.md"
 def block_target_tokens() -> int:
     """Return the configured block cost target in tokens.
 
-    Resolves ``prompt_warn_tokens`` — the same key ``drydock build`` uses to flag an over-stacked
-    step. Sizing is a read-only costing pass, so an unusable setting downgrades to the built-in
+    Resolves the active model's ``prompt_target_tokens`` — the value ``drydock build`` uses to flag
+    an over-stacked step. Sizing is a read-only costing pass, so an unusable setting downgrades to the built-in
     default rather than refusing to plan. This is a target, not a gate: over-target work is
     marked and built.
     """
-    return resolve_warn_tokens()
+    return resolve_target_tokens()
 
 
 #: Prior spelling. Tokens measure a block, never a story.

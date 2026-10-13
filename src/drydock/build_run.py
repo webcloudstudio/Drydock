@@ -140,6 +140,7 @@ from drydock.llm import (
 )
 from drydock.manifest_edit import batch_set_block_fields, reset_all_states
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
+from drydock.model_config import calibration_notice
 from drydock.override import (
     ACCEPTANCE_AUTHORIZATION,
     WaivedGate,
@@ -3157,7 +3158,15 @@ def build_target(
                 execution_bits.append(f"rc={returncode}")
             if execution_id:
                 execution_bits.append(f"execution={execution_id}")
+            record = getattr(result, "record", None)
+            job = record.get("job") if isinstance(record, dict) else None
+            escalation = (job or {}).get("parameters", {}).get("escalation")
+            if escalation:
+                execution_bits.append(str(escalation))
             _emit(on_text, "    " + "  ".join(execution_bits))
+            notice = calibration_notice(log_dir) if log_dir is not None else None
+            if notice:
+                _emit(on_text, "    " + notice)
             # Token accounting is not build progress. The execution's own ``.llm.log`` already
             # carries it, and the receipt links that log beside the command's streams.
             token_line = format_token_summary(getattr(result, "stats", None), llm=llm_provider)

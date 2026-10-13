@@ -408,9 +408,9 @@ def assign_stack_modes(
 #:
 #: This constant is a standalone fallback so the module stays free of Drydock imports. Callers
 #: pass the configured target — ``plan_stack.story_budget_tokens()``, resolving
-#: ``prompt_warn_tokens`` — so this value matters only to a direct caller that supplies nothing.
-#: It mirrors ``config.DEFAULT_PROMPT_WARN_TOKENS``.
-DEFAULT_BLOCK_TARGET_TOKENS = 50_000
+#: the model's ``prompt_target_tokens`` — so this value matters only to a direct caller that
+#: supplies nothing. It mirrors ``build.PROMPT_TARGET_TOKENS``.
+DEFAULT_BLOCK_TARGET_TOKENS = 70_000
 
 #: Retained spelling of the same value. The old name implied a budget that could be exceeded only
 #: by overspending; it is a target.

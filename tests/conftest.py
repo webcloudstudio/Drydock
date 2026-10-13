@@ -10,7 +10,8 @@ import pytest
 # ``main()`` publishes the glyph tier it resolved so its subprocesses render identically. That
 # is one process per command in the field, but one process for the whole suite here, so a test
 # that drives the CLI would otherwise fix the tier for every test that follows it.
-_CONSOLE_ENV = ("DRYDOCK_GLYPHS", "DRYDOCK_ASCII")
+# ``--model`` is published the same way, so a CLI test must not leave its model behind either.
+_CONSOLE_ENV = ("DRYDOCK_GLYPHS", "DRYDOCK_ASCII", "DRYDOCK_MODEL")
 
 
 @pytest.fixture(autouse=True)
@@ -22,6 +23,51 @@ def _isolate_console_env():
             os.environ.pop(name, None)
         else:
             os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
+def _isolate_model_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch):
+    """Point every test at a private copy of the packaged ``model_config.jsonl``.
+
+    The live copy is user configuration that calibration rewrites, so a test must never read
+    or create it. Every model row is pinned to 4 bytes per token so byte-derived token counts
+    in tests do not depend on a tokenizer measurement; tests of the ratio itself write their
+    own file.
+    """
+    import json
+
+    from drydock.model_config import seed_path
+
+    rows = []
+    for line in seed_path().read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if row.get("kind") == "model":
+            row["bytes_per_token"] = 4.0
+        rows.append(json.dumps(row))
+    path = tmp_path_factory.mktemp("model_config") / "model_config.jsonl"
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    monkeypatch.setenv("DRYDOCK_MODEL_CONFIG", str(path))
+    yield path
+
+
+@pytest.fixture()
+def set_model_fields(_isolate_model_config: Path):
+    """Factory: overwrite fields on every model row of the test's ``model_config.jsonl``."""
+    import json
+
+    def _set(**fields) -> Path:
+        rows = []
+        for line in _isolate_model_config.read_text(encoding="utf-8").splitlines():
+            row = json.loads(line)
+            if row.get("kind") == "model":
+                row.update(fields)
+            rows.append(json.dumps(row))
+        _isolate_model_config.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        return _isolate_model_config
+
+    return _set
 
 
 @pytest.fixture()

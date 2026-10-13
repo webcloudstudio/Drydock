@@ -17,8 +17,6 @@ from drydock.config import (
     get_codex_sandbox,
     get_llm_provider,
     get_model,
-    get_prompt_error_tokens,
-    get_prompt_warn_tokens,
     get_quarterdeck_port,
     get_sandbox_mem_limit_mb,
     get_target_directory,
@@ -146,18 +144,6 @@ class TestConfigSet:
 
         assert find_key_choices(_build_parser()) == set(settable_config_keys())
 
-    def test_set_prompt_warn_tokens(self, isolated_config):
-        config_set("prompt_warn_tokens", "75000")
-        assert get_prompt_warn_tokens() == 75000
-
-    def test_set_invalid_prompt_warn_tokens_raises(self, isolated_config):
-        with pytest.raises(ConfigurationError, match="positive integer"):
-            config_set("prompt_warn_tokens", "fifty")
-
-    def test_set_zero_prompt_warn_tokens_raises(self, isolated_config):
-        with pytest.raises(ConfigurationError, match="positive integer"):
-            config_set("prompt_warn_tokens", "0")
-
 
 class TestConfigShow:
     def test_show_covers_every_settable_key(self, isolated_config):
@@ -186,8 +172,8 @@ class TestConfigShow:
         # follows from it.
         assert by_name["drydock_model"][0] == "(not set)"
         assert by_name["llm_provider"][0] == "(from the model)"
-        assert by_name["prompt_warn_tokens"][0] == "50000"
-        assert by_name["prompt_error_tokens"][0] == "120000"
+        assert "prompt_warn_tokens" not in by_name
+        assert "prompt_error_tokens" not in by_name
         assert by_name["quarterdeck_port"][0] == "8080"
 
     def test_show_reports_source_after_set(self, tmp_workspace, isolated_config):
@@ -332,38 +318,6 @@ class TestGetters:
     def test_llm_provider_cli_override_wins_over_environment(self, isolated_config, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "claude")
         assert get_llm_provider("codex") == "codex"
-
-    def test_prompt_warn_tokens_defaults_to_50000(self, isolated_config):
-        assert get_prompt_warn_tokens() == 50000
-
-    def test_prompt_warn_tokens_environment_overrides_file(self, isolated_config, monkeypatch):
-        config_set("prompt_warn_tokens", "75000")
-        monkeypatch.setenv("PROMPT_WARN_TOKENS", "100000")
-        assert get_prompt_warn_tokens() == 100000
-
-    def test_prompt_warn_tokens_invalid_environment_raises(self, isolated_config, monkeypatch):
-        monkeypatch.setenv("PROMPT_WARN_TOKENS", "-5")
-        with pytest.raises(ConfigurationError, match="positive integer"):
-            get_prompt_warn_tokens()
-
-    def test_prompt_error_tokens_defaults_to_120000(self, isolated_config):
-        """The red light sits well above the yellow one, which is tripped routinely."""
-        assert get_prompt_error_tokens() == 120000
-        assert get_prompt_error_tokens() > get_prompt_warn_tokens()
-
-    def test_prompt_error_tokens_environment_overrides_file(self, isolated_config, monkeypatch):
-        config_set("prompt_error_tokens", "150000")
-        monkeypatch.setenv("PROMPT_ERROR_TOKENS", "200000")
-        assert get_prompt_error_tokens() == 200000
-
-    def test_prompt_error_tokens_invalid_environment_raises(self, isolated_config, monkeypatch):
-        monkeypatch.setenv("PROMPT_ERROR_TOKENS", "-5")
-        with pytest.raises(ConfigurationError, match="positive integer"):
-            get_prompt_error_tokens()
-
-    def test_set_invalid_prompt_error_tokens_raises(self, isolated_config):
-        with pytest.raises(ConfigurationError, match="prompt_error_tokens"):
-            config_set("prompt_error_tokens", "lots")
 
     def test_quarterdeck_port_defaults_to_8080(self, isolated_config):
         assert get_quarterdeck_port() == 8080

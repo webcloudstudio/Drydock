@@ -10,6 +10,33 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-13: **Per-model token accounting and price-limit routing in `model_config.jsonl`.**
+  Each model family's row gives its tokenizer ratio (`bytes_per_token`), the CLI's fixed
+  first-request payload by `build` or `text` mode, the stacking target `prompt_target_tokens`
+  (default 70000, replacing the global `prompt_warn_tokens` at 50000), the warning threshold
+  `prompt_warning_tokens` (replacing `prompt_error_tokens`), and an optional `prompt_limit_tokens`
+  with `escalate_model`. Story points, plan stacking, and warnings now count the active model's
+  tokens; the former `ceil(bytes / 4)` undercounted Claude 5.5-family prompts by about 1.5x. Every
+  LLM call whose estimated first request (or a resumed session's context plus the new prompt)
+  exceeds 98% of its model's limit runs on the escalation model; the Haiku 5.5 row escalates to
+  `sonnet` above 100K tokens, where its price rises fivefold. The build call line reports
+  `upgraded=prompt_limit <from>-><to> (<estimate> > 98% of <limit>)`. The live file is user
+  configuration beside `.env`, seeded from `Rigging/model_config.jsonl`; `DRYDOCK_MODEL_CONFIG`
+  overrides its path. `--model` is now published to `DRYDOCK_MODEL` for the whole invocation.
+- 2026-10-13: **Builders get builder tools only.** Provider rows in `model_config.jsonl` set each
+  CLI's tool surface. Claude builds run with `--tools Bash,Read,Edit,Write,Glob,Grep
+  --strict-mcp-config` instead of the CLI's default 24 tools, cutting the fixed per-request payload
+  from 14,300 to 7,437 tokens on Haiku 5.5; codex builds `--disable` the app, browser, computer-use,
+  image-generation, multi-agent, plugin, skill-search, tool-suggest, goals, sleep, and in-app
+  browser features.
+- 2026-10-13: **`drydock config calibrate [--probe] [--apply]`.** Every successful Claude call
+  appends its measured first-request size to `logs/model_calibration.jsonl`. `calibrate` proposes
+  a row's `bytes_per_token` (10th percentile over at least three non-resumed runs) and its
+  `overhead_tokens` (from `--probe`, two trivial prompts) when they differ from the live value by
+  more than 5%, and `--apply` writes them; nothing else rewrites the file. `drydock build` prints a
+  `calibration:` line after a step when the evidence disagrees with the configuration or the CLI
+  version was never probed. Codex reports usage per turn and is not calibrated.
+
 - 2026-10-13: **The regression sweep covers every finished block.** After each green block,
   `drydock build` re-runs the criteria of every `closed/verified` or `closed/implemented` block,
   read from the Manifest, not only those proven earlier in the same invocation, so a build started
@@ -316,6 +343,8 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Removed
 
+- 2026-10-13: **`prompt_warn_tokens` and `prompt_error_tokens` configuration keys.** Their values
+  are per-model `prompt_target_tokens` and `prompt_warning_tokens` in `model_config.jsonl`.
 - 2026-10-13: **`drydock build --escalate-model` and the `drydock_build_escalate_model`
   configuration key (`DRYDOCK_BUILD_ESCALATE_MODEL`).** Every repair pass now runs on the step's
   model, and the build call line no longer carries `escalated=yes`.

@@ -12,11 +12,11 @@ single prompt and executes it; the QuarterDeck compass sums the same parts to
 show each step's true token cost. Cost and build can never diverge because they
 read the same assembly.
 
-Story points are the token estimate (``ceil(bytes / 4)``), derived on demand and
-never written back. A step whose story-point total exceeds the configured
-``PROMPT_WARN_TOKENS`` ceiling is flagged ``over_warn``: it stacks more context than
-is reliably built in one prompt. The ceiling and every displayed cost are the same
-unit — tokens.
+Story points are the token estimate for the active model (``ceil(bytes / bytes_per_token)``
+from ``model_config.jsonl``), derived on demand and never written back. A step whose
+story-point total exceeds the model's ``prompt_target_tokens`` is flagged ``over_warn``: it
+stacks more context than is reliably built in one prompt. The target and every displayed cost
+are the same unit — tokens of the model that runs the step.
 
 Compact substitution: stack and rules files have ``*_compact.md`` derivatives that
 contain only the caller-facing surface (types, config, contracts). A step receives the
@@ -37,9 +37,9 @@ from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
 
+from drydock import model_config
 from drydock.build_plan import FINISHED_STATES, BuildPlan, PlanBlock
 from drydock.compass_sources import is_compass_file
-from drydock.config import get_prompt_error_tokens, get_prompt_warn_tokens
 from drydock.errors import ConfigurationError
 from drydock.prompt_assembly import (
     PromptAssembly,
@@ -53,47 +53,51 @@ from drydock.prompt_headers import prompt_header_for_file
 from drydock.refit_ticket import parse_ticket_name
 from drydock.source_roles import StagedAsset
 
+# Byte ratio used only when ``model_config.jsonl`` cannot be read.
+FALLBACK_BYTES_PER_TOKEN = 4.0
+
 
 def story_points_for(byte_count: int) -> int:
-    """Story points = estimated token cost = ``ceil(byte_count / 4)``.
+    """Story points = the active model's token estimate for ``byte_count`` prompt bytes.
 
-    The token estimate and the story-point count are one number: a token is
-    ~4 bytes, so there is a single derived unit, not two.
-    """
-    return math.ceil(byte_count / 4)
-
-
-# Default maximum assembled prompt cost, in tokens (story points), for one build step
-# before it is flagged; the effective ceiling comes from the ``PROMPT_WARN_TOKENS``
-# configuration key. The stacking strategy groups similar work to stay under this
-# ceiling. Tokens, not bytes: it is the unit every cost is displayed in.
-PROMPT_WARN_TOKENS = 50_000
-
-
-def resolve_warn_tokens() -> int:
-    """Return the configured warn ceiling, falling back to the built-in default.
-
-    Assembly is a read-only costing pass; an unusable ``PROMPT_WARN_TOKENS`` setting
-    downgrades to the default rather than failing the build.
+    The token estimate and the story-point count are one number. The ratio is the model's
+    ``bytes_per_token`` from ``model_config.jsonl``.
     """
     try:
-        return get_prompt_warn_tokens()
+        return model_config.estimate_tokens(byte_count)
     except ConfigurationError:
-        return PROMPT_WARN_TOKENS
+        return math.ceil(byte_count / FALLBACK_BYTES_PER_TOKEN)
 
 
-# The red light to ``PROMPT_WARN_TOKENS``' yellow. Warn is advisory and a legitimate
-# specification trips it routinely, so it is deliberately not a stop sign; this is the
-# threshold worth raising with the Commander.
-PROMPT_ERROR_TOKENS = 120_000
+# Stacking target, in tokens, for one build step when ``model_config.jsonl`` cannot be read.
+# The live value is the active model's ``prompt_target_tokens``. The stacking strategy groups
+# similar work to stay under it.
+PROMPT_TARGET_TOKENS = 70_000
 
 
-def resolve_error_tokens() -> int:
-    """Return the configured error ceiling, falling back to the built-in default."""
+def resolve_target_tokens() -> int:
+    """Return the active model's stacking target, falling back to the built-in default.
+
+    Assembly is a read-only costing pass; an unreadable model configuration downgrades to the
+    default rather than failing the build.
+    """
     try:
-        return get_prompt_error_tokens()
+        return model_config.active_profile().prompt_target_tokens
     except ConfigurationError:
-        return PROMPT_ERROR_TOKENS
+        return PROMPT_TARGET_TOKENS
+
+
+# The red light to the target's yellow. The target is advisory and a legitimate specification
+# exceeds it routinely; this is the threshold worth raising with the Commander.
+PROMPT_WARNING_TOKENS = 120_000
+
+
+def resolve_warning_tokens() -> int:
+    """Return the active model's warning threshold, falling back to the built-in default."""
+    try:
+        return model_config.active_profile().prompt_warning_tokens
+    except ConfigurationError:
+        return PROMPT_WARNING_TOKENS
 
 
 # Manifest block types that are executable build steps. Features group; ac blocks
@@ -573,7 +577,7 @@ def assemble_step(
     authoritative full file.
     """
     if warn_tokens is None:
-        warn_tokens = resolve_warn_tokens()
+        warn_tokens = resolve_target_tokens()
     files: list[StepFile] = []
     implements_canonical = {
         _canonical_spec_name(name)
@@ -689,7 +693,7 @@ def assemble_steps(
     costs before the build runs.
     """
     if warn_tokens is None:
-        warn_tokens = resolve_warn_tokens()
+        warn_tokens = resolve_target_tokens()
     files_seen: set[str] = set()
     result: list[StepAssembly] = []
     for block in plan.blocks:

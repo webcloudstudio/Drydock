@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from drydock import plan_stack
-from drydock.config import DEFAULT_PROMPT_WARN_TOKENS
+from drydock.build import PROMPT_TARGET_TOKENS
 from drydock.plan_stack import (
     DEFAULT_STORY_BUDGET_TOKENS,
     exceeds_build_pass,
     resolve_stack_file,
     resolve_stack_set,
     resolve_target_stack,
-    resolve_warn_tokens,
+    resolve_target_tokens,
     stack_cost,
     story_budget_tokens,
     story_pass_tokens,
@@ -97,31 +97,31 @@ def test_story_pass_tokens_is_specification_plus_stack(tmp_path):
 
 
 def test_build_pass_ceiling_replaces_the_effort_threshold(monkeypatch):
-    monkeypatch.setattr(plan_stack, "resolve_warn_tokens", lambda: 50_000)
+    monkeypatch.setattr(plan_stack, "resolve_target_tokens", lambda: 50_000)
     assert story_budget_tokens() == 50_000
     assert exceeds_build_pass(50_001)
     assert not exceeds_build_pass(50_000)
 
 
 def test_the_ceiling_is_the_build_step_warn_ceiling():
-    """One ceiling, one diagnosis, two altitudes — plan-time sizing reuses prompt_warn_tokens."""
-    assert DEFAULT_STORY_BUDGET_TOKENS == DEFAULT_PROMPT_WARN_TOKENS
-    assert story_budget_tokens() == resolve_warn_tokens()
+    """One ceiling, one diagnosis, two altitudes — plan-time sizing reuses prompt_target_tokens."""
+    assert DEFAULT_STORY_BUDGET_TOKENS == PROMPT_TARGET_TOKENS
+    assert story_budget_tokens() == resolve_target_tokens()
 
 
-def test_ceiling_is_configurable(monkeypatch):
-    monkeypatch.setenv("PROMPT_WARN_TOKENS", "1234")
+def test_ceiling_is_configurable(set_model_fields):
+    set_model_fields(prompt_target_tokens=1234)
     assert story_budget_tokens() == 1234
     assert exceeds_build_pass(2000)
 
 
-def test_unusable_setting_downgrades_rather_than_refusing_to_plan(monkeypatch):
-    monkeypatch.setenv("PROMPT_WARN_TOKENS", "not-a-number")
+def test_unusable_setting_downgrades_rather_than_refusing_to_plan(set_model_fields):
+    set_model_fields(prompt_target_tokens="not-a-number")
     assert story_budget_tokens() == DEFAULT_STORY_BUDGET_TOKENS
 
 
 def test_explicit_budget_overrides_the_configured_ceiling(monkeypatch):
-    monkeypatch.setattr(plan_stack, "resolve_warn_tokens", lambda: 10)
+    monkeypatch.setattr(plan_stack, "resolve_target_tokens", lambda: 10)
     assert not exceeds_build_pass(50, budget=100)
 
 

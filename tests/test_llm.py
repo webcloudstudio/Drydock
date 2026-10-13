@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 import drydock.llm
+import drydock.model_config
 from drydock.errors import LlmConfigurationError, LlmError
 from drydock.llm import LlmResult, LlmStats, failure_detail, run_prompt
 from drydock.prompt_assembly import PromptAssembly, lines_part, part
@@ -2076,3 +2077,102 @@ def test_explicit_provider_wins_over_the_model(isolated_config):
     """An explicit choice is still honored here; the conflict check reports the contradiction."""
     assert drydock.llm.resolve_provider("claude", "gemini-3.5-flash") == "claude"
     assert drydock.llm.provider_model_conflict("claude", "gemini-3.5-flash") is not None
+
+
+def test_claude_build_gets_only_the_code_builder_tools(tmp_path):
+    artifacts = drydock.llm.ExecutionArtifacts.create(tmp_path, "build", "claude")
+    command = drydock.llm._command("claude", tmp_path, artifacts, model="haiku", allow_tools=True)
+    assert command[command.index("--tools") + 1] == "Bash,Read,Edit,Write,Glob,Grep"
+    assert "--strict-mcp-config" in command
+    assert "--dangerously-skip-permissions" in command
+
+
+def test_codex_build_disables_tools_a_builder_does_not_use(tmp_path):
+    artifacts = drydock.llm.ExecutionArtifacts.create(tmp_path, "build", "codex")
+    command = drydock.llm._command("codex", tmp_path, artifacts, model="gpt-5", allow_tools=True)
+    disabled = {command[i + 1] for i, arg in enumerate(command) if arg == "--disable"}
+    assert {"apps", "browser_use", "computer_use", "image_generation"} <= disabled
+    assert command[-1] == "-"
+
+
+def _usage_event(tokens: int) -> dict:
+    return {"type": "assistant", "message": {"usage": {"input_tokens": tokens}}}
+
+
+def _init_event() -> dict:
+    return {
+        "type": "system",
+        "subtype": "init",
+        "model": "claude-haiku-5-5",
+        "claude_code_version": "2.1.296",
+    }
+
+
+def test_haiku_prompt_over_the_price_limit_runs_on_the_escalation_model(tmp_path, monkeypatch):
+    captured = _capture_env(monkeypatch, _claude_stream(_text("OK")))
+    prompt = "x" * (100_000 * 4)  # tests pin 4 bytes per token
+
+    result = run_prompt(prompt, tmp_path, llm="claude", model="haiku", announce=False)
+
+    command = captured["command"]
+    assert command[command.index("--model") + 1] == "sonnet"
+    escalation = result.record["job"]["parameters"]["escalation"]
+    assert escalation.startswith("upgraded=prompt_limit haiku->sonnet")
+
+
+def test_haiku_prompt_under_the_price_limit_stays_on_haiku(tmp_path, monkeypatch):
+    captured = _capture_env(monkeypatch, _claude_stream(_text("OK")))
+
+    result = run_prompt("x" * 4000, tmp_path, llm="claude", model="haiku", announce=False)
+
+    command = captured["command"]
+    assert command[command.index("--model") + 1] == "haiku"
+    assert "escalation" not in result.record["job"]["parameters"]
+
+
+def test_resumed_session_context_counts_toward_the_price_limit(tmp_path, monkeypatch):
+    session = "11111111-2222-3333-4444-555555555555"
+    _capture_env(monkeypatch, _claude_stream(_init_event(), _usage_event(99_500), _text("OK")))
+    run_prompt(
+        "x" * 4000,
+        tmp_path,
+        llm="claude",
+        model="haiku",
+        announce=False,
+        claude_session_id=session,
+    )
+    captured = _capture_env(monkeypatch, _claude_stream(_text("OK")))
+
+    run_prompt(
+        "fix it",
+        tmp_path,
+        llm="claude",
+        model="haiku",
+        announce=False,
+        claude_resume_session_id=session,
+    )
+
+    command = captured["command"]
+    assert command[command.index("--model") + 1] == "sonnet"
+
+
+def test_claude_run_records_a_calibration_observation(tmp_path, monkeypatch):
+    _capture_env(monkeypatch, _claude_stream(_init_event(), _usage_event(9_437), _text("OK")))
+
+    run_prompt(
+        "x" * 8000,
+        tmp_path,
+        llm="claude",
+        model="haiku",
+        allow_tools=True,
+        announce=False,
+        log_dir=tmp_path / "logs",
+    )
+
+    (observation,) = drydock.model_config.read_observations(tmp_path / "logs")
+    assert observation.model == "haiku"
+    assert observation.mode == "build"
+    assert observation.prompt_bytes == 8000
+    assert observation.first_request_tokens == 9_437
+    assert observation.cli_version == "2.1.296"
+    assert not observation.resumed

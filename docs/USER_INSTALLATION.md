@@ -109,8 +109,14 @@ Environment variables override saved configuration for the current process:
 | `drydock_build_directory` | `DRYDOCK_BUILD_DIRECTORY` |
 | `drydock_model` | `DRYDOCK_MODEL` |
 | `llm_provider` | `LLM_PROVIDER` |
-| `prompt_warn_tokens` | `PROMPT_WARN_TOKENS` |
 | `quarterdeck_port` | `QUARTERDECK_PORT` |
+
+Per-model token settings live in `model_config.jsonl` beside `.env`, created from the packaged
+copy on first use: the bytes-per-token ratio, the CLI's fixed request payload, the stacking
+target (`prompt_target_tokens`), the warning threshold (`prompt_warning_tokens`), and an optional
+price-tier limit (`prompt_limit_tokens`) with the model that runs a prompt crossing 98% of it
+(`escalate_model`). `drydock config calibrate` compares these values with measured runs, and
+`--apply` writes the measured values. `DRYDOCK_MODEL_CONFIG` names another file.
 
 Your installation is ready. Continue with the [Quick Start Guide](QUICK_START.md).
 

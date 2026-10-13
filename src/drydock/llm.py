@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from drydock import model_config
 from drydock.artifact_blocks import pair_artifact_delimiters
 from drydock.config import (
     LLM_PROVIDERS,
@@ -256,13 +257,12 @@ def _command(
             # drydock build runs an agent that writes the application into the build
             # working directory, so it needs file tools and unattended permission.
             command.append("--dangerously-skip-permissions")
-        else:
-            # Text-only LLM-assisted commands consume model text and write their own
-            # artifacts.  Giving Claude Code tools lets it bypass that contract by
-            # editing the target and returning a narrative summary instead.
-            # --strict-mcp-config with no --mcp-config suppresses MCP tool descriptions
-            # from the system prompt; without it, Claude emits tool-call XML as text.
-            command.extend(("--tools", "", "--strict-mcp-config"))
+        # The tool surface is model_config.jsonl's provider row. Text-only commands consume
+        # model text and write their own artifacts, so they get no tools; a build gets only
+        # what a code builder uses. Every enabled tool's schema is sent with every request.
+        # --strict-mcp-config with no --mcp-config suppresses MCP tool descriptions; without
+        # it, a tool-less Claude emits tool-call XML as text.
+        command.extend(_provider_args("claude", allow_tools))
         if claude_session_id:
             command.extend(("--session-id", claude_session_id))
         if claude_resume_session_id:
@@ -291,6 +291,7 @@ def _command(
             "--output-last-message",
             str(artifacts.output_file),
         ]
+        command.extend(_provider_args("codex", allow_tools))
         if model:
             command.extend(("--model", model))
         if effort:
@@ -310,6 +311,7 @@ def _command(
         # write it. That is the gemini equivalent of claude's empty tool list — text-only
         # commands write their own artifacts and a writable agent would bypass them.
         command.extend(("--approval-mode", "yolo" if allow_tools else "plan"))
+        command.extend(_provider_args("gemini", allow_tools))
         if model:
             command.extend(("--model", model))
         # ``-p`` is what selects headless mode; the prompt itself arrives on stdin, which
@@ -370,15 +372,94 @@ def _isolate_gemini_env(process_env: dict[str, str]) -> None:
     process_env["HOME"] = str(build_home)
 
 
-# Model families that take a fixed thinking budget instead of effort. Haiku 5.5 and later
-# size thinking from effort and reject a budget, so only Haiku 4.x and older are named. The
-# bare ``haiku`` alias selects the current Haiku and therefore gets no budget.
-_FIXED_THINKING_BUDGET_MODELS = ("haiku-4", "haiku-3")
+def _provider_args(provider: str, allow_tools: bool) -> tuple[str, ...]:
+    """The provider's tool-surface arguments for this run mode, from ``model_config.jsonl``."""
+    try:
+        return model_config.load().provider(provider).args(allow_tools)
+    except ConfigurationError as exc:
+        raise LlmConfigurationError(str(exc)) from None
+
+
+#: Claude sessions started or resumed in this process: session id -> (model, context tokens at
+#: exit). A resumed request resends that context ahead of its new prompt, so the price-limit
+#: check counts it.
+_CLAUDE_SESSIONS: dict[str, tuple[str | None, int]] = {}
+
+
+def _prompt_limit_escalation(
+    model: str | None,
+    prompt_size: int,
+    *,
+    allow_tools: bool,
+    resume_session_id: str | None,
+) -> model_config.Escalation | None:
+    prior = _CLAUDE_SESSIONS.get(resume_session_id or "")
+    try:
+        return model_config.escalation(
+            model,
+            prompt_size,
+            allow_tools=allow_tools,
+            prior_context_tokens=prior[1] if prior else 0,
+        )
+    except ConfigurationError as exc:
+        raise LlmConfigurationError(str(exc)) from None
+
+
+def _record_calibration(
+    artifacts: ExecutionArtifacts,
+    raw_output: str,
+    *,
+    model: str | None,
+    allow_tools: bool,
+    prompt_size: int,
+    command_name: str,
+    session_id: str | None,
+    resumed: bool,
+) -> None:
+    """Append this run's measured first request to ``model_calibration.jsonl``.
+
+    Evidence only: the live ``model_config.jsonl`` changes solely through
+    ``drydock config calibrate --apply``. A failure to record never fails the run.
+    """
+    usage = model_config.claude_request_usage(_events(raw_output))
+    if session_id and usage.last_request_tokens:
+        _CLAUDE_SESSIONS[session_id] = (model, usage.last_request_tokens)
+    if not usage.first_request_tokens or not model:
+        return
+    observation = model_config.Observation(
+        at=isoformat(utc_now()),
+        model=model,
+        resolved_model=usage.resolved_model,
+        provider="claude",
+        mode="build" if allow_tools else "text",
+        cli_version=usage.cli_version,
+        prompt_bytes=prompt_size,
+        first_request_tokens=usage.first_request_tokens,
+        resumed=resumed,
+        probe=command_name == CALIBRATION_PROBE_COMMAND,
+    )
+    try:
+        model_config.record_observation(artifacts.records_file.parent, observation)
+    except OSError:
+        pass
+
+
+#: ``command_name`` of the trivial-prompt runs ``drydock config calibrate --probe`` makes.
+CALIBRATION_PROBE_COMMAND = "calibrate_probe"
 
 
 def _takes_thinking_budget(model: str | None) -> bool:
-    name = (model or "").lower()
-    return any(family in name for family in _FIXED_THINKING_BUDGET_MODELS)
+    """True for a model family whose ``model_config.jsonl`` row says ``thinking: budget``.
+
+    Haiku 4.x takes a fixed thinking budget; later models size thinking from effort and reject
+    a budget. The bare ``haiku`` alias selects the current Haiku and therefore gets no budget.
+    """
+    if not model:
+        return False
+    try:
+        return model_config.load().model(model).thinking == "budget"
+    except ConfigurationError:
+        return False
 
 
 def _apply_claude_token_limits(process_env: dict[str, str], model: str | None) -> None:
@@ -1847,11 +1928,25 @@ def run_prompt(
 
     assembly = prompt_assembly or PromptAssembly.single_prompt(prompt)
     prompt = assembly.rendered_text
+    prompt_bytes = prompt.encode("utf-8")
+
+    # A model with a price-tier limit runs a prompt that would cross it on its escalation
+    # model instead. Decided here, the single adapter, so every command gets the same rule.
+    escalated = _prompt_limit_escalation(
+        model,
+        len(prompt_bytes),
+        allow_tools=allow_tools,
+        resume_session_id=claude_resume_session_id,
+    )
+    if escalated is not None:
+        model = escalated.to_model
+        conflict = provider_model_conflict(selected, model)
+        if conflict is not None:
+            raise LlmConfigurationError(f"escalate_model: {conflict}")
 
     artifacts = ExecutionArtifacts.create(
         working_directory, command_name, selected, log_dir=log_dir, target=target
     )
-    prompt_bytes = prompt.encode("utf-8")
     artifacts.prompt_file.write_bytes(prompt_bytes)
     command = _command(
         selected,
@@ -1865,6 +1960,8 @@ def run_prompt(
         claude_resume_session_id=claude_resume_session_id,
     )
     job_parameters = dict(parameters or {})
+    if escalated is not None:
+        job_parameters["escalation"] = escalated.describe()
     claude_session = _claude_session_metadata(
         claude_session_id=claude_session_id,
         claude_resume_session_id=claude_resume_session_id,
@@ -1875,6 +1972,8 @@ def run_prompt(
     display_name = f"{command_name} · {sub_command}" if sub_command else command_name
     if announce:
         _print_run_header(artifacts, llm=selected, command_name=display_name, model=model)
+    if escalated is not None:
+        _announce(artifacts, f"  {escalated.describe()}", console=announce)
     if claude_session is not None:
         _announce(
             artifacts,
@@ -1948,6 +2047,17 @@ def run_prompt(
         # Prune before the record is built so ``artifacts.paths()`` reflects what survives.
         artifacts.prune_empty()
         text, stats = _parse_result(selected, raw_output, artifacts)
+        if selected == "claude" and returncode == 0:
+            _record_calibration(
+                artifacts,
+                raw_output,
+                model=model,
+                allow_tools=allow_tools,
+                prompt_size=len(prompt_bytes),
+                command_name=command_name,
+                session_id=claude_session_id or claude_resume_session_id,
+                resumed=bool(claude_resume_session_id),
+            )
         provider_error = _provider_error(selected, raw_output, stderr)
         if selected == "claude":
             artifacts.output_file.write_text(text, encoding="utf-8", newline="\n")

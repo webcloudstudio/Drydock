@@ -875,15 +875,10 @@ class TestConfigSet:
         assert rc == 0
         assert "codex" in out
 
-    def test_config_set_prompt_warn_tokens(self, isolated_config):
-        rc, out, err = run_cli("config", "set", "prompt_warn_tokens", "75000")
-        assert rc == 0
-        assert "75000" in out
-
-    def test_config_set_invalid_prompt_warn_tokens_fails(self, isolated_config):
-        rc, out, err = run_cli("config", "set", "prompt_warn_tokens", "fifty")
-        assert rc == 1
-        assert "error" in err.lower()
+    def test_config_set_rejects_the_removed_prompt_token_keys(self, isolated_config):
+        for key in ("prompt_warn_tokens", "prompt_error_tokens"):
+            rc, _out, _err = run_cli("config", "set", key, "75000")
+            assert rc == 2
 
 
 class TestInit:
@@ -4126,3 +4121,60 @@ class TestExecutionBoundFlags:
                 "--sandbox-mem-limit",
             ):
                 assert flag in text, f"{flag} missing from drydock {command} --help"
+
+
+class TestConfigCalibrate:
+    def _evidence(self, workspace, set_model_fields):
+        from drydock.model_config import Observation, record_observation
+
+        set_model_fields(bytes_per_token=4.0, overhead_tokens={"build": 7437, "text": 2813})
+        for _ in range(3):
+            record_observation(
+                workspace / "logs",
+                Observation(
+                    at="2026-10-13T00:00:00Z",
+                    model="haiku",
+                    resolved_model="claude-haiku-5-5",
+                    provider="claude",
+                    mode="build",
+                    cli_version="2.1.296",
+                    prompt_bytes=26_100,
+                    first_request_tokens=17_437,
+                ),
+            )
+
+    def test_reports_without_writing(
+        self, isolated_config, tmp_workspace, monkeypatch, set_model_fields
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        self._evidence(tmp_workspace, set_model_fields)
+        before = set_model_fields().read_text()
+
+        rc, out, _err = run_cli("config", "calibrate")
+
+        assert rc == 0
+        assert "haiku: bytes_per_token 4.0 -> 2.61 (3 runs)" in out
+        assert "--apply" in out
+        assert set_model_fields().read_text() == before
+
+    def test_apply_writes_the_live_file(
+        self, isolated_config, tmp_workspace, monkeypatch, set_model_fields
+    ):
+        from drydock.model_config import load
+
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        self._evidence(tmp_workspace, set_model_fields)
+
+        rc, out, _err = run_cli("config", "calibrate", "--apply")
+
+        assert rc == 0
+        assert "Applied 1 value(s)" in out
+        assert load().model("haiku").bytes_per_token == 2.61
+
+    def test_no_evidence_reports_nothing_to_change(
+        self, isolated_config, tmp_workspace, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        rc, out, _err = run_cli("config", "calibrate")
+        assert rc == 0
+        assert "No measured value differs" in out

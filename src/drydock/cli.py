@@ -418,6 +418,37 @@ def cmd_config_env(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_config_calibrate(args: argparse.Namespace) -> int:
+    """Compare measured token evidence with ``model_config.jsonl``; write it only on ``--apply``."""
+    from datetime import date
+
+    from drydock import model_config
+    from drydock.config import get_model, get_workspace
+
+    logs_dir = get_workspace() / "logs"
+    config = model_config.load()
+    if args.probe:
+        from drydock.calibration import probe_overhead
+
+        model = get_model(getattr(args, "model", None))
+        for line in probe_overhead(model, logs_dir=logs_dir):
+            print(line)
+    proposals = model_config.propose(config, model_config.read_observations(logs_dir))
+    print(f"Model config: {config.path}")
+    print(f"Evidence:     {model_config.calibration_path(logs_dir)}")
+    if not proposals:
+        print("No measured value differs from the configuration.")
+        return 0
+    for proposal in proposals:
+        print(f"  {proposal.describe()}")
+    if not args.apply:
+        print("Run drydock config calibrate --apply to write these values.")
+        return 0
+    path = model_config.apply(config, proposals, today=date.today().isoformat())
+    print(f"Applied {len(proposals)} value(s) to {path}")
+    return 0
+
+
 def cmd_config_set(args: argparse.Namespace) -> int:
     from drydock.config import config_set
 
@@ -3401,6 +3432,20 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_env.add_argument("Target", metavar="<Target>", nargs="?", default=None)
+    p_calibrate = cfg_sub.add_parser(
+        "calibrate",
+        help="Compare measured token usage with model_config.jsonl; --apply writes it.",
+    )
+    p_calibrate.add_argument(
+        "--probe",
+        action="store_true",
+        help="First measure the CLI's fixed request payload with two trivial prompts.",
+    )
+    p_calibrate.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write the proposed values to the live model_config.jsonl.",
+    )
     p_set = cfg_sub.add_parser("set", help="Set a configuration value.")
     # Derived from the config module's key map, never restated here: a hand-maintained copy
     # silently drops keys, and a key absent from this list is unsettable however correctly
@@ -4370,6 +4415,8 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             return cmd_config_set(args)
         if args.config_command == "env":
             return cmd_config_env(args)
+        if args.config_command == "calibrate":
+            return cmd_config_calibrate(args)
         parser.parse_args(["config", "--help"])
         return 0
 
@@ -5398,6 +5445,10 @@ def main(argv: list[str] | None = None) -> None:
         # LLM-assisted command, and any Drydock subprocess it starts, resolves the same
         # level without threading the flag through each capability signature.
         os.environ["DRYDOCK_EFFORT"] = args.effort
+    if getattr(args, "model", None):
+        # ``--model`` is invocation-wide in the same way: token estimates, stacking targets, and
+        # warnings come from the model's ``model_config.jsonl`` row, resolved from DRYDOCK_MODEL.
+        os.environ["DRYDOCK_MODEL"] = args.model.strip()
     debug = getattr(args, "debug", False)
     if debug:
         os.environ["DRYDOCK_DEBUG"] = "1"

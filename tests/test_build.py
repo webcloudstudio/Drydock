@@ -9,7 +9,7 @@ from drydock.build import (
     BAND_DATA,
     BAND_FEATURES,
     BAND_FOUNDATION,
-    PROMPT_WARN_TOKENS,
+    PROMPT_TARGET_TOKENS,
     StepRoots,
     assemble_step,
     assemble_steps,
@@ -191,27 +191,29 @@ state: pending
     def test_over_warn_flag(self, tmp_path):
         plan = _plan(tmp_path)
         roots = _roots(tmp_path)
-        # Inflate one implements file past the token warn ceiling. Story points
-        # are ceil(bytes / 4), so exceeding PROMPT_WARN_TOKENS needs > 4x bytes.
+        # Inflate one implements file past the token target. Tests pin 4 bytes per token,
+        # so exceeding PROMPT_TARGET_TOKENS needs > 4x bytes.
         (roots.blueprint_dir / "DATABASE.md").write_text(
-            "x" * (PROMPT_WARN_TOKENS * 4 + 40), encoding="utf-8"
+            "x" * (PROMPT_TARGET_TOKENS * 4 + 40), encoding="utf-8"
         )
         step = assemble_step(plan.by_id()["core"], roots)
         assert step.over_warn is True
 
-    def test_over_warn_honors_configured_ceiling(self, tmp_path, monkeypatch):
+    def test_over_warn_honors_configured_ceiling(self, tmp_path, set_model_fields):
         plan = _plan(tmp_path)
         roots = _roots(tmp_path)
-        monkeypatch.setenv("PROMPT_WARN_TOKENS", "1")
+        set_model_fields(prompt_target_tokens=1)
         step = assemble_step(plan.by_id()["core"], roots)
         assert step.warn_tokens == 1
         assert step.over_warn is True
 
-    def test_invalid_warn_configuration_falls_back_to_the_default(self, tmp_path, monkeypatch):
+    def test_invalid_model_configuration_falls_back_to_the_default(
+        self, tmp_path, set_model_fields
+    ):
         plan = _plan(tmp_path)
-        monkeypatch.setenv("PROMPT_WARN_TOKENS", "not-a-number")
+        set_model_fields(prompt_target_tokens=-1)
         step = assemble_step(plan.by_id()["core"], _roots(tmp_path))
-        assert step.warn_tokens == PROMPT_WARN_TOKENS
+        assert step.warn_tokens == PROMPT_TARGET_TOKENS
         assert step.over_warn is False
 
     def test_under_warn_default(self, tmp_path):
