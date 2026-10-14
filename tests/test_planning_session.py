@@ -3795,6 +3795,48 @@ def test_an_unrepaired_multi_file_implements_stops_before_stage_two(tmp_path):
     assert not (target_dir / "MANIFEST.md").is_file()
 
 
+# Regression shape from ReadingList Haiku 20261013.235724: the foundation story implemented the
+# Target's TECHNOLOGY_STACK.md, so Stage 2 authored a Blueprint under that name in blueprint/
+# and no story delivered ARCHITECTURE.md.
+_STACK_IMPLEMENTS_DECLARATION = _TOPOLOGY_DECLARATION.replace(
+    "implements:   ARCHITECTURE.md", "implements:   TECHNOLOGY_STACK.md"
+)
+
+
+def test_a_story_implementing_a_target_input_is_repaired_before_stage_two(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(_topology_output(_STACK_IMPLEMENTS_DECLARATION), _declaration_block())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 2
+    assert "Plan Topology Repair" in runner.calls[1]
+    assert "implements 'TECHNOLOGY_STACK.md', a Target input" in runner.calls[1]
+    assert not (target_dir / "blueprint" / "TECHNOLOGY_STACK.md").exists()
+    assert (target_dir / "MANIFEST.md").is_file()
+
+
+def test_an_unrepaired_target_input_implements_stops_before_stage_two(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(
+        _declaration_block(_STACK_IMPLEMENTS_DECLARATION) + _arch_block(),
+        _declaration_block(_STACK_IMPLEMENTS_DECLARATION),
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 2
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan topology rejected",
+        detail="implements 'TECHNOLOGY_STACK.md', a Target input",
+    )
+    assert not (target_dir / "blueprint" / "TECHNOLOGY_STACK.md").exists()
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
 def test_a_coverage_only_repair_carries_no_split_rules(tmp_path):
     _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
     uncovered = _TOPOLOGY_DECLARATION.replace(

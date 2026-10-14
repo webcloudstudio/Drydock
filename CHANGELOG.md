@@ -286,6 +286,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-13: **`drydock plan create` refuses a story that implements a Target input.** A topology
+  story whose `implements:` names `TECHNOLOGY_STACK.md`, `METADATA.md`, `COMPASS.md`,
+  `SEA_TRIALS.md`, or a forbidden artifact is sent to declaration repair before Stage 2, and an
+  unrepaired one stops with `plan topology rejected`. Previously Stage 2 authored a Blueprint under
+  that name in `blueprint/`, shadowing the input and leaving `ARCHITECTURE.md` undelivered.
+
 - 2026-09-22: **`drydock plan create` preserves the short Compass produced by Analyze.** Imported
   Markdown classified as author intent remains source provenance and is no longer appended verbatim
   to `COMPASS.md`. Build steps receive one project orientation instead of repeated source pages.

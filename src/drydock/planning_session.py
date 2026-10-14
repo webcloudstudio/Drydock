@@ -198,6 +198,16 @@ _NON_BLUEPRINT_ARTIFACTS = frozenset({
     STORY_GUIDANCE_FILENAME,
 })
 
+# Commander-owned inputs at the Target root. Plan reads them; no story implements one. A story
+# whose ``implements:`` names one makes Stage 2 author a Blueprint under that name in
+# ``blueprint/``, shadowing the input and displacing the Blueprint the story owed.
+_TARGET_ROOT_INPUTS = frozenset({
+    "METADATA.md",
+    "COMPASS.md",
+    "SEA_TRIALS.md",
+    technology_stack.FILENAME,
+})
+
 _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 
 # Stage 2 gives the planning agent a small, exact work queue.  A bounded tranche prevents a large
@@ -3966,7 +3976,7 @@ def _validate_plan_output(
         implements = block.fields.get("implements", ())
         targets = implements if isinstance(implements, tuple) else (implements,)
         for name in targets:
-            if name in _NON_BLUEPRINT_ARTIFACTS:
+            if name in _NON_BLUEPRINT_ARTIFACTS or name in _TARGET_ROOT_INPUTS:
                 missing_from_response.append(
                     f"{block.block_id}: implements non-Blueprint file {name!r}"
                 )
@@ -4524,8 +4534,22 @@ def _declaration_defect(declaration: str, blueprint_dir: Path) -> str:
     parts = (
         _declaration_coverage_defect(declaration, blueprint_dir),
         _declaration_graph_defect(declaration),
+        _declaration_implements_defect(declaration),
     )
     return "\n  ".join(part for part in parts if part)
+
+
+def _declaration_implements_defect(declaration: str) -> str:
+    """Stories whose ``implements:`` names a Target input or forbidden artifact, or ``""``."""
+    declared, _ = parse_topology(declaration)
+    return "\n  ".join(
+        f"story {story.story_id}: implements {name!r}, a Target input plan reads and never "
+        "authors; name the Blueprint file this story delivers (for a foundation story, "
+        "ARCHITECTURE.md)"
+        for story in declared
+        for name in (part.strip() for part in story.implements.split(","))
+        if name in _TARGET_ROOT_INPUTS or name in _NON_BLUEPRINT_ARTIFACTS
+    )
 
 
 def _report_repair_discard(reason: str, on_text: Callable[[str], None] | None) -> None:
@@ -6090,13 +6114,20 @@ def create_plan(
             )
             # An unrepaired graph defect is refused now: final validation would refuse the same
             # frozen declaration after every Stage 2 batch had been paid for.
-            graph_defect = _declaration_graph_defect(blocks[TOPOLOGY_BLOCK])
+            graph_defect = "\n  ".join(
+                part
+                for part in (
+                    _declaration_graph_defect(blocks[TOPOLOGY_BLOCK]),
+                    _declaration_implements_defect(blocks[TOPOLOGY_BLOCK]),
+                )
+                if part
+            )
             if graph_defect:
                 raise _record_plan_error(
                     target_dir,
                     classification="plan topology rejected",
                     detail=(
-                        f"{TOPOLOGY_BLOCK} declares an inconsistent work graph that repair did "
+                        f"{TOPOLOGY_BLOCK} declares a topology defect that repair did "
                         "not correct; Stage 2 was not started.\n  "
                         + graph_defect
                         + "\n  No Blueprint or Manifest artifacts were written."
