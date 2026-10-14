@@ -150,6 +150,7 @@ that was cut, and the setting to change. Nothing from the response is written.
     drydock status            MyApp            # Summary and plan state
     drydock report help                        # List deterministic Target reports
     drydock report manifest  MyApp             # Write a compact Manifest report
+    drydock report token     MyApp             # Prompt size, model, and run time per LLM call
     drydock report --all                       # Write all reports for all Targets
     drydock report --all     MyApp             # Write all reports under targets/MyApp/reports/
 

@@ -29,6 +29,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-13: `drydock report token <Target>` writes `reports/token.txt`, one row per LLM call
+  in start order: start time (UTC), stage, call, model, prompt bytes, estimated prompt tokens, run
+  time, and status. Failed and incomplete calls are included. Scope matches `drydock report llm`:
+  since the latest successful `init`, or all recorded history when no init boundary exists.
+
 - 2026-10-13: **Per-model token accounting and price-limit routing in `model_config.jsonl`.**
   Each model family's row gives its tokenizer ratio (`bytes_per_token`), the CLI's fixed
   first-request payload by `build` or `text` mode, the stacking target `prompt_target_tokens`

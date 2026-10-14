@@ -146,3 +146,55 @@ def test_target_path_is_rejected_before_access(tmp_workspace, isolated_config, m
 
     assert rc == 2
     assert "Target must be a name" in err
+
+
+def test_token_report_lists_each_call_with_prompt_size_model_and_run_time(tmp_workspace):
+    import json
+
+    target_dir = tmp_workspace / "targets" / "Demo"
+    target_dir.mkdir()
+
+    def record(execution_id, started_at, command, prompt_bytes, tokens, elapsed_ms, status):
+        return {
+            "execution_id": execution_id,
+            "status": status,
+            "started_at": started_at,
+            "completed_at": started_at,
+            "job": {
+                "target": "Demo",
+                "command_name": command,
+                "llm": "claude",
+                "model": "claude-haiku-5-5",
+                "parameters": {"target": "Demo"},
+            },
+            "result": {"returncode": 0, "stats": {"elapsed_ms": elapsed_ms}},
+            "prompt": {"bytes": prompt_bytes, "total_tokens_estimate": tokens},
+        }
+
+    logs = tmp_workspace / "logs"
+    logs.mkdir(exist_ok=True)
+    (logs / "llm.jsonl").write_text(
+        "\n".join(
+            json.dumps(item)
+            for item in (
+                record("b", "2026-10-13T23:57:49.000Z", "plan", 139_092, 53_299, 95_000, "failed"),
+                record(
+                    "a", "2026-10-13T23:57:30.000Z", "analyze", 58_561, 22_441, 18_400, "succeeded"
+                ),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    (report_path,) = write_reports(ReportContext("Demo", target_dir, tmp_workspace), ("token",))
+
+    lines = report_path.read_text(encoding="utf-8").splitlines()
+    assert "Calls: 2 · prompt 197,653 bytes · ~75,740 tokens · run time 1m53s" in lines
+    rows = [line for line in lines if line.startswith("2026-")]
+    assert rows == [
+        "2026-10-13 23:57:30 | analyze/decomposition | analyze | claude-haiku-5-5 | 58,561 | 22,441 "
+        "| 18.4s | succeeded",
+        "2026-10-13 23:57:49 | plan/synthesis | plan | claude-haiku-5-5 | 139,092 | 53,299 "
+        "| 1m35s | failed",
+    ]

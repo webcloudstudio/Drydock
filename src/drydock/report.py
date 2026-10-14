@@ -181,6 +181,42 @@ def _llm(ctx: ReportContext) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _token(ctx: ReportContext) -> str:
+    from drydock.llm_report import LlmReportError, build_llm_score_report
+
+    try:
+        result = build_llm_score_report(
+            ctx.workspace, ctx.target_dir, ctx.target, include_incomplete=True
+        )
+    except LlmReportError:
+        result = build_llm_score_report(ctx.workspace, ctx.target_dir, ctx.target, all_history=True)
+    runs = sorted(result.runs, key=lambda run: run.started_at)
+    scope = f"since init {result.init_stamp}" if result.since_init else "all recorded history"
+    lines = [
+        f"Prompt sizes: {ctx.target}",
+        f"Scope: {scope}",
+        f"Calls: {len(runs)} · prompt {sum(run.prompt_bytes for run in runs):,} bytes · "
+        f"~{sum(run.prompt_tokens_estimate for run in runs):,} tokens · "
+        f"run time {_duration(sum(run.elapsed_ms for run in runs))}",
+        "",
+        "Started (UTC) | Stage | Call | Model | Prompt bytes | ~Prompt tokens | Run time | Status",
+    ]
+    lines.extend(
+        f"{run.started_at[:19].replace('T', ' ')} | {run.verb}/{run.subclass} | {run.detail} | "
+        f"{run.model or run.provider or 'unknown'} | {run.prompt_bytes:,} | "
+        f"{run.prompt_tokens_estimate:,} | {_duration(run.elapsed_ms)} | {run.status}"
+        for run in runs
+    )
+    if not runs:
+        lines.append("No LLM executions recorded.")
+    return "\n".join(lines) + "\n"
+
+
+def _duration(elapsed_ms: int) -> str:
+    seconds = elapsed_ms // 1000
+    return f"{seconds // 60}m{seconds % 60:02d}s" if seconds >= 60 else f"{elapsed_ms / 1000:.1f}s"
+
+
 def _scores(ctx: ReportContext) -> str:
     from drydock.score_summary import render_summary, summarize_scores
 
@@ -195,6 +231,7 @@ REPORT_TYPES = (
     ReportType("build", "Recorded build evidence, repairs, and usage", _build),
     ReportType("history", "Target command execution history", _history),
     ReportType("llm", "Lifecycle LLM usage by command and model", _llm),
+    ReportType("token", "Prompt size, model, and run time of each LLM call", _token),
     ReportType("scores", "Last score runs and artifact locations", _scores),
 )
 
