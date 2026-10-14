@@ -248,7 +248,8 @@ ai  drydock score drydock                      # Adversarial self-assessment
 ```
 
 Each selected `uat/<Project>/` directory is an independent Git repository. `drydock uat`, resume
-stages, and `drydock uat report` initialize it when absent and commit all kit changes before exit.
+stages, and `drydock uat report` attempt to initialize it when absent and commit kit changes before
+exit. Git checkpoint failures are silent and do not change the command's result.
 
 ## Target reports
 

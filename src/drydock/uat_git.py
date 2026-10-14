@@ -102,9 +102,15 @@ def checkpoint_kit_repository(kit_root: Path, message: str = "Complete drydock u
 
 def ensure_kit_repositories(kit_roots: Sequence[Path]) -> None:
     for kit_root in kit_roots:
-        ensure_kit_repository(kit_root)
+        try:
+            ensure_kit_repository(kit_root)
+        except (OSError, SpecificationError):
+            pass  # Git ownership is best effort; the UAT result governs the exit status.
 
 
 def checkpoint_kit_repositories(kit_roots: Sequence[Path]) -> None:
     for kit_root in kit_roots:
-        checkpoint_kit_repository(kit_root)
+        try:
+            checkpoint_kit_repository(kit_root)
+        except (OSError, SpecificationError):
+            pass  # A failed checkpoint must not replace or obscure the UAT result.

@@ -458,6 +458,25 @@ class TestHelpAndVersion:
             == "report\n"
         )
 
+    @pytest.mark.parametrize("report_exit", [0, 1])
+    def test_uat_git_lock_does_not_change_report_status_or_print_error(
+        self, tmp_path, monkeypatch, report_exit
+    ):
+        import drydock.cli as cli_module
+
+        kit = tmp_path / "uat" / "ReadingList"
+        kit.mkdir(parents=True)
+        (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=kit, check=True)
+        (kit / ".git" / "index.lock").write_text("", encoding="utf-8")
+        monkeypatch.setattr(cli_module, "_uat_report", lambda kits: report_exit)
+
+        rc, out, err = run_cli("uat", "report", "ReadingList", "--uat-root", str(tmp_path / "uat"))
+
+        assert rc == report_exit
+        assert "index.lock" not in out
+        assert err == ""
+
     def test_uat_usage_exit_still_commits_selected_kit(self, tmp_path, monkeypatch):
         monkeypatch.setenv("GIT_AUTHOR_NAME", "Drydock Test")
         monkeypatch.setenv("GIT_AUTHOR_EMAIL", "drydock@example.test")

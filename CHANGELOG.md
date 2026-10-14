@@ -8,6 +8,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Fixed
+
+- 2026-10-13: `drydock uat` and `drydock uat report` treat UAT-kit Git initialization and
+  checkpointing as best effort. A Git lock or commit failure no longer prints a secondary error or
+  replaces the lifecycle or report exit status; other selected kits still get a checkpoint attempt.
+
 ### Added
 
 - 2026-10-13: **Per-model token accounting and price-limit routing in `model_config.jsonl`.**

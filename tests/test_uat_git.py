@@ -3,7 +3,11 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from drydock.uat_git import checkpoint_kit_repository, ensure_kit_repository
+from drydock.uat_git import (
+    checkpoint_kit_repositories,
+    checkpoint_kit_repository,
+    ensure_kit_repository,
+)
 
 
 def _git(root: Path, *args: str) -> str:
@@ -68,3 +72,18 @@ def test_checkpoint_commits_every_later_write(tmp_path, monkeypatch):
 
     assert _git(kit, "rev-parse", "HEAD") != first
     assert _git(kit, "show", "HEAD:index.html") == "second"
+
+
+def test_checkpoint_sweep_continues_after_a_locked_kit(tmp_path, monkeypatch):
+    _identity(monkeypatch)
+    locked = tmp_path / "Locked"
+    locked.mkdir()
+    _git(locked, "init", "-q")
+    (locked / ".git" / "index.lock").write_text("", encoding="utf-8")
+    healthy = tmp_path / "Healthy"
+    healthy.mkdir()
+    (healthy / "index.html").write_text("report\n", encoding="utf-8")
+
+    checkpoint_kit_repositories((locked, healthy))
+
+    assert _git(healthy, "show", "HEAD:index.html") == "report"
