@@ -226,3 +226,36 @@ def test_an_unreadable_declaration_is_reported_rather_than_emitted(tmp_path: Pat
 
     with pytest.raises(SpecificationError, match="unsupported type 'SERIAL PK'"):
         write_persistence_package(blueprint_dir, tmp_path / "build")
+
+
+@pytest.mark.parametrize(
+    "rigging", ["sqlite.md", "sqlite_compact.md", "postgres.md", "postgres_compact.md"]
+)
+def test_the_published_contract_names_exactly_the_files_drydock_writes(
+    tmp_path: Path, rigging: str
+):
+    """The contract a planner reads must describe the build Drydock performs. ReadingList
+    20261014.014000 stopped at plan because the contract both claimed a synthesized story built
+    the package and that the build never wrote it; the planner asked which, and wrote nothing."""
+    import re
+
+    from drydock.paths import get_rigging_root
+    from drydock.rigging_contract import contract_section
+
+    section = contract_section((get_rigging_root() / "stack" / rigging).read_text("utf-8"))
+    assert section is not None
+    table = [line for line in section.splitlines() if line.startswith("| ") and "`" in line]
+    published = {
+        path
+        for line in table
+        for path in re.findall(r"`((?:persistence/)?[\w.]+\.(?:py|sql))`", line)
+    }
+
+    blueprint_dir = tmp_path / "blueprint"
+    build_dir = tmp_path / "build"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text(_DATABASE, encoding="utf-8")
+    written = write_persistence_package(blueprint_dir, build_dir)
+
+    assert published == {path.relative_to(build_dir).as_posix() for path in written}
+    assert "never writes" not in section

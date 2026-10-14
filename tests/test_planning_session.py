@@ -3032,6 +3032,68 @@ def test_outside_text_over_100_characters_is_not_submitted_for_waiver(tmp_path):
     assert not (target_dir / "MANIFEST.md").exists()
 
 
+_PROSE_REPLY = (
+    "I can't produce the Stage 1 planning output as requested, because the stack contract "
+    "conflicts with itself. Tell me which reading to take, or say to proceed."
+)
+
+
+def test_a_prose_only_reply_is_asked_once_more_and_the_retry_is_planned(tmp_path):
+    """ReadingList 20261014.014000: the model answered the planning prompt with questions and no
+    artifacts, and the run stopped. One corrective call recovers it."""
+    target_dir = _make_target(tmp_path)
+    replies = [_PROSE_REPLY, _llm_output()]
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append((prompt, kwargs))
+        return FakeRun(text=replies.pop(0), execution_id=f"plan-exec-{len(calls)}")
+
+    progress = []
+    create_plan("Example", "Example", tmp_path, runner=runner, on_text=progress.append)
+
+    assert (target_dir / "MANIFEST.md").exists()
+    assert len(calls) == 2
+    retry_prompt, retry_kwargs = calls[1]
+    assert retry_kwargs["sub_command"] == "topology retry"
+    assert retry_kwargs["parameters"]["initial_execution_id"] == "plan-exec-1"
+    assert "# Plan Stage 1 Retry" in retry_prompt
+    assert "conflicts with itself" in retry_prompt
+    assert any("carried no artifact blocks" in line for line in progress)
+
+
+def test_a_second_prose_reply_is_recorded_with_the_objection_shown(tmp_path):
+    target_dir = _make_target(tmp_path)
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs)
+        return FakeRun(text=_PROSE_REPLY, execution_id="plan-exec")
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="model artifact contract failed",
+        detail="The reply contained no artifact blocks; the model answered in prose.",
+    )
+    record = excinfo.value.record
+    assert "Tell me which reading to take" in record.detail
+    assert "Remove the reported outside text" not in record.recovery
+    assert len(calls) == 2
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
+def test_a_reply_with_artifacts_is_never_retried_for_prose():
+    from drydock.planning_session import _carries_no_artifact
+
+    assert _carries_no_artifact(_PROSE_REPLY)
+    assert not _carries_no_artifact("Preface.\n" + _llm_output())
+    assert not _carries_no_artifact("=== BEGIN ARTIFACT X.md ===\nbody\n=== END ARTIFACT ===\n")
+
+
 def test_invalid_candidate_plan_never_reaches_artifact_waiver(tmp_path):
     target_dir = _make_target(tmp_path)
     output = _llm_output(_manifest(implements="GHOST.md")).replace(

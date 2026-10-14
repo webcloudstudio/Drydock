@@ -10,6 +10,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-13: `drydock plan` asks once more when the Stage 1 topology reply contains no
+  artifact blocks. The model sometimes answers with questions instead of planning. The retry quotes
+  that reply back and tells the model to resolve each point and record it in `DECISIONS.json`. A
+  resumed Claude session receives only the instruction. If the second reply is also prose, the plan
+  stops with a recorded `model artifact contract failed` error that shows the first 400 characters
+  of the reply and points to the execution output. It no longer advises removing outside text.
+- 2026-10-13: The `sqlite.md` and `postgres.md` Foundation Contracts (and their compact copies)
+  now state how Drydock builds the persistence package. `DATABASE.md` declares the store. The
+  story that implements it is the DATABASE step, and its builder writes no persistence code. When
+  it closes, Drydock copies the shipped `db.py`, `sqlite.py`, and `postgres.py`, generates
+  `schema.py`, `__init__.py`, `testing.py`, and `schema.sql`, and applies the schema. The previous
+  wording said both that a synthesized story built the package and that the build never wrote it.
+  A planner refused to plan ReadingList over that contradiction.
 - 2026-10-13: `drydock uat` and `drydock uat report` treat UAT-kit Git initialization and
   checkpointing as best effort. A Git lock or commit failure no longer prints a secondary error or
   replaces the lifecycle or report exit status; other selected kits still get a checkpoint attempt.

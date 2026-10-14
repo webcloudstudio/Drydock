@@ -221,6 +221,9 @@ _PLAN_BLUEPRINT_BATCH_SIZE = 5
 # well under 100 remains the ideal, as guidance rather than a gate.
 _OUTSIDE_TEXT_LIMIT = 100
 _OUTSIDE_SPAN_LIMIT = 3
+#: A prose-only reply is the model's objection to the task; show enough of it to read the
+#: objection without opening the execution output.
+_PROSE_REPLY_PREVIEW_LIMIT = 400
 _OUTSIDE_FORBIDDEN_MARKERS = ("===", "<invoke", "<function_calls", "```", "~~~")
 # Legal `parent:` block types per block type. A story or spike groups under a
 # feature; an ac gates a story, a spike, or a feature group.
@@ -352,6 +355,19 @@ class OutsideArtifactTextError(SpecificationError):
     ):
         self.blocks = blocks
         self.spans = spans
+        if not blocks:
+            reply = " ".join(" ".join(span.normalized for span in spans).split())
+            preview = json.dumps(reply[:_PROSE_REPLY_PREVIEW_LIMIT], ensure_ascii=False)
+            remaining = len(reply) - _PROSE_REPLY_PREVIEW_LIMIT
+            suffix = f" … ({remaining} more characters)" if remaining > 0 else ""
+            message = (
+                "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                "  The reply contained no artifact blocks; the model answered in prose.\n"
+                f"  reply: {preview}{suffix}\n"
+                "  No Blueprint or Manifest artifacts were written."
+            )
+            super().__init__(_with_execution_evidence(message, result))
+            return
         details = []
         for span in spans:
             preview = json.dumps(
@@ -4495,6 +4511,72 @@ def _topology_repair_assembly(*, declaration: str, defect: str, pass_number: int
     return PromptAssembly(parts=(lines_part("Plan topology repair", lines, kind="repair"),))
 
 
+def _carries_no_artifact(text: str) -> bool:
+    """Whether a reply holds no artifact at all: prose only, with nothing to parse or waive.
+
+    Outside-text recovery judges narration around artifacts. A reply with none is a different
+    outcome — the model answered in place of the task — and the only repair is to ask again.
+    """
+    if _WRITE_CALL_RE.search(text):
+        return False
+    line_patterns = (
+        _OPEN_BLOCK_LINE_RE,
+        _END_BLOCK_LINE_RE,
+        _INVARIANT_OPEN_LINE_RE,
+        _INVARIANT_END_LINE_RE,
+    )
+    return not any(
+        pattern.match(line.strip()) for line in text.splitlines() for pattern in line_patterns
+    )
+
+
+#: The prior prose reply is quoted back so the model resolves what it raised; bounded so a long
+#: reply cannot crowd the instruction out of a resumed turn.
+_PROSE_REPLY_QUOTE_LIMIT = 4000
+
+
+def _artifact_retry_assembly(
+    prompt_assembly: PromptAssembly,
+    *,
+    reply: str,
+    unattended: bool,
+    resumed: bool,
+) -> PromptAssembly:
+    """Ask once more for the Stage 1 artifacts after a reply that carried none.
+
+    A resumed Claude session already holds the planning context, so it receives the instruction
+    alone. Every other provider receives the unchanged original context with the instruction
+    appended, which keeps the prefix cacheable.
+    """
+    quoted = reply.strip()
+    if len(quoted) > _PROSE_REPLY_QUOTE_LIMIT:
+        quoted = quoted[:_PROSE_REPLY_QUOTE_LIMIT] + " …"
+    policy = (
+        "No Commander is available, and no prose reply reaches a person."
+        if unattended
+        else "A prose reply reaches no one; Drydock reads only artifact blocks."
+    )
+    lines = [
+        "# Plan Stage 1 Retry",
+        "",
+        "Your previous reply contained no artifact blocks, so Drydock wrote nothing.",
+        policy,
+        "Do not ask questions or restate concerns. Resolve each point you raised from the",
+        "imported sources, Compass, Technology Stack, and Foundation Contracts; choose the",
+        "narrowest reading consistent with them; record each material choice in",
+        "DECISIONS.json with its system_choice.",
+        "Reply now with only the artifact blocks the Agent Task requires, in its delimiter form.",
+        "",
+        "Your previous reply:",
+        "",
+        quoted,
+    ]
+    instruction = lines_part("Plan artifact retry", lines, kind="repair")
+    if resumed:
+        return PromptAssembly(parts=(instruction,))
+    return PromptAssembly(parts=(*prompt_assembly.parts, instruction))
+
+
 def analyzed_story_ids(blueprint_dir: Path) -> tuple[str, ...]:
     """Story IDs declared by the Target's ``ANALYSIS.md``, or none when it has no Story List."""
     from drydock.quarterdeck_state import analysis_story_ids
@@ -5442,16 +5524,20 @@ def _approve_outside_text_candidate(
         text=result.text,
         blocks=exc.blocks,
     ):
+        recovery = (
+            "Read the reply in the execution output, resolve what it raised in the Target "
+            f"inputs, then run: drydock plan {target}"
+            if not exc.blocks
+            else "Remove the reported outside text or correct the model artifact, then run: "
+            f"drydock plan {target}"
+        )
         raise _record_plan_error(
             target_dir,
             classification="model artifact contract failed",
             detail=str(exc),
             execution_id=execution_id,
             log_dir=log_dir,
-            recovery=(
-                "Remove the reported outside text or correct the model artifact, then run: "
-                f"drydock plan {target}"
-            ),
+            recovery=recovery,
         ) from exc
 
     try:
@@ -5880,6 +5966,45 @@ def create_plan(
 
         refresh_commanders_chair(target_dir)
         raise RecordedError(record)
+    if _carries_no_artifact(result.text):
+        # The model answered in prose instead of planning. One corrective call is cheaper than a
+        # rerun; a second prose reply falls through to the recorded contract failure below.
+        if on_text is not None:
+            on_text("[plan] reply carried no artifact blocks; asking once more for Stage 1\n")
+        retry_assembly = _artifact_retry_assembly(
+            prompt_assembly,
+            reply=result.text,
+            unattended=unattended,
+            resumed=claude_session is not None,
+        )
+        retry_kwargs: dict[str, object] = {
+            **initial_runner_kwargs,
+            "sub_command": "topology retry",
+            "parameters": {
+                "target": target,
+                "blueprint": str(blueprint_dir),
+                "initial_execution_id": exec_id or "",
+            },
+            "prompt_assembly": retry_assembly,
+        }
+        retry_kwargs.pop("claude_session_id", None)
+        retry_kwargs.pop("claude_resume_session_id", None)
+        if claude_session is not None:
+            retry_kwargs.update(
+                claude_session.invocation(
+                    retry_assembly.rendered_text, model or prompt.model, context_reused=True
+                )
+            )
+        try:
+            retry = cast(
+                CompletedRun,
+                run(retry_assembly.rendered_text, target_dir, **retry_kwargs),
+            )
+        except Exception:  # noqa: BLE001 - the original reply still faces the contract below
+            retry = None
+        if retry is not None and retry.ok and retry.text.strip():
+            result = retry
+            exec_id = getattr(result, "execution_id", None)
 
     validated_plan: BuildPlan | None = None
     validated_warnings: tuple[str, ...] = ()
