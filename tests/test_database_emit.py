@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from drydock.database_apply import DEFAULT_DSN, apply_schema
 from drydock.database_emit import PACKAGE, render_schema_module, write_persistence_package
 from drydock.errors import SpecificationError
 
@@ -100,6 +101,7 @@ def test_the_emitted_package_runs_against_sqlite(tmp_path: Path):
         "postgres.py",
         "schema.py",
         "__init__.py",
+        "testing.py",
         "schema.sql",
     }
 
@@ -121,6 +123,89 @@ print("ROUNDTRIP OK")
 
     assert result.returncode == 0, result.stderr
     assert "ROUNDTRIP OK" in result.stdout
+
+
+def _emitted_build(tmp_path: Path) -> Path:
+    blueprint_dir = tmp_path / "blueprint"
+    build_dir = tmp_path / "build"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text(_DATABASE, encoding="utf-8")
+    write_persistence_package(blueprint_dir, build_dir)
+    return build_dir
+
+
+def _run_in_build(build_dir: Path, script: str, env: dict[str, str] | None = None):
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=build_dir,
+        env={"PYTHONPATH": str(build_dir), **(env or {})},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_the_generated_db_session_opens_a_store_with_the_schema_applied(tmp_path: Path):
+    build_dir = _emitted_build(tmp_path)
+
+    result = _run_in_build(
+        build_dir,
+        "from persistence.testing import db_session\n"
+        "with db_session() as db:\n"
+        "    identity = db.tickets.create(status='open', title='T')\n"
+        "    assert [row.id for row in db.tickets.list(status='open')] == [identity]\n"
+        "print('SESSION OK')\n",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SESSION OK" in result.stdout
+
+
+def test_apply_schema_creates_the_tables_in_the_default_store(tmp_path: Path, monkeypatch):
+    # Regression shape from ReadingList Haiku 20261013.235724: the application opened
+    # data/app.db, which nothing had applied schema.sql to, so every write raised
+    # "no such table".
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build_dir = _emitted_build(tmp_path)
+
+    application = apply_schema(build_dir)
+
+    assert application is not None and application.applied, application
+    result = _run_in_build(
+        build_dir,
+        "from persistence import open_database\n"
+        f"db = open_database({DEFAULT_DSN!r})\n"
+        "db.tickets.create(status='open', title='T')\n"
+        "print('STORE OK')\n",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_apply_schema_is_idempotent_and_honours_database_path(tmp_path: Path):
+    build_dir = _emitted_build(tmp_path)
+    env = {"DATABASE_PATH": "elsewhere/books.db", "PATH": ""}
+
+    first = apply_schema(build_dir, env=env)
+    second = apply_schema(build_dir, env=env)
+
+    assert first is not None and first.applied, first
+    assert second is not None and second.applied, second
+    assert (build_dir / "elsewhere" / "books.db").is_file()
+    assert not (build_dir / DEFAULT_DSN).exists()
+
+
+def test_apply_schema_reports_an_unreachable_store(tmp_path: Path):
+    build_dir = _emitted_build(tmp_path)
+
+    application = apply_schema(build_dir, env={"DATABASE_URL": "nosuch://store"})
+
+    assert application is not None and not application.applied
+    assert "no persistence driver for 'nosuch'" in application.detail
+
+
+def test_apply_schema_is_skipped_without_a_generated_schema(tmp_path: Path):
+    assert apply_schema(tmp_path) is None
 
 
 def test_a_declaration_with_no_tables_emits_no_package(tmp_path: Path):

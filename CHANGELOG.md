@@ -286,6 +286,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-13: **`drydock build` applies the generated schema to the Target's store.** The DATABASE
+  step generated `schema.sql` but nothing applied it, and Rigging forbids the application from
+  creating schema at startup, so a criterion driving the application hit `no such table`. Drydock
+  now applies `schema.sql` through the build's own `persistence` package to `DATABASE_URL`, else
+  `DATABASE_PATH`, else `data/app.db` — at the DATABASE step (failure stops the step), before every
+  programmatic acceptance run, before every governed gate, and before `drydock score` observes Sea
+  Trials. The engine is the one the DSN selects, so SQLite and PostgreSQL are both covered. The
+  DDL is idempotent.
+
+- 2026-10-13: **The persistence foundation contract matches the generated package.**
+  `Rigging/stack/sqlite.md` and `postgres.md` published `open_session() -> Session`, which the
+  generated package never exported, so a build's `persistence/testing.py` failed to import and the
+  pytest suite failed at `conftest` load. The contract now publishes `open_database(dsn) ->
+  Database`, and Drydock generates `persistence/testing.py` with `db_session()`, a fresh store with
+  `schema.sql` applied.
+
 - 2026-10-13: **`drydock plan create` refuses a story that implements a Target input.** A topology
   story whose `implements:` names `TECHNOLOGY_STACK.md`, `METADATA.md`, `COMPASS.md`,
   `SEA_TRIALS.md`, or a forbidden artifact is sent to declaration repair before Stage 2, and an

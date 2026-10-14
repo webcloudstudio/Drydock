@@ -259,6 +259,10 @@ def run_gate(
             detail=f"command not found: {argv[0]}",
             build_identity=identity,
         )
+    from drydock.database_apply import apply_schema
+
+    # The gate drives the application, which never creates schema itself.
+    apply_schema(build_dir)
     started = time.monotonic()
     capture_limit_mb = get_capture_output_limit_mb()
     try:

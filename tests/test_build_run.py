@@ -4677,6 +4677,54 @@ def test_the_database_step_renders_the_declaration_into_executable_ddl(tmp_path:
     assert (tmp_path / "DECISIONS.json") in written
     assert (build_dir / "persistence" / "schema.py").is_file()
     assert (build_dir / "persistence" / "db.py").is_file()
+    # The DATABASE step applies the schema to the store the application opens.
+    import sqlite3
+
+    with sqlite3.connect(build_dir / "data" / "app.db") as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
+    assert "tickets" in tables
+
+
+def test_acceptance_applies_the_schema_before_criteria_run(tmp_path: Path, monkeypatch):
+    from drydock.acceptance import ProgrammaticAcceptance, run_programmatic_acceptance
+    from drydock.database_emit import write_persistence_package
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    blueprint_dir = tmp_path / "blueprint"
+    build_dir = tmp_path / "build"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text(
+        "# DATABASE: X\n\n"
+        "## Access Patterns\n\n"
+        "### FEATURE-TICKET-001 — Find tickets\n\n"
+        "| Field | Value |\n|---|---|\n"
+        "| Owner | FEATURE-Ticket.md |\n| Access | read |\n"
+        "| Repository operation | `tickets.list` |\n| Compatibility | unchanged |\n\n"
+        "Input: FindTickets\n\n| Field | Type | Required |\n|---|---|---|\n| status | str | yes |\n\n"
+        "Output: Ticket\n\n| Field | Type |\n|---|---|\n| id | int |\n\n"
+        "## `tickets`\n\n| Field | Type | Notes |\n|---|---|---|\n"
+        "| id | INTEGER PK | |\n| status | TEXT NOT NULL | |\n",
+        encoding="utf-8",
+    )
+    write_persistence_package(blueprint_dir, build_dir)
+    check = ProgrammaticAcceptance(
+        check_id="store-has-tickets",
+        source="FEATURE-Ticket.md",
+        intent="The application store holds the declared table.",
+        code=(
+            "import sqlite3\n"
+            "names = {r[0] for r in sqlite3.connect('data/app.db').execute("
+            "'SELECT name FROM sqlite_master')}\n"
+            "assert 'tickets' in names, names\n"
+        ),
+    )
+
+    (result,) = run_programmatic_acceptance(
+        (check,), build_dir=build_dir, target_dir=tmp_path, blueprint_dir=blueprint_dir
+    )
+
+    assert result.passed, result.stderr
 
 
 def test_a_declaration_with_no_tables_writes_no_schema(tmp_path: Path):

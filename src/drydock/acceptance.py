@@ -2482,6 +2482,12 @@ def run_programmatic_acceptance(
         "DRYDOCK_BLUEPRINT_DIR": str(blueprint_dir),
         "PYTHONPATH": pythonpath,
     }
+    from drydock.database_apply import apply_schema
+
+    # Criteria drive the application, which never creates schema itself. A failure here surfaces
+    # in the criteria that touch the store; the DATABASE step already refused a schema it could
+    # not apply.
+    apply_schema(build_dir, env=env)
     limit_mb = get_sandbox_mem_limit_mb()
     preexec = child_limits(limit_mb)
     packages = _foundation_packages()

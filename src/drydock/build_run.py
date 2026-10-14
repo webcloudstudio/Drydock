@@ -116,6 +116,7 @@ from drydock.config import (
     get_sandbox_mem_limit_mb,
     max_consecutive_stalls,
 )
+from drydock.database_apply import apply_schema
 from drydock.database_contract import (
     database_operation_fingerprints,
     derived_indexes,
@@ -2329,6 +2330,11 @@ def _write_persistence(
         # The schema story just closed on a declaration nothing can generate from. Continuing
         # would let every later story build against a persistence layer that does not exist.
         raise SpecificationError(f"persistence: not generated — {exc}") from exc
+    application = apply_schema(build_dir)
+    if application is not None:
+        if not application.applied:
+            raise SpecificationError(f"persistence: {application.detail}")
+        _emit(on_text, f"persistence: {application.detail}")
     return written + record_derived_indexes(
         derived_indexes(tables, contract), target_dir=target_dir
     )

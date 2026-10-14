@@ -875,6 +875,10 @@ def score_release(
     # Step 2 — gather evidence by observing, never by inheriting. The governed gate is a command,
     # so score runs it. The build layer runs the same command for repair signal; neither run is
     # the other's evidence.
+    from drydock.database_apply import apply_schema
+
+    # Trials and the governed gate drive the application, which never creates schema itself.
+    apply_schema(build_dir)
     contract = load_contract(target_dir)
     full_gate: GateResult | None = None
     if contract.full:
