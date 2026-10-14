@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-14: `drydock plan` treats a `PLAN_CREATE_ERROR.txt` or `PLAN_CREATE_BLOCKED.txt`
+  block wrapped in prose as that Error or Blocked Mode report, not as an outside-text format
+  failure. It now reaches the conflict challenge and `ERRORS.md` with its `Required action`.
+  Previously the report was hidden and the recovery said to remove the outside text. The
+  unattended UAT policy now states that an unstated status code, exit status, or error channel is
+  never Error Mode: the planner chooses it and records it in `DECISIONS.json`. ReadingList's plan
+  stopped twice on a refusal over unstated HTTP status codes.
 - 2026-10-13: `drydock plan` asks once more when the Stage 1 topology reply contains no
   artifact blocks. The model sometimes answers with questions instead of planning. The retry quotes
   that reply back and tells the model to resolve each point and record it in `DECISIONS.json`. A

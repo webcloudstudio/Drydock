@@ -1618,6 +1618,7 @@ def _assemble_prompt_assembly(
                     "- No Commander is available. Do not emit a question, questionnaire, blocker, or an undecided DECISIONS.json record.",
                     "- Resolve every ambiguity from the imported sources, Compass, fixture inputs, and precedence; choose the narrowest behavior consistent with them.",
                     "- Record a material DECISIONS.json disclosure only after selecting its system_choice; continue with that choice.",
+                    "- An unstated response contract (status code, exit status, error channel) is never Error Mode: choose the conventional narrowest one, record it in DECISIONS.json, and plan on it.",
                     "",
                 ],
                 kind="unattended-policy",
@@ -6023,45 +6024,53 @@ def create_plan(
     try:
         blocks = _parse_strict_blocks(result.text, result, on_defect=_defect_reporter(on_text))
     except OutsideArtifactTextError as exc:
-        try:
-            recovered = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)
-        except SpecificationError as write_exc:
-            raise _record_plan_error(
-                target_dir,
-                classification="model artifact contract failed",
-                detail=str(write_exc),
-                execution_id=exec_id,
-                log_dir=log_dir,
-                recovery=(
-                    "Inspect the execution evidence, correct the plan artifact, then run: "
-                    f"drydock plan {target}"
-                ),
-            ) from write_exc
-        if recovered:
-            blocks = recovered
-            blocks_text = None
-        else:
+        if set(exc.blocks) in (
+            {"PLAN_CREATE_ERROR.txt"},
+            {"PLAN_CREATE_BLOCKED.txt"},
+        ):
+            # A declared Error or Blocked Mode report wrapped in prose is still that report;
+            # route it to the deferred-declaration path instead of a format failure.
             blocks = exc.blocks
-            declared_topology = TOPOLOGY_BLOCK in blocks
-            (
-                validated_plan,
-                validated_warnings,
-                waiver_execution_id,
-                waiver_warning,
-            ) = _approve_outside_text_candidate(
-                exc,
-                blueprint_dir=blueprint_dir,
-                target_dir=target_dir,
-                target=target,
-                result=result,
-                execution_id=exec_id,
-                allow_diagnostic_recovery=allow_diagnostic_recovery,
-                llm_provider=llm_provider,
-                model=model,
-                log_dir=log_dir,
-                runner=run,
-                on_text=on_text,
-            )
+        else:
+            try:
+                recovered = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)
+            except SpecificationError as write_exc:
+                raise _record_plan_error(
+                    target_dir,
+                    classification="model artifact contract failed",
+                    detail=str(write_exc),
+                    execution_id=exec_id,
+                    log_dir=log_dir,
+                    recovery=(
+                        "Inspect the execution evidence, correct the plan artifact, then run: "
+                        f"drydock plan {target}"
+                    ),
+                ) from write_exc
+            if recovered:
+                blocks = recovered
+                blocks_text = None
+            else:
+                blocks = exc.blocks
+                declared_topology = TOPOLOGY_BLOCK in blocks
+                (
+                    validated_plan,
+                    validated_warnings,
+                    waiver_execution_id,
+                    waiver_warning,
+                ) = _approve_outside_text_candidate(
+                    exc,
+                    blueprint_dir=blueprint_dir,
+                    target_dir=target_dir,
+                    target=target,
+                    result=result,
+                    execution_id=exec_id,
+                    allow_diagnostic_recovery=allow_diagnostic_recovery,
+                    llm_provider=llm_provider,
+                    model=model,
+                    log_dir=log_dir,
+                    runner=run,
+                    on_text=on_text,
+                )
     except SpecificationError as exc:
         reported_exc = exc
         try:

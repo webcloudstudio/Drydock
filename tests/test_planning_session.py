@@ -1851,6 +1851,55 @@ def test_false_conflict_challenge_recovers_complete_plan(tmp_path):
     assert compass.read_text(encoding="utf-8") == before
 
 
+_PROSE_WRAPPED_ERROR = (
+    "I cannot produce the plan because the sources state no status code.\n\n"
+    "=== PLAN_CREATE_ERROR.txt ===\n"
+    "Planning output was not produced.\n"
+    "Error type: conflict\n"
+    "Reason:\n- No status code is stated for removing a missing book.\n"
+    "Required action:\n- State the removal status code.\n"
+    "=== END PLAN_CREATE_ERROR.txt ===\n\n"
+    "**Why I stopped:** picking a status code would be a guess.\n"
+)
+
+
+def test_prose_wrapped_plan_create_error_defers_as_error_mode(tmp_path):
+    target_dir = _make_target(tmp_path)
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_PROSE_WRAPPED_ERROR))
+
+    assert isinstance(result, PlanDeferredResult)
+    errors = result.errors_path.read_text(encoding="utf-8")
+    assert "State the removal status code." in errors
+    assert "outside delimited artifact blocks" not in errors
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
+def test_prose_wrapped_plan_create_error_is_challenged_unattended(tmp_path, monkeypatch):
+    target_dir = _make_target(tmp_path)
+    monkeypatch.setenv("DRYDOCK_UAT", "1")
+    calls = []
+
+    def runner(prompt, *args, **kwargs):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return FakeRun(text=_PROSE_WRAPPED_ERROR, execution_id="initial-exec")
+        return FakeRun(text=_llm_output(), execution_id="challenge-exec")
+
+    result = create_plan(
+        "Example", "Example", tmp_path, runner=runner, allow_diagnostic_recovery=True
+    )
+
+    assert not isinstance(result, PlanDeferredResult)
+    assert result.execution_id == "challenge-exec"
+    assert (
+        "An unstated response contract (status code, exit status, error channel) is never Error Mode"
+        in calls[0]
+    )
+    assert "Plan Conflict Challenge" in calls[1]
+    assert not (target_dir / "ERRORS.md").exists()
+
+
 def test_confirmed_conflict_challenge_writes_errors_and_no_plan_artifacts(tmp_path):
     target_dir = _make_target(tmp_path)
     initial = (
