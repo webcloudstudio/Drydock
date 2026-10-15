@@ -38,7 +38,7 @@ Cost when broken: a new Target fails validation for files no step has produced y
 own remediation; deterministic single-cause findings never reach standoff diagnosis. Cost when
 broken: warnings block work, or a failure gives no next action.
 
-`2026-08-13` · **Facts fail; predictions do not.** A Programmatic Acceptance snippet that does not
+`2026-08-10` · **Facts fail; predictions do not.** A Programmatic Acceptance snippet that does not
 parse is a failure. Predicting that a snippet would fail is not done here: the analyzers that did
 were retracted after false positives, and a snippet that cannot exercise the code reports
 `UNVERIFIED` when it runs. The one authoring signal kept is a re-typed expected value, reported and

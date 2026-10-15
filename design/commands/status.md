@@ -32,7 +32,7 @@ Flags may precede or follow `<Target>`. `console` is a reserved operand.
 
 ### Rules
 
-`2026-09-15` · **Completion and buildability are separate observations.** `--check` reports
+`2026-08-13` · **Completion and buildability are separate observations.** `--check` reports
 completion: `COMPLETE` (0) when every executable block is `closed/verified` and no blocking
 decision is open; `RETRYABLE` (1) when the Manifest is approved and work is pending, implemented,
 failed, or a `DISPUTED` criterion awaits repair; `BLOCKED` (2) for no, unparsable, draft, or empty
@@ -41,7 +41,7 @@ build can advance the frontier: `0` when buildable, `1` when complete or not rea
 `closed/implemented` ends scheduling but is incomplete under governed verification. Cost when
 broken: a build loop that never ends on a stalled Target, or ends on an unverified one.
 
-`2026-09-15` · **A gate verdict is a successful report.** Every `--check` and `--ready` outcome
+`2026-08-15` · **A gate verdict is a successful report.** Every `--check` and `--ready` outcome
 prints one line to stdout; the exit status carries the verdict and stderr is reserved for command
 failures. Cost when broken: loop scripts misread a verdict as an error.
 
