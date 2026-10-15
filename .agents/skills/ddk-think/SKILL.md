@@ -1,6 +1,6 @@
 ---
 name: ddk-think
-description: Didactic, subtractive design discussion for a feature, command, or topic, persisted to a notes file. Invoke with "/ddk-think <feature>". For a Drydock-managed project the notes are saved in the project's Target directory; otherwise notes/notes_<subject>.md. Use when the user wants to think a design through conversationally, at their altitude, without code edits, plans, or spec changes — and have the agreed thinking captured to a markdown file at close out, not mid-discussion. Trigger: "/ddk-think", "think through <X>", "let's think through".
+description: Didactic, subtractive design discussion for a feature, command, or topic, persisted to a notes file. Invoke with "/ddk-think <feature>". For a Drydock-managed project the notes are saved in the project's Target directory; for the Drydock repository they are saved in design/commands/<command>.md or design/topics/<topic>.md. Use when the user wants to think a design through conversationally, at their altitude, without code edits, plans, or spec changes — and have the agreed thinking captured to a markdown file at close out, not mid-discussion. Trigger: "/ddk-think", "think through <X>", "let's think through".
 version: 3.0.0
 ---
 
@@ -20,13 +20,16 @@ topic. Resolve its notes file:
    directory (`$DRYDOCK_WORKSPACE/targets/<Target>/`, workspace per `drydock config show`),
    save notes **within that Target directory** as `targets/<Target>/notes_<feature>.md`. If more
    than one Target could match, ask which one.
-2. **Otherwise** (including the Drydock repository itself): resolve to `notes/notes_<subject>.md`
-   (e.g. `/ddk-think analyze` → `notes/notes_analyze.md`). Create the `notes/` directory if it does
-   not exist and tell the user.
+2. **The Drydock repository itself:** resolve through `design/README.md`. A top-level `drydock`
+   command resolves to `design/commands/<command>.md` (e.g. `/ddk-think analyze` →
+   `design/commands/analyze.md`); any other subject resolves to `design/topics/<subject>.md`.
+   AGENTS.md §Design defines the file layout and section ownership. Add a new file to the
+   `design/README.md` index and tell the user.
+3. **Otherwise:** resolve to `notes/notes_<subject>.md` and create `notes/` if it does not exist.
 
 **Fuzzy subject matching.** Before declaring "starting fresh", strip any trailing digits from the
-subject and check if `notes_<stem>.md` already exists at the resolved location (e.g.
-`quarterdeck2` → check `notes_quarterdeck.md`). If found, ask: "`notes_<stem>.md` already exists —
+subject and check if a file for `<stem>` already exists at the resolved location (e.g.
+`quarterdeck2` → check `quarterdeck`). If found, ask: "`<stem>` already exists —
 continue that, or start a separate `<subject>` file?" Only create the new file on explicit
 confirmation.
 
@@ -81,7 +84,10 @@ context** during discussion and flush them to disk in one pass at Close Out. Do 
 
 ### Notes file format
 
-Notes use the **Drydock Typed Specification header format**. Required layout:
+In the Drydock repository, the design file layout in AGENTS.md §Design governs: the session writes
+`## Decisions`, `## Open Questions`, and `## Working Notes`, and refreshes `## Behavior` only for
+behavior that is already implemented. Elsewhere, notes use the **Drydock Typed Specification
+header format**. Required layout:
 
 ```markdown
 # NOTES: <Subject title>
@@ -145,9 +151,9 @@ them cleanly.
 2. Route each decision to the most specific notes file it belongs to:
    - `targets/<Target>/notes_<feature>.md` if the session covers a feature of a Drydock-managed
      project (notes stay within the Target directory)
-   - `notes/notes_<command>.md` if it relates to a specific command
-   - `notes/notes_sail_<phase>.md` if it relates to a SAIL workflow phase (setup, analyze, iterate, loop)
-   - `notes/notes_general.md` as the default
+   - `design/commands/<command>.md` if it relates to a specific command
+   - `design/topics/<topic>.md` if it relates to a cross-cutting subject or SAIL phase
+   - `design/topics/general.md` as the default
 3. Write each as a tagged section (date · spec · impl) in the appropriate file.
 4. Update the `Pending spec` and `Pending impl` counts in each file's header.
 5. Print a one-paragraph summary: files written, count of `spec:approved` items pending, count
@@ -173,5 +179,5 @@ On halt:
   `/clear` first, then `/ddk-think <subject>`; you then import the markdown and continue.
 - The gating is instruction-based, not enforced. If you notice yourself drifting (expanding,
   editing code, proposing plans), stop and return to the rules above.
-- SAIL phase files (`notes_sail_*.md`) follow the same format as command notes files.
-  `Route` = the SAIL phase name (e.g. `sail-analyze`).
+- SAIL phase files (`design/topics/sail_<phase>.md`) follow the same format as command design
+  files. `Route` = the SAIL phase name (e.g. `sail-analyze`).

@@ -11,8 +11,9 @@ numbered list, wait for the user to choose, then implement the selected items.
 
 The argument after `/ddk-think-apply` is the subject. Resolve the notes file the same way as
 `/ddk-think`: `targets/<Target>/notes_<feature>.md` when the subject is a feature of a
-Drydock-managed project (`$DRYDOCK_WORKSPACE/targets/<Target>/`), otherwise
-`notes/notes_<subject>.md`.
+Drydock-managed project (`$DRYDOCK_WORKSPACE/targets/<Target>/`); in the Drydock repository,
+`design/commands/<command>.md` or `design/topics/<topic>.md` via `design/README.md`; otherwise
+`notes/notes_<subject>.md`. Below, "the notes file" means the resolved file.
 
 **Drydock-managed projects:** when the notes file lives in a Target directory, selected CODE
 items are not implemented by direct code edits. Instead, write one change ticket per selected
@@ -23,21 +24,17 @@ build process. DOC items amend the Target's Blueprint the same way.
 
 ## On invocation (first turn only)
 
-0. **Retire terminal sections** — before surfacing any items, scan `notes/notes_<subject>.md`
+0. **Retire terminal sections** — before surfacing any items, scan the notes file
    for sections in terminal state: both `impl` and `spec` flags are done
    (`impl:implemented` or `impl:na`, **and** `spec:applied` or `spec:na`).
 
-   - If any terminal sections exist, move them (append) to `notes/notes_<subject>_done.md`,
-     preserving their full `### Section` block verbatim.
-   - Remove those sections from `notes/notes_<subject>.md`.
-   - Update the header counts (`Pending spec`, `Pending impl`) in `notes/notes_<subject>.md`
-     to reflect the removals.
-   - If `notes/notes_<subject>_done.md` does not exist, create it with a minimal header:
-     `# DONE: <subject>` and today's date.
-   - Report how many sections were retired before proceeding (e.g. "Retired 3 completed
-     sections to notes_<subject>_done.md."). If none, say nothing and continue.
+   - In a `design/` file, fold each terminal section's settled behavior into `## Behavior`
+     as a dated rule, then remove the section. Elsewhere, append it verbatim to
+     `notes_<subject>_done.md` (create it with `# DONE: <subject>` and today's date) and remove it.
+   - Update the header counts (`Pending spec`, `Pending impl`) to reflect the removals.
+   - Report how many sections were retired before proceeding. If none, say nothing and continue.
 
-1. **Read** `notes/notes_<subject>.md`. If it does not exist, stop and say so.
+1. **Read** the notes file. If it does not exist, stop and say so.
 
 2. **Extract flagged sections** — scan every `### Section` block for its flag line
    (`` `YYYY-MM-DD` · `spec:X` · `impl:Y` ``):
@@ -85,7 +82,7 @@ The user replies with numbers, letters, ranges, or keywords (`all code`, `all do
 
 **After all selected items are implemented:**
 - Run `ruff check src/ tests/` and `python -m pytest` (or `bash bin/test.sh`).
-- Update `docs/SOUNDINGS.md` for any capability whose state changed.
+- In a `design/` file, update `## Behavior` for every implemented item.
 - Commit with a descriptive message per AGENTS.md rules.
 - Report: files changed, tests passed, residual risk.
 

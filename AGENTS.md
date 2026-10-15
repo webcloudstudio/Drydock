@@ -50,7 +50,7 @@ Drydock/
   bin/               Source-tree launchers; no business logic
   docs/              Authoritative specification and documentation
   logs/              Drydock logs, prompts, and full run history
-  notes/             `/ddk-think` working notes; injected by that skill only, not read by code
+  design/            Per-command behavior rules and `/ddk-think` working notes (see Design)
   uat/               Published UAT evidence; written only by Ed's `drydock uat` runs (see UAT Evidence)
   dist/              Build artifacts; not committed
   targets/<PROJECT>  Generated Target workspace; see Data Locations
@@ -167,21 +167,35 @@ One shape, first established by `drydock rigging compact`:
 - **Registry:** `prompts/prompts.json` maps prompts to their target documentation and is read by
   `prompt_headers.py`. Update it when adding or renaming a prompt.
 
-## Notes
+## Design
 
-`notes/notes_<command>.md` holds the working notes for one command. Each carries a
-`## Process Definition` section directly below its metadata table. That section is the agent's:
-write it, keep it current, and do not ask before updating it. Everything else in the file belongs
-to its authors — propose changes to those sections in chat rather than editing them. `/ddk-think`
-updates `## Process Definition` the same way, without seeking approval for it.
+`design/` records how each command behaves and why, so the next session does not re-derive it.
+`design/README.md` indexes every command and topic to its file, modules, prompts, and tests.
 
-`## Process Definition` states how the command works now and why, so the next session does not
-re-derive it: what the command is for, the rules that govern its behavior, what each rule costs
-when broken, and the mechanism stage by stage. It records settled behavior, not proposals — those
-stay in `## Decisions` and `## Open Questions`.
+- `design/commands/<command>.md` — one file per top-level `drydock` command.
+- `design/topics/<topic>.md` — one file per cross-cutting subject governing several commands.
 
-Update it in the same change that alters the command's behavior, and date each rule. A rule that
-governs one command lives there and never in this file, which is injected into every command.
+**Precedence:** code > `design/` > `docs/Drydock_Specification.md`. A design file describes the
+code as it runs. Where the specification says otherwise, the file records the difference under
+`### Spec divergence`; the specification is not edited to match.
+
+**Before changing a command's module, prompt, or tests, read its design file** and the topics it
+links. Update `## Behavior` in the same commit that changes behavior.
+
+Each file carries a metadata table, then these sections in order:
+
+| Section | Owner | Content |
+|---|---|---|
+| `## Behavior` | Agent — write and keep current without asking | Purpose, Rules, Mechanism, Exit codes, Spec divergence |
+| `## Decisions` | `/ddk-think` and its authors | Flagged decisions not yet fully implemented or applied |
+| `## Open Questions` | Authors; agents append | Unresolved questions, including conflicts found between code, design, and specification |
+| `## Working Notes` | `/ddk-think` | Scratchpad; prune once absorbed into Behavior or Decisions |
+
+Each rule in `### Rules` is dated and states what it costs when broken. `## Behavior` records settled
+behavior only; proposals stay in `## Decisions` and `## Open Questions`. Propose changes to
+author-owned sections in chat rather than rewriting them; appending a question is permitted. A rule
+that governs one command lives in its design file and never in this file. `notes/` is a private,
+untracked scratch directory; nothing reads it.
 
 ## Changelog
 
