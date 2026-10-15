@@ -9,7 +9,7 @@
 | Tests | `tests/test_refit*.py`, `tests/test_change_ticket.py`, `tests/test_normalized_ticket.py` |
 | Topics | — |
 | Pending spec | 0 |
-| Pending impl | 0 |
+| Pending impl | 3 |
 
 ## Behavior
 
