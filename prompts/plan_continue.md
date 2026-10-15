@@ -1,7 +1,7 @@
 ---
 name: plan_continue
 description: Stage 2 Blueprint authoring instruction appended after plan_create has accepted and frozen a complete TOPOLOGY.md declaration.
-version: 20260802 V2
+version: 20261014 V1
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
 output: A bounded batch of Blueprint specification files
@@ -14,12 +14,15 @@ starting this Blueprint-authoring stage. The full planning context above remains
 
 The ledger below states exactly what Drydock accepted, what is still missing, and what came back
 defective. Treat it as fact.
+This batch starts a new session. Earlier Blueprint responses and reasoning are not available.
+Use the frozen topology, decisions, ledger, and current `DATABASE.md` when supplied.
 
 ## Your job
 
 Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated order. Nothing else.
 
-- Do not re-emit an accepted artifact. Its content is already held and will not be read again.
+- Do not re-emit an accepted artifact. Drydock retains its content. The ledger may explicitly
+  request additions to the cumulative `DATABASE.md`; emit only those additions.
 - Do not emit a deferred artifact. Drydock supplies it in a later bounded batch.
 - Do not emit or amend `TOPOLOGY.md`; Stage 1 is complete and frozen.
 - Do not emit `DECISIONS.json`; it was captured with the topology in Stage 1.

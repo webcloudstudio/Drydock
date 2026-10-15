@@ -174,6 +174,11 @@ ai  drydock diagnose          MyApp            # Root cause; propose Blueprint r
 ai  drydock refit             MyApp            # Blueprint drift -> affected build frontier
 ```
 
+`drydock plan` freezes the topology before authoring Blueprints in batches of at most five.
+Each Claude Blueprint batch starts with the original planning inputs, frozen topology and
+decisions, current work ledger, and cumulative database declaration where present. Earlier
+batch conversations are not carried forward. Stage 1 corrective calls still resume their session.
+
 ### Additional Commands
 
 `drydock diagnose <Target> --apply` exercises delegated Commander authority to repair

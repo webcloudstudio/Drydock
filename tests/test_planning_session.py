@@ -3111,6 +3111,22 @@ def test_a_prose_only_reply_is_asked_once_more_and_the_retry_is_planned(tmp_path
     assert any("carried no artifact blocks" in line for line in progress)
 
 
+def test_claude_stage_one_retry_still_resumes_the_original_session(tmp_path):
+    _make_target(tmp_path)
+    calls: list[dict[str, object]] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs)
+        response = _PROSE_REPLY if len(calls) == 1 else _llm_output()
+        return FakeRun(text=response, execution_id=f"plan-exec-{len(calls)}")
+
+    create_plan("Example", "Example", tmp_path, runner=runner, llm_provider="claude")
+
+    assert len(calls) == 2
+    assert calls[1]["sub_command"] == "topology retry"
+    assert calls[1]["claude_resume_session_id"] == calls[0]["claude_session_id"]
+
+
 def test_a_second_prose_reply_is_recorded_with_the_objection_shown(tmp_path):
     target_dir = _make_target(tmp_path)
     calls = []
@@ -4372,7 +4388,7 @@ def test_each_plan_call_names_its_stage_for_console_progress(tmp_path):
     assert stages[:2] == ["topology", "blueprint batch 1"]
 
 
-def test_claude_continuation_resumes_the_initial_session_with_only_the_ledger(tmp_path):
+def test_claude_blueprint_batch_starts_a_fresh_session_with_frozen_context(tmp_path):
     _make_target(tmp_path)
     calls: list[tuple[str, dict[str, object]]] = []
 
@@ -4387,11 +4403,75 @@ def test_claude_continuation_resumes_the_initial_session_with_only_the_ledger(tm
     continuation_prompt, continuation_kwargs = calls[1]
     session_id = initial_kwargs["claude_session_id"]
     assert isinstance(session_id, str)
-    assert continuation_kwargs["claude_resume_session_id"] == session_id
+    assert continuation_kwargs["claude_session_id"] != session_id
+    assert "claude_resume_session_id" not in continuation_kwargs
     assert "# Input Context" in initial_prompt
-    assert "# Input Context" not in continuation_prompt
-    assert "# Frozen Stage 1 Output" not in continuation_prompt
+    assert continuation_prompt.startswith(initial_prompt)
+    assert "# Frozen Stage 1 Output" in continuation_prompt
+    assert "This batch starts a new session" in continuation_prompt
     assert "story-status -> FEATURE-Status.md" in continuation_prompt
+
+
+def test_claude_blueprint_batches_do_not_carry_prior_batch_outputs():
+    from drydock.llm import ClaudePromptSession
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (
+        PlannedStory(story_id="database", implements="DATABASE.md"),
+        *(PlannedStory(story_id=f"story-{n}", implements=f"FEATURE-{n}.md") for n in range(1, 7)),
+    )
+    topology = "Six frozen stories."
+    database = "# DATABASE: Example\n\n## `items`\n"
+    blocks = {"TOPOLOGY.md": topology, "DATABASE.md": database}
+    initial_text = (
+        f"=== TOPOLOGY.md ===\n{topology}\n=== END TOPOLOGY.md ===\n"
+        f"=== DATABASE.md ===\n{database}\n=== END DATABASE.md ===\n"
+    )
+    prior_body = "# FEATURE: One\nPRIOR_BATCH_OUTPUT_MARKER"
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def runner(prompt_text, *_args, **kwargs):
+        calls.append((prompt_text, kwargs))
+        numbers = range(1, 6) if len(calls) == 1 else range(6, 7)
+        response = "".join(
+            f"=== BEGIN ARTIFACT FEATURE-{n}.md ===\n"
+            f"{prior_body if n == 1 else f'# FEATURE: {n}'}\n"
+            "=== END ARTIFACT ===\n"
+            for n in numbers
+        )
+        return FakeRun(text=response, execution_id=f"exec-{len(calls)}")
+
+    result = ps._continue_short_plan(
+        blocks,
+        blocks_text=initial_text,
+        prompt_assembly=PromptAssembly.single_prompt("ORIGINAL_CONTEXT_MARKER\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="claude",
+        model="sonnet",
+        log_dir=None,
+        runner=runner,
+        on_text=None,
+        attempts=3,
+        initial_execution_id="exec-topology",
+        claude_session=ClaudePromptSession(session_id="topology-session"),
+    )
+
+    assert result.score.is_complete
+    assert len(calls) == 2
+    first_prompt, first_kwargs = calls[0]
+    second_prompt, second_kwargs = calls[1]
+    assert first_kwargs["claude_session_id"] != "topology-session"
+    assert second_kwargs["claude_session_id"] != first_kwargs["claude_session_id"]
+    assert all("claude_resume_session_id" not in kwargs for _, kwargs in calls)
+    assert "ORIGINAL_CONTEXT_MARKER" in first_prompt and "ORIGINAL_CONTEXT_MARKER" in second_prompt
+    assert "# Frozen Stage 1 Output" in second_prompt
+    assert 'filename="DATABASE.md"' in second_prompt
+    assert "## `items`" in second_prompt
+    assert "PRIOR_BATCH_OUTPUT_MARKER" not in second_prompt
+    assert "Accepted (5)" in second_prompt
+    assert abs(len(second_prompt) - len(first_prompt)) < 1_000
 
 
 def test_continuation_stops_when_no_progress_and_reports_the_score(tmp_path):

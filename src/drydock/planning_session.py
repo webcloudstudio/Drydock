@@ -5075,12 +5075,12 @@ def _continuation_assembly(
     topology: str,
     decisions: str,
     ledger: str,
+    database: str | None = None,
 ) -> PromptAssembly:
-    """Append the bounded continuation instruction to the *unchanged* original context.
+    """Give one Stage 2 batch the frozen plan and its current bounded work queue.
 
-    The prefix must stay byte-identical: the whole economy of continuing rather than restarting
-    rests on the provider's prompt cache recognising it. Appending is the only permitted edit,
-    which is why this mirrors :func:`_conflict_challenge_assembly` rather than rebuilding.
+    The original prefix stays byte-identical for provider caching. Previous batch responses are
+    excluded; DATABASE.md is the one cumulative artifact, so its accepted state is explicit.
     """
     body = load_prompt("plan_continue").body.strip()
     frozen = lines_part(
@@ -5106,27 +5106,17 @@ def _continuation_assembly(
         [body, "", "## Ledger", "", ledger],
         kind="continuation",
     )
-    return PromptAssembly(parts=(*prompt_assembly.parts, frozen, instruction))
-
-
-def _resumed_continuation_assembly(*, ledger: str) -> PromptAssembly:
-    """Render only the mutable work queue for a resumed Claude planning session.
-
-    Claude Code caches the complete text submitted through ``-p``.  A continuation ledger changes
-    every batch, so resending the original planning context turns each pass into a cache write.
-    The initial session already holds that context and its accepted topology; a resumed turn needs
-    only the bounded ledger.
-    """
-    body = load_prompt("plan_continue").body.strip()
-    return PromptAssembly(
-        parts=(
-            lines_part(
-                "Plan continuation",
-                [body, "", "## Ledger", "", ledger],
-                kind="continuation",
-            ),
+    database_parts = (
+        contextual_markdown_parts(
+            DATABASE_BLOCK,
+            database,
+            filename=DATABASE_BLOCK,
+            role="accepted cumulative persistence declaration",
         )
+        if database and database.strip()
+        else ()
     )
+    return PromptAssembly(parts=(*prompt_assembly.parts, frozen, *database_parts, instruction))
 
 
 @dataclass(frozen=True)
@@ -5214,15 +5204,12 @@ def _continue_short_plan(
         if on_text is not None:
             on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
         ledger = _render_ledger(score)
-        assembly = (
-            _resumed_continuation_assembly(ledger=ledger)
-            if claude_session is not None
-            else _continuation_assembly(
-                prompt_assembly,
-                topology=accumulated[TOPOLOGY_BLOCK],
-                decisions=accumulated.get(DECISIONS_BLOCK, "[]"),
-                ledger=ledger,
-            )
+        assembly = _continuation_assembly(
+            prompt_assembly,
+            topology=accumulated[TOPOLOGY_BLOCK],
+            decisions=accumulated.get(DECISIONS_BLOCK, "[]"),
+            ledger=ledger,
+            database=accumulated.get(DATABASE_BLOCK),
         )
         runner_kwargs: dict[str, object] = {
             "llm": llm_provider,
@@ -5240,13 +5227,9 @@ def _continue_short_plan(
             "prompt_assembly": assembly,
         }
         if claude_session is not None:
-            runner_kwargs.update(
-                claude_session.invocation(
-                    assembly.rendered_text,
-                    model,
-                    context_reused=True,
-                )
-            )
+            # Stage 2 batches are independent. Keep Stage 1's session available for its own
+            # corrective turns, but never carry earlier Blueprint responses into a new batch.
+            runner_kwargs.update(ClaudePromptSession().invocation(assembly.rendered_text, model))
         try:
             result = cast(
                 CompletedRun,

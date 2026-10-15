@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-14: `drydock plan` starts each Stage 2 Blueprint batch in a fresh Claude session with
+  the frozen topology, decisions, current ledger, and cumulative `DATABASE.md`. Earlier batch
+  output and thinking no longer grow every later batch's input context. Stage 1 retry and repair
+  sessions retain their existing resume behavior.
 - 2026-10-14: UAT run receipts and kit indexes report the models recorded for executed LLM calls,
   including automatic model upgrades, instead of labelling the run with the requested `--model`.
   `result.json` retains `requested_model` separately; mixed-model runs list every executed model.
