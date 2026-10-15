@@ -12,7 +12,7 @@ numbered list, wait for the user to choose, then implement the selected items.
 The argument after `/ddk-think-apply` is the subject. Resolve the notes file the same way as
 `/ddk-think`: `targets/<Target>/notes_<feature>.md` when the subject is a feature of a
 Drydock-managed project (`$DRYDOCK_WORKSPACE/targets/<Target>/`); in the Drydock repository,
-`design/commands/<command>.md` or `design/topics/<topic>.md` via `design/README.md`; otherwise
+`design/commands/<command>.md` or `design/topics/<topic>.md` via the AGENTS.md §Design Manifest; otherwise
 `notes/notes_<subject>.md`. Below, "the notes file" means the resolved file.
 
 **Drydock-managed projects:** when the notes file lives in a Target directory, selected CODE

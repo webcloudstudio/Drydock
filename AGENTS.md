@@ -169,33 +169,68 @@ One shape, first established by `drydock rigging compact`:
 
 ## Design
 
-`design/` records how each command behaves and why, so the next session does not re-derive it.
-`design/README.md` indexes every command and topic to its file, modules, prompts, and tests.
+`design/` holds the behavior contract for every `drydock` command: what it does, the rules that
+govern it, what breaking each rule costs, and its open decisions. It exists so a session does not
+re-derive a command from code before changing it.
 
-- `design/commands/<command>.md` — one file per top-level `drydock` command.
-- `design/topics/<topic>.md` — one file per cross-cutting subject governing several commands.
+**Every editing session — not only `/ddk-think` — is authorized to read these files for context
+without asking, and must read the matching file before changing a command's module, prompt, or
+tests.** Update `## Behavior` in the same commit that changes behavior.
 
 **Precedence:** code > `design/` > `docs/Drydock_Specification.md`. A design file describes the
-code as it runs. Where the specification says otherwise, the file records the difference under
-`### Spec divergence`; the specification is not edited to match.
+code as it runs; a difference from the specification is recorded under `### Spec divergence`, and
+the specification is not edited to match.
 
-**Before changing a command's module, prompt, or tests, read its design file** and the topics it
-links. Update `## Behavior` in the same commit that changes behavior.
+### Design Manifest
 
-Each file carries a metadata table, then these sections in order:
+Find the file by command, or by the module being edited.
+
+| Command | Design file | Primary modules (`src/drydock/`) |
+|---|---|---|
+| `analyze` | `design/commands/analyze.md` | `analyze.py`, `sea_trials.py`, `technology_stack.py` |
+| `build` | `design/commands/build.md` | `build.py`, `build_run.py`, `build_plan.py`, `model_config.py` |
+| `config` | `design/commands/config.md` | `config.py`, `model_config.py`, `calibration.py` |
+| `diagnose` | `design/commands/diagnose.md` | `diagnose*.py`, `ac_repair.py` |
+| `document` | `design/commands/document.md` | `target_documentation.py`, `readme_generate.py` |
+| `import` | `design/commands/import.md` | `import_*.py`, `source_refit.py`, `compass_sources.py` |
+| `init` | `design/commands/init.md` | `init_target.py`, `standard_artifacts.py`, `target_git.py`, `skills.py` |
+| `plan` | `design/commands/plan.md` | `planning_session.py`, `plan_*.py`, `database_contract.py`, `manifest.py` |
+| `prompt` | `design/commands/prompt.md` | `prompt_review.py` |
+| `publish` | `design/commands/publish.md` | `build_documentation.py`, `markdown_render.py` |
+| `refit` | `design/commands/refit.md` | `refit.py`, `refit_ticket.py`, `change_ticket.py`, `manifest_edit.py` |
+| `report` | `design/commands/report.md` | `report.py`, `report_render.py`, `llm_report.py` |
+| `rigging` | `design/commands/rigging.md` | `rigging_*.py` |
+| `run` | `design/commands/run.md` | `quarterdeck_*.py`, `QuarterDeck/app.py` |
+| `score` | `design/commands/score.md` | `score*.py`, `scorecard.py`, `sea_trials.py` |
+| `status` | `design/commands/status.md` | `status.py`, `project_status.py` |
+| `survey` | `design/commands/survey.md` | `survey.py` |
+| `uat` | `design/commands/uat.md` | `uat*.py`, `stop_condition.py` |
+| `validate` | `design/commands/validate.md` | `validate_specification.py` |
+| *Acceptance criteria* | `design/topics/acceptance_criteria.md` | `acceptance*.py`, `ac_repair.py`, `proof_integrity.py` |
+| *Foundations* | `design/topics/foundations.md` | `rigging_contract.py`, `technology_stack.py` |
+
+A topic governs several commands; read it with any command whose file links it. A module shared
+by several commands (`llm.py`, `cli.py`, `paths.py`) has no design file; read the file of the
+command whose behavior the change affects. `tests/test_design_coverage.py` fails when a
+top-level command has no file or no row here.
+
+### File layout
+
+Each file has a metadata table, then these sections in order:
 
 | Section | Owner | Content |
 |---|---|---|
-| `## Behavior` | Agent — write and keep current without asking | Purpose, Rules, Mechanism, Exit codes, Spec divergence |
-| `## Decisions` | `/ddk-think` and its authors | Flagged decisions not yet fully implemented or applied |
-| `## Open Questions` | Authors; agents append | Unresolved questions, including conflicts found between code, design, and specification |
-| `## Working Notes` | `/ddk-think` | Scratchpad; prune once absorbed into Behavior or Decisions |
+| `## Behavior` | Agent — write and keep current without asking | Purpose, Syntax, Rules, Mechanism, Exit codes, Spec divergence |
+| `## Decisions` | `/ddk-think` and authors | Flagged decisions not yet implemented or applied |
+| `## Open Questions` | Authors; agents append | Unresolved questions for Ed, including code / design / specification conflicts |
+| `## Open Actions` | Agents append and close | Concrete remaining work: failing tests, deferred fixes, follow-ups |
+| `## Working Notes` | `/ddk-think` | Scratchpad and deferred ideas; prune once absorbed |
 
-Each rule in `### Rules` is dated and states what it costs when broken. `## Behavior` records settled
-behavior only; proposals stay in `## Decisions` and `## Open Questions`. Propose changes to
-author-owned sections in chat rather than rewriting them; appending a question is permitted. A rule
-that governs one command lives in its design file and never in this file. `notes/` is a private,
-untracked scratch directory; nothing reads it.
+Each rule is dated and states what breaking it costs. `## Behavior` records settled behavior only.
+Open questions, open actions, and deferred work discovered in any session are written to the
+matching file, not left in chat. Propose changes to author-owned sections in chat; appending is
+permitted. A rule that governs one command lives in its design file, never in this file.
+`notes/` is a private, untracked scratch directory; nothing reads it.
 
 ## Changelog
 

@@ -1,4 +1,4 @@
-"""Every top-level ``drydock`` command has a design file indexed in ``design/README.md``."""
+"""Every top-level ``drydock`` command has a design file listed in the AGENTS.md manifest."""
 
 from __future__ import annotations
 
@@ -9,7 +9,16 @@ import pytest
 
 from drydock.cli import _build_parser
 
-DESIGN = Path(__file__).resolve().parent.parent / "design"
+ROOT = Path(__file__).resolve().parent.parent
+DESIGN = ROOT / "design"
+SECTIONS = (
+    "## Behavior",
+    "### Rules",
+    "## Decisions",
+    "## Open Questions",
+    "## Open Actions",
+    "## Working Notes",
+)
 
 
 def _commands() -> list[str]:
@@ -18,18 +27,22 @@ def _commands() -> list[str]:
     return sorted(sub.choices)
 
 
+def _manifest() -> str:
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    return agents[agents.index("### Design Manifest") :]
+
+
 @pytest.mark.parametrize("command", _commands())
 def test_command_has_design_file(command: str) -> None:
     path = DESIGN / "commands" / f"{command}.md"
     assert path.is_file(), f"missing design file: design/commands/{command}.md"
+    assert f"`design/commands/{command}.md`" in _manifest()
+
+
+@pytest.mark.parametrize("path", sorted(DESIGN.glob("*/*.md")), ids=lambda p: p.name)
+def test_design_file_layout(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
-    for heading in ("## Behavior", "### Rules", "## Decisions", "## Open Questions"):
-        assert heading in text, f"{path.name} lacks {heading}"
-    assert f"(commands/{command}.md)" in (DESIGN / "README.md").read_text(encoding="utf-8")
-
-
-def test_index_links_resolve() -> None:
-    index = (DESIGN / "README.md").read_text(encoding="utf-8")
-    for kind in ("commands", "topics"):
-        for path in (DESIGN / kind).glob("*.md"):
-            assert f"({kind}/{path.name})" in index, f"design/README.md omits {kind}/{path.name}"
+    positions = [text.find(heading) for heading in SECTIONS]
+    assert -1 not in positions, f"{path.name} lacks a required section"
+    assert positions == sorted(positions), f"{path.name} sections are out of order"
+    assert f"`design/{path.parent.name}/{path.name}`" in _manifest()

@@ -20,11 +20,11 @@ topic. Resolve its notes file:
    directory (`$DRYDOCK_WORKSPACE/targets/<Target>/`, workspace per `drydock config show`),
    save notes **within that Target directory** as `targets/<Target>/notes_<feature>.md`. If more
    than one Target could match, ask which one.
-2. **The Drydock repository itself:** resolve through `design/README.md`. A top-level `drydock`
+2. **The Drydock repository itself:** resolve through the AGENTS.md §Design Manifest. A top-level `drydock`
    command resolves to `design/commands/<command>.md` (e.g. `/ddk-think analyze` →
    `design/commands/analyze.md`); any other subject resolves to `design/topics/<subject>.md`.
    AGENTS.md §Design defines the file layout and section ownership. Add a new file to the
-   `design/README.md` index and tell the user.
+   AGENTS.md §Design Manifest and tell the user.
 3. **Otherwise:** resolve to `notes/notes_<subject>.md` and create `notes/` if it does not exist.
 
 **Fuzzy subject matching.** Before declaring "starting fresh", strip any trailing digits from the
@@ -85,7 +85,7 @@ context** during discussion and flush them to disk in one pass at Close Out. Do 
 ### Notes file format
 
 In the Drydock repository, the design file layout in AGENTS.md §Design governs: the session writes
-`## Decisions`, `## Open Questions`, and `## Working Notes`, and refreshes `## Behavior` only for
+`## Decisions`, `## Open Questions`, `## Open Actions`, and `## Working Notes`, and refreshes `## Behavior` only for
 behavior that is already implemented. Elsewhere, notes use the **Drydock Typed Specification
 header format**. Required layout:
 
