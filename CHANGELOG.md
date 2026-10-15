@@ -10,6 +10,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-14: UAT run receipts and kit indexes report the models recorded for executed LLM calls,
+  including automatic model upgrades, instead of labelling the run with the requested `--model`.
+  `result.json` retains `requested_model` separately; mixed-model runs list every executed model.
 - 2026-10-14: `drydock uat resume <Project>` preserves the inferred failed stage when it
   selects a recorded run. The CLI previously reset the stage to `init`, so the runner rejected
   the run with `A UAT run can only be selected together with a resume stage.`

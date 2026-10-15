@@ -8,6 +8,8 @@ from pathlib import Path
 from drydock.llm_usage import (
     RunActivity,
     build_report,
+    executed_models,
+    execution_model,
     iter_targets,
     normalize_tokens,
     read_records,
@@ -15,6 +17,33 @@ from drydock.llm_usage import (
     scan_activity,
     usage_report,
 )
+
+
+def test_run_model_reporting_uses_executed_models_instead_of_requested_model(tmp_path: Path):
+    from drydock.report_render import _llm_calls
+    from drydock.uat_report import _reported_result
+
+    records = [
+        {"job": {"model": "sonnet"}, "result": {"stats": {"model": "claude-sonnet-5-5"}}},
+        {"job": {"model": "haiku"}, "result": {"stats": {"model": "claude-haiku-5-5"}}},
+        {"job": {"model": "sonnet"}, "result": {"stats": {"model": "claude-sonnet-5-5"}}},
+    ]
+    assert execution_model(records[0]) == "claude-sonnet-5-5"
+    assert executed_models(records) == ("claude-sonnet-5-5", "claude-haiku-5-5")
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    (evidence / "llm.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records), encoding="utf-8"
+    )
+    result = {"environment": {"provider": "claude", "model": "claude-haiku-5-5"}}
+
+    reported = _reported_result(tmp_path, result)
+
+    assert reported["environment"]["model"] == "claude-sonnet-5-5, claude-haiku-5-5"
+    assert reported["environment"]["requested_model"] == "claude-haiku-5-5"
+    assert result["environment"]["model"] == "claude-haiku-5-5"
+    assert _llm_calls(evidence / "llm.jsonl", tmp_path)[0]["model"] == "claude-sonnet-5-5"
 
 
 def _record(

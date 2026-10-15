@@ -39,6 +39,8 @@ __all__ = [
     "UsageReport",
     "normalize_tokens",
     "read_records",
+    "execution_model",
+    "executed_models",
     "record_target",
     "scan_activity",
     "build_report",
@@ -254,6 +256,21 @@ def read_records(path: Path) -> tuple[list[dict[str, Any]], int]:
         else:
             invalid += 1
     return records, invalid
+
+
+def execution_model(record: Mapping[str, Any]) -> str:
+    """Return the model that served a call, falling back to the selected CLI model."""
+    result = record.get("result")
+    stats = result.get("stats") if isinstance(result, Mapping) else None
+    if isinstance(stats, Mapping) and stats.get("model"):
+        return str(stats["model"])
+    job = record.get("job")
+    return str(job.get("model") or "") if isinstance(job, Mapping) else ""
+
+
+def executed_models(records: Iterable[Mapping[str, Any]]) -> tuple[str, ...]:
+    """List distinct models actually selected during a run, in first-use order."""
+    return tuple(dict.fromkeys(model for record in records if (model := execution_model(record))))
 
 
 def record_target(record: Mapping[str, Any]) -> str:

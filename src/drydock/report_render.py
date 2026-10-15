@@ -230,7 +230,7 @@ def _llm_calls(
     working tree, so without the remap every prompt, output, and transcript link in the table
     addresses a file the kit withheld.
     """
-    from drydock.llm_usage import normalize_tokens, read_records
+    from drydock.llm_usage import execution_model, normalize_tokens, read_records
 
     # Only entries with a replacement redirect. A withheld path that maps to nothing was not
     # part of the build record, so it keeps its recorded name rather than becoming an empty link.
@@ -259,7 +259,7 @@ def _llm_calls(
             "execution_id": str(record.get("execution_id") or ""),
             "command": str(job.get("command_name") or ""),
             "provider": str(job.get("llm") or ""),
-            "model": str(job.get("model") or ""),
+            "model": execution_model(record),
             "status": str(record.get("status") or ""),
             "returncode": result.get("returncode"),
             "elapsed_ms": stats.get("elapsed_ms") or 0,

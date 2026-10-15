@@ -251,6 +251,8 @@ ai  drydock score drydock                      # Adversarial self-assessment
 Each selected `uat/<Project>/` directory is an independent Git repository. `drydock uat`, resume
 stages, and `drydock uat report` attempt to initialize it when absent and commit kit changes before
 exit. Git checkpoint failures are silent and do not change the command's result.
+UAT run receipts report the models recorded for executed LLM calls; a requested `--model` is
+retained separately in `result.json`. A run that used multiple models lists each in first-use order.
 
 ## Target reports
 

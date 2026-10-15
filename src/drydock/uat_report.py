@@ -21,6 +21,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
+from drydock.llm_usage import executed_models, read_records
 from drydock.metadata import parse_metadata
 from drydock.report_render import (
     _CHECK_TAGS,
@@ -83,6 +84,18 @@ __all__ = [
 
 _MANIFEST_PATH = "evidence/manifest.json"
 _LLM_CALL_RE = re.compile(r"\bCalling\s+[^\s/]+/\S+\s+\(([^)]+)\)\.\.\.")
+
+
+def _reported_result(case_root: Path, result: dict) -> dict:
+    """Use executed models in receipts, including receipts rebuilt from older run records."""
+    environment = result.get("environment")
+    details = dict(environment) if isinstance(environment, dict) else {}
+    if "requested_model" not in details:
+        details["requested_model"] = str(details.get("model") or "")
+    records, _ = read_records(case_root / "evidence" / "llm.jsonl")
+    details["model"] = ", ".join(executed_models(records))
+    return {**result, "environment": details}
+
 
 # Retained for ``drydock.uat`` and third-party callers that historically imported the helper
 # from this module. Run pages no longer render this value.
@@ -425,7 +438,7 @@ def _render_case_markdown(
         f"- Drydock: `{environment.get('drydock_version') or 'not recorded'}` "
         f"(commit `{environment.get('git_commit') or 'not recorded'}`)",
         f"- Provider and model: `{environment.get('provider', '')}` / "
-        f"`{environment.get('model', '')}`",
+        f"`{environment.get('model') or 'not recorded'}`",
         f"- Platform: `{environment.get('platform') or 'not recorded'}` on Python "
         f"`{environment.get('python_version') or 'not recorded'}`",
         f"- Run: `{result.get('run_id') or ''}`",
@@ -1223,6 +1236,7 @@ def build_case_kit(case_root: Path) -> Path:
     result = _read_json(case_root / "result.json")
     if not isinstance(result, dict):
         raise ValueError(f"UAT case has no readable result.json: {case_root}")
+    result = _reported_result(case_root, result)
     prune_generated(case_root)
     target = str(result.get("target") or case_root.name)
 
@@ -1300,7 +1314,7 @@ def write_kit_index(kit_root: Path) -> Path:
     for case_root in _kit_cases(kit_root):
         result = _read_json(case_root / "result.json")
         if isinstance(result, dict):
-            results.append((case_root.name, result))
+            results.append((case_root.name, _reported_result(case_root, result)))
     index = kit_root / _INDEX_NAME
     viewers = _write_viewers(kit_root, _kit_artifacts(kit_root), "Project document", _INDEX_NAME)
     with _viewers(viewers):

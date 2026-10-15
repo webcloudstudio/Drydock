@@ -28,7 +28,7 @@ from drydock.compass_sources import mark_compass_authored
 from drydock.config import DEFAULT_REPAIR_ATTEMPTS
 from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.errors import DrydockError, SpecificationError
-from drydock.llm_usage import normalize_tokens, read_records
+from drydock.llm_usage import executed_models, normalize_tokens, read_records
 from drydock.metadata import METADATA_NAME, parse_metadata
 from drydock.stop_condition import StopCondition, clear_stop, read_stop, write_stop
 from drydock.story_guidance import StoryGuidance, guidance_from_config, write_guidance
@@ -210,7 +210,8 @@ def _environment(model: str, provider: str, effort: str | None) -> dict[str, str
         "drydock_version": version,
         "git_commit": commit,
         "provider": provider,
-        "model": model,
+        "requested_model": model,
+        "model": "",
         "effort": effort or "",
         "python_version": platform.python_version(),
         "platform": platform.platform(),
@@ -1736,6 +1737,8 @@ def run_fixture(
     _collect_evidence(case_root, workspace, evidence_dir, commands)
     elapsed_ms = round((time.monotonic() - started) * 1000)
     environment = _environment(model, provider, effort)
+    records, _ = read_records(workspace / "logs" / "llm.jsonl")
+    environment["model"] = ", ".join(executed_models(records))
     environment["started_at"] = started_at.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     environment["finished_at"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     result = UATResult(
