@@ -67,6 +67,10 @@ failure is operational, not usage. Cost when broken: a PDF that differs from the
 
 -
 
+## Open Actions
+
+- **Failing test:** `tests/test_build_documentation.py::test_canonical_specification_documents_current_command_surface` expects `drydock build <Target> --dry-run` in the specification. Seen 2026-10-15; not investigated.
+
 ## Working Notes
 
 -

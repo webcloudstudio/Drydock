@@ -69,6 +69,10 @@ model. Cost when broken: no trend across prompt revisions.
    the current specification, so every review raises `spec section not found`. Repoint them to
    `### drydock analyze` and `### drydock plan`?
 
+## Open Actions
+
+- Repoint both components' `spec_heading` once Open Question 1 is answered.
+
 ## Working Notes
 
 -

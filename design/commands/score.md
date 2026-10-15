@@ -36,45 +36,45 @@ drydock score <Target>                           read-only summary of the last r
 
 ### Rules
 
-`2026-08-21` · **`SCORECARD.md` is rebuilt whole, never merged.** Every score command regenerates
-it from `PROJECT_STATUS.jsonl` (which stamps ran, when, pass/fail) joined with each command's own
-evidence: `SPECIFICATION_SCORECARD.md`, `SOUNDINGS.md`, the build report,
-`evidence/score-release.json`, and material `DECISIONS.json` entries. `PROJECT_STATUS.jsonl` stays a
-thin fact log; narrative lives in evidence files. Cost when broken: one score command clobbers
-another's section.
+`2026-08-13` · **Release observes the finished tree; build history is not evidence.** `score
+release` runs the governed gate and every command a trial names, reads the files trials cite, and
+lets the grader write an ephemeral probe for a behavior with no command. AC results, block states,
+and the Manifest are never read. *Broken:* a release verdict inherited from block 3 that block 7
+broke.
 
-`2026-08-21` · **Every score command stamps its own approval.** `spec`, `ac`, `build`, and
-`release` each record a quoted Markdown stamp — verb, command, UTC timestamp. `ac` and `build`
-regenerate only on a whole-Target run, not `--step`. `score spec` is not on the status ladder; its
-stamp uses the `SPECIFICATION_SCORECARD.md` mtime. Cost when broken: a retrospective that cannot
-say which checks ran.
+`2026-08-13` · **Three trial verdicts, three run verdicts.** Trials are `MET`, `NOT MET` (must cite
+what the grader saw), or `MANUAL` (no machine can settle it; attested, never blocking). The run is
+`PASSED`, `FAILED`, or `ERROR` (Drydock could not grade). Inference may raise a trial to `MET`,
+never to `NOT MET`. *Broken:* a finished, correct project reported `INCOMPLETE` five times
+(ReadingList `20260814.001652`).
 
-`2026-08-10` · **Sea Trials separate testability from consequence.** Each criterion declares
-`Testability` (`deterministic`, `judgeable`, `neither`) and `Consequence` (`blocks`, `scores`,
-`attests`) as independent columns. When undeclared, testability derives from `Verification` and
-consequence is `blocks` for a guardrail or required criterion, else `scores`. Cost when broken:
-declaring a prohibition unprovable and declaring it harmless became the same statement — the
-guardrail-hardening loop.
+`2026-08-13` · **Probes are the only model-authored tests that grade.** A probe is written after the
+code exists, against source the grader read, and discarded after one verdict. No repair budget at
+score. *Broken:* predicted expectations decide release.
 
-`2026-08-10` · **Gate severity is data in `SEA_TRIALS.md`, not code.** The default policy: on
-`FAIL`, `blocks` fails the gate, `scores` costs marks, `attests` is reported; on `INCONCLUSIVE`,
-`blocks` becomes a human attestation. A demonstrated shortfall fails; an unsettled one never
-does. Cost when broken: a definition of done hardens into a gate no correct build can pass.
+`2026-08-13` · **Sea Trials are referenced by nothing.** Trials flow into `plan` as context; no AC,
+proof tag, or `Verification:` value points back or selects a mechanism. *Broken:* a missing tag
+reads as a missing capability (D-026).
 
-`2026-08-10` · **Story acceptance is reported, not consumed by the release gate.** `score ac`
-verifies every Programmatic Acceptance assertion with no LLM and updates Soundings; `FAIL` exits
-`1`, `UNVERIFIED` is shown but does not fail. `score release` runs the governed acceptance gate,
-then an LLM judges Sea Trials. Cost when broken: two definitions of done collapse into one brittle
-gate.
+`2026-08-10` · **Sea Trials keep testability and consequence as separate columns.** `Testability`
+(`deterministic`, `judgeable`, `neither`) and `Consequence` (`blocks`, `scores`, `attests`) are
+parsed independently. *Broken:* "unprovable" and "harmless" collapse into one statement.
 
-`2026-08-21` · **`score build` is deterministic and still gates.** It reads logs only — acceptance,
-repairs, tokens, cache hit rate — and exits `1` on missing evidence or unverified blocks, by
-decision. Cost when broken: a build with no evidence reads as clean.
+`2026-08-10` · **Story acceptance is reported, never consumed by release.** `score ac` runs every
+Programmatic Acceptance assertion with no LLM and writes `SOUNDINGS.md`; `FAIL` exits `1`,
+`UNVERIFIED` is shown only. *Broken:* two definitions of done collapse into one brittle gate.
 
-`2026-08-21` · **`score report` publishes; it never re-scores.** It seals
-`targets/<Target>/drydock_receipt/index.html` with a workspace snapshot and record JSON, reading
-`SCORECARD.md` as one input. `score <Target>` only reads. Cost when broken: the receipt describes a
-different verdict than the scorecard.
+`2026-08-21` · **`SCORECARD.md` is rebuilt whole by every score command.** It is rendered from
+`PROJECT_STATUS.jsonl` plus each command's evidence; each command adds a quoted stamp (verb,
+command, UTC time). `ac`/`build` regenerate only on whole-Target runs. *Broken:* one command
+clobbers another's section.
+
+`2026-08-21` · **`score build` is deterministic and still gates.** Logs only; exits `1` on missing
+evidence or unverified blocks, by decision. *Broken:* a build with no evidence reads clean.
+
+`2026-08-21` · **`score report` publishes; it never re-scores.** It seals `drydock_receipt/`,
+reading `SCORECARD.md` as one input. `score <Target>` only reads. *Broken:* receipt and scorecard
+disagree.
 
 ### Mechanism
 
@@ -87,8 +87,8 @@ different verdict than the scorecard.
 
 | Code | Condition |
 |---|---|
-| `0` | Pass: `ac` has no `FAIL`; `release` verdict `PASSED`; summaries and reports written. |
-| `1` | `ac` has a `FAIL`; `release` not `PASSED`; `build` missing evidence or unverified blocks; operational failure. |
+| `0` | `ac` has no `FAIL`; `release` verdict `PASSED`; summaries and reports written. |
+| `1` | `ac` has a `FAIL`; `release` `FAILED` or `ERROR`; `build` missing evidence or unverified blocks; operational failure. |
 | `2` | Usage error, including `--step` outside `score ac`. |
 
 ### Spec divergence
@@ -104,8 +104,23 @@ different verdict than the scorecard.
 ## Open Questions
 
 1. **Two release verdict channels.** `score report` carries a `LABEL_LADDER` workflow stamp and a
-   separate `_receipt_checks()` exit-code table. Unify them now that `SCORECARD.md` carries stamped
-   state? (Carried from notes, "Not in scope yet".)
+   separate `_receipt_checks()` exit-code table. Unify them?
+2. **Gate policy is parsed but unused.** `sea_trials.GatePolicy`, `DEFAULT_POLICY`, and the
+   `Consequence` column are parsed from `SEA_TRIALS.md`, but nothing outside `sea_trials.py`
+   calls `GatePolicy.effect`; the release verdict comes from MET / NOT MET / MANUAL. Retire the
+   policy block and `Consequence`, or wire them back in?
+3. **Does `accepts:` retire with proof tags?** The direction rule says no build-layer reference
+   points back to a trial; `accepts:` is the only human-readable record of which trial motivated a
+   block, and gates nothing. Recorded as *retire*, never settled explicitly.
+4. **`FAILED` exits `1`.** The UAT gate model (X-2) set `PASSED` and `FAILED` to exit `0` and only
+   `ERROR` to `1` — the exit reports whether the command judged, not what it judged. The code exits
+   `1` for anything but `PASSED`. Which is intended?
+5. **Is the ephemeral probe stored as evidence?** It must be, to serve as a `NOT MET` citation:
+   per-run under `evidence/`, or inlined in the verdict?
+
+## Open Actions
+
+-
 
 ## Working Notes
 

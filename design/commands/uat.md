@@ -15,9 +15,15 @@
 
 ### Purpose
 
-Build UAT the correct way, and iterate that: a UAT run must distinguish a defect in the product
-Drydock built from a defect in Drydock's own checkers, and neither definition of done — story or
-project — may harden into a gate that no correct build can pass.
+Make a release decision trustworthy: build known fixtures unattended, end every run in a verdict
+about the product, and separate a defect in the product from a defect in Drydock's own checkers.
+Three properties define done (UAT gate model, 2026-08-14):
+
+1. **A run finishes** and reports every defect it can observe, not only the first.
+2. **The verdict is the user's.** Release comes from Sea Trials traced to user intent; story
+   criteria guide the build and never reach the release verdict (see [score](score.md)).
+3. **Drydock fails a project only by exhibiting a failure.** Absence of evidence is never failure;
+   Drydock's bookkeeping never fails anything.
 
 ### Syntax
 
@@ -127,10 +133,21 @@ authoring contract, and (b) a warning that may cost marks, never a hard gate.
 ## Open Questions
 
 1. **Two decisions of 2026-08-10 have unverified status.** Executable deterministic Sea Trials
-   blocks, and demoting `proof_integrity` analyzers to authoring time: `proof_integrity` is still
-   imported by `acceptance.py`, `acceptance_status.py`, and `ac_repair.py`. Implemented, superseded,
-   or still open?
+   blocks, and demoting `proof_integrity` analyzers to authoring time (`validate` no longer runs
+   them; `acceptance.py`, `acceptance_status.py`, and `ac_repair.py` still import it). Implemented,
+   superseded, or open?
+
+## Open Actions
+
+-
 
 ## Working Notes
 
--
+- **Deferred: per-branch stall (P-3a, 2026-08-14).** A failed block would stop only its dependents
+  while independent branches keep building, so one run reports every independent defect. Deferred
+  as an efficiency gain, not a convergence fix; `build_run` still stops at the first failed block.
+- **Deferred: residue observation (§35).** See
+  [acceptance_criteria](../topics/acceptance_criteria.md).
+- The UAT gate model's history — 31-gate inventory, defect catalog D-001…D-027, 18-run evidence,
+  and Parts I–VI — stays in the private `notes/notes_uat_gates.md`. Its current model (Part VII) is
+  folded into [score](score.md) and [acceptance_criteria](../topics/acceptance_criteria.md).

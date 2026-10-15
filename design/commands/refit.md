@@ -29,52 +29,37 @@ drydock refit <Target> --add <Blueprint> <File|->
 
 ### Rules
 
-`2026-09-22` · **A change is a REFIT ticket; its filename is its identity.** A change to a built Target is a **REFIT ticket**,
-`blueprint/<Blueprint>_refit_<NNN>.md`. The filename is its identity: the stem names the one
-Blueprint it amends, and the number fixes order and parent. Breaking the naming loses the order,
-which is what lets a later ticket overrule an earlier one.
+`2026-09-22` · **A change is a REFIT ticket; its filename is its identity.**
+`blueprint/<Blueprint>_refit_<NNN>.md` names the one Blueprint it amends; the number fixes order and
+parent, so a later ticket overrules an earlier one. Ticket bodies are acceptance criteria in the
+Blueprint's own vocabulary, never narrative.
 
-`2026-09-22` · **`refit add` is deterministic and never builds.** `drydock refit add <Target> <Blueprint> <File>` (`src/drydock/refit_ticket.py`) is the
-deterministic `add_ticket()`. It resolves an authored Blueprint (never a compact or a ticket),
-numbers the ticket after the chain's last, writes it with a header naming Blueprint and parent,
-and appends one `pending` story. The story depends on the previous ticket's story, or on every
-story implementing the Blueprint for `001`. It inherits type, kind, stack, stack_mode, context, and explicit Rigging rules from the
-Blueprint's story, adds the Blueprint and earlier tickets to context, and sets `acceptance: yes`
-when the ticket carries `=== AC` blocks. It then optimizes pending work and never builds. A Blueprint no
-story implements is rejected, because the ticket would have no place in the build order.
+`2026-09-22` · **`refit add` is deterministic and never builds.** It resolves an authored Blueprint
+(never a compact or ticket), numbers the ticket, and appends one `pending` story depending on the
+previous ticket's story (or every story implementing the Blueprint for `001`). The story inherits
+type, kind, stack, context, and rules, adds the Blueprint and earlier tickets to context, and sets
+`acceptance: yes` when the ticket has `=== AC` blocks. A Blueprint no story implements is rejected.
 
-`2026-09-22` · **`/ddk-refit` resolves ownership before writing a ticket.** `/ddk-refit` is the only shipped skill (`Rigging/skills/ddk-refit/`). `drydock init`
-syncs it into the workspace by version. A change request may identify a page URL, API route, CLI
-command, screen, feature, file, error, or only desired behavior. The skill uses Blueprint routes
-and contracts to find the owner; a page change adds a Feature or database ticket only when the
-requested behavior needs one. Unclear ownership costs a wrong ticket, so it asks one focused
-question rather than guessing. It writes ticket bodies as acceptance criteria and calls
-`drydock refit add`, printing only the command output.
+`2026-09-22` · **`/ddk-refit` resolves ownership before writing.** It maps a URL, route, command,
+screen, or behavior to the owning Blueprint, asks one question when ownership is unclear, and calls
+`refit add`. `drydock init` syncs it into the workspace.
 
-`2026-09-22` · **Refit optimizes pending work and keeps context.** Successful `refit` and `refit add` call the shared optimizer for computed
-Manifests. Manifest projection preserves context, rules, instructions, build state, and existing
-block identity. Shared files count once, compact context is preferred, and full implementation
-inputs take precedence. The dependency frontier admits consecutive tickets into one block when
-savings and the existing budgets permit; no filename-prefix grouping is needed. Dropping context
-would hide the principal savings from grouping refits of the same Blueprint.
+`2026-09-22` · **Refit optimizes pending work without breaking chains.** Shared files count once,
+compact context is preferred, consecutive tickets may share a block. A block with any non-pending
+story is frozen; optimization failure rolls back the transaction, including a newly added ticket.
 
-`2026-09-22` · **Started blocks are frozen; optimization failure rolls back.** A block with any non-pending story is frozen as an execution unit. Its membership,
-number, state, and recorded fields remain intact; pending groups receive numbers above retained
-blocks. The full dependency graph remains available to preserve order across frozen units.
-Legacy Manifests retain their grouping. Optimization failure rolls back the refit transaction,
-including removing a newly added ticket so retry reuses its number.
+`2026-09-12` · **Change tickets are normalized, not applied.** `blueprint/changes/TICKET-*.md`
+(the `change_ticket_directory`, Target-relative) is normalized by one call per ticket with exactly
+one `Amends:` home; Blueprint content is not modified. An unincorporated source ticket is recorded
+in `BLOCKERS.md` and fails the refit.
 
-`2026-09-22` · **A changed Blueprint resets what consumed it.** Drift reconciliation compares
-every `applied_specs` record against current Blueprint content. A changed Blueprint resets its
-consumer blocks and their transitive dependents to `pending` and drops stale provenance;
-`DATABASE.md` resets only the blocks whose cited operations changed. Drift that cannot be
-reconciled is reported `[blocked]`. Cost when broken: code built against a Blueprint that no
-longer says it closes as verified.
+`2026-09-22` · **A changed Blueprint resets what consumed it.** `applied_specs` drift resets consumer
+blocks and transitive dependents to `pending`; only already-built work resets. `DATABASE.md`
+resets per changed operation: `compatibility: rebuild` rebuilds owner, callers, and dependents;
+`data` rebuilds database work; `unchanged` rebuilds nothing.
 
-`2026-09-22` · **A refit voids every rung above the plan.** A conform or a reset re-authors the
-specification the build was made against, so project status is voided above `PLAN REPAIRED`.
-`refit add` voids the same way. Cost when broken: a release verdict standing over a Target that no
-longer exists.
+`2026-09-22` · **A refit voids every rung above `PLAN REPAIRED`**, and every artifact written is
+committed to the Target repository.
 
 ### Mechanism
 
@@ -144,6 +129,10 @@ Future work carried from notes:
   required for MVP.
 - One-time replan of the existing Target after `plan` persists lineage. Operator action; Target name
   required at execution time.
+
+## Open Actions
+
+- **Failing test:** `tests/test_manifest_edit.py::test_computed_manifest_normalization_uses_shared_build_block_optimizer`. Seen 2026-10-15; not investigated.
 
 ## Working Notes
 

@@ -93,6 +93,10 @@ without consent.
 1. **Metered provider cost is not declared.** AGENTS.md requires a per-token provider to declare
    its cost in `drydock config`; `config show` does not mark `gemini` as metered. Add it?
 
+## Open Actions
+
+-
+
 ## Working Notes
 
 -
