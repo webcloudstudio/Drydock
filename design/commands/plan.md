@@ -11,9 +11,6 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-Read [analyze](analyze.md) first: the work graph, source-of-truth model, and node header format
-are defined there.
-
 ## Behavior
 
 ### Purpose
