@@ -76,6 +76,10 @@ evidence or unverified blocks, by decision. *Broken:* a build with no evidence r
 reading `SCORECARD.md` as one input. `score <Target>` only reads. *Broken:* receipt and scorecard
 disagree.
 
+`2026-10-15` · **`score release` exits `1` unless `PASSED`.** This reverses the UAT gate model's
+X-2 rule (`PASSED` and `FAILED` exit `0`, only `ERROR` exits `1`). Exit codes follow shell
+convention; a command documents its own meaning in its exit table, as `status --check` does.
+
 ### Mechanism
 
 1. Run the sub-command against recorded state or the built tree.
@@ -105,17 +109,10 @@ disagree.
 
 1. **Two release verdict channels.** `score report` carries a `LABEL_LADDER` workflow stamp and a
    separate `_receipt_checks()` exit-code table. Unify them?
-2. **Gate policy is parsed but unused.** `sea_trials.GatePolicy`, `DEFAULT_POLICY`, and the
-   `Consequence` column are parsed from `SEA_TRIALS.md`, but nothing outside `sea_trials.py`
-   calls `GatePolicy.effect`; the release verdict comes from MET / NOT MET / MANUAL. Retire the
-   policy block and `Consequence`, or wire them back in?
-3. **Does `accepts:` retire with proof tags?** The direction rule says no build-layer reference
+2. **Does `accepts:` retire with proof tags?** The direction rule says no build-layer reference
    points back to a trial; `accepts:` is the only human-readable record of which trial motivated a
    block, and gates nothing. Recorded as *retire*, never settled explicitly.
-4. **`FAILED` exits `1`.** The UAT gate model (X-2) set `PASSED` and `FAILED` to exit `0` and only
-   `ERROR` to `1` — the exit reports whether the command judged, not what it judged. The code exits
-   `1` for anything but `PASSED`. Which is intended?
-5. **Is the ephemeral probe stored as evidence?** It must be, to serve as a `NOT MET` citation:
+3. **Is the ephemeral probe stored as evidence?** It must be, to serve as a `NOT MET` citation:
    per-run under `evidence/`, or inlined in the verdict?
 
 ## Open Actions

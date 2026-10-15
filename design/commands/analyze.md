@@ -91,8 +91,7 @@ A questionnaire never resolves a blocker.
 
 ## Open Questions
 
-1. **Blocked analysis exits `0`.** A batch loop cannot detect `Blocked` from the exit status and
-   must rely on `drydock plan` refusing. Should `Blocked` exit non-zero?
+-
 
 ## Open Actions
 

@@ -200,9 +200,6 @@ authored together). *Dropped:* the Marina stopping condition — it was a proper
 boundary being rewritten. *Removed:* the Compass setup verb — `BUILD_PLAN_COMPASS.md` does not
 exist.
 
-6. **Exit `2` for a deferred plan.** AGENTS.md reserves `2` for usage errors and deferred
-   (unimplemented) commands; a confirmed source conflict also exits `2`. Keep `2` as "needs the
-   Commander", or move it to `1`?
 
 ## Open Actions
 

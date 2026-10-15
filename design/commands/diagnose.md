@@ -109,8 +109,7 @@ loop `build || diagnose --apply` ends early on a stalled Target.
 
 ## Open Questions
 
-1. **Exit `2` for operational conditions.** A missing Target, a Target with no history, and an
-   unconfigured provider exit `2`, which AGENTS.md reserves for usage errors. Move them to `1`?
+-
 
 ## Open Actions
 
