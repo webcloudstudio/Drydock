@@ -170,6 +170,26 @@ def test_uat_status_and_resume_verbs_normalize_to_the_existing_uat_parser_contra
     ]
 
 
+def test_uat_resume_selection_keeps_the_inferred_failed_stage(monkeypatch, tmp_path: Path):
+    from types import SimpleNamespace
+
+    from drydock import cli, uat
+
+    fixture = object()
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(cli, "_uat_one_fixture", lambda *args: fixture)
+
+    def infer_stage(selected_fixture, run):
+        seen.update(fixture=selected_fixture, run=run)
+        return "run-1", "plan"
+
+    monkeypatch.setattr(uat, "default_resume_stage", infer_stage)
+    args = SimpleNamespace(uat_verb="resume", Project="jq", run=None, stage=None, from_step=None)
+
+    assert cli._uat_resume_selection(args, tmp_path) == ("run-1", "plan")
+    assert seen == {"fixture": fixture, "run": None}
+
+
 def test_failure_renderer_shows_agent_summary_story_acceptance_and_progress():
     baseline = AcceptanceObservation(
         check_id="inline-suite",

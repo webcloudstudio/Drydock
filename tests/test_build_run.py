@@ -1299,7 +1299,9 @@ def test_a_failing_group_mate_does_not_blame_a_zero_case_sibling(tmp_path):
     )
 
     assert _state(target_dir, "foundation") == "closed/failed"
-    assert _state(target_dir, "service") != "closed/failed"
+    # The failed step closes the sibling too, but only on the real failure.
+    assert _state(target_dir, "service") == "closed/failed"
+    assert _finding(target_dir, "service") == "step feature-catalog failed: db-real-fail"
     foundation_finding = _finding(target_dir, "foundation") or ""
     service_finding = _finding(target_dir, "service") or ""
     assert "db-real-fail" in foundation_finding
@@ -1480,10 +1482,10 @@ def test_ac_failure_detail_carries_the_output_the_check_printed(tmp_path):
     assert "valid tests: 205 passed,  0 failed" in detail
 
 
-def test_ac_failure_fails_only_the_owning_story_not_its_group_mate(tmp_path):
-    # We fail stories by AC. Within a feature group built in one pass, only the story whose own
-    # acceptance check failed is closed/failed; a group-mate whose own checks all passed verifies
-    # instead of inheriting the failure. The parent feature still fails until every child verifies.
+def test_a_failed_step_closes_no_story_in_it(tmp_path):
+    # Nothing orders stories within a step, so no story closes on a failed step. The story that
+    # owns the failed check names its own AC; a group-mate whose own checks passed is still
+    # closed/failed, with a finding that names the step and the check that failed it.
     target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
     # The group builds in one pass under the feature's id; the criterion is red until it does.
     (target_dir / "blueprint" / "DATABASE.md").write_text(
@@ -1510,13 +1512,11 @@ def test_ac_failure_fails_only_the_owning_story_not_its_group_mate(tmp_path):
 
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
 
-    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "foundation") == "closed/failed"
     assert _state(target_dir, "service") == "closed/failed"
     assert _state(target_dir, "feature-catalog") == "closed/failed"
-    # The verified group-mate carries no borrowed finding; the failed story names its own AC.
-    assert _finding(target_dir, "foundation") is None
-    assert "service-adds" in (_finding(target_dir, "service") or "")
-    assert "service-adds" not in (_finding(target_dir, "foundation") or "")
+    assert "programmatic acceptance failed: service-adds" in (_finding(target_dir, "service") or "")
+    assert _finding(target_dir, "foundation") == "step feature-catalog failed: service-adds"
 
 
 def _regression_runner(tmp_path):
@@ -3566,7 +3566,9 @@ assert "preserved" in Path("shared.txt").read_text(encoding="utf-8")
     )
 
     assert result.steps[0].status == "failed"
-    assert _state(target_dir, "active-parser") == "closed/verified"
+    # The regression fails the step, so the repaired sibling does not close either.
+    assert _state(target_dir, "active-parser") == "closed/failed"
+    assert _finding(target_dir, "active-parser") == "step parsing failed: verified-output"
     assert _state(target_dir, "verified-renderer") == "closed/failed"
     assert _state(target_dir, "parsing") == "closed/failed"
     assert "verified-output" in (_finding(target_dir, "verified-renderer") or "")
@@ -4725,6 +4727,52 @@ def test_acceptance_applies_the_schema_before_criteria_run(tmp_path: Path, monke
     )
 
     assert result.passed, result.stderr
+
+
+def test_persistence_exists_before_the_database_step_runs(tmp_path: Path, monkeypatch):
+    """ReadingList: the DATABASE story and an ``open_database`` consumer shared one step. The
+    package was written only after the step passed, so the consumer's acceptance could never
+    import it. Plan writes DATABASE.md, so Build generates the package before the step."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    target_dir, build_dir = _setup(
+        tmp_path, manifest=_FEATURE_GROUP_MANIFEST.replace("SERVICE.md", "FEATURE-Service.md")
+    )
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "# DATABASE: Demo\n\n"
+        "## Access Patterns\n\n"
+        "### FEATURE-SVC-001 — Find tickets\n\n"
+        "| Field | Value |\n|---|---|\n"
+        "| Owner | FEATURE-Service.md |\n| Access | read |\n"
+        "| Repository operation | `tickets.list` |\n| Compatibility | unchanged |\n\n"
+        "Input: FindTickets\n\n| Field | Type | Required |\n|---|---|---|\n| status | str | yes |\n\n"
+        "Output: Ticket\n\n| Field | Type |\n|---|---|\n| id | int |\n\n"
+        "## `tickets`\n\n| Field | Type | Notes |\n|---|---|---|\n"
+        "| id | INTEGER PK | |\n| status | TEXT NOT NULL | |\n",
+        encoding="utf-8",
+    )
+    (target_dir / "blueprint" / "FEATURE-Service.md").write_text(
+        "SVC SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### service-opens-store\n"
+        "The service imports the generated persistence package.\n\n"
+        "```python\n"
+        "from persistence import open_database\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    seen: list[bool] = []
+    inner = make_runner()
+
+    def runner(prompt, working_directory, **kwargs):
+        seen.append((Path(working_directory) / "persistence" / "__init__.py").is_file())
+        return inner(prompt, working_directory, **kwargs)
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert seen == [True]
+    assert _state(target_dir, "service") != "closed/failed"
+    assert _state(target_dir, "foundation") != "closed/failed"
 
 
 def test_a_declaration_with_no_tables_writes_no_schema(tmp_path: Path):

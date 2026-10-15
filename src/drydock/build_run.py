@@ -2309,11 +2309,12 @@ def _outstanding_blocks(manifest_path: Path) -> tuple[str, ...]:
 def _write_persistence(
     blueprint_dir: Path, build_dir: Path, target_dir: Path, on_text: object
 ) -> tuple[Path, ...]:
-    """Emit the Target's persistence package once the schema story closes.
+    """Emit the Target's persistence package before the DATABASE step runs.
 
-    The schema is declared by Plan and built once, so this runs at the DATABASE step and never
-    again within a release. Copying the shipped engines and generating the schema module here is
-    what makes the declaration the source of the persistence layer rather than a description
+    The schema is declared by Plan, so the package depends on nothing the step produces. Running
+    it first lets a story in the same step consume ``open_database`` under acceptance; it is
+    idempotent, so a resumed step regenerates the same package. Copying the shipped engines and
+    generating the schema module here is what makes the declaration the source of the persistence layer rather than a description
     checked against one a build agent wrote from prose.
     """
     database_path = blueprint_dir / "DATABASE.md"
@@ -2844,6 +2845,14 @@ def build_target(
                 "authorized acceptance prerequisites pending Target provisioning: "
                 + ", ".join(f"{r.kind}={r.name}" for _, r, _ in authorized_missing),
             )
+        if any("DATABASE.md" in step.fields.get("implements", ()) for step in unit.steps):
+            # Plan writes DATABASE.md and the builder writes no persistence code, so the package
+            # is generated before the step runs. A story in the same step that consumes
+            # ``open_database`` is accepted against it; nothing orders stories within a step.
+            for written in _write_persistence(
+                blueprint_dir, resolved_build_dir, target_dir, on_text
+            ):
+                _emit(on_text, f"persistence: wrote {_rel(written, target_dir)}")
         lineage.begin(unit.block_id, unit.name, unit.steps, assemblies)
         pre_acceptance = (
             tuple(
@@ -3976,11 +3985,12 @@ def build_target(
                 ),
                 state=failure_state,
             )
-        # Attribute failure per story: we fail stories by AC. When acceptance ran and the unit
-        # failed on a check, only the story that owns a failed check is ``closed/failed``; a
-        # story whose own checks all passed verifies rather than inheriting a group-mate's
-        # finding. A non-AC failure (execution error, tampered asset, dependency gate, or no
-        # checks at all) is not attributable to one story, so every member fails as before.
+        # Attribute failure per story: the story that owns a failed check carries its own AC
+        # finding. No story closes on a failed step, though: nothing orders stories within a
+        # step, so a group-mate whose own checks passed is ``closed/failed`` with a finding that
+        # names the step's failed checks, and the step rebuilds whole. A non-AC failure
+        # (execution error, tampered asset, dependency gate, or no checks at all) is not
+        # attributable to one story, so every member fails with the step's finding.
         ac_attributable = status == "failed" and (
             any(gate.blocks for gate in gate_results.values())
             or any(not check.passed and not check.skipped and check.binding for check in acceptance)
@@ -4043,6 +4053,20 @@ def build_target(
                     block_state, block_finding = "closed/implemented", UNGOVERNED_FINDING
                 else:
                     block_state, block_finding = "closed/verified", None
+                if block_state != "closed/failed":
+                    block_state = "closed/failed"
+                    block_finding = f"step {unit.block_id} failed: " + ", ".join((
+                        *(
+                            check.check_id
+                            for check in acceptance
+                            if not check.passed and not check.skipped and check.binding
+                        ),
+                        *(
+                            f"governed acceptance {failed_gate.name}"
+                            for failed_gate in gate_results.values()
+                            if failed_gate.blocks
+                        ),
+                    ))
             elif status in {"failed", "blocked"}:
                 block_state = state
                 block_finding = finding
@@ -4138,10 +4162,6 @@ def build_target(
             )
             if database_built:
                 mark_migrations_built(blueprint_dir)
-                for written in _write_persistence(
-                    blueprint_dir, resolved_build_dir, target_dir, on_text
-                ):
-                    _emit(on_text, f"persistence: wrote {_rel(written, target_dir)}")
             applied_specs = dict(parse_build_plan(manifest_path).applied_specs)
             applied_at = datetime.now(UTC).isoformat(timespec="seconds")
             changed = False

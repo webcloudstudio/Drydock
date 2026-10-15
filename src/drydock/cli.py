@@ -603,6 +603,20 @@ def _resolved_repair_attempts(args: argparse.Namespace) -> int:
     return get_repair_attempts() if value is None else int(value)
 
 
+def _uat_resume_selection(args: argparse.Namespace, uat_root: Path) -> tuple[str | None, str]:
+    """Resolve a UAT run and its entry stage together before execution."""
+    if args.uat_verb == "resume" and args.stage is None and args.from_step is None:
+        from drydock.uat import default_resume_stage
+
+        fixture = _uat_one_fixture(uat_root, args.Project, "uat resume")
+        return default_resume_stage(fixture, args.run)
+    if args.run is not None and args.stage is None and args.from_step is None:
+        raise UsageError("--run requires --stage or --from-step")
+    if args.from_step is not None:
+        return args.run, _uat_stage_for_step(uat_root, args.Project, args.run, args.from_step)
+    return args.run, args.stage or "init"
+
+
 def cmd_uat(args: argparse.Namespace) -> int:
     """Run known project fixtures through an isolated unattended lifecycle."""
     from drydock.config import get_effort, get_model, get_workspace
@@ -645,17 +659,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
                 raise UsageError("--to-step must be >= --from-step")
         if args.steps:
             return _uat_steps(uat_root, args.Project, args.run)
-        if verb == "resume" and args.stage is None and args.from_step is None:
-            from drydock.uat import default_resume_stage
-
-            fixture = _uat_one_fixture(uat_root, args.Project, "uat resume")
-            selected_run, start_stage = default_resume_stage(fixture, args.run)
-            args.run = selected_run
-        elif args.run is not None and args.stage is None and args.from_step is None:
-            raise UsageError("--run requires --stage or --from-step")
-        start_stage = args.stage or "init"
-        if args.from_step is not None:
-            start_stage = _uat_stage_for_step(uat_root, args.Project, args.run, args.from_step)
+        args.run, start_stage = _uat_resume_selection(args, uat_root)
         _apply_bound_overrides(args)
         repair_attempts = _resolved_repair_attempts(args)
         step_console = StepConsole(sys.stdout, quiet=args.quiet)

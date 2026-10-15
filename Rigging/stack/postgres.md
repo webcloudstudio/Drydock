@@ -29,7 +29,8 @@ edits, or replaces any file listed below.
    `Repository operation` as `<table>.<verb>`.
 2. Plan emits the story that implements `DATABASE.md`, with `persistence.md` and `postgres.md` in
    `stack:`. That story is the DATABASE step. Its builder writes no persistence code.
-3. When that story closes, Drydock writes the package into the build root:
+3. Before that story's step runs, Drydock writes the package into the build root, so a story in
+   the same step can import it:
 
 | Layer | File | Origin |
 |---|---|---|

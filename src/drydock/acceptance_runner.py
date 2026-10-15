@@ -214,10 +214,13 @@ def _reachable(frame: FrameType) -> list[tuple[str, object]]:
         found.append((path, current))
         if depth >= _TALLY_MAX_DEPTH or isinstance(current, str | bytes):
             continue
-        if isinstance(current, dict):
-            children = [(key, item) for key, item in current.items() if isinstance(key, str)]
-        else:
-            children = list(getattr(current, "__dict__", {}).items())
+        try:
+            if isinstance(current, dict):
+                children = [(key, item) for key, item in current.items() if isinstance(key, str)]
+            else:
+                children = list(getattr(current, "__dict__", {}).items())
+        except Exception:  # noqa: BLE001 — a proxy (werkzeug ``LocalProxy``) resolves on access
+            continue
         pending += [(f"{path}.{key}", item, depth + 1) for key, item in children]
     return found
 
@@ -278,10 +281,20 @@ def main(argv: list[str]) -> int:
         while deepest is not None and deepest.tb_next is not None:
             deepest = deepest.tb_next
         if deepest is not None:
-            for begin, lines, end in (
-                (PROGRESS_BEGIN, tally_lines(deepest.tb_frame), PROGRESS_END),
-                (VALUES_BEGIN, value_lines(deepest.tb_frame, deepest.tb_lineno), VALUES_END),
+            for begin, collect, end in (
+                (PROGRESS_BEGIN, lambda: tally_lines(deepest.tb_frame), PROGRESS_END),
+                (
+                    VALUES_BEGIN,
+                    lambda: value_lines(deepest.tb_frame, deepest.tb_lineno),
+                    VALUES_END,
+                ),
             ):
+                # Diagnostics are best effort. A failure collecting them must never replace the
+                # criterion's own exception, which is printed below.
+                try:
+                    lines = collect()
+                except Exception:  # noqa: BLE001
+                    lines = []
                 if not lines:
                     continue
                 print(begin, file=sys.stderr)

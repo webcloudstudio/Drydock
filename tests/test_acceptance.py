@@ -479,6 +479,24 @@ def test_the_tally_is_reported_beside_the_failed_assertion(tmp_path):
     assert any(line.startswith("cases: pass=4 fail=1") for line in detail)
 
 
+def test_a_proxy_in_the_failing_frame_never_masks_the_criterion_exception(tmp_path):
+    """ReadingList: Flask's ``current_app`` resolves on attribute access and raised "Working
+    outside of application context" from the tally search, replacing the real ImportError."""
+    result = _run_one(
+        "class Proxy:\n"
+        "    def __getattribute__(self, name):\n"
+        "        raise RuntimeError('Working outside of application context.')\n"
+        "current_app = Proxy()\n"
+        "holder = {'app': current_app}\n"
+        "import no_such_persistence_module\n",
+        tmp_path,
+    )
+    assert result.return_code == 1
+    assert "ModuleNotFoundError: No module named 'no_such_persistence_module'" in result.stderr
+    assert "Working outside of application context" not in result.stderr
+    assert "_drydock_acceptance_runner" not in result.stderr
+
+
 def test_the_value_harness_leaves_the_traceback_and_location_untouched(tmp_path):
     result = _run_one("value = 1\nassert value == 2\n", tmp_path)
     assert acceptance.assertion_location(result.stderr) == "diagnostic-check.py:2"

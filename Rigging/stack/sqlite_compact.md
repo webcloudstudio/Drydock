@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/sqlite.md sha256=e53d097d92bda2b0428742e3366ae51ba4cdf683ae54ee685b71de4657584884 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/sqlite.md sha256=ad19188ae834f964d15f3371ee169a53413e6e5f3f4cd30680fddd166d108aee on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -17,7 +17,8 @@ edits, or replaces any file listed below.
    `Repository operation` as `<table>.<verb>`.
 2. Plan emits the story that implements `DATABASE.md`, with `persistence.md` and `sqlite.md` in
    `stack:`. That story is the DATABASE step. Its builder writes no persistence code.
-3. When that story closes, Drydock writes the package into the build root:
+3. Before that story's step runs, Drydock writes the package into the build root, so a story in
+   the same step can import it:
 
 | Layer | File | Origin |
 |---|---|---|

@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/postgres.md sha256=eb5d61bf2687b6da2480db24caa3b41f5a38bf478ae736c2837aa3297c32193a on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/postgres.md sha256=cec630d60626bcaa07ff00727808ff6525405c1b0b66b72b2fd0fff7791dfca3 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -17,7 +17,8 @@ edits, or replaces any file listed below.
    `Repository operation` as `<table>.<verb>`.
 2. Plan emits the story that implements `DATABASE.md`, with `persistence.md` and `postgres.md` in
    `stack:`. That story is the DATABASE step. Its builder writes no persistence code.
-3. When that story closes, Drydock writes the package into the build root:
+3. Before that story's step runs, Drydock writes the package into the build root, so a story in
+   the same step can import it:
 
 | Layer | File | Origin |
 |---|---|---|
