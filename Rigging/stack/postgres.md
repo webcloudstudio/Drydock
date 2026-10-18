@@ -1,6 +1,7 @@
 # PostgreSQL
 
-**Version:** 20260919 V3
+**Type:** persistence-engine
+**Version:** 20261018 V4
 **Tier:** platform
 **Category:** Persistence
 **Foundation:** database
@@ -21,6 +22,24 @@ Carried verbatim into `postgres_compact.md`.
 - entry: open_database(dsn) -> Database
 - fixture: db_session
 - fixture_source: persistence/testing.py
+
+### How is this engine configured and initialized?
+
+Provide a running PostgreSQL server and a `postgresql://` DSN through `DATABASE_URL`; keep
+credentials out of source control. The shipped Python binding uses `psycopg` or `psycopg2`;
+declare `psycopg[binary]` in project dependencies. Drydock applies generated `schema.sql` at the
+DATABASE step and before acceptance runs, creating referenced tables first. Declare schema
+changes in `DATABASE.md`; idempotent creation does not migrate existing tables. Provision schema
+migrations separately when existing data must be retained.
+
+### How does this engine implement the shared persistence contract?
+
+The shipped Python binding is `Rigging/database/postgres.py`, used through `persistence.db` and
+`open_database(dsn)`. Call declared table operations; pass the PostgreSQL DSN to `db_session()`
+when testing this engine. Its default temporary SQLite store does not verify PostgreSQL. The
+engine binds parameters and returns generated IDs with `RETURNING`. PostgreSQL enforces declared
+lengths and types. Shipped-library tests include driver doubles; actual PostgreSQL behavior
+requires an integration run against a server. No Go binding is shipped or verified.
 
 **How it is built.** Drydock builds this foundation deterministically. No build agent writes,
 edits, or replaces any file listed below.

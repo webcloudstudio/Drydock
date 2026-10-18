@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/sqlite.md sha256=ad19188ae834f964d15f3371ee169a53413e6e5f3f4cd30680fddd166d108aee on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/sqlite.md sha256=2dff6dd7c4c95f750ffcd979b4f00ca8b5217285d70de5ac70d7b6bac4bc69d9 on 2026-10-18 by Rigging maintenance — regenerate with: drydock rigging compact --include-file Rigging/stack/sqlite.md -->
 
 ## Foundation Contract
 
@@ -9,6 +9,22 @@ Carried verbatim into `sqlite_compact.md`.
 - entry: open_database(dsn) -> Database
 - fixture: db_session
 - fixture_source: persistence/testing.py
+
+### How is this engine configured and initialized?
+
+For the shipped Python binding, use the standard-library `sqlite3` driver and a file path or
+`sqlite://` DSN. Configuration resolves `DATABASE_URL`, then `DATABASE_PATH`, then `data/app.db`.
+Drydock applies generated `schema.sql` at the DATABASE step and before acceptance runs. Declare
+schema changes in `DATABASE.md`; rebuilding applies idempotent creation statements, not a
+migration of existing tables. The engine owns connections and enables foreign keys.
+
+### How does this engine implement the shared persistence contract?
+
+The shipped Python binding is `Rigging/database/sqlite.py`, used through `persistence.db` and
+`open_database(dsn)`. Call declared table operations and use `db_session()` for criteria; do not
+import the driver in application code. SQLite does not prove PostgreSQL length/type enforcement.
+Library verification is in `tests/test_shipped_database.py`; verify Target-specific operations
+separately. No Go binding is shipped or verified. The detailed Python interface follows.
 
 **How it is built.** Drydock builds this foundation deterministically. No build agent writes,
 edits, or replaces any file listed below.

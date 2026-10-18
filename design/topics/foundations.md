@@ -56,6 +56,14 @@ third-party imports are not judged.
 adds a kind. The QuarterDeck selector is one radio group per exclusive kind, defaulting to
 `python.md` / `fastapi.md` / `sqlite.md`.
 
+`2026-10-18` · **Language and engine instructions answer mandatory questions.** Python and Go
+publish AC execution/measurement and persistence provision; SQLite and PostgreSQL publish
+configuration/initialization and shared-contract implementation. `Type` classifies this guidance;
+existing Foundation/Tier fields still drive tooling. Questions are level-three headings inside
+the Foundation Contract and survive compaction verbatim. The format and required answers live
+in `Rigging/stack/README.md`. Cost when broken: prompts omit language-specific execution or
+advertise persistence bindings that are not shipped.
+
 ### Mechanism
 
 `rigging_contract.py` parses `**Foundation:** <kind>` and the `## Foundation Contract` section from
@@ -113,7 +121,11 @@ the existing Marina_Luna-shaped plan still schedules.
 
 ## Open Actions
 
--
+- 2026-10-18: Implement the agreed selection model (exactly one language, zero or more persistence
+  engines); current database-foundation exclusivity remains in force. Release and verify a Go
+  persistence library and generator before enabling Go Targets with `DATABASE.md`. This change
+  supplies instruction files only; native Go AC execution and automatic per-criterion code/
+  persistence tracing are not implemented.
 
 ## Working Notes
 

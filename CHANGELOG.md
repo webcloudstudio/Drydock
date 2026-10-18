@@ -58,6 +58,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-18: Rigging documentation defines common mandatory questions for Python/Go language
+  instructions and SQLite/PostgreSQL engine instructions, classified by `Type`. Answers cover AC
+  execution and measurement, persistence libraries, configuration and verification limitations;
+  compact files retain the answers verbatim. Go persistence remains unsupported.
+
 - 2026-10-13: `drydock report token <Target>` writes `reports/token.txt`, one row per LLM call
   in start order: start time (UTC), stage, call, model, prompt bytes, estimated prompt tokens, run
   time, and status. Failed and incomplete calls are included. Scope matches `drydock report llm`:

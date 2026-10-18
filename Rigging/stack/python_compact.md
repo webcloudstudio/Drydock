@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/python.md sha256=aba487da57dcf23458a0ae18939231b5294172a3f655d5550a705e2405408f11 on 2026-09-22 by Rigging maintenance — regenerate with: drydock rigging compact --include-file Rigging/stack/python.md -->
+<!-- Compacted from Rigging/stack/python.md sha256=f4aedf4a22d16f1cefec36e6b5af789077d60b36b5dfab0f65b7d56d6756e67b on 2026-10-18 by Rigging maintenance — regenerate with: drydock rigging compact --include-file Rigging/stack/python.md -->
 
 ## Foundation Contract
 
@@ -9,6 +9,26 @@
 
 The language foundation owns the project root, environment, dependency manifest, and test runner.
 Later foundations add their packages to this tree without replacing those contracts.
+
+### How do we execute and measure Acceptance Criteria in this language?
+
+An Acceptance Criterion (AC) is an executable check of Blueprint-required behavior. Use the
+existing Programmatic Acceptance format: a Python script with assertions against the built
+product. Drydock executes each criterion through its Python acceptance harness; `pytest -q`
+runs the project test suite. Retain the criterion ID, observed values, stdout/stderr and result;
+an assertion failure fails the check. The harness reports failure operands and available case
+counts. Code coverage and persistence interactions require explicit instrumentation; record
+available observations as key/value data associated with the criterion. Missing observations
+are unknown, not proof that code or an interaction was unused.
+
+### How does this language provide the shared persistence contract?
+
+Use `stack/persistence.md`. Drydock copies `Rigging/database/{db,sqlite,postgres}.py` and generates
+`persistence/{schema,__init__,testing}.py` plus `schema.sql` from `DATABASE.md`. Call
+`open_database(dsn)` and `db.<table>.<operation>(...)`; use `persistence.testing.db_session()`
+for criteria. SQLite uses the standard library; PostgreSQL needs `psycopg[binary]` in the project
+dependencies. Both engines ship together and the DSN selects the engine. Library verification
+lives in `tests/test_shipped_database.py`; a Target still verifies its own schema and operations.
 
 ## Consumer Rules
 

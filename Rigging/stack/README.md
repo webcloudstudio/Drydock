@@ -10,6 +10,33 @@ These technology files are **shared across all projects** in this specification 
 
 ---
 
+# Language and persistence instruction format
+
+`python.md`, `go.md`, `sqlite.md` and `postgres.md` use the following common format.
+The only additional header field is `**Type:** language` or `**Type:** persistence-engine`.
+Existing Foundation, Tier and contract fields retain their tooling roles.
+
+Each file answers both mandatory questions for its type as `###` headings inside
+`## Foundation Contract`, so existing compaction preserves the answers verbatim.
+
+| Type | Mandatory question | Required answer |
+|---|---|---|
+| language | How do we execute and measure Acceptance Criteria in this language? | AC format, execution command, criterion identity, result and observed-value reporting, measurement method and limitations. |
+| language | How does this language provide the shared persistence contract? | Library, supported engines, generated files, dependencies, calling/fixture instructions and verification status. |
+| persistence-engine | How is this engine configured and initialized? | Driver dependencies, connection settings, schema initialization and schema-change handling. |
+| persistence-engine | How does this engine implement the shared persistence contract? | Language bindings, calling/fixture instructions, engine differences, limitations and verification status. |
+
+Keep answers concise. State unavailable capabilities explicitly; a proposed binding is not a
+shipped library. An Acceptance Criterion (AC) is an executable check of Blueprint-required behavior.
+Additional interface-library types remain undefined.
+
+Selection design: exactly one language and zero or more persistence engines. Current tooling
+still selects at most one database foundation, and its shipped Python library includes both
+SQLite and PostgreSQL with runtime DSN selection. Multiple engine selection and Go persistence
+support require separate implementation; these instruction files do not enable them.
+
+---
+
 # Catalog
 
 Every file that defines a **foundation** declares it in its header: `**Foundation:** <kind>` plus

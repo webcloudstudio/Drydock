@@ -1,6 +1,7 @@
 # SQLite
 
-**Version:** 20260919 V3
+**Type:** persistence-engine
+**Version:** 20261018 V4
 **Tier:** platform
 **Category:** Persistence
 **Foundation:** database
@@ -21,6 +22,22 @@ Carried verbatim into `sqlite_compact.md`.
 - entry: open_database(dsn) -> Database
 - fixture: db_session
 - fixture_source: persistence/testing.py
+
+### How is this engine configured and initialized?
+
+For the shipped Python binding, use the standard-library `sqlite3` driver and a file path or
+`sqlite://` DSN. Configuration resolves `DATABASE_URL`, then `DATABASE_PATH`, then `data/app.db`.
+Drydock applies generated `schema.sql` at the DATABASE step and before acceptance runs. Declare
+schema changes in `DATABASE.md`; rebuilding applies idempotent creation statements, not a
+migration of existing tables. The engine owns connections and enables foreign keys.
+
+### How does this engine implement the shared persistence contract?
+
+The shipped Python binding is `Rigging/database/sqlite.py`, used through `persistence.db` and
+`open_database(dsn)`. Call declared table operations and use `db_session()` for criteria; do not
+import the driver in application code. SQLite does not prove PostgreSQL length/type enforcement.
+Library verification is in `tests/test_shipped_database.py`; verify Target-specific operations
+separately. No Go binding is shipped or verified. The detailed Python interface follows.
 
 **How it is built.** Drydock builds this foundation deterministically. No build agent writes,
 edits, or replaces any file listed below.
