@@ -64,6 +64,8 @@ the Foundation Contract and survive compaction verbatim. The format and required
 in `Rigging/stack/README.md`. Cost when broken: prompts omit language-specific execution or
 advertise persistence bindings that are not shipped.
 
+`2026-10-18` · Language instructions resolve from `Rigging/languages/<language>/` by their existing basename. Stack discovery and build prompts search bundles alongside stack guidance. Cost when broken: valid language resources are omitted or acceptance evidence is misclassified.
+
 ### Mechanism
 
 `rigging_contract.py` parses `**Foundation:** <kind>` and the `## Foundation Contract` section from

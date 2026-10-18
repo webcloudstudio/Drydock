@@ -1,4 +1,13 @@
-<!-- Compacted from Rigging/stack/python.md sha256=f4aedf4a22d16f1cefec36e6b5af789077d60b36b5dfab0f65b7d56d6756e67b on 2026-10-18 by Rigging maintenance — regenerate with: drydock rigging compact --include-file Rigging/stack/python.md -->
+# Python Foundation
+
+**Type:** language
+**Version:** 20261018 V5
+**Foundation:** language
+**Tier:** language
+**Category:** Language
+**Description:** Python project foundation and cross-package contracts
+
+Prerequisite: `stack/common.md`
 
 ## Foundation Contract
 
@@ -14,7 +23,7 @@ Later foundations add their packages to this tree without replacing those contra
 
 An Acceptance Criterion (AC) is an executable check of Blueprint-required behavior. Use the
 existing Programmatic Acceptance format: a Python script with assertions against the built
-product. Drydock executes each criterion through its Python acceptance harness; `pytest -q`
+product. Drydock executes each criterion through `languages/python/acceptance/runner.py`; `pytest -q`
 runs the project test suite. Retain the criterion ID, observed values, stdout/stderr and result;
 an assertion failure fails the check. The harness reports failure operands and available case
 counts. Code coverage and persistence interactions require explicit instrumentation; record
@@ -30,9 +39,17 @@ for criteria. SQLite uses the standard library; PostgreSQL needs `psycopg[binary
 dependencies. Both engines ship together and the DSN selects the engine. Library verification
 lives in `tests/test_shipped_database.py`; a Target still verifies its own schema and operations.
 
-## Consumer Rules
+## Rules
 
-- Python >=3.11; use modern type hints on public interfaces and named cross-package data shapes.
-- Centralize typed runtime settings; use Blueprint names and defaults. Keep secrets out of Git and logs.
-- Keep behavior in importable modules; launchers activate `.venv` and invoke modules.
-- Use pytest with isolated external state; all test gates run `pytest -q`.
+- Target Python 3.11 or newer. Declare the supported version in `pyproject.toml`.
+- Keep runtime settings in one typed configuration boundary. Document supported environment
+  variables in `.env.example`; keep `.env` and secrets out of Git. Use project-specific names and
+  defaults from the Blueprint rather than examples in Rigging.
+- Use modern type hints on public interfaces and named types for data exchanged between packages.
+- Put application behavior in importable modules; launchers in `bin/` activate `.venv` and invoke
+  those modules. Launchers do not contain business logic.
+- Use named Python loggers for application events. Never log secrets.
+- Use pytest for behavior and acceptance tests. Isolate external state and dependencies in tests.
+  Every launcher and CI test gate runs the published `test_command`.
+- Use `uv` for environment and dependency management. Commit `pyproject.toml` and `uv.lock`;
+  do not commit `.venv/`.

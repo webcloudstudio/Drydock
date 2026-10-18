@@ -322,3 +322,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+### Language bundles
+
+Python and Go instructions live in `Rigging/languages/<language>/`, with their compact contracts
+and acceptance helpers. Select the existing `python.md` or `go.md` name in the technology stack.
+Go tests execute through `drydock_go.run_test` inside Blueprint ACs; skipped or absent tests do
+not pass. Persistence implementation files are described by each language's contract.

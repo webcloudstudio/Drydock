@@ -6,7 +6,7 @@
 
 Technology reference. Apply when a Python Target has relational persistence.
 
-Prerequisites: `stack/python.md`, `stack/sqlalchemy.md`
+Prerequisites: `languages/python/python.md`, `stack/sqlalchemy.md`
 
 ---
 

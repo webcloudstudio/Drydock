@@ -138,7 +138,9 @@ class StepRoots:
         if role == "context":
             return (self.blueprint_dir, self.target_dir)
         if role == "stack":
-            return (self.stack_dir,)
+            from drydock.paths import stack_paths
+
+            return stack_paths(self.stack_dir)
         if role == "rules":
             return (self.rigging_dir, self.target_dir)
         if role == "compass":

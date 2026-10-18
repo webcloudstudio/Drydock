@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/go.md sha256=07bdff2ccd97c4a591b65059142bf82632e2cd732fd70c205d8449e1bfa53036 on 2026-10-18 by Rigging maintenance — regenerate with: drydock rigging compact --include-file Rigging/stack/go.md -->
+<!-- Compacted from Rigging/languages/go/go.md sha256=a183e28b12b4aae8c36a8850c8b6669fde2d41b37c3f3d8e54f53193d0092a77 on 2026-10-18 by Rigging maintenance -->
 
 ## Foundation Contract
 
@@ -23,15 +23,21 @@ A later foundation adds packages under `internal/`; it does not restructure this
 
 ### How do we execute and measure Acceptance Criteria in this language?
 
-An Acceptance Criterion (AC) is an executable check of Blueprint-required behavior. Put native
-checks in `*_test.go` using `testing`; run `go test ./...`, or select a named test with `-run`.
-Use `go test -json -count=1 ./...` for fresh, machine-readable test results. Associate test names
-with Blueprint criterion IDs and retain observed values, output and results; a failing test
-fails the check. Coverage and persistence interaction observations must be collected explicitly
-and associated with the criterion; aggregate suite coverage does not identify an individual
-criterion's exercised code. Missing observations are unknown. Drydock's current Programmatic
-Acceptance harness executes Python scripts, not Go fences: use a Python criterion to invoke
-and assert on the Go command result. Native Go criterion execution is not implemented.
+An Acceptance Criterion (AC) is an executable check of Blueprint-required behavior. Native tests
+use `testing` in `*_test.go`; the project gate is `go test ./...`. Within the existing Blueprint
+Python AC container, execute a named test through the shipped helper:
+
+```python
+from drydock_go import run_test
+result = run_test("./internal/orders", "TestCreateOrder")
+assert result.passed, (result.status, result.stdout, result.stderr)
+```
+
+Drydock stages this helper beside the criterion. It runs `go test -json -count=1 -run` with an
+exact test name, retains output and per-test outcomes, and rejects absent/skipped tests as proof.
+The enclosing AC provides identity, timeout, result storage and repair state. Compilation errors
+remain distinct from assertion failures in `result.status`. Coverage and persistence observations
+require explicit instrumentation per criterion; unavailable observations are unknown.
 
 ### How does this language provide the shared persistence contract?
 

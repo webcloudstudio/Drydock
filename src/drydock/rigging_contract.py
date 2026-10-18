@@ -63,7 +63,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.paths import get_rigging_root
+from drydock.paths import get_rigging_root, resolve_rigging_file, stack_paths
 
 #: The header field naming the exclusive foundation kind a Rigging file defines. Absent means the
 #: file is additive guidance: ``sqlalchemy.md`` and ``alembic.md`` are Persistence files that a
@@ -335,15 +335,15 @@ def load_contract(path: Path) -> FoundationContract | None:
 
 def contract_for(name: str, stack_dir: Path | None = None) -> FoundationContract | None:
     """Return the contract published by the Rigging file called ``name``, if it publishes one."""
-    root = stack_dir if stack_dir is not None else get_rigging_root() / "stack"
-    return load_contract(root / name)
+    path = resolve_rigging_file(name, stack_dir)
+    return load_contract(path) if path is not None else None
 
 
 def foundation_contracts(stack_dir: Path | None = None) -> dict[str, FoundationContract]:
     """Return every published foundation contract, keyed by Rigging filename."""
-    root = stack_dir if stack_dir is not None else get_rigging_root() / "stack"
+    roots = stack_paths(stack_dir or get_rigging_root() / "stack")
     contracts: dict[str, FoundationContract] = {}
-    for path in sorted(root.glob("*.md")):
+    for path in sorted(path for root in roots for path in root.glob("*.md")):
         if "_compact" in path.name or path.name == "README.md":
             continue
         if (contract := load_contract(path)) is not None:
@@ -375,9 +375,7 @@ def _header_field(
 
     Branding files sit at ``Rigging/`` rather than ``Rigging/stack/``, so both are searched.
     """
-    roots = (
-        [stack_dir] if stack_dir is not None else [get_rigging_root() / "stack", get_rigging_root()]
-    )
+    roots = [*stack_paths(stack_dir or get_rigging_root() / "stack"), get_rigging_root()]
     for root in roots:
         try:
             text = (root / name).read_text(encoding="utf-8")

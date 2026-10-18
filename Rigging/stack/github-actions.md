@@ -7,7 +7,7 @@
 Technology reference for GitHub Actions pipelines deploying a project to AWS. This file does not change
 between projects.
 
-Prerequisites: `stack/terraform.md`, `stack/python.md`
+Prerequisites: `stack/terraform.md`, `languages/python/python.md`
 
 Pipelines are GitHub Actions because they are transparent to the members reading the repo. The hard rule
 is **no static AWS keys** anywhere — workflows assume a least-privilege role via OIDC. Every change is

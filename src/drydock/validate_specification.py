@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 
 from drydock.metadata import BUILD_STATE_LADDER, get_field, parse_metadata
-from drydock.paths import get_stack_dir
+from drydock.paths import get_stack_dir, resolve_rigging_file
 
 
 class Severity(Enum):
@@ -271,13 +271,13 @@ def validate_specification(
                 if not component or not component.endswith(".md"):
                     continue
                 comp_lower = component.lower()
-                stack_file = stack_dir / f"{comp_lower}.md"
-                if stack_file.exists():
-                    p(section2, f"stack file exists: Rigging/stack/{comp_lower}.md")
+                stack_file = resolve_rigging_file(comp_lower, stack_dir)
+                if stack_file is not None:
+                    p(section2, f"stack file exists: Rigging/{comp_lower}")
                 else:
                     w(
                         section2,
-                        f"stack file missing: Rigging/stack/{comp_lower}.md (declared stack: {stack})",
+                        f"stack file missing: Rigging/{comp_lower} (declared stack: {stack})",
                     )
 
     # --- Naming conventions ---

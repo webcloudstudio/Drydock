@@ -29,7 +29,7 @@ from pathlib import Path
 from drydock import technology_stack
 from drydock.build import PROMPT_TARGET_TOKENS, resolve_target_tokens
 from drydock.errors import ConfigurationError
-from drydock.paths import get_stack_dir
+from drydock.paths import get_stack_dir, resolve_rigging_file
 from drydock.prompt_assembly import estimate_tokens
 
 #: Fallback target when ``model_config.jsonl`` is unreadable. Mirrors the build-time default so
@@ -117,11 +117,11 @@ def resolve_stack_file(name: str, stack_dir: Path | None = None) -> ResolvedStac
             stack_dir = get_stack_dir()
         except Exception:
             return ResolvedStackFile(name=name, path=None)
-    path = stack_dir / name
-    if not path.is_file():
+    path = resolve_rigging_file(name, stack_dir)
+    if path is None:
         return ResolvedStackFile(name=name, path=None)
-    compact = stack_dir / name.replace(".md", _COMPACT_SUFFIX)
-    skip = stack_dir / name.replace(".md", _SKIP_SUFFIX)
+    compact = path.parent / name.replace(".md", _COMPACT_SUFFIX)
+    skip = path.parent / name.replace(".md", _SKIP_SUFFIX)
     has_compact = compact.is_file() and not skip.is_file()
     return ResolvedStackFile(
         name=name,

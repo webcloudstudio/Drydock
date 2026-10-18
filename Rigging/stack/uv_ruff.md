@@ -6,7 +6,7 @@
 
 Technology reference for the Python toolchain. Applies to any Python project that selects it. This file does not change between projects.
 
-Prerequisites: `stack/common.md`, `stack/python.md`
+Prerequisites: `stack/common.md`, `languages/python/python.md`
 
 ---
 
@@ -76,7 +76,7 @@ Rules:
 - Suppressions are per-line `# noqa: <RULE>` with a reason; file-wide and rule-wide ignores require justification in the config next to the ignore.
 - Formatting is never debated in review: `ruff format` output is canonical.
 
-**Why**: One fast tool with one config ends linter sprawl. The `UP` ruleset mechanically enforces the modern-syntax rules in `stack/python.md` §3.
+**Why**: One fast tool with one config ends linter sprawl. The `UP` ruleset mechanically enforces the modern-syntax rules in `languages/python/python.md` §3.
 
 ---
 

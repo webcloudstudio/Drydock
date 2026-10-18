@@ -6,7 +6,7 @@
 
 Technology reference for a project-owned cloud client library. This file does not change between projects.
 
-Prerequisites: `stack/python.md`
+Prerequisites: `languages/python/python.md`
 
 The cloud client library is the **swap layer**. Every cloud touch — catalog reads/writes, reporting,
 queues, object storage, API calls — goes through one small, stable, typed Python API. The backend

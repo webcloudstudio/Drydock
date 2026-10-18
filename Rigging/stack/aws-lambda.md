@@ -6,7 +6,7 @@
 
 Technology reference for AWS Lambda functions in Python. This file does not change between projects.
 
-Prerequisites: `stack/python.md`, `stack/terraform.md`
+Prerequisites: `languages/python/python.md`, `stack/terraform.md`
 
 Lambdas are thin: they sit behind an IAM-authorized API Gateway, validate the event, call one storage
 operation (DynamoDB/SQS/S3), and return. They hold no business logic that belongs in the cloud client

@@ -8,7 +8,7 @@
 
 Technology reference. This file does not change between projects.
 
-Prerequisites: `stack/common.md`, `stack/python.md`
+Prerequisites: `stack/common.md`, `languages/python/python.md`
 
 ---
 

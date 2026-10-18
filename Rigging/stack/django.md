@@ -6,7 +6,7 @@
 **Foundation:** web-server
 **Description:** Django application boundary and test client contract
 
-Prerequisites: `stack/common.md`, `stack/python.md`
+Prerequisites: `stack/common.md`, `languages/python/python.md`
 
 ## Foundation Contract
 

@@ -6,7 +6,7 @@
 
 Technology reference for Amazon DynamoDB with Python. This file does not change between projects.
 
-Prerequisites: `stack/python.md`, `stack/cloud-client-library.md`
+Prerequisites: `languages/python/python.md`, `stack/cloud-client-library.md`
 
 DynamoDB is correct here because the data is **simple, hierarchical, and never joined on the server**.
 It is one tree of objects per organization, read as a subtree and assembled client-side. Used this way

@@ -78,6 +78,8 @@ whole-project suite sits on the block that completes the capability (`Suite: ful
 into Sea Trials; running it as a story criterion is required, not an error. *Broken:* a sampled
 suite verified a broken build.
 
+`2026-10-18` · The Python execution harness is shipped in its language bundle. Go native tests run through the staged `drydock_go.run_test` helper inside the existing AC container; skipped and absent tests cannot pass. Cost when broken: valid language resources are omitted or acceptance evidence is misclassified.
+
 ### Mechanism
 
 See the build-loop and completion rules. Removing a criterion id is rejected; `FLAKY`,

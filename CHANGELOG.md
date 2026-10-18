@@ -58,6 +58,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-18: Python and Go language bundles group instruction contracts and acceptance support.
+  Planning and build resource resolution find bundled instructions by their existing filenames.
+  Go native tests report fresh results through the existing Blueprint AC harness, including
+  missing/skipped tests and execution errors, without duplicating acceptance state handling.
+
 - 2026-10-18: Rigging documentation defines common mandatory questions for Python/Go language
   instructions and SQLite/PostgreSQL engine instructions, classified by `Type`. Answers cover AC
   execution and measurement, persistence libraries, configuration and verification limitations;

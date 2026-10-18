@@ -12,7 +12,7 @@ These technology files are **shared across all projects** in this specification 
 
 # Language and persistence instruction format
 
-`python.md`, `go.md`, `sqlite.md` and `postgres.md` use the following common format.
+`languages/python/python.md`, `languages/go/go.md`, `sqlite.md` and `postgres.md` use the following common format.
 The only additional header field is `**Type:** language` or `**Type:** persistence-engine`.
 Existing Foundation, Tier and contract fields retain their tooling roles.
 
@@ -179,7 +179,7 @@ Each rule contains:
 ```markdown
 # Flask Best Practices
 
-Prerequisites: stack/common.md, stack/python.md
+Prerequisites: stack/common.md, languages/python/python.md
 
 ---
 

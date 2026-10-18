@@ -61,7 +61,7 @@ Rules:
 **Rule**: Validate required environment variables at startup and fail with an error that names the missing or malformed variable. Never let a missing variable surface as a `None`/`undefined` crash at first use.
 
 ```python
-# Python — the typed Config class is the only env reader (stack/python.md §1)
+# Python — the typed Config class is the only env reader (languages/python/python.md §1)
 raise RuntimeError(f"Missing required env var: {e}") from e
 ```
 

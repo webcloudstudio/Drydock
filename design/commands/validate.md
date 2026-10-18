@@ -45,6 +45,8 @@ were retracted after false positives, and a snippet that cannot exercise the cod
 never gated. Cost when broken: specifications that validated for weeks begin failing on a
 judgment.
 
+`2026-10-18` · Stack-file validation resolves language bundles as well as stack guidance. Cost when broken: valid language resources are omitted or acceptance evidence is misclassified.
+
 ### Mechanism
 
 1. Reject forbidden Blueprint files; check directories.

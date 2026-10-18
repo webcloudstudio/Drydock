@@ -21,7 +21,7 @@ from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path, PurePosixPath
 
-from drydock.acceptance_runner import (
+from drydock.acceptance_protocol import (
     PROGRESS_BEGIN,
     PROGRESS_END,
     VALUES_BEGIN,
@@ -31,6 +31,7 @@ from drydock.acceptance_taxonomy import load_acceptance_failure_taxonomy
 from drydock.build_plan import BuildPlan, PlanBlock
 from drydock.child_sandbox import child_limits, kill_process_group
 from drydock.config import get_sandbox_mem_limit_mb
+from drydock.paths import get_language_dir
 from drydock.proof_integrity import analyze_proof
 from drydock.target_environment import resolve_target_environment
 
@@ -152,7 +153,7 @@ CODE_EXCERPT_LINES = 40
 #: Lines kept either side of the failing line when a criterion is longer than the whole-source cap.
 CODE_CONTEXT_LINES = 12
 #: The value-capture harness, copied beside each criterion at run time.
-_RUNNER_SOURCE = Path(__file__).with_name("acceptance_runner.py")
+_RUNNER_SOURCE = get_language_dir("python") / "acceptance" / "runner.py"
 _EXCEPTION_TAIL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception)\b")
 #: A CPython traceback frame: ``  File "decoder-no-arguments.py", line 12, in <module>``.
 _TRACEBACK_FRAME_RE = re.compile(r'^\s*File "(?P<file>[^"]+)", line (?P<line>\d+)')
@@ -2525,6 +2526,11 @@ def run_programmatic_acceptance(
             # interpreter, which cannot be assumed able to import Drydock.
             runner = Path(tmp) / "_drydock_acceptance_runner.py"
             shutil.copyfile(_RUNNER_SOURCE, runner)
+            # The Go bridge remains usable from the existing Python AC container.
+            shutil.copyfile(
+                get_language_dir("go") / "acceptance" / "drydock_go.py",
+                Path(tmp) / "drydock_go.py",
+            )
             # Own session so the timeout can reap the whole tree, and a bounded address
             # space so a runaway is stopped by the kernel long before the timeout.
             process = subprocess.Popen(

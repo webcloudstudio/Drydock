@@ -171,3 +171,32 @@ def get_repo_root() -> Path:
     raise FileNotFoundError(
         "Drydock repository root not found. `drydock prompt review` requires a source checkout."
     )
+
+
+def language_directories(rigging_root: Path | None = None) -> tuple[Path, ...]:
+    """Return installed language bundles, in stable order."""
+    root = (rigging_root or get_rigging_root()) / "languages"
+    return tuple(p for p in sorted(root.glob("*")) if p.is_dir() and (p / f"{p.name}.md").is_file())
+
+
+def get_language_dir(language: str) -> Path:
+    """Resolve a language bundle without accepting a path as a language name."""
+    if not language.isidentifier():
+        raise ValueError(f"Invalid language name: {language!r}")
+    path = get_rigging_root() / "languages" / language
+    if not (path / f"{language}.md").is_file():
+        raise ValueError(f"No language bundle is shipped for {language!r}")
+    return path
+
+
+def stack_paths(stack_dir: Path | None = None) -> tuple[Path, ...]:
+    """Search stack guidance and sibling language bundles without depending on cwd."""
+    stack = stack_dir if stack_dir is not None else get_stack_dir()
+    return (stack, *language_directories(stack.parent))
+
+
+def resolve_rigging_file(name: str, stack_dir: Path | None = None) -> Path | None:
+    """Resolve a selectable basename from the stack or a language bundle."""
+    if Path(name).name != name:
+        return None
+    return next((root / name for root in stack_paths(stack_dir) if (root / name).is_file()), None)

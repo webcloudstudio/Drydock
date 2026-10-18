@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from drydock.paths import get_rigging_root
+from drydock.paths import get_rigging_root, language_directories
 
 FILENAME = "TECHNOLOGY_STACK.md"
 
@@ -112,6 +112,7 @@ def rigging_catalog() -> list[tuple[str, str]]:
         return []
     paths = [p for p in root.glob("BRA*.md") if "_compact" not in p.name]
     paths += [p for p in (root / "stack").glob("*.md") if "_compact" not in p.name]
+    paths += [folder / f"{folder.name}.md" for folder in language_directories(root)]
     return sorted((p.name, _category(p)) for p in paths if p.name != "README.md")
 
 

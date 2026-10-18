@@ -7,7 +7,7 @@
 Technology reference for Amazon SQS with Python (boto3, inside a cloud client library). This file does not
 change between projects.
 
-Prerequisites: `stack/python.md`, `stack/cloud-client-library.md`
+Prerequisites: `languages/python/python.md`, `stack/cloud-client-library.md`
 
 SQS is the durable store-and-forward queue: a producer (a phone inside the firewall, a remote cron job,
 a failed script) submits work at any time, even when the local consumer is off; the local agent drains
