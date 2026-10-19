@@ -733,7 +733,7 @@ def test_two_web_servers_is_a_defect(tmp_path):
     """One build tree cannot hold two application shapes."""
     target = _with_stack(
         _target(tmp_path, FEATURE_Ok=_RUNNABLE),
-        "| FastAPI | fastapi.md | |\n| Flask | flask.md | |\n",
+        "| Python | python.md | |\n| FastAPI | fastapi.md | |\n| Flask | flask.md | |\n",
     )
 
     result = verify("Demo", target)
@@ -777,7 +777,7 @@ def test_additive_files_beside_one_database_are_clean(tmp_path):
     """sqlalchemy.md and alembic.md are Persistence files selected alongside the one database."""
     target = _with_stack(
         _target(tmp_path, FEATURE_Ok=_RUNNABLE),
-        "| SQLite | sqlite.md | |\n| SQLAlchemy | sqlalchemy.md | |\n| Alembic | alembic.md | |\n",
+        "| Python | python.md | |\n| SQLite | sqlite.md | |\n| SQLAlchemy | sqlalchemy.md | |\n| Alembic | alembic.md | |\n",
     )
 
     result = verify("Demo", target)

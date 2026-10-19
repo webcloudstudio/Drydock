@@ -14,11 +14,13 @@ package carries) and the driver is the one the application itself imports.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from drydock.paths import get_language_dir
 from drydock.target_environment import resolve_target_environment
 
 SCHEMA_FILENAME = "schema.sql"
@@ -26,21 +28,7 @@ SCHEMA_FILENAME = "schema.sql"
 DEFAULT_DSN = "data/app.db"
 APPLY_TIMEOUT_SECONDS = 120
 
-_APPLY_SCRIPT = """\
-import os
-import sys
-from pathlib import Path
-
-from persistence import open_database
-
-dsn = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_PATH") or {default!r}
-database = open_database(dsn)
-try:
-    database.execute_script(Path({schema!r}).read_text(encoding="utf-8"))
-finally:
-    database.close()
-print(dsn)
-"""
+_APPLY_SCRIPT = (get_language_dir("python") / "templates/apply.py.tmpl").read_text(encoding="utf-8")
 
 
 @dataclass(frozen=True)
@@ -58,6 +46,8 @@ def apply_schema(build_dir: Path, *, env: dict[str, str] | None = None) -> Schem
     schema = build_dir / SCHEMA_FILENAME
     if not schema.is_file() or not (build_dir / "persistence").is_dir():
         return None
+    if (build_dir / "persistence" / "go.mod").is_file():
+        return _apply_go_schema(build_dir, env=env)
     environment = resolve_target_environment(build_dir)
     if environment.interpreter is None:
         return SchemaApplication(False, f"schema not applied: {environment.detail}")
@@ -95,3 +85,26 @@ def apply_schema(build_dir: Path, *, env: dict[str, str] | None = None) -> Schem
 
 
 __all__ = ["DEFAULT_DSN", "SchemaApplication", "apply_schema"]
+
+
+def _apply_go_schema(build_dir: Path, *, env: dict[str, str] | None) -> SchemaApplication:
+    go = shutil.which("go")
+    if go is None:
+        return SchemaApplication(False, "schema not applied: Go toolchain unavailable")
+    try:
+        result = subprocess.run(
+            [go, "run", "drydock.local/persistence/cmd/drydock-schema"],
+            cwd=build_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=APPLY_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return SchemaApplication(False, f"schema not applied: {exc}")
+    if result.returncode:
+        return SchemaApplication(
+            False, "schema not applied: " + (result.stderr or result.stdout).strip()
+        )
+    return SchemaApplication(True, result.stdout.strip())

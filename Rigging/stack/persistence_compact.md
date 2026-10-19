@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/persistence.md sha256=e8b2ce6c978be9e777153690fbcdb9fb3cb59e2d63f6e442b5220a17480dfbe5 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/persistence.md sha256=c6917d520c895dc4b1917483ce6e605fe137f6b241199b8601088e2af3bea1b3 on 2026-10-18 by Rigging maintenance -->
 
 # Persistence & Service Encapsulation — Contract Surface
 
@@ -150,3 +150,8 @@ Every external-service wrapper extends `ServiceClient`.
 
 ### Rule: declared-operation-surface
 Downstream code depends only on operations declared in `DATABASE.md`, not on the underlying schema.
+
+## Language bindings
+
+Python and Go libraries live in `languages/<language>/persistence/`; their language contracts
+own native APIs, fixtures and dependencies. Both support SQLite and PostgreSQL.

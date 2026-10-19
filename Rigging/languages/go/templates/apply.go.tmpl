@@ -1,0 +1,21 @@
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+    "drydock.local/persistence"
+)
+
+func main() {
+    dsn:=os.Getenv("DATABASE_URL")
+    if dsn=="" {dsn=os.Getenv("DATABASE_PATH")}
+    if dsn=="" {dsn="data/app.db"}
+    ddl,err:=os.ReadFile("schema.sql")
+    if err!=nil {panic(err)}
+    db,err:=persistence.OpenDatabase(context.Background(),dsn)
+    if err!=nil {panic(err)}
+    defer db.Close()
+    if err=db.ApplySchema(context.Background(),string(ddl));err!=nil {panic(err)}
+    fmt.Println("schema applied")
+}

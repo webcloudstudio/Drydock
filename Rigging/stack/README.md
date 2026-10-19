@@ -30,10 +30,9 @@ Keep answers concise. State unavailable capabilities explicitly; a proposed bind
 shipped library. An Acceptance Criterion (AC) is an executable check of Blueprint-required behavior.
 Additional interface-library types remain undefined.
 
-Selection design: exactly one language and zero or more persistence engines. Current tooling
-still selects at most one database foundation, and its shipped Python library includes both
-SQLite and PostgreSQL with runtime DSN selection. Multiple engine selection and Go persistence
-support require separate implementation; these instruction files do not enable them.
+Selection requires exactly one language and permits zero or more persistence engines. Python and
+Go ship SQLite and PostgreSQL libraries; runtime DSNs select the engine. The Go SQLite binding
+requires CGO and a C compiler. `languages/README.md` defines the bundle layout.
 
 ---
 

@@ -101,6 +101,8 @@ changes, appends `BUILD_LINEAGE.jsonl`, and commits Target evidence; receipts ca
 fields, spec hashes, usage, and acceptance. Checkpoint identity survives interruption and reset;
 reset preserves `.git`. *Broken:* specification versions severed from code.
 
+`2026-10-18` · Persistence generation dispatches on the selected language. Python templates and libraries come from its bundle; Go receives a linked local module with generated typed repositories. The Go language foundation must create go.mod before the DATABASE step. Go schema application runs the generated command. Cost when broken: the selected stack and generated runtime disagree.
+
 ### Mechanism
 
 1. **Guard** — Manifest present, specs current, plan verifiable.

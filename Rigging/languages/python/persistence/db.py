@@ -98,6 +98,10 @@ class Driver:
     identical SQL, so it is written once here rather than twice in the engines.
     """
 
+    def prepare_schema(self, sql: str) -> str:
+        """Translate generated DDL for this engine."""
+        return sql
+
     #: Spelled by the DB-API driver, not by this class's callers.
     paramstyle = "qmark"
     returning = False
@@ -214,7 +218,7 @@ class Database:
         connection = self._driver.connect()
         cursor = connection.cursor()
         try:
-            for statement in statements(sql):
+            for statement in statements(self._driver.prepare_schema(sql)):
                 cursor.execute(statement)
             connection.commit()
         finally:

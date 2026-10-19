@@ -4,8 +4,7 @@
 **Category:** Persistence
 **Description:** Shipped persistence source copied into a build unchanged, one file per engine.
 
-This directory is not guidance. Every other Rigging file is Markdown a build agent reads; these
-are Python files Drydock copies into the Target. They are hardened and tested once, in Drydock's
+This directory contains the shipped Python persistence library. These are Python files Drydock copies into the Target. They are hardened and tested once, in Drydock's
 own suite (`tests/test_shipped_database.py`), so every Target inherits a persistence layer that
 has already passed rather than one re-derived from prose on each build.
 
@@ -14,6 +13,8 @@ has already passed rather than one re-derived from prose on each build.
 | `db.py` | Public `Database`, the declared-table surface, statement construction, driver selection |
 | `sqlite.py` | SQLite engine: thread-local connection, PRAGMAs, `?` parameters, `lastrowid` |
 | `postgres.py` | PostgreSQL engine: `%s` parameters, `RETURNING`, lazy driver import |
+
+The templates in `../templates/` generate the Target support files.
 
 `schema.py` sits beside them in the build and is **generated** from `DATABASE.md`. It carries the
 tables, the operations, and the row dataclasses, and contains no SQL. Statements are constructed

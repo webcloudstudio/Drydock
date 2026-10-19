@@ -1,0 +1,30 @@
+// Code generated from DATABASE.md by Drydock. DO NOT EDIT.
+package persistence
+
+import "context"
+
+$declarations
+
+var declaredSchema = Schema{
+    Tables: []Table{
+$tables
+    },
+    Operations: []Operation{
+$operations
+    },
+}
+
+// Store exposes only the table operations declared in DATABASE.md.
+type Store struct {
+    *Database
+$fields
+}
+
+// OpenDatabase opens the Target's declared store using the DSN-selected engine.
+func OpenDatabase(ctx context.Context, dsn string) (*Store,error) {
+    db,err:=Open(ctx,dsn,declaredSchema)
+    if err!=nil {return nil,err}
+    return &Store{Database:db,$initializers},nil
+}
+
+$repositories

@@ -5703,7 +5703,7 @@ def create_plan(
             f"no persistence adapter for {unsupported_persistence}. Build generates the "
             "persistence package from the declaration, so a Target declares storage only in a "
             f"language it can be generated for: {', '.join(technology_stack.PERSISTENCE_LANGUAGES)}"
-            ". Add an adapter to Rigging/database/, or remove DATABASE.md."
+            ". Add a library to Rigging/languages/<language>/persistence/, or remove DATABASE.md."
         )
     # TECHNOLOGY_STACK.md otherwise never gates planning. An absent or empty stack file means the
     # stack is undecided, which plan resolves from the sources — it is not a Commander decision to await.

@@ -58,6 +58,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-18: Python and Go persistence libraries and templates ship inside language bundles.
+  DATABASE.md generates Python declarations or Go typed repositories; Go schema application uses
+  the generated module. Both bindings support SQLite and PostgreSQL, including generated integer
+  identities. Go SQLite requires CGO and a C compiler. Technology approval requires one language;
+  the selector permits zero or more persistence engines. Real PostgreSQL integration covers both
+  language bindings; generated schemas create absent objects and do not migrate existing tables.
+
 - 2026-10-18: Python and Go language bundles group instruction contracts and acceptance support.
   Planning and build resource resolution find bundled instructions by their existing filenames.
   Go native tests report fresh results through the existing Blueprint AC harness, including

@@ -49,3 +49,19 @@ func TestSkip(t *testing.T) { t.Skip("unavailable") }
         (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
     )
     assert result.passed, (result.error, result.stderr)
+
+
+@pytest.mark.skipif(shutil.which("go") is None, reason="Go toolchain required")
+def test_go_compile_error_remains_distinct(tmp_path, monkeypatch):
+    monkeypatch.setenv("GOCACHE", "/tmp/drydock-go-cache")
+    (tmp_path / "go.mod").write_text("module example.test/broken\n\ngo 1.22\n")
+    (tmp_path / "broken_test.go").write_text("package broken\nthis does not compile\n")
+    code = (
+        'from drydock_go import run_test\nr = run_test("./", "TestBroken")\n'
+        'assert not r.passed\nassert r.status == "execution-error", r\n'
+    )
+    check = ProgrammaticAcceptance("compile-error", "FEATURE.md", "Observe compilation error", code)
+    (result,) = run_programmatic_acceptance(
+        (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
+    )
+    assert result.passed, result.stderr

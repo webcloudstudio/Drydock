@@ -1,8 +1,9 @@
-<!-- Compacted from Rigging/stack/sqlite.md sha256=2dff6dd7c4c95f750ffcd979b4f00ca8b5217285d70de5ac70d7b6bac4bc69d9 on 2026-10-18 by Rigging maintenance — regenerate with: drydock rigging compact --include-file Rigging/stack/sqlite.md -->
+<!-- Compacted from Rigging/stack/sqlite.md sha256=6de5413ac0da7c38796c0a4939695a4a96a79584bf2baab7fa87264742667933 on 2026-10-18 by Rigging maintenance -->
 
 ## Foundation Contract
 
-The published shape of this foundation. Every acceptance criterion writes against these names.
+The published Python binding follows. Go callers use the language-native API in
+`languages/go/go.md`; Go tests run through the existing Blueprint AC container.
 Carried verbatim into `sqlite_compact.md`.
 
 - package: persistence
@@ -20,13 +21,15 @@ migration of existing tables. The engine owns connections and enables foreign ke
 
 ### How does this engine implement the shared persistence contract?
 
-The shipped Python binding is `Rigging/database/sqlite.py`, used through `persistence.db` and
+The shipped Python binding is `Rigging/languages/python/persistence/sqlite.py`, used through `persistence.db` and
 `open_database(dsn)`. Call declared table operations and use `db_session()` for criteria; do not
 import the driver in application code. SQLite does not prove PostgreSQL length/type enforcement.
 Library verification is in `tests/test_shipped_database.py`; verify Target-specific operations
-separately. No Go binding is shipped or verified. The detailed Python interface follows.
+separately. The Go binding is `languages/go/persistence/sqlite.go`, verified against this engine.
+Use `OpenDatabase(ctx, dsn)` and generated typed methods; `OpenSession(ctx, dsn, ddl)` supplies
+a test store. The Go library is linked as `drydock.local/persistence`. The detailed Python interface follows.
 
-**How it is built.** Drydock builds this foundation deterministically. No build agent writes,
+**How the Python binding is built.** Drydock builds this foundation deterministically. No build agent writes,
 edits, or replaces any file listed below.
 
 1. Plan declares the store in `DATABASE.md`: every table, every column, and each access pattern's
@@ -38,7 +41,7 @@ edits, or replaces any file listed below.
 
 | Layer | File | Origin |
 |---|---|---|
-| Library | `persistence/db.py` | shipped `Rigging/database/db.py`, copied unchanged: `Database`, statement construction, parameter binding, engine selection |
+| Library | `persistence/db.py` | shipped `Rigging/languages/python/persistence/db.py`, copied unchanged: `Database`, statement construction, parameter binding, engine selection |
 | Engines | `persistence/sqlite.py`, `persistence/postgres.py` | shipped, copied unchanged; the DSN selects one at runtime |
 | Declaration | `persistence/schema.py` | generated from `DATABASE.md`: `SCHEMA` (tables, operations, row dataclasses) and `open_database(dsn)`; contains no SQL |
 | Interface | `persistence/__init__.py` | generated; exports `Database`, `PersistenceError`, `UnknownOperation`, `SCHEMA`, `open_database` |

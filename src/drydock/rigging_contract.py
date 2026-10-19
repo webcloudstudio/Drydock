@@ -354,15 +354,19 @@ def foundation_contracts(stack_dir: Path | None = None) -> dict[str, FoundationC
 def exclusivity_conflicts(selected: list[str]) -> dict[str, list[str]]:
     """Return the foundation kinds ``selected`` names more than once.
 
-    One web server, one database, one CLI. Two is not a richer stack; it is two application shapes
-    in one build tree and every criterion coin-flipping between them.
+    Language, web server and CLI remain exclusive. Database engines share a persistence
+    interface and may be selected together.
     """
     published = foundation_contracts()
     by_kind: dict[str, list[str]] = {}
     for name in selected:
         if (contract := published.get(name)) is not None:
             by_kind.setdefault(contract.kind, []).append(name)
-    return {kind: sorted(names) for kind, names in by_kind.items() if len(names) > 1}
+    return {
+        kind: sorted(names)
+        for kind, names in by_kind.items()
+        if len(names) > 1 and kind != "database"
+    }
 
 
 # ── Tier ordering ───────────────────────────────────────────────────────────────

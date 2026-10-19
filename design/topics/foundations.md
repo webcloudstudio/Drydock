@@ -23,8 +23,8 @@ was given.
 
 ### Rules
 
-`2026-09-20` · **One foundation per exclusive kind.** At most one language, web server,
-persistence layer, and CLI; two of one kind is refused, not merged.
+`2026-09-20` · **One foundation per exclusive kind.** Exactly one language is required at approval and planning. Web server and CLI remain exclusive;
+zero or more database engines may be selected. Two languages are refused.
 
 `2026-09-20` · **Tiers order the chain inside every phase; they never forbid a block.**
 
@@ -53,7 +53,7 @@ the stack did not select, and importing a published entry callable from another 
 third-party imports are not judged.
 
 `2026-09-20` · **The Commander decides the set.** `TECHNOLOGY_STACK.md` is the record; plan never
-adds a kind. The QuarterDeck selector is one radio group per exclusive kind, defaulting to
+adds a kind. The QuarterDeck selector uses language/platform radios and database checkboxes, defaulting to
 `python.md` / `fastapi.md` / `sqlite.md`.
 
 `2026-10-18` · **Language and engine instructions answer mandatory questions.** Python and Go
@@ -66,15 +66,15 @@ advertise persistence bindings that are not shipped.
 
 `2026-10-18` · Language instructions resolve from `Rigging/languages/<language>/` by their existing basename. Stack discovery and build prompts search bundles alongside stack guidance. Cost when broken: valid language resources are omitted or acceptance evidence is misclassified.
 
+`2026-10-18` · Shipped persistence libraries and templates live in each language bundle. Python and Go implement declared operations on SQLite and PostgreSQL. PostgreSQL DDL adapts integer primary keys to generated identities; schema application does not migrate existing tables. Cost when broken: the selected stack and generated runtime disagree.
+
 ### Mechanism
 
 `rigging_contract.py` parses `**Foundation:** <kind>` and the `## Foundation Contract` section from
-each Rigging file; kinds are open. `technology_stack` refuses a stack selecting two files of one
-exclusive kind. `drydock rigging compact` splices the contract into the compact verbatim. The
+each Rigging file; kinds are open. `technology_stack` refuses multiple selections of exclusive kinds and a missing language. `drydock rigging compact` splices the contract into the compact verbatim. The
 selected foundations' contracts ride with `TECHNOLOGY_STACK.md` in the plan prompt, and
 `plan verify` refuses `unknown-package` imports. `TIER_ORDER` is the six-tier chain;
-`PLATFORM_ORDER` sub-orders tier 2. The QuarterDeck selector is one radio group per exclusive
-kind.
+`PLATFORM_ORDER` sub-orders tier 2. The QuarterDeck selector uses checkboxes for database engines and radios for exclusive kinds.
 
 ### Spec divergence
 
@@ -123,11 +123,8 @@ the existing Marina_Luna-shaped plan still schedules.
 
 ## Open Actions
 
-- 2026-10-18: Implement the agreed selection model (exactly one language, zero or more persistence
-  engines); current database-foundation exclusivity remains in force. Release and verify a Go
-  persistence library and generator before enabling Go Targets with `DATABASE.md`. This change
-  supplies instruction files only; native Go AC execution and automatic per-criterion code/
-  persistence tracing are not implemented.
+- 2026-10-18: Completed language bundles, Go/Python persistence generation, and multiple engine
+  selection. Automatic per-criterion code/persistence tracing remains separate Refit work.
 
 ## Working Notes
 

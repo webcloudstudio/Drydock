@@ -1,0 +1,13 @@
+import os
+import sys
+from pathlib import Path
+
+from persistence import open_database
+
+dsn = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_PATH") or {default!r}
+database = open_database(dsn)
+try:
+    database.execute_script(Path({schema!r}).read_text(encoding="utf-8"))
+finally:
+    database.close()
+print(dsn)

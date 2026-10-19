@@ -329,3 +329,9 @@ Python and Go instructions live in `Rigging/languages/<language>/`, with their c
 and acceptance helpers. Select the existing `python.md` or `go.md` name in the technology stack.
 Go tests execute through `drydock_go.run_test` inside Blueprint ACs; skipped or absent tests do
 not pass. Persistence implementation files are described by each language's contract.
+
+Python and Go both generate persistence from `DATABASE.md`, using bundled SQLite/PostgreSQL
+libraries. Go requires an existing `go.mod`, downloaded pinned drivers, CGO and a C compiler for
+SQLite. Drydock links the generated `persistence/` module and applies schema through its command.
+Select exactly one language and zero or more persistence engines. Existing-table migrations and
+automatic per-criterion code tracing remain separate capabilities.

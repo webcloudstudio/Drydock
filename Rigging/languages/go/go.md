@@ -32,7 +32,8 @@ project/
   bin/                    # launchers; each runs the toolchain, never a vendored copy
 ```
 
-A later foundation adds packages under `internal/`; it does not restructure this tree.
+Application foundations add packages under `internal/`. The generated persistence library is a
+separate module at `persistence/`, linked by the root `go.mod`.
 
 ### How do we execute and measure Acceptance Criteria in this language?
 
@@ -54,12 +55,22 @@ require explicit instrumentation per criterion; unavailable observations are unk
 
 ### How does this language provide the shared persistence contract?
 
-No Go persistence library is shipped or verified. Drydock currently rejects Go Targets declaring
-`DATABASE.md`. A Go implementation must ship a reusable library implementing the shared
-operations in `stack/persistence.md`, with language-native bindings and fixtures, engine drivers
-pinned in `go.mod`/`go.sum`, and schema declarations generated from `DATABASE.md`. Application
-code calls that library; build agents do not invent an access layer. Library release, generator
-support and engine integration tests are required before advertising Go persistence support.
+Use the shipped module in `Rigging/languages/go/persistence/`. Drydock copies it to the Target's
+`persistence/`, generates `schema.go`, `testing.go` and a schema command from `DATABASE.md`, and
+links it into the existing root `go.mod` as `drydock.local/persistence`. Driver versions and sums
+are shipped; SQLite uses `go-sqlite3` (a C compiler and CGO are required), PostgreSQL uses `lib/pq`.
+Run `go mod download` during dependency provisioning; execution requires these modules available.
+
+Call `persistence.OpenDatabase(ctx, dsn)`, then typed methods such as
+`db.Tickets.List(ctx, persistence.TicketsListInput{Status: "open"})`. Methods return a value and
+an error. Optional inputs use pointers; read results are generated structs. Undeclared operations
+and unsupported field types fail explicitly. Use `OpenSession(ctx, dsn, ddl)` for native tests;
+close with its cleanup function. Empty DSN creates a temporary SQLite store. An explicit DSN uses
+the named store and cleanup does not delete it. Both engines ship; the DSN selects one.
+
+The Go library and generator are verified on SQLite and PostgreSQL. Keep application SQL inside
+the library; agents write callers. The language foundation must create `go.mod` before the
+DATABASE step. Python Blueprint AC containers invoke the native Go tests through `run_test`.
 
 ---
 

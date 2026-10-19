@@ -1,0 +1,24 @@
+package persistence
+
+import (
+    "context"
+    "os"
+    "path/filepath"
+)
+
+// OpenSession opens a configured store, or a temporary SQLite store, and applies its schema.
+// The caller owns Close. Only a temporary store created here is removed by cleanup.
+func OpenSession(ctx context.Context, dsn string, ddl string) (*Store,func(),error) {
+    directory:=""
+    if dsn=="" {
+        var err error
+        directory,err=os.MkdirTemp("", "drydock-db-")
+        if err!=nil {return nil,nil,err}
+        dsn=filepath.Join(directory,"test.db")
+    }
+    cleanup:=func(){if directory!="" {os.RemoveAll(directory)}}
+    store,err:=OpenDatabase(ctx,dsn)
+    if err!=nil {cleanup();return nil,nil,err}
+    if err=store.ApplySchema(ctx,ddl);err!=nil {store.Close();cleanup();return nil,nil,err}
+    return store,func(){store.Close();cleanup()},nil
+}

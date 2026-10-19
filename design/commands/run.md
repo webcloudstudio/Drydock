@@ -61,6 +61,8 @@ prompt in the running model's tokens (see [build](build.md)); shared context rec
 so the group header reads "Combined Story Points". Cost when broken: a group appears to cost the
 sum of its steps.
 
+`2026-10-18` · The technology selector uses database-engine checkboxes and language radios without a None choice. Approval refuses a missing language. Cost when broken: the selected stack and generated runtime disagree.
+
 ### Mechanism
 
 1. Resolve the Target directory and port.

@@ -2653,25 +2653,25 @@ def _tech_rigging_select(selected: str | None) -> str:
 
 
 def _foundation_fieldset(group: dict[str, Any]) -> str:
-    """One exclusive foundation choice: radios, never checkboxes.
-
-    A Target has one language, one web server, one database. A checkbox list invites the second
-    selection that ``plan verify`` then refuses — the wrong end of the process to learn it.
-    """
+    """One language, optional platforms, and zero or more persistence engines."""
     kind = str(group["kind"])
     name = f"ts-foundation-{kind}"
-    selected = str(group.get("selected") or "")
+    selected = group.get("selected") or []
+    if isinstance(selected, str):
+        selected = [selected]
+    control = "checkbox" if group.get("multiple") else "radio"
     options = [
-        f"<label class='ts-choice'><input type='radio' name='{html.escape(name)}' "
-        f"value='{html.escape(option)}'{' checked' if option == selected else ''}>"
+        f"<label class='ts-choice'><input type='{control}' name='{html.escape(name)}' "
+        f"value='{html.escape(option)}'{' checked' if option in selected else ''}>"
         f"<span>{html.escape(option.removesuffix('.md'))}</span></label>"
         for option in group.get("options", [])
     ]
-    options.append(
-        f"<label class='ts-choice ts-choice-none'><input type='radio' "
-        f"name='{html.escape(name)}' value=''{'' if selected else ' checked'}>"
-        "<span>None</span></label>"
-    )
+    if not group.get("multiple") and not group.get("required"):
+        options.append(
+            f"<label class='ts-choice ts-choice-none'><input type='radio' "
+            f"name='{html.escape(name)}' value=''{'' if selected else ' checked'}>"
+            "<span>None</span></label>"
+        )
     return (
         f"<fieldset class='ts-foundation' data-kind='{html.escape(kind)}'>"
         f"<legend>{html.escape(str(group['label']))} "
@@ -3426,6 +3426,9 @@ def api_approve_item(item_id: str, request: Request = None) -> dict[str, Any]:
                     "with a DATABASE.md is limited to "
                     + ", ".join(technology_stack.PERSISTENCE_LANGUAGES),
                 )
+            defects = technology_stack.foundation_defects(entries)
+            if defects:
+                raise HTTPException(status_code=400, detail="; ".join(defects))
             _atomic_write_text(path, technology_stack.render(entries, approved))
         return {"ok": True, "item_id": item_id, "state": "approved", "approved": approved}
 
@@ -4445,7 +4448,7 @@ def index(request: Request = None) -> str:
     // row at all — that is how a Target says it has no web server.
     function tsPayload(editor) {{
       const foundations = [...editor.querySelectorAll('.ts-foundation')]
-        .map(set => set.querySelector('input[type=radio]:checked'))
+        .flatMap(set => [...set.querySelectorAll('input:checked')])
         .filter(input => input && input.value)
         .map(input => ({{
           technology: input.value.replace(/[.]md$/, ''),
@@ -4512,7 +4515,7 @@ def index(request: Request = None) -> str:
         return pending;
       }};
       editor.addEventListener('ts-save', save);
-      editor.querySelectorAll('.ts-foundation input[type=radio]').forEach(input => {{
+      editor.querySelectorAll('.ts-foundation input').forEach(input => {{
         input.addEventListener('change', save);
       }});
       editor.querySelectorAll('.ts-row').forEach(row => {{

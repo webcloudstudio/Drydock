@@ -1,0 +1,5 @@
+
+
+def open_database(dsn: str) -> Database:
+    """Open the declared store. The engine is selected from the DSN, not from the build."""
+    return Database(dsn, SCHEMA)

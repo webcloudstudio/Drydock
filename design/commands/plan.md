@@ -133,6 +133,8 @@ is reported.
 `2026-09-17` · **A criterion states one expectation.** A status set admitting `404` beside others,
 or both a 2xx and a 5xx, is refused. See [acceptance_criteria](../topics/acceptance_criteria.md).
 
+`2026-10-18` · Python and Go support DATABASE.md persistence. Stack validation requires exactly one language and permits several persistence engines; other exclusive foundations retain their constraints. Cost when broken: the selected stack and generated runtime disagree.
+
 ### Mechanism
 
 0. **Preflight** — refuse on blockers or missing persistence Rigging; capture questionnaire

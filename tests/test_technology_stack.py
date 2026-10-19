@@ -227,6 +227,7 @@ def test_an_unapproved_document_carries_no_approval_marker(tmp_path):
 
 def test_approve_records_a_dated_marker_and_round_trips_the_rows(tmp_path):
     entries = [
+        StackEntry("Python", "python.md"),
         technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn"),
         technology_stack.StackEntry("marina-library", None, ""),
     ]
@@ -242,7 +243,7 @@ def test_approve_records_a_dated_marker_and_round_trips_the_rows(tmp_path):
 def test_approve_defaults_to_today_and_re_dates_an_approved_stack(tmp_path):
     from datetime import date
 
-    technology_stack.write(tmp_path, [technology_stack.StackEntry("Go")], "2020-01-01")
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("Go", "go.md")], "2020-01-01")
 
     technology_stack.approve(tmp_path)
 
@@ -269,10 +270,10 @@ def test_a_language_with_no_shipped_adapter_is_refused_rather_than_ignored(tmp_p
 
     (tmp_path / "blueprint").mkdir()
     (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
-    technology_stack.write(tmp_path, [StackEntry("Go", "go.md")])
+    technology_stack.write(tmp_path, [StackEntry("Rust", "rust.md")])
 
-    assert technology_stack.unsupported_persistence(tmp_path) == "go"
-    with pytest.raises(ValueError, match="ships no persistence adapter for go"):
+    assert technology_stack.unsupported_persistence(tmp_path) == "rust"
+    with pytest.raises(ValueError, match="ships no persistence adapter for rust"):
         technology_stack.approve(tmp_path)
     assert not technology_stack.is_approved(tmp_path)
 
@@ -384,3 +385,25 @@ def test_the_frontend_files_are_no_longer_offered_as_web_servers():
     assert "ui-flask.bootstrap-client.md" in groups["Frontend"]
     assert groups["Web Server"] == ["django.md", "fastapi.md", "flask.md"]
     assert groups["Language"] == ["go.md", "python.md", "typescript.md"]
+
+
+def test_multiple_engines_round_trip_and_language_is_required(tmp_path):
+    import pytest
+
+    entries = [
+        StackEntry("Go", "go.md"),
+        StackEntry("SQLite", "sqlite.md"),
+        StackEntry("PostgreSQL", "postgres.md"),
+    ]
+    assert not technology_stack.foundation_defects(entries)
+    chosen, remaining = technology_stack.split_foundations(entries)
+    assert chosen["database"] == ["sqlite.md", "postgres.md"]
+    assert set(
+        technology_stack.stack_files_from(technology_stack.with_foundations(remaining, chosen))
+    ) == {"go.md", "sqlite.md", "postgres.md"}
+    technology_stack.write(tmp_path, entries)
+    technology_stack.approve(tmp_path)
+    assert technology_stack.is_approved(tmp_path)
+    technology_stack.write(tmp_path, entries[1:])
+    with pytest.raises(ValueError, match="exactly one language"):
+        technology_stack.approve(tmp_path)

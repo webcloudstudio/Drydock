@@ -168,7 +168,7 @@ def test_postgres_reports_a_missing_driver_as_a_dependency_gap(monkeypatch):
 def test_the_adapter_directory_resolves_beside_the_rest_of_rigging():
     directory = get_database_dir()
 
-    assert directory == get_rigging_root() / "database"
+    assert directory == get_rigging_root() / "languages" / "python" / "persistence"
     assert {path.name for path in directory.glob("*.py")} == {"db.py", "sqlite.py", "postgres.py"}
 
 
@@ -183,3 +183,33 @@ def test_a_semicolon_inside_a_literal_does_not_split_the_statement():
         'CREATE TABLE "t" ("a" TEXT DEFAULT \'x;y\')',
         'CREATE INDEX "t_a_idx" ON "t" ("a")',
     ]
+
+
+def test_python_postgres_round_trip_when_server_is_configured():
+    import os
+    import uuid
+
+    dsn = os.environ.get("DRYDOCK_TEST_POSTGRES_DSN")
+    if not dsn:
+        pytest.skip("Set DRYDOCK_TEST_POSTGRES_DSN for PostgreSQL integration")
+    schema_name = "drydock_test_" + uuid.uuid4().hex
+    instance = db.Database(dsn, SCHEMA)
+    try:
+        instance.execute_script(
+            f'CREATE SCHEMA "{schema_name}"; SET search_path TO "{schema_name}";'
+        )
+        instance.execute_script(DDL)
+        identity = instance.tickets.create(status="open", title="bound ' value")
+        row = instance.tickets.get(id=identity)
+        assert row == Ticket(identity, "open", "bound ' value")
+        assert instance.tickets.update(id=identity, status="closed") == 1
+        assert instance.tickets.list(status="closed") == [
+            Ticket(identity, "closed", "bound ' value")
+        ]
+        with pytest.raises(db.PersistenceError):
+            instance.tickets.create(status="open", title="x" * 201)
+        assert instance.tickets.delete(id=identity) == 1
+        assert instance.tickets.get(id=identity) is None
+    finally:
+        instance.execute_script(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE;')
+        instance.close()

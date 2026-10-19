@@ -1,8 +1,9 @@
-<!-- Compacted from Rigging/stack/postgres.md sha256=44a762849573b6c4383c8c158053bc5795e6de8f5c4b40386b044b89dbaddde7 on 2026-10-18 by Rigging maintenance — regenerate with: drydock rigging compact --include-file Rigging/stack/postgres.md -->
+<!-- Compacted from Rigging/stack/postgres.md sha256=ccafd906cb3b30b6bcffc996531141a916cb92e9b095ede97e67ece1b4e61046 on 2026-10-18 by Rigging maintenance -->
 
 ## Foundation Contract
 
-The published shape of this foundation. Every acceptance criterion writes against these names.
+The published Python binding follows. Go callers use the language-native API in
+`languages/go/go.md`; Go tests run through the existing Blueprint AC container.
 Carried verbatim into `postgres_compact.md`.
 
 - package: persistence
@@ -21,14 +22,16 @@ migrations separately when existing data must be retained.
 
 ### How does this engine implement the shared persistence contract?
 
-The shipped Python binding is `Rigging/database/postgres.py`, used through `persistence.db` and
+The shipped Python binding is `Rigging/languages/python/persistence/postgres.py`, used through `persistence.db` and
 `open_database(dsn)`. Call declared table operations; pass the PostgreSQL DSN to `db_session()`
 when testing this engine. Its default temporary SQLite store does not verify PostgreSQL. The
 engine binds parameters and returns generated IDs with `RETURNING`. PostgreSQL enforces declared
 lengths and types. Shipped-library tests include driver doubles; actual PostgreSQL behavior
-requires an integration run against a server. No Go binding is shipped or verified.
+requires an integration run against a server. The Go binding is `languages/go/persistence/postgres.go`, verified against this engine.
+Use `OpenDatabase(ctx, dsn)` and generated typed methods; `OpenSession(ctx, dsn, ddl)` supplies
+a test store. The Go library is linked as `drydock.local/persistence`.
 
-**How it is built.** Drydock builds this foundation deterministically. No build agent writes,
+**How the Python binding is built.** Drydock builds this foundation deterministically. No build agent writes,
 edits, or replaces any file listed below.
 
 1. Plan declares the store in `DATABASE.md`: every table, every column, and each access pattern's
@@ -40,7 +43,7 @@ edits, or replaces any file listed below.
 
 | Layer | File | Origin |
 |---|---|---|
-| Library | `persistence/db.py` | shipped `Rigging/database/db.py`, copied unchanged: `Database`, statement construction, parameter binding, engine selection |
+| Library | `persistence/db.py` | shipped `Rigging/languages/python/persistence/db.py`, copied unchanged: `Database`, statement construction, parameter binding, engine selection |
 | Engines | `persistence/sqlite.py`, `persistence/postgres.py` | shipped, copied unchanged; the DSN selects one at runtime |
 | Declaration | `persistence/schema.py` | generated from `DATABASE.md`: `SCHEMA` (tables, operations, row dataclasses) and `open_database(dsn)`; contains no SQL |
 | Interface | `persistence/__init__.py` | generated; exports `Database`, `PersistenceError`, `UnknownOperation`, `SCHEMA`, `open_database` |

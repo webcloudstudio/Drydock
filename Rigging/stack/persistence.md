@@ -43,7 +43,12 @@ The build writes **callers**.
 route → service → db.<table>.<verb>(...) → generated package → database
 ```
 
-The package lands at `persistence/` in the build:
+Language bindings are shipped in `languages/<language>/persistence/`; generation templates live
+beside them in `templates/`. Python and Go implement the same declared operations. The language
+instructions own native names, dependencies and fixtures. Go uses `OpenDatabase(ctx, dsn)` and
+generated typed repository methods; the Python examples below use `open_database(dsn)`.
+
+The Python package lands at `persistence/` in the build:
 
 | File | Origin |
 |---|---|

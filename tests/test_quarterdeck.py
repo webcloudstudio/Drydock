@@ -2044,7 +2044,7 @@ def test_technology_stack_offers_each_foundation_kind_once_in_build_order(tmp_pa
 
     assert order == sorted(order)
     assert rendered.count("class='ts-foundation'") == 4
-    assert "type='checkbox'" not in rendered
+    assert "type='checkbox' name='ts-foundation-database'" in rendered
 
 
 def test_technology_stack_preselects_the_default_for_an_undecided_target(tmp_path, monkeypatch):
@@ -2225,7 +2225,13 @@ def test_technology_stack_is_pending_until_it_is_approved(tmp_path, monkeypatch)
     # An unwritten stack is an outstanding action, not a settled one.
     assert quarterdeck.item_nav_status(item) == "pending"
 
-    technology_stack.write(tmp_path, [technology_stack.StackEntry("FastAPI", "fastapi.md")])
+    technology_stack.write(
+        tmp_path,
+        [
+            technology_stack.StackEntry("Python", "python.md"),
+            technology_stack.StackEntry("FastAPI", "fastapi.md"),
+        ],
+    )
     assert quarterdeck.item_pending(item)
     assert quarterdeck.item_nav_status(item) == "pending"
 
@@ -2242,7 +2248,11 @@ def test_approving_the_technology_stack_records_the_marker_without_changing_rows
     quarterdeck = _load_quarterdeck()
     target = tmp_path / "TECHNOLOGY_STACK.md"
     technology_stack.write(
-        tmp_path, [technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn")]
+        tmp_path,
+        [
+            technology_stack.StackEntry("Python", "python.md"),
+            technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn"),
+        ],
     )
     monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
     monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
@@ -2253,7 +2263,8 @@ def test_approving_the_technology_stack_records_the_marker_without_changing_rows
     assert result["state"] == "approved"
     assert technology_stack.is_approved(tmp_path)
     assert technology_stack.load(tmp_path) == [
-        technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn")
+        technology_stack.StackEntry("Python", "python.md"),
+        technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn"),
     ]
 
 
@@ -2266,7 +2277,7 @@ def test_technology_stack_refuses_a_database_in_a_language_with_no_adapter(tmp_p
     target = tmp_path / "TECHNOLOGY_STACK.md"
     (tmp_path / "blueprint").mkdir()
     (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
-    technology_stack.write(tmp_path, [technology_stack.StackEntry("Go", "go.md")])
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("Rust", "rust.md")])
     monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
     monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
 
@@ -2274,7 +2285,7 @@ def test_technology_stack_refuses_a_database_in_a_language_with_no_adapter(tmp_p
         quarterdeck.api_approve_item("technology_stack", None)
 
     assert exc.value.status_code == 400
-    assert "no persistence adapter for go" in str(exc.value.detail)
+    assert "no persistence adapter for rust" in str(exc.value.detail)
 
 
 def test_technology_stack_approves_a_python_database_without_an_orm_selection(
@@ -2320,7 +2331,13 @@ def test_approve_button_appears_only_until_the_item_is_approved(tmp_path, monkey
     quarterdeck = _load_quarterdeck()
     monkeypatch.setattr(quarterdeck, "_current_base_dir", lambda: tmp_path)
     item = {**_stack_item(), "path": "TECHNOLOGY_STACK.md", "label": "Technology Stack"}
-    technology_stack.write(tmp_path, [technology_stack.StackEntry("FastAPI", "fastapi.md")])
+    technology_stack.write(
+        tmp_path,
+        [
+            technology_stack.StackEntry("Python", "python.md"),
+            technology_stack.StackEntry("FastAPI", "fastapi.md"),
+        ],
+    )
 
     page = quarterdeck._wrap_page(item, "<h1>Technology Stack</h1><p>body</p>")
     assert "approveItem('technology_stack')" in page
@@ -2459,3 +2476,24 @@ def test_technology_stack_labels_the_columns_and_shows_the_tier_chain(tmp_path, 
         ("6", "application"),
     ):
         assert f"Tier {number} · {name}" in rendered
+
+
+def test_technology_approval_requires_language_and_accepts_multiple_engines(tmp_path, monkeypatch):
+    import pytest
+
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    path = tmp_path / "TECHNOLOGY_STACK.md"
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
+    monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: path)
+    engines = [
+        technology_stack.StackEntry("SQLite", "sqlite.md"),
+        technology_stack.StackEntry("PostgreSQL", "postgres.md"),
+    ]
+    technology_stack.write(tmp_path, engines)
+    with pytest.raises(quarterdeck.HTTPException, match="exactly one language"):
+        quarterdeck.api_approve_item("technology_stack", None)
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("Go", "go.md"), *engines])
+    assert quarterdeck.api_approve_item("technology_stack", None)["ok"]
+    assert technology_stack.is_approved(tmp_path)

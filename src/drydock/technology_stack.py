@@ -52,10 +52,10 @@ _CATEGORY_ORDER = [
 ]
 _CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
-#: Languages Drydock ships a persistence adapter for, in ``Rigging/database/``. A Target in one of
+#: Languages Drydock ships a persistence adapter for, in ``Rigging/languages/<language>/persistence/``. A Target in one of
 #: these gets its persistence package generated from ``DATABASE.md``; the build writes callers, not
 #: a repository, so no ORM or migration-framework selection is required of the Commander.
-PERSISTENCE_LANGUAGES = ("python",)
+PERSISTENCE_LANGUAGES = ("python", "go")
 #: Implementation languages a Target may declare. A Target declaring none leaves the stack
 #: undecided, which Plan resolves from the sources rather than gating on.
 _LANGUAGES = ("python", "go", "typescript", "javascript", "java", "rust", "c", "c++", "ruby")
@@ -296,7 +296,11 @@ def is_approved(target_dir: Path) -> bool:
     An absent file is not approved: the stack is an outstanding action until the
     Commander either edits and approves it or approves it as proposed.
     """
-    return approved_on(target_dir) is not None and unsupported_persistence(target_dir) is None
+    return (
+        approved_on(target_dir) is not None
+        and unsupported_persistence(target_dir) is None
+        and not foundation_defects(load(target_dir))
+    )
 
 
 def approve(target_dir: Path, when: str | None = None) -> Path:
@@ -311,8 +315,11 @@ def approve(target_dir: Path, when: str | None = None) -> Path:
         raise ValueError(
             f"Drydock ships no persistence adapter for {unsupported}. Targets with a DATABASE.md "
             f"are limited to {', '.join(PERSISTENCE_LANGUAGES)}; add an adapter to "
-            "Rigging/database/ to support another."
+            "Rigging/languages/<language>/persistence/ to support another."
         )
+    defects = foundation_defects(entries)
+    if defects:
+        raise ValueError("; ".join(defects))
     return write(target_dir, entries, when or date.today().isoformat())
 
 
@@ -469,21 +476,20 @@ def foundation_defects(entries: list[StackEntry]) -> list[str]:
         if (contract := published.get(name)) is not None:
             by_kind.setdefault(contract.kind, []).append(name)
     for kind, names in sorted(by_kind.items()):
-        if len(names) > 1:
+        if len(names) > 1 and kind != "database":
             defects.append(
                 f"{kind}: {len(names)} selected ({', '.join(sorted(names))}); "
                 f"a Target has exactly one {kind}"
             )
 
+    if not by_kind.get("language"):
+        defects.append("language: select exactly one language Rigging file")
     return defects
 
 
-def selected_foundations(entries: list[StackEntry]) -> dict[str, str]:
-    """Return ``{kind: rigging filename}`` for each foundation this stack selects."""
-    from drydock.rigging_contract import foundation_contracts
-
-    published = foundation_contracts()
-    return {published[name].kind: name for name in stack_files_from(entries) if name in published}
+def selected_foundations(entries: list[StackEntry]) -> dict[str, str | list[str]]:
+    """Return selected foundations, preserving every database engine."""
+    return split_foundations(entries)[0]
 
 
 #: What a new Target gets when nobody has chosen yet. It is a starting point the Commander
@@ -501,7 +507,7 @@ _KIND_LABELS = {"cli": "CLI"}
 
 def split_foundations(
     entries: list[StackEntry],
-) -> tuple[dict[str, str], list[StackEntry]]:
+) -> tuple[dict[str, str | list[str]], list[StackEntry]]:
     """Split stack rows into the foundation choices and everything else.
 
     A row is a foundation choice when it selects a Rigging file that publishes a foundation, or
@@ -512,7 +518,7 @@ def split_foundations(
     from drydock.rigging_contract import foundation_contracts
 
     published = foundation_contracts()
-    chosen: dict[str, str] = {}
+    chosen: dict[str, str | list[str]] = {}
     remaining: list[StackEntry] = []
     for entry in entries:
         name = entry.rigging or (suggest_rigging(entry.technology) if not entry.rigging else None)
@@ -520,17 +526,20 @@ def split_foundations(
         if contract is None:
             remaining.append(entry)
             continue
-        chosen.setdefault(contract.kind, entry.rigging or "")
+        if contract.kind == "database":
+            chosen.setdefault("database", [])
+            if entry.rigging and entry.rigging not in chosen["database"]:
+                chosen["database"].append(entry.rigging)
+        else:
+            chosen.setdefault(contract.kind, entry.rigging or "")
     return chosen, remaining
 
 
 def foundation_groups(entries: list[StackEntry] | None = None) -> list[dict]:
     """Return one exclusive choice per foundation kind, in build order.
 
-    The selector this feeds is a set of radio groups rather than a list of checkboxes, because
-    the underlying fact is a choice and not a set: a Target has one language, one web server, one
-    database. Presenting them as checkboxes invites the selection that ``foundation_defects``
-    then refuses, which is the wrong end of the process to find out.
+    Languages and application platforms use exclusive radios; database engines use checkboxes.
+    Approval requires one language, while persistence engines may be absent or multiple.
 
     Order is tier order — language first, then the platform built into it, and inside the platform
     tier the sub-order ``2.1``/``2.2``/``2.3`` — so the page reads in the order the work is done.
@@ -557,22 +566,22 @@ def foundation_groups(entries: list[StackEntry] | None = None) -> list[dict]:
             "label": _KIND_LABELS.get(kind, kind.replace("-", " ").title()),
             "options": options,
             "selected": chosen.get(kind, ""),
+            "multiple": kind == "database",
+            "required": kind == "language",
         }
         for tier, kind, options in sorted(foundation_kinds(), key=rank)
     ]
 
 
-def with_foundations(entries: list[StackEntry], chosen: dict[str, str]) -> list[StackEntry]:
-    """Return ``entries`` with its foundation rows replaced by ``chosen`` (``{kind: filename}``).
-
-    Every non-foundation row survives untouched and in place, and the foundation rows are
-    re-emitted first, in build order. A kind mapped to an empty value is dropped, which is how a
-    Target says it has no web server.
-    """
+def with_foundations(
+    entries: list[StackEntry], chosen: dict[str, str | list[str]]
+) -> list[StackEntry]:
+    """Replace foundation choices; database choices may contain several engines."""
     remaining = split_foundations(entries)[1]
-    added = [
-        StackEntry(technology=name.removesuffix(".md"), rigging=name)
-        for group in foundation_groups(entries)
-        if (name := (chosen.get(group["kind"]) or "").strip())
-    ]
+    added = []
+    for group in foundation_groups(entries):
+        values = chosen.get(group["kind"], "")
+        names = [values] if isinstance(values, str) else values
+        for name in dict.fromkeys(n.strip() for n in names if n.strip()):
+            added.append(StackEntry(technology=name.removesuffix(".md"), rigging=name))
     return added + remaining

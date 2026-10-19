@@ -32,7 +32,7 @@ are unknown, not proof that code or an interaction was unused.
 
 ### How does this language provide the shared persistence contract?
 
-Use `stack/persistence.md`. Drydock copies `Rigging/database/{db,sqlite,postgres}.py` and generates
+Use `stack/persistence.md`. Drydock copies `Rigging/languages/python/persistence/{db,sqlite,postgres}.py` and generates
 `persistence/{schema,__init__,testing}.py` plus `schema.sql` from `DATABASE.md`. Call
 `open_database(dsn)` and `db.<table>.<operation>(...)`; use `persistence.testing.db_session()`
 for criteria. SQLite uses the standard library; PostgreSQL needs `psycopg[binary]` in the project

@@ -155,12 +155,12 @@ def get_stack_dir() -> Path:
     return get_rigging_root() / "stack"
 
 
-def get_database_dir() -> Path:
-    """Return the database/ directory inside Rigging.
+def get_database_dir(language: str = "python") -> Path:
+    """Return the selected language bundle's persistence library.
 
     It holds shipped persistence source — not guidance — copied into a build unchanged.
     """
-    return get_rigging_root() / "database"
+    return get_language_dir(language) / "persistence"
 
 
 def get_repo_root() -> Path:
