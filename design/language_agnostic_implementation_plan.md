@@ -187,3 +187,28 @@ passes.
 - Python and Go libraries guard CRUD calls identically.
 - Native acceptance outcomes stay accurate.
 - Existing Python database behavior is unchanged for correct calls.
+
+## Open Actions — implementation review, 2026-10-19
+
+- **High — bind the plan to its selection (section 2).** Removing approval blocks build only
+  until the stack is approved again. Specify a persisted language/database fingerprint on the
+  generated plan and reject a mismatch before build or resume, including after reapproval.
+  `build_plan.stale_applied_specs` checks Blueprint records; the Target-level stack is outside
+  that check. Acceptance: plan Python, switch to Go, approve, then build without replanning;
+  build refuses before an LLM call. This checks generated-plan provenance, not existing code.
+- **High — define CRUD guard metadata (section 6).** Both shipped runtime `Table` structures
+  retain column names and a key, but no required/default metadata. Include both schema emitters
+  and runtime declarations in this slice. Define generated-key exemptions and the treatment of
+  omitted versus explicit null values; define keyed operations on tables without a primary key
+  (the current database contract uses all columns). Verify guards through generated packages,
+  including valid defaulted/generated-key creates, rather than only hand-constructed schemas.
+- **Medium — cover every compact freshness path (section 4).** Language must participate before
+  the mtime/source-hash shortcuts in `rigging_compact._is_stale`, in build's independent
+  `_compact_is_stale` check, and in the unchanged-body provenance update. Cover compact and
+  no-surface derivatives, missing language provenance, and status callers. Acceptance: unchanged
+  source bytes with a newer compact timestamp still regenerate after a language switch; an
+  identical regenerated body records the new language and does not regenerate indefinitely.
+- **Delivery corrections (section 8).** Include `design/commands/build.md` and
+  `design/topics/acceptance_criteria.md` in affected behavior documentation. Native SQLite Go
+  verification also requires CGO and a C compiler, as declared by the shipped Go bundle;
+  report those prerequisites alongside the Go toolchain and PostgreSQL DSN.
