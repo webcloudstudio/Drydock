@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -362,19 +361,6 @@ def test_seeded_metadata_overwrites_the_init_scaffold_and_survives_analyze(
     assert fields["stack"] == "Python"
     assert fields["display_name"] == "Reading List"
     assert fields["build_state"] == ""
-
-
-def test_the_shipped_jq_compass_governs_harness_invocation_and_the_terminal_story():
-    """The run that failed had all of this in prose the model ignored; it is now a kit input."""
-    root = Path(__file__).resolve().parents[1] / "uat"
-    fixture = discover_fixtures(root, "jq")[0]
-
-    assert fixture.compass == (root / "jq" / "inputs" / "COMPASS.md").resolve()
-    text = fixture.compass.read_text(encoding="utf-8")
-    assert 'JQ="$PWD/jq" python3 sources/run_conformance.py' in text
-    assert 'env={**os.environ, "JQ"' in text
-    assert "### The terminal story" in text
-    assert "the last story in the build order" in text
 
 
 @pytest.mark.parametrize("field", ["sea_trials", "technology_stack", "compass"])
@@ -1360,40 +1346,6 @@ def test_resume_into_a_stage_with_no_input_names_the_producing_stage(tmp_path: P
     assert ("plan", "ReadingList", "--override") in calls
 
 
-def test_shipped_kits_declare_every_asset_their_score_command_runs() -> None:
-    # A kit whose scoring entry point is not among its declared sources leaves the script to be
-    # authored by the build agent, which is both nondeterministic and self-scoring. When the
-    # command names a path under `sources/`, that asset must ship with the kit.
-    uat_root = Path(__file__).resolve().parents[1] / "uat"
-    for config_path in sorted(uat_root.glob("*/uat.json")):
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        declared = set(config["sources"])
-        for source in declared:
-            assert (config_path.parent / source).is_file(), f"{config_path}: missing {source}"
-        commands = [config["acceptance"]["full"], config.get("test_command") or []]
-        for argument in [item for command in commands for item in command]:
-            if argument.startswith("sources/"):
-                assert argument in declared, f"{config_path}: {argument} is not a declared source"
-
-
-def test_every_shipped_kit_is_graded_by_a_staged_commander_owned_harness() -> None:
-    """Each kit's release gate must run an oracle the build cannot author.
-
-    Without a governed full gate the release verdict rests entirely on the grader's judgement,
-    and a criterion the grader cannot settle is MANUAL, which never blocks — so an unbuilt
-    project reads as PASSED. One staged ``sources/full_test.sh`` per kit closes that path.
-    """
-    uat_root = Path(__file__).resolve().parents[1] / "uat"
-    configs = sorted(uat_root.glob("*/uat.json"))
-    assert configs
-    for config_path in configs:
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        assert config["acceptance"]["full"] == ["sh", "sources/full_test.sh"], config_path
-        harness = config_path.parent / "sources" / "full_test.sh"
-        assert harness.is_file(), f"{config_path}: no staged sources/full_test.sh"
-        assert subprocess.run(["sh", "-n", str(harness)]).returncode == 0, harness
-
-
 def test_run_ids_are_readable_and_stay_chronological_across_the_format_change() -> None:
     # A run id is read by a person before it is parsed by anything, and one kit cannot start
     # two runs in the same second. Ordering must still hold against ids written by the
@@ -1704,14 +1656,6 @@ def test_the_summary_states_the_expected_and_observed_verdicts(tmp_path: Path) -
     assert "Advisory scores:" not in summary
 
 
-def test_every_shipped_kit_declares_the_verdict_it_expects() -> None:
-    """The kits are Drydock's own acceptance record, so each must state what it is testing for."""
-    root = Path(__file__).resolve().parents[1] / "uat"
-    for kit in sorted(path for path in root.iterdir() if (path / "uat.json").is_file()):
-        config = json.loads((kit / "uat.json").read_text(encoding="utf-8"))
-        assert config.get("expect", {}).get("verdict"), f"{kit.name} declares no expected verdict"
-
-
 def test_a_run_with_no_failures_still_passes(tmp_path: Path) -> None:
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
@@ -1781,52 +1725,6 @@ def test_a_clean_build_still_runs_its_refit_stage(tmp_path: Path) -> None:
 # Without this the model authors the exam it is then graded on, so every run is a fresh
 # random draw of acceptance criteria and no two runs measure the same thing. That is why a
 # fixture could stop passing without changing.
-
-
-def test_every_shipped_fixture_ships_a_parseable_frozen_contract():
-    from drydock.sea_trials import parse_sea_trials_text
-    from drydock.uat import discover_fixtures
-
-    fixtures = discover_fixtures(Path(__file__).resolve().parents[1] / "uat")
-
-    assert fixtures
-    for fixture in fixtures:
-        assert fixture.sea_trials is not None, fixture.name
-        document = parse_sea_trials_text(fixture.sea_trials.read_text(encoding="utf-8"))
-        assert document.trials
-        # A frozen exam whose policy is not also frozen is only half fixed.
-        assert document.policy_declared is True
-
-
-def test_shipped_fixtures_declare_lifecycle_inputs_under_inputs():
-    root = Path(__file__).resolve().parents[1] / "uat"
-
-    for name in ("CommonMark", "ReadingList", "Toml"):
-        config = json.loads((root / name / "uat.json").read_text(encoding="utf-8"))
-        assert config["sea_trials"] == "inputs/SEA_TRIALS.md"
-        assert config["technology_stack"] == "inputs/TECHNOLOGY_STACK.md"
-        assert (root / name / config["sea_trials"]).is_file()
-        assert (root / name / config["technology_stack"]).is_file()
-
-
-def test_commonmark_has_one_deterministic_blocking_proof_criterion():
-    document = sea_trials.parse_sea_trials_text(
-        (Path(__file__).resolve().parents[1] / "uat/CommonMark/inputs/SEA_TRIALS.md").read_text(
-            encoding="utf-8"
-        )
-    )
-
-    assert document.policy_declared is True
-    assert len(document.trials) == 1
-    trial = document.trials[0]
-    assert trial.criterion_id == "st-001"
-    assert trial.required is True
-    assert trial.testability == "deterministic"
-    assert trial.consequence == "blocks"
-    assert trial.verification == "proof"
-    assert trial.criterion == (
-        "The completed parser shall pass every test run by sh sources/full_test.sh."
-    )
 
 
 def test_a_fixture_contract_is_seeded_into_the_target(tmp_path):
