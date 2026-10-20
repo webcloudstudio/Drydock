@@ -8,6 +8,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-10-20: `drydock plan verify` reports a `harness-exit` defect when a Programmatic Acceptance
+  call that passes a staged source file asserts an exit status that no line of a staged
+  `sources/*.sh` harness expects for the same command and file. Only the first such call in a
+  criterion is compared, and harness lines are read only in the `<exit> [<program>] <args...>`
+  shape. `drydock plan repair` (`plan_repair.md` V9) may change that one expected exit to the
+  harness value and correct later assertions that followed from it. `drydock plan` leaves such a
+  Manifest `draft`/`unbuildable` and exits `1`.
+
 ### Fixed
 
 - 2026-10-20: `drydock plan` requires every Programmatic Acceptance setup call to assert the success

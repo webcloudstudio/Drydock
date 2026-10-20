@@ -145,6 +145,17 @@ nothing (`plan_create.md` V40, `BLUEPRINTS_CONTRACT.md` V24, `2026-10-20`). *Bro
 `20261020.183046` asserted `load categories sources/seed_categories.csv` exits `1`, and a correct
 loader failed `transaction-post-read`.
 
+`2026-10-20` · **A criterion never contradicts the staged harness on a staged file.** `plan verify`
+(`harness_exits.py`) reads each `cli_runner(<literal args>)[0] == <int>` call that passes a staged
+source file and compares the first call per command with every `sources/*.sh` line of the shape
+`<int> [<program>] <args...>`, files compared by name. An exit no matching line expects is a
+`harness-exit` defect; `plan_repair.md` V9 may change that expected exit to the harness value and
+the assertions that followed from it. Calls addressing state are not compared: the harness rejects
+`txn delete 1` at its point in the sequence, while a fresh criterion correctly expects `0` (run
+`20261020.191708`). Unrecognized shapes are skipped, never guessed. *Broken:* LayersTesting
+`20261020.183046` asserted `load categories sources/seed_categories.csv` exits `1` against
+`run.sh:67` expecting `0`, and no build could pass five criteria.
+
 `2026-10-18` · Python and Go support DATABASE.md persistence. Stack validation requires exactly one language and permits at most one database engine; other exclusive foundations retain their constraints. Cost when broken: the selected stack and generated runtime disagree.
 
 ### Mechanism
@@ -219,10 +230,9 @@ exist.
 
 ## Open Actions
 
-- `2026-10-20` · No deterministic check catches a criterion whose expected exit contradicts the
-  staged harness. LayersTesting `20261020.183046`: three criteria expected `load categories
-  sources/seed_categories.csv` to exit `1`; `sources/run.sh:67` (B2) expects `0`. Deferred: a
-  general harness-to-criterion comparison is not designed.
+- `2026-10-20` · Ed prefers declared expected exits to reading them from harness lines. If the
+  `harness-exit` heuristic misses or misreads a harness, replace it with an explicit declaration
+  (for example, an exit table the source names) rather than widening the line parser.
 
 ## Working Notes
 

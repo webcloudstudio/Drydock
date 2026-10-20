@@ -20,6 +20,11 @@ what the product should do — is not decidable from the text, and the analyzers
 decide it were retracted after failing specifications that had validated for weeks. A wrong-but-
 runnable criterion fails at build time on the evidence of its own traceback, which is a sounder
 authority than a prediction. This command judges only facts about the file.
+
+One exception is a fact about two files: a criterion that asserts an exit status for the exact
+command a staged harness line expects a different status for. The harness is the user's own test,
+so the criterion cannot pass it. Only calls that pass a staged file are compared
+(``harness_exits``).
 """
 
 from __future__ import annotations
@@ -48,6 +53,7 @@ from drydock.database_contract import (
     table_coverage_defects,
 )
 from drydock.errors import SpecificationError
+from drydock.harness_exits import contradictions, load_harness
 from drydock.rigging_contract import import_defects
 from drydock.story_guidance import load_guidance
 
@@ -229,6 +235,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
     warnings: list[str] = []
     checked_criteria = 0
     files = _blueprint_files(blueprint_dir)
+    harness = load_harness(blueprint_dir / "sources")
 
     for path in files:
         try:
@@ -321,6 +328,22 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                         "unresolved-global",
                         f"reads undefined global name(s): {rendered}; import or assign each "
                         "name inside this acceptance criterion",
+                    )
+                )
+                continue
+            if found := contradictions(check.code, harness):
+                defects.append(
+                    Defect(
+                        path.name,
+                        check.check_id,
+                        "harness-exit",
+                        "; ".join(
+                            f"asserts `{' '.join(call.argv)}` exits {call.exit_code}, but the "
+                            f"staged harness sources/{line.source}:{line.line} expects "
+                            f"{line.exit_code}; assert {line.exit_code} and correct any later "
+                            "assertion that followed from the wrong exit"
+                            for call, line in found
+                        ),
                     )
                 )
                 continue
