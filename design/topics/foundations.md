@@ -70,6 +70,8 @@ advertise persistence bindings that are not shipped.
 
 `2026-10-18` · Shipped persistence libraries and templates live in each language bundle. Python and Go implement declared operations on SQLite and PostgreSQL. PostgreSQL DDL adapts integer primary keys to generated identities; schema application does not migrate existing tables. Cost when broken: the selected stack and generated runtime disagree.
 
+`2026-10-20` · The Python `Database` translates every driver failure, including a refused connection, into `PersistenceError`; a `PersistenceError` raised by a driver passes through unchanged. Cost when broken: a raw driver exception escapes the shipped library and no build can repair it, because `persistence/` is copied unchanged.
+
 ### Mechanism
 
 `rigging_contract.py` parses `**Foundation:** <kind>` and the `## Foundation Contract` section from

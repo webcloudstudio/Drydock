@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-20: The shipped Python persistence library translates a refused or failed connection
+  into `PersistenceError` from every declared operation and from `Database.execute_script`. An
+  unreachable PostgreSQL server previously escaped as the raw driver exception, which no build
+  could repair because `persistence/` is copied into the Target unchanged.
+
 - 2026-10-20: The artifact-contract error raised by `drydock analyze`, `drydock plan` and the other
   delimited-artifact commands names where stray model text sits (before the first block, between
   blocks, after the last block, or with no block) and quotes its first line, truncated at 120

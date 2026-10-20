@@ -106,6 +106,36 @@ def test_a_driver_failure_is_translated_at_the_boundary(database):
         database.tickets.list(status="open")
 
 
+class _RefusingDriver(db.Driver):
+    """A driver whose server refuses every connection, as an unreachable PostgreSQL does."""
+
+    def connect(self):
+        raise ConnectionRefusedError("connection to server at 127.0.0.1, port 1 failed")
+
+    def close(self) -> None:
+        pass
+
+
+def test_a_refused_connection_is_translated_at_the_boundary():
+    database = db.Database("postgresql://127.0.0.1:1/app", SCHEMA, driver=_RefusingDriver())
+
+    with pytest.raises(db.PersistenceError, match="FEATURE-TICKET-003 could not connect"):
+        database.tickets.list(status="open")
+    with pytest.raises(db.PersistenceError, match="schema could not connect"):
+        database.execute_script(DDL)
+
+
+def test_a_persistence_error_from_connect_is_not_rewrapped():
+    class MissingDriver(_RefusingDriver):
+        def connect(self):
+            raise db.PersistenceError("no driver is installed")
+
+    database = db.Database("postgresql://localhost/app", SCHEMA, driver=MissingDriver())
+
+    with pytest.raises(db.PersistenceError, match="^no driver is installed$"):
+        database.tickets.list(status="open")
+
+
 def test_an_unsafe_identifier_is_refused_before_it_reaches_sql():
     with pytest.raises(db.PersistenceError, match="unsafe identifier"):
         db.Driver.quote('tickets"; DROP TABLE tickets; --')

@@ -132,7 +132,7 @@ file-exists stubs), and rejects a plan where no story carries it. Deferred becau
 
 ## Open Actions
 
--
+- `2026-10-20` · A pre-build `FileNotFoundError` raised in a criterion's own frame for a deliverable the story creates (`open("pyproject.toml")`) is classified ERROR/environment by `_environment_failure` (`src/drydock/acceptance.py`), and `build_run.py:299` then excludes ERROR criteria from the post-build run, so the criterion settles UNVERIFIED although it would pass. Seen in LayersTesting `scaffold-pyproject`, run 20261020.040609. Unfixed.
 
 ## Working Notes
 

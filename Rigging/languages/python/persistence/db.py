@@ -215,8 +215,7 @@ class Database:
 
     def execute_script(self, sql: str) -> None:
         """Apply generated DDL. The schema is built once, at the DATABASE build step."""
-        connection = self._driver.connect()
-        cursor = connection.cursor()
+        connection, cursor = self._open("schema")
         try:
             for statement in statements(self._driver.prepare_schema(sql)):
                 cursor.execute(statement)
@@ -241,8 +240,7 @@ class Database:
             raise PersistenceError(f"{operation.identifier} requires a delete predicate")
         names = [name for name in operation.inputs if name in arguments]
         values = [arguments[name] for name in names]
-        connection = self._driver.connect()
-        cursor = connection.cursor()
+        connection, cursor = self._open(operation.identifier)
         try:
             return self._dispatch(operation, cursor, connection, names, values)
         except Exception as exc:  # noqa: BLE001 - translated at the boundary on purpose
@@ -250,6 +248,16 @@ class Database:
             raise PersistenceError(f"{operation.identifier} failed: {exc}") from exc
         finally:
             cursor.close()
+
+    def _open(self, action: str) -> tuple[Any, Any]:
+        """Return a connection and cursor, translating a refused or failed connection."""
+        try:
+            connection = self._driver.connect()
+            return connection, connection.cursor()
+        except PersistenceError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - translated at the boundary on purpose
+            raise PersistenceError(f"{action} could not connect: {exc}") from exc
 
     def _dispatch(
         self,
