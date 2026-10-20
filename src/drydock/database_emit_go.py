@@ -243,6 +243,7 @@ def write_go_persistence(text: str, build_dir: Path) -> tuple[Path, ...]:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=30,
         )
         subprocess.run(
@@ -250,6 +251,7 @@ def write_go_persistence(text: str, build_dir: Path) -> tuple[Path, ...]:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=30,
         )
     except (OSError, subprocess.SubprocessError) as exc:

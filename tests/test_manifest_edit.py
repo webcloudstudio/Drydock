@@ -735,9 +735,13 @@ def test_apply_edit_normalize_persists(tmp_path):
     assert ids.index("schema") < ids.index("catalog")
 
 
-def test_computed_manifest_normalization_uses_shared_build_block_optimizer(tmp_path):
+def test_computed_manifest_normalization_uses_shared_build_block_optimizer(tmp_path, monkeypatch):
     """Both stories share one stack file, so the merge saves that file's assembled cost and
-    clears ``block_min_savings``. Two stories sharing nothing would stay in separate blocks."""
+    clears ``block_min_savings``. Two stories sharing nothing would stay in separate blocks.
+
+    The threshold is pinned below ``python.md``'s cost so trimming that Rigging file cannot
+    silently turn this into the decline case."""
+    monkeypatch.setenv("DRYDOCK_BLOCK_MIN_SAVINGS", "100")
     from drydock.build_plan import parse_build_plan
     from drydock.manifest_edit import optimize_build_blocks
 

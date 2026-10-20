@@ -98,6 +98,8 @@ def _apply_go_schema(build_dir: Path, *, env: dict[str, str] | None) -> SchemaAp
             env=env,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=APPLY_TIMEOUT_SECONDS,
             check=False,
         )
