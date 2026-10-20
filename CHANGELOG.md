@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-20: `drydock plan` requires every Programmatic Acceptance setup call to assert the success
+  its source declares (`plan_create.md` V40, `BLUEPRINTS_CONTRACT.md` V24). A criterion that
+  expected loading a valid staged asset to exit `1` created no state and failed against a correct
+  loader. The `drydock build` repair feedback no longer claims `AC_BROKEN:` ends the repair budget.
+  The claim is recorded as evidence and the budget is spent as for any other failure.
+
 - 2026-10-20: Acceptance binding treats a comma as a contract-token character, so an expected
   literal such as a declared CSV header `account,name,transactions,balance` or total row
   `TOTAL,,0,0.00` is no longer reported as re-typed. Such criteria now gate their stories, and

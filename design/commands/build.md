@@ -58,6 +58,9 @@ restored before grading. *Broken:* a block graded against tests it rewrote.
 
 `2026-07-23` · **The agent's own verdict is advisory.** A self-reported `FAILURE` does not fail a
 block that wrote files and carries criteria; `AC_BROKEN:` is evidence, not a stop.
+The repair feedback says the same (`_render_repair_feedback`, `2026-10-20`). *Broken:* feedback
+that promised `AC_BROKEN:` ends the budget spent a call the agent expected not to run (LayersTesting
+`20261020.183046`).
 
 `2026-08-13` · **A governed gate outranks model-authored criteria.** `ACCEPTANCE.json` is
 Commander-owned and runs directly; where it covers a story it decides. Without evidence a story
@@ -166,6 +169,10 @@ reset preserves `.git`. *Broken:* specification versions severed from code.
   `_BLUEPRINT_REPAIR_SIGNALS` (`cli.py`) recognizes. LayersTesting `20261020.161323` blocker: "The
   `load-transactions-valid` acceptance setup omits required account/category fixtures." A rerun
   repeats the failure. Deferred: phrase matching on agent prose is fragile.
+- `2026-10-20` · An `AC_BROKEN:` claim on a binding criterion has no route to AC repair:
+  `ac_repair.select_repairs` selects only `malformed` and `DISPUTED` criteria, so Recovery says
+  rerun `drydock build`, which cannot pass. LayersTesting `20261020.183046`, `transaction-post-read`.
+  Deferred: reverses the `90757da` decision that the claim is evidence, not a verdict.
 
 ## Working Notes
 

@@ -3167,6 +3167,31 @@ def test_repair_feedback_names_failing_checks_and_caps_size():
     assert "diagnose coherent root-cause clusters" in text
 
 
+def test_repair_feedback_says_ac_broken_stops_nothing():
+    # LayersTesting 20261020.183046: feedback promised AC_BROKEN "ends the repair budget", the
+    # agent emitted it, and the loop spent another call. The claim is evidence, not a stop.
+    class _Unit:
+        name = "Foundation"
+        block_id = "foundation"
+
+    failed = (
+        AcceptanceRunResult(
+            check_id="foundation-file",
+            source="DATABASE.md",
+            intent="Foundation writes its marker.",
+            passed=False,
+            return_code=1,
+            stdout="",
+            stderr="AssertionError",
+        ),
+    )
+    text = " ".join(_render_repair_feedback(_Unit(), failed, None, (), {}).split())
+    assert "`AC_BROKEN: <check-id>`" in text
+    assert "stops nothing" in text
+    assert "ends the repair budget" not in text
+    assert "sends the criterion back" not in text
+
+
 # A repair pass that reads only "the check failed" tunes output to match an expectation. When
 # the code under test was killed for exhausting memory or time, no expectation is reachable
 # until the unbounded loop or allocation is fixed, so the resource fact must lead the feedback.

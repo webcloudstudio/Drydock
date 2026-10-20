@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261020 V39
+version: 20261020 V40
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -298,7 +298,8 @@ Rules:
   creates every row, file, or record that its input refers to and that a source rule requires to
   exist. A valid transaction load first loads the account and category it names. A criterion that
   skips this setup fails against a correct product, and one that expects a rejection passes for the
-  wrong reason.
+  wrong reason. Every setup call asserts the success its source declares: a valid staged asset
+  loads with exit `0`, never `1`. A setup call that expects failure creates nothing.
 - Treat this as writing the failing tests first. For every story, the specs it implements together
   carry **several** executable assertions — generally one per distinct observable behavior, route,
   invariant, or error mode described in that spec. A single assertion for a multi-behavior spec is

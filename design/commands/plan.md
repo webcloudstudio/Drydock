@@ -140,6 +140,10 @@ or both a 2xx and a 5xx, is refused. See [acceptance_criteria](../topics/accepta
 refers to and that a source rule requires to exist. The rule is enforced by the prompt only. No
 deterministic check exists. *Broken:* a correct product fails an expected success, and an expected
 rejection passes for the wrong reason (LayersTesting `20261020.161323`, `load-transactions-valid`).
+Every setup call asserts the success its source declares; a setup call expecting failure creates
+nothing (`plan_create.md` V40, `BLUEPRINTS_CONTRACT.md` V24, `2026-10-20`). *Broken:* LayersTesting
+`20261020.183046` asserted `load categories sources/seed_categories.csv` exits `1`, and a correct
+loader failed `transaction-post-read`.
 
 `2026-10-18` · Python and Go support DATABASE.md persistence. Stack validation requires exactly one language and permits at most one database engine; other exclusive foundations retain their constraints. Cost when broken: the selected stack and generated runtime disagree.
 
@@ -215,7 +219,10 @@ exist.
 
 ## Open Actions
 
--
+- `2026-10-20` · No deterministic check catches a criterion whose expected exit contradicts the
+  staged harness. LayersTesting `20261020.183046`: three criteria expected `load categories
+  sources/seed_categories.csv` to exit `1`; `sources/run.sh:67` (B2) expects `0`. Deferred: a
+  general harness-to-criterion comparison is not designed.
 
 ## Working Notes
 

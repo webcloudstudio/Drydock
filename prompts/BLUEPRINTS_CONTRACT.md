@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261020 V23
+version: 20261020 V24
 ---
 
 ## Overview
@@ -541,7 +541,9 @@ and buys nothing. Each snippet imports what it uses and binds every name it read
 the action under test, it creates every row, file, or record that its input refers to and that a
 source rule requires to exist. A check that loads a transaction for account `A` first loads account
 `A`. Without that setup, a correct product rejects the input: an expected success fails, and an
-expected rejection passes for the wrong reason.
+expected rejection passes for the wrong reason. Every setup call asserts the success its source
+declares: a valid staged asset loads with exit `0`, never `1`. A setup call that expects failure
+creates nothing, and the action under test then runs against the empty application.
 
 **A check exercises the built application through the client its foundation publishes.** The
 Rigging file for the Target's web server, database and CLI publishes a `## Foundation Contract`

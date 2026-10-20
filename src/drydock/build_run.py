@@ -1811,10 +1811,10 @@ def _render_repair_feedback(
         "working through failing examples while the deterministic tally is improving.",
         "",
         "If a check below cannot pass however the code is written — the command it runs",
-        "succeeds and the assertion still fails — do not keep repairing. Report it with",
-        "`AC_BROKEN: <check-id>` and explain the contradiction in `FAILURE_DETAIL`. That",
-        "ends the repair budget and sends the criterion back for repair in the Blueprint,",
-        "which is where a broken assertion has to be fixed.",
+        "succeeds and the assertion still fails — report it with `AC_BROKEN: <check-id>`",
+        "and explain the contradiction in `FAILURE_DETAIL`. The report is recorded as",
+        "evidence and stops nothing: the repair budget is spent as for any other failure,",
+        "so keep the code correct and every other check green.",
         "",
     ]
     if regressed_checks:
