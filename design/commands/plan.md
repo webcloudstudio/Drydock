@@ -135,6 +135,12 @@ is reported.
 `2026-09-17` · **A criterion states one expectation.** A status set admitting `404` beside others,
 or both a 2xx and a 5xx, is refused. See [acceptance_criteria](../topics/acceptance_criteria.md).
 
+`2026-10-20` · **A criterion creates the state it depends on.** `plan_create.md` and
+`BLUEPRINTS_CONTRACT.md` require each AC block to create every row, file, or record that its input
+refers to and that a source rule requires to exist. The rule is enforced by the prompt only. No
+deterministic check exists. *Broken:* a correct product fails an expected success, and an expected
+rejection passes for the wrong reason (LayersTesting `20261020.161323`, `load-transactions-valid`).
+
 `2026-10-18` · Python and Go support DATABASE.md persistence. Stack validation requires exactly one language and permits at most one database engine; other exclusive foundations retain their constraints. Cost when broken: the selected stack and generated runtime disagree.
 
 ### Mechanism

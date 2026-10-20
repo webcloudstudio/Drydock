@@ -161,7 +161,11 @@ reset preserves `.git`. *Broken:* specification versions severed from code.
 
 ## Open Actions
 
--
+- `2026-10-20` · The acceptance-failure Recovery still says `drydock build <Target>` when the agent
+  disputes the criterion in prose that neither `_defective_acceptance_claim` (`build_run.py`) nor
+  `_BLUEPRINT_REPAIR_SIGNALS` (`cli.py`) recognizes. LayersTesting `20261020.161323` blocker: "The
+  `load-transactions-valid` acceptance setup omits required account/category fixtures." A rerun
+  repeats the failure. Deferred: phrase matching on agent prose is fragile.
 
 ## Working Notes
 

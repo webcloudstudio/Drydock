@@ -28,6 +28,22 @@ def test_numeric_arithmetic_is_not_an_assembled_string():
     assert retyped_expectations("assert total == a + b\n") == ()
 
 
+def test_a_declared_csv_header_or_row_is_a_contract_token():
+    # Regression shape from LayersTesting 20261020.161323: twelve report criteria were reported
+    # non-binding only because their source-declared CSV lines contain commas.
+    code = (
+        'assert rows[0] == "account,name,transactions,balance"\n'
+        'assert rows[-1] == "TOTAL,,0,0.00"\n'
+    )
+    assert retyped_expectations(code) == ()
+
+
+def test_a_comma_does_not_admit_whitespace_or_escapes():
+    assert retyped_expectations('assert out == "a, b"\n')
+    assert retyped_expectations('assert out == "a,b\\n"\n')
+    assert retyped_expectations('assert out == r"C:\\Users,x"\n')
+
+
 def test_an_assembled_string_supplied_as_input_is_the_round_trip():
     code = 'out = echo(f"hi {name}")\nassert out == f"hi {name}"\n'
     assert retyped_expectations(code) == ()

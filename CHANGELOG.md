@@ -10,6 +10,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-20: Acceptance binding treats a comma as a contract-token character, so an expected
+  literal such as a declared CSV header `account,name,transactions,balance` or total row
+  `TOTAL,,0,0.00` is no longer reported as re-typed. Such criteria now gate their stories, and
+  `drydock plan verify` and `drydock validate` stop warning about them. Whitespace, backslashes,
+  quotes, and non-ASCII still make a literal non-binding.
+
+- 2026-10-20: `drydock plan` requires every Programmatic Acceptance criterion to create the rows,
+  files, or records its input refers to before the action under test (`plan_create.md` V39,
+  `BLUEPRINTS_CONTRACT.md` V23). A valid-load criterion that named an account and category it
+  never created previously failed against a correct product, and rejection criteria passed for
+  the wrong reason.
+
 - 2026-10-20: The shipped Python and Go persistence libraries autocommit every statement and use no
   database transactions. Python connections open in autocommit mode and the per-write `commit()`
   and failure `rollback()` calls are removed; Go applies the schema without a transaction. The Go

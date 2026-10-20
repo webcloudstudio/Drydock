@@ -52,8 +52,9 @@ by an earlier block verifies a story that did nothing.
 that measures nothing counts as evidence.
 
 `2026-10-12` · **Binding.** A criterion is non-binding when it compares against a re-typed or
-assembled string not supplied as input; a literal found verbatim at its `Cite: sources/<file>:<line>`
-counts as derived, and a bad citation is a `bad-citation` plan defect. A non-binding miss settles
+assembled string not supplied as input; an ASCII contract token (letters, digits, `_./+,-`, so a
+declared CSV header or row qualifies, `2026-10-20`) and a literal found verbatim at its
+`Cite: sources/<file>:<line>` count as derived, and a bad citation is a `bad-citation` plan defect. A non-binding miss settles
 `DISPUTED`: reported, never charged, never repair feedback, never a regression or progress.
 
 `2026-10-12` · **A story verifies only on its own binding criterion that passed and was red before

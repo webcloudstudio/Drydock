@@ -160,6 +160,17 @@ class TestInputTokens:
             "every block that calls `subprocess.run` contains its own `import subprocess`" in body
         )
 
+    def test_plan_create_makes_each_acceptance_check_create_its_own_state(self):
+        # Regression shape from LayersTesting 20261020.161323: a valid-load criterion named an
+        # account and category it never created, so a correct loader rejected it with exit 3.
+        prompt = load_prompt("plan_create")
+        plan = " ".join(prompt.body.split())
+        contract_path = prompt.path.parent / "BLUEPRINTS_CONTRACT.md"
+        contract = " ".join(contract_path.read_text(encoding="utf-8").split())
+
+        assert "Every `=== AC <id> ===` block creates the state it depends on." in plan
+        assert "**Every check creates the state it depends on.**" in contract
+
     def test_plan_create_preserves_commander_owned_story_ids(self):
         body = " ".join(load_prompt("plan_create").body.split())
 

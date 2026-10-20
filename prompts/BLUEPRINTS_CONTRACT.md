@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261012 V22
+version: 20261020 V23
 ---
 
 ## Overview
@@ -536,6 +536,12 @@ its own process from the build directory. Checks in the same file share no impor
 and no execution order. A snippet that reads a name another snippet bound raises `NameError` on
 every run — it reports UNVERIFIED rather than failing the build, which means it verifies nothing
 and buys nothing. Each snippet imports what it uses and binds every name it reads.
+
+**Every check creates the state it depends on.** A check starts from an empty application. Before
+the action under test, it creates every row, file, or record that its input refers to and that a
+source rule requires to exist. A check that loads a transaction for account `A` first loads account
+`A`. Without that setup, a correct product rejects the input: an expected success fails, and an
+expected rejection passes for the wrong reason.
 
 **A check exercises the built application through the client its foundation publishes.** The
 Rigging file for the Target's web server, database and CLI publishes a `## Foundation Contract`

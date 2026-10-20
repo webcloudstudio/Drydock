@@ -1273,13 +1273,15 @@ def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticA
 
 #: A string expectation an author cannot mis-escape: an identifier-shaped ASCII token. ``"string"``,
 #: ``"integer"``, ``"application/json"``, and ``"POST"`` are read off a declared interface and carry
-#: nothing to escape. Markup, whitespace, backslashes, quotes, and control characters are excluded:
+#: nothing to escape. A comma escapes nothing either, so a declared CSV header or row such as
+#: ``"account,name,transactions,balance"`` is a token. Markup, whitespace, backslashes, quotes, and
+#: control characters are excluded:
 #: each has to be escaped correctly twice — once building the input, once stating the expectation —
 #: and that is the assertion class that fails independently of the product.
 #:
 #: ``\Z`` rather than ``$``: ``$`` also matches before a trailing newline, which would admit exactly
 #: the rendered-output literals this is meant to exclude.
-_CONTRACT_TOKEN_RE = re.compile(r"[A-Za-z0-9_./+-]*\Z")
+_CONTRACT_TOKEN_RE = re.compile(r"[A-Za-z0-9_./+,-]*\Z")
 
 #: The path prefix that marks a staged, externally authored asset. A criterion whose verdict is
 #: such a runner's exit status did not invent its oracle.
