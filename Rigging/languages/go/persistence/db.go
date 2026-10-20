@@ -121,20 +121,13 @@ func Open(ctx context.Context, dsn string, schema Schema) (*Database, error) {
 // Close releases the database pool.
 func (db *Database) Close() error { return db.connection.Close() }
 
-// ApplySchema applies generated DDL in one transaction.
+// ApplySchema applies generated DDL. Every statement autocommits; there are no transactions.
 func (db *Database) ApplySchema(ctx context.Context, ddl string) error {
 	if db.engine == "postgres" {
 		ddl = postgresSchema(ddl)
 	}
-	tx, err := db.connection.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, ddl); err != nil {
-		return err
-	}
-	return tx.Commit()
+	_, err := db.connection.ExecContext(ctx, ddl)
+	return err
 }
 func (db *Database) placeholder(n int) string {
 	if db.engine == "postgres" {

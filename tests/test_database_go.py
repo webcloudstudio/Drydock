@@ -182,11 +182,7 @@ def test_go_create_on_a_text_key_returns_the_declared_row(tmp_path, go_env):
     go_env.pop("DRYDOCK_TEST_POSTGRES_DSN", None)
     blueprint = tmp_path / "blueprint"
     blueprint.mkdir()
-    (blueprint / "DATABASE.md").write_text(
-        _TEXT_KEY_DATABASE.replace("| VARCHAR(12) | Account", "| str | Account").replace(
-            "| VARCHAR(40) | Account", "| str | Account"
-        )
-    )
+    (blueprint / "DATABASE.md").write_text(_TEXT_KEY_DATABASE)
     build = tmp_path / "build"
     build.mkdir()
     (build / "go.mod").write_text("module example.test/target\n\ngo 1.22\n")
@@ -220,6 +216,12 @@ func TestCreateReturnsDeclaredRow(t *testing.T) {
 def test_go_generator_rejects_unknown_field_type():
     with pytest.raises(SpecificationError, match="Unsupported Go persistence field type"):
         render_go_schema(_DATABASE.replace("| status | str |", "| status | Mystery |"))
+
+
+def test_go_generator_maps_sql_column_types_to_go_types():
+    schema = render_go_schema(_TEXT_KEY_DATABASE)
+
+    assert "Account string" in schema and "Name string" in schema
 
 
 def test_go_generator_refuses_a_projection_it_cannot_supply():

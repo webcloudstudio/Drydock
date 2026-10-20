@@ -39,10 +39,23 @@ def _type(name: str) -> str:
         "bytes": "[]byte",
         "any": "any",
         "object": "any",
+        "varchar": "string",
+        "char": "string",
+        "character varying": "string",
+        "date": "string",
+        "timestamp": "string",
+        "bigint": "int64",
+        "smallint": "int64",
+        "real": "float64",
+        "double precision": "float64",
+        "numeric": "float64",
+        "decimal": "float64",
     }
     value = name.strip().lower()
     if value.endswith(" | none"):
         return "*" + _type(value.removesuffix(" | none"))
+    # A SQL column type such as VARCHAR(12) maps by its base name; the length is the schema's.
+    value = re.sub(r"\s*\(.*\)$", "", value)
     if value not in types:
         raise SpecificationError(
             f"Unsupported Go persistence field type {name!r}; declare a scalar type"

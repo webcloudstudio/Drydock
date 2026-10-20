@@ -215,11 +215,10 @@ class Database:
 
     def execute_script(self, sql: str) -> None:
         """Apply generated DDL. The schema is built once, at the DATABASE build step."""
-        connection, cursor = self._open("schema")
+        cursor = self._open("schema")
         try:
             for statement in statements(self._driver.prepare_schema(sql)):
                 cursor.execute(statement)
-            connection.commit()
         finally:
             cursor.close()
 
@@ -240,20 +239,18 @@ class Database:
             raise PersistenceError(f"{operation.identifier} requires a delete predicate")
         names = [name for name in operation.inputs if name in arguments]
         values = [arguments[name] for name in names]
-        connection, cursor = self._open(operation.identifier)
+        cursor = self._open(operation.identifier)
         try:
-            return self._dispatch(operation, cursor, connection, names, values)
+            return self._dispatch(operation, cursor, names, values)
         except Exception as exc:  # noqa: BLE001 - translated at the boundary on purpose
-            connection.rollback()
             raise PersistenceError(f"{operation.identifier} failed: {exc}") from exc
         finally:
             cursor.close()
 
-    def _open(self, action: str) -> tuple[Any, Any]:
-        """Return a connection and cursor, translating a refused or failed connection."""
+    def _open(self, action: str) -> Any:
+        """Return a cursor, translating a refused or failed connection."""
         try:
-            connection = self._driver.connect()
-            return connection, connection.cursor()
+            return self._driver.connect().cursor()
         except PersistenceError:
             raise
         except Exception as exc:  # noqa: BLE001 - translated at the boundary on purpose
@@ -263,7 +260,6 @@ class Database:
         self,
         operation: Operation,
         cursor: Any,
-        connection: Any,
         names: list[str],
         values: list[Any],
     ) -> Any:
@@ -279,7 +275,6 @@ class Database:
             key = operation.key or self._primary_key(table)
             cursor.execute(self._driver.insert(table, names, key), values)
             identity = self._driver.inserted_key(cursor)
-            connection.commit()
             if operation.row is None:
                 return identity
             # The declared Output row, read back so column defaults are included. A supplied key
@@ -300,11 +295,9 @@ class Database:
             assigned = [name for name in names if name != key]
             ordered = [values[names.index(name)] for name in assigned] + [values[names.index(key)]]
             cursor.execute(self._driver.update(table, assigned, [key]), ordered)
-            connection.commit()
             return cursor.rowcount
         if verb == "delete":
             cursor.execute(self._driver.delete(table, names), values)
-            connection.commit()
             return cursor.rowcount
         raise UnknownOperation(f"{operation.identifier} names unsupported verb {verb!r}")
 

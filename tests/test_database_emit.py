@@ -220,6 +220,26 @@ def test_the_generated_db_session_opens_a_store_with_the_schema_applied(tmp_path
     assert "SESSION OK" in result.stdout
 
 
+def test_writes_autocommit_with_no_transaction(tmp_path: Path):
+    build_dir = _emitted_build(tmp_path)
+
+    result = _run_in_build(
+        build_dir,
+        "import sys\n"
+        "from persistence import open_database\n"
+        "first = open_database('app.db')\n"
+        "first.execute_script(open('schema.sql').read())\n"
+        "created = first.tickets.create(status='open', title='T')\n"
+        "assert first.driver.connect().isolation_level is None\n"
+        "second = open_database('app.db')\n"
+        "assert [row.id for row in second.tickets.list(status='open')] == [created.id]\n"
+        "print('AUTOCOMMIT OK')\n",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AUTOCOMMIT OK" in result.stdout
+
+
 def test_apply_schema_creates_the_tables_in_the_default_store(tmp_path: Path, monkeypatch):
     # Regression shape from ReadingList Haiku 20261013.235724: the application opened
     # data/app.db, which nothing had applied schema.sql to, so every write raised

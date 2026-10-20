@@ -43,7 +43,8 @@ class SqliteDriver(Driver):
         if connection is None:
             if self._path != ":memory:":
                 Path(self._path).parent.mkdir(parents=True, exist_ok=True)
-            connection = sqlite3.connect(self._path)
+            # Autocommit: every statement is written when it runs. No transactions.
+            connection = sqlite3.connect(self._path, isolation_level=None)
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute("PRAGMA foreign_keys=ON")
             self._local.connection = connection

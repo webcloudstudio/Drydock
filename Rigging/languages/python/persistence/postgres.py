@@ -45,6 +45,8 @@ class PostgresDriver(Driver):
         connection = getattr(self._local, "connection", None)
         if connection is None:
             connection = _driver_module().connect(self._dsn)
+            # Autocommit: every statement is written when it runs. No transactions.
+            connection.autocommit = True
             self._local.connection = connection
         return connection
 

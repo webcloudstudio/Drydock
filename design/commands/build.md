@@ -106,6 +106,11 @@ key (the supplied key, else the engine's generated one); a create with no Output
 with no key, returns the key. *Broken:* criteria written against `DATABASE.md` fail on a SQLite
 rowid (LayersTesting `20261020.132808`).
 
+`2026-10-20` · **Persistence autocommits; there are no transactions.** Python connections open in
+autocommit mode and Go executes every statement, schema included, outside a transaction. Neither
+library commits, rolls back, or offers a transaction scope. A rejected command changes nothing by
+validating before its first write. *Broken:* builds hand-roll driver wrappers to fake a scope.
+
 **Lineage**
 
 `2026-10-05` · **Git deltas supply build lineage.** Every agent execution commits application
@@ -152,16 +157,11 @@ reset preserves `.git`. *Broken:* specification versions severed from code.
 
 ## Open Questions
 
-- `2026-10-20` · The Python persistence library commits after every write, which is autocommit by
-  hand, and offers no transaction scope. Replace it with autocommit connections and no commit
-  calls? That leaves a source rule such as "every command is one database transaction"
-  (LayersTesting `INSTRUCTIONS.md` rule 1) with no supported implementation.
+-
 
 ## Open Actions
 
-- `2026-10-20` · The Go emitter rejects SQL types in DTO fields (`VARCHAR(12)` raises
-  "Unsupported Go persistence field type"), while plans emit them, as LayersTesting's
-  `DATABASE.md` does. Python accepts them.
+-
 
 ## Working Notes
 

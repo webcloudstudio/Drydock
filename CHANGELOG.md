@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-20: The shipped Python and Go persistence libraries autocommit every statement and use no
+  database transactions. Python connections open in autocommit mode and the per-write `commit()`
+  and failure `rollback()` calls are removed; Go applies the schema without a transaction. The Go
+  generator maps SQL column types in `DATABASE.md` fields, such as `VARCHAR(12)`, to Go types
+  instead of rejecting them.
+
 - 2026-10-20: A generated `create` operation in the shipped Python and Go persistence libraries
   returns the row declared as its `Output:` in `DATABASE.md`, read back by key, instead of the
   engine's inserted key. SQLite reported its internal rowid even for a text primary key, so a
