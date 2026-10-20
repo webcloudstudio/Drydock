@@ -379,14 +379,14 @@ def test_canonical_specification_documents_current_command_surface():
     phase_headings = (
         "## SAIL Phase 1 — Set Up: Laying the Keel",
         "## SAIL Phase 2 — Agile Analyze: Charting the Course",
-        "## SAIL Phase 3 — Implement: Sailing the Frontier",
+        "## SAIL Phase 3 — Implement: Building The Software",
         "## SAIL Phase 4 — Loop: The Refit",
     )
     assert [specification.index(heading) for heading in phase_headings] == sorted(
         specification.index(heading) for heading in phase_headings
     )
     for phase in specification.split("## SAIL Phase ")[1:]:
-        assert "### Commands" in phase
+        assert "\n### drydock " in phase
 
 
 def test_every_theme_defines_a_readable_code_block_foreground(tmp_path: Path):
