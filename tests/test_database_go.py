@@ -12,7 +12,7 @@ from drydock.database_apply import apply_schema
 from drydock.database_emit import write_persistence_package
 from drydock.database_emit_go import render_go_schema
 from drydock.errors import SpecificationError
-from tests.test_database_emit import _DATABASE
+from tests.test_database_emit import _DATABASE, _TEXT_KEY_DATABASE
 
 _EXTRA_PATTERNS = """
 ### FEATURE-TICKET-003 — Get ticket
@@ -144,8 +144,9 @@ func TestDeclaredOperations(t *testing.T) {
  ddl,err:=os.ReadFile("schema.sql");if err!=nil {t.Fatal(err)}
  db,cleanup,err:=persistence.OpenSession(ctx,os.Getenv("DRYDOCK_TEST_POSTGRES_DSN"),string(ddl))
  if err!=nil {t.Fatal(err)};defer cleanup()
- id,err:=db.Tickets.Create(ctx,persistence.TicketsCreateInput{Status:"open",Title:"bound ' value"})
- if err!=nil {t.Fatal(err)}
+ created,err:=db.Tickets.Create(ctx,persistence.TicketsCreateInput{Status:"open",Title:"bound ' value"})
+ if err!=nil || created==nil {t.Fatalf("create: %v %v",created,err)}
+ id:=created.Id
  rows,err:=db.Tickets.List(ctx,persistence.TicketsListInput{Status:"open"})
  if err!=nil {t.Fatal(err)}
  found:=false;for _,row:=range rows {if row.Id==id && row.Title=="bound ' value" {found=true}}
@@ -164,6 +165,50 @@ func TestDeclaredOperations(t *testing.T) {
  row,err=db.Tickets.Get(ctx,persistence.TicketsGetInput{Id:id})
  if err!=nil || row!=nil {t.Fatalf("deleted row: %v %v",row,err)}
  if _,err=db.Run(ctx,"tickets","drop",nil);err==nil {t.Fatal("undeclared operation accepted")}
+}
+""")
+    result = subprocess.run(
+        ["go", "test", "./..."], cwd=build, env=go_env, capture_output=True, text=True, timeout=120
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_go_create_on_a_text_key_returns_the_declared_row(tmp_path, go_env):
+    # Regression shape from LayersTesting Haiku 20261020.132808: create returned the SQLite
+    # rowid, not the declared AccountRow output.
+    if not shutil.which("gcc"):
+        pytest.skip("C compiler required for Go SQLite")
+    go_env = dict(go_env)
+    go_env.pop("DRYDOCK_TEST_POSTGRES_DSN", None)
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "DATABASE.md").write_text(
+        _TEXT_KEY_DATABASE.replace("| VARCHAR(12) | Account", "| str | Account").replace(
+            "| VARCHAR(40) | Account", "| str | Account"
+        )
+    )
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / "go.mod").write_text("module example.test/target\n\ngo 1.22\n")
+    from drydock.technology_stack import StackEntry, write
+
+    write(tmp_path, [StackEntry("Go", "go.md"), StackEntry("SQLite", "sqlite.md")])
+    write_persistence_package(blueprint, build)
+    (build / "store_test.go").write_text("""package target
+import (
+ "context"
+ "os"
+ "testing"
+ "drydock.local/persistence"
+)
+func TestCreateReturnsDeclaredRow(t *testing.T) {
+ ctx:=context.Background()
+ ddl,err:=os.ReadFile("schema.sql");if err!=nil {t.Fatal(err)}
+ db,cleanup,err:=persistence.OpenSession(ctx,"",string(ddl))
+ if err!=nil {t.Fatal(err)};defer cleanup()
+ account,name:="TXNA1","Commit Test"
+ row,err:=db.Accounts.Create(ctx,persistence.AccountsCreateInput{Account:&account,Name:&name})
+ if err!=nil || row==nil || row.Account!="TXNA1" || row.Name!="Commit Test" {t.Fatalf("create: %v %v",row,err)}
 }
 """)
     result = subprocess.run(

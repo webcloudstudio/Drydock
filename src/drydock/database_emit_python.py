@@ -6,7 +6,7 @@ generated module beside them, so the repository surface a build implements is th
 declared rather than one re-derived from prose.
 
 The generated module contains no SQL. It carries the declared tables, the declared operations, and
-a row dataclass per read; statements are constructed by the driver for the engine in use.
+a row dataclass per read or create; statements are constructed by the driver for the engine in use.
 """
 
 from __future__ import annotations
@@ -51,16 +51,17 @@ def _identifier(name: str) -> str:
 
 
 def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, str]]:
-    """One dataclass per distinct read output, keyed by pattern id.
+    """One dataclass per distinct read or create output, keyed by pattern id.
 
-    Two patterns naming the same DTO share one class. Field annotations are emitted as written in
+    A create returns its declared Output row, as a read does. Two patterns naming the same DTO share one class. Field annotations are emitted as written in
     the declaration and never evaluated — ``from __future__ import annotations`` keeps them
     strings — so a declared type this module cannot import is preserved rather than dropped.
     """
     emitted: dict[str, str] = {}
     by_pattern: dict[str, tuple[str, str]] = {}
     for pattern in patterns:
-        if pattern.access != "read" or not pattern.outputs:
+        verbs = {operation.partition(".")[2] for operation in pattern.operations}
+        if not pattern.outputs or not verbs & {"get", "list", "create"}:
             continue
         name = _identifier(pattern.output_name or f"{pattern.identifier}Row")
         annotations = "\n".join(

@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-20: A generated `create` operation in the shipped Python and Go persistence libraries
+  returns the row declared as its `Output:` in `DATABASE.md`, read back by key, instead of the
+  engine's inserted key. SQLite reported its internal rowid even for a text primary key, so a
+  criterion written against the declared row failed with `AttributeError` and no build could
+  repair it. A create with no declared output, or a Go table with no key, still returns the key.
+
 - 2026-10-20: `drydock build` records a pre-build acceptance criterion whose own code raises
   `FileNotFoundError` as `VALID product-missing` instead of `ERROR environment`. A criterion that
   reads a deliverable its story creates, such as `pyproject.toml`, previously was excluded from

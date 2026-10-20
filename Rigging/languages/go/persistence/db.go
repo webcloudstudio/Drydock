@@ -228,32 +228,8 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 		if verb == "get" {
 			query += " LIMIT 1"
 		}
-		rows, err := db.connection.QueryContext(ctx, query, values...)
-		if err != nil {
-			return Result{}, err
-		}
-		defer rows.Close()
-		result := Result{Rows: []map[string]any{}}
-		for rows.Next() {
-			data := make([]any, len(columns))
-			pointers := make([]any, len(columns))
-			for i := range data {
-				pointers[i] = &data[i]
-			}
-			if err := rows.Scan(pointers...); err != nil {
-				return Result{}, err
-			}
-			row := map[string]any{}
-			for i, name := range columns {
-				if bytes, ok := data[i].([]byte); ok {
-					row[name] = string(bytes)
-				} else {
-					row[name] = data[i]
-				}
-			}
-			result.Rows = append(result.Rows, row)
-		}
-		return result, rows.Err()
+		rows, err := db.selectRows(ctx, query, columns, values)
+		return Result{Rows: rows}, err
 	case "create":
 		query := "INSERT INTO " + quote(table) + " DEFAULT VALUES"
 		if len(names) > 0 {
@@ -263,20 +239,33 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 			}
 			query = "INSERT INTO " + quote(table) + " (" + quoted(names) + ") VALUES (" + strings.Join(marks, ", ") + ")"
 		}
+		var id any
 		if db.engine == "postgres" && declared.Key != "" {
-			var id any
-			err := db.connection.QueryRowContext(ctx, query+" RETURNING "+quote(declared.Key), values...).Scan(&id)
-			return Result{ID: id}, err
+			if err := db.connection.QueryRowContext(ctx, query+" RETURNING "+quote(declared.Key), values...).Scan(&id); err != nil {
+				return Result{}, err
+			}
+		} else {
+			result, err := db.connection.ExecContext(ctx, query, values...)
+			if err != nil {
+				return Result{}, err
+			}
+			if db.engine != "postgres" {
+				if id, err = result.LastInsertId(); err != nil {
+					return Result{}, err
+				}
+			}
 		}
-		result, err := db.connection.ExecContext(ctx, query, values...)
-		if err != nil {
-			return Result{}, err
+		if declared.Key == "" || len(op.Columns) == 0 {
+			return Result{ID: id}, nil
 		}
-		if db.engine == "postgres" {
-			return Result{}, nil
+		// The declared Output row, read back so column defaults are included. A supplied key
+		// wins over the engine's report: SQLite's LastInsertId is the rowid, not a text key.
+		if supplied, ok := arguments[declared.Key]; ok {
+			id = supplied
 		}
-		id, err := result.LastInsertId()
-		return Result{ID: id}, err
+		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates([]string{declared.Key}, 0)
+		rows, err := db.selectRows(ctx, query, op.Columns, []any{id})
+		return Result{Rows: rows, ID: id}, err
 	case "update":
 		key, ok := arguments[declared.Key]
 		if declared.Key == "" || !ok {
@@ -309,6 +298,36 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 		return Result{Count: count}, err
 	}
 	return Result{}, ErrUnknownOperation
+}
+
+// selectRows runs a bound SELECT and returns each row keyed by column name.
+func (db *Database) selectRows(ctx context.Context, query string, columns []string, values []any) ([]map[string]any, error) {
+	rows, err := db.connection.QueryContext(ctx, query, values...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []map[string]any{}
+	for rows.Next() {
+		data := make([]any, len(columns))
+		pointers := make([]any, len(columns))
+		for i := range data {
+			pointers[i] = &data[i]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			return nil, err
+		}
+		row := map[string]any{}
+		for i, name := range columns {
+			if bytes, ok := data[i].([]byte); ok {
+				row[name] = string(bytes)
+			} else {
+				row[name] = data[i]
+			}
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
 }
 
 // Decode maps driver values into generated row structs, preserving conversion errors.

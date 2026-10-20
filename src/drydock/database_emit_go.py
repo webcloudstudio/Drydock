@@ -81,7 +81,12 @@ def render_go_schema(text: str) -> str:
                 raise SpecificationError(f"Go operation {operation} refers to an undeclared table")
             declared = table_map[table]
             column_names = {column.name for column in declared.columns}
-            for field in (*pattern.inputs, *(pattern.outputs if verb in ("get", "list") else ())):
+            # A keyed create returns its declared Output row, read back by key, as a get does.
+            keyed = any(column.primary_key for column in declared.columns)
+            returns_row = verb in ("get", "list") or (
+                verb == "create" and keyed and bool(pattern.outputs)
+            )
+            for field in (*pattern.inputs, *(pattern.outputs if returns_row else ())):
                 if field.name not in column_names:
                     raise SpecificationError(
                         f"Go operation {operation} refers to undeclared column {field.name}"
@@ -111,7 +116,7 @@ def render_go_schema(text: str) -> str:
                 f.name for f in pattern.outputs if f.name in {c.name for c in declared.columns}
             ]
             native = "any"
-            if verb in ("get", "list"):
+            if returns_row:
                 row = _export(pattern.output_name or table + "Row")
                 declare(
                     row,
@@ -120,8 +125,8 @@ def render_go_schema(text: str) -> str:
                         for f in pattern.outputs
                     ],
                 )
-                native = "*" + row if verb == "get" else "[]" + row
-                if verb == "get":
+                native = "[]" + row if verb == "list" else "*" + row
+                if verb != "list":
                     finish = f"if len(result.Rows)==0 {{return nil,nil}}; row,err:=Decode[{row}](result.Rows[0]); return &row,err"
                 else:
                     finish = f"return Decode[[]{row}](result.Rows)"

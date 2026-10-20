@@ -80,11 +80,70 @@ def test_the_generated_module_carries_the_declaration_and_no_sql():
     assert "SELECT" not in module and "?" not in module and "%s" not in module
 
 
-def test_a_write_pattern_gets_no_row_class():
+def test_a_create_pattern_gets_its_declared_output_row_class():
     module = render_schema_module(_DATABASE)
 
-    assert "class Ticketid:" not in module
-    assert "row=None" in module
+    assert "class TicketId:" in module
+    assert "verb='create',\n        inputs=('status', 'title'),\n        row=TicketId," in module
+
+
+_TEXT_KEY_DATABASE = """# DATABASE: Ledger
+
+## Access Patterns
+
+### FEATURE-ACCOUNT-001 — Create account
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-Account.md |
+| Access | write |
+| Repository operation | `accounts.create` |
+| Compatibility | unchanged |
+
+Input: AccountRow
+
+| Field | Type | Notes |
+|---|---|---|
+| account | VARCHAR(12) | Account code |
+| name | VARCHAR(40) | Account name |
+
+Output: AccountRow
+
+| Field | Type | Notes |
+|---|---|---|
+| account | VARCHAR(12) | Account code |
+| name | VARCHAR(40) | Account name |
+
+## `accounts`
+
+| Field | Type | Notes |
+|---|---|---|
+| account | VARCHAR(12) PK | |
+| name | VARCHAR(40) NOT NULL | |
+"""
+
+
+def test_create_on_a_text_key_returns_the_declared_row(tmp_path: Path):
+    # Regression shape from LayersTesting Haiku 20261020.132808: create returned SQLite's
+    # lastrowid (1), so `result.account` raised AttributeError on a declared AccountRow output.
+    blueprint_dir = tmp_path / "blueprint"
+    build_dir = tmp_path / "build"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text(_TEXT_KEY_DATABASE, encoding="utf-8")
+    write_persistence_package(blueprint_dir, build_dir)
+
+    result = _run_in_build(
+        build_dir,
+        "from persistence.testing import db_session\n"
+        "with db_session() as db:\n"
+        "    created = db.accounts.create(account='TXNA1', name='Commit Test')\n"
+        "    assert type(created).__name__ == 'AccountRow', created\n"
+        "    assert (created.account, created.name) == ('TXNA1', 'Commit Test'), created\n"
+        "print('CREATE OK')\n",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "CREATE OK" in result.stdout
 
 
 def test_the_emitted_package_runs_against_sqlite(tmp_path: Path):
@@ -111,9 +170,9 @@ sys.path.insert(0, {str(build_dir)!r})
 from {PACKAGE} import open_database
 db = open_database({str(build_dir / "app.db")!r})
 db.execute_script(open({str(build_dir / "schema.sql")!r}).read())
-identity = db.tickets.create(status="open", title="Plan discovery")
+created = db.tickets.create(status="open", title="Plan discovery")
 rows = db.tickets.list(status="open")
-assert [row.id for row in rows] == [identity], rows
+assert [row.id for row in rows] == [created.id], rows
 assert rows[0].title == "Plan discovery"
 print("ROUNDTRIP OK")
 """
@@ -152,8 +211,8 @@ def test_the_generated_db_session_opens_a_store_with_the_schema_applied(tmp_path
         build_dir,
         "from persistence.testing import db_session\n"
         "with db_session() as db:\n"
-        "    identity = db.tickets.create(status='open', title='T')\n"
-        "    assert [row.id for row in db.tickets.list(status='open')] == [identity]\n"
+        "    created = db.tickets.create(status='open', title='T')\n"
+        "    assert [row.id for row in db.tickets.list(status='open')] == [created.id]\n"
         "print('SESSION OK')\n",
     )
 

@@ -73,7 +73,7 @@ db = open_database(config.database_path)
 from persistence.testing import db_session
 
 with db_session() as db:
-    row_id = db.<table>.create(...)
+    row = db.<table>.create(...)  # the declared Output row
 
 # conftest.py
 import pytest

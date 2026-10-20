@@ -101,6 +101,11 @@ file with a warning; a refit ticket's lineage enters in full.
 from `DATABASE.md`, before the step that implements it (`2026-10-14`). Indexes are derived: FK
 child columns and `read` pattern inputs. *Broken:* a schema reinterpreted on every build.
 
+`2026-10-20` · **A create returns its declared Output row.** Python and Go read the row back by its
+key (the supplied key, else the engine's generated one); a create with no Output, or a Go table
+with no key, returns the key. *Broken:* criteria written against `DATABASE.md` fail on a SQLite
+rowid (LayersTesting `20261020.132808`).
+
 **Lineage**
 
 `2026-10-05` · **Git deltas supply build lineage.** Every agent execution commits application
@@ -147,11 +152,16 @@ reset preserves `.git`. *Broken:* specification versions severed from code.
 
 ## Open Questions
 
--
+- `2026-10-20` · The Python persistence library commits after every write, which is autocommit by
+  hand, and offers no transaction scope. Replace it with autocommit connections and no commit
+  calls? That leaves a source rule such as "every command is one database transaction"
+  (LayersTesting `INSTRUCTIONS.md` rule 1) with no supported implementation.
 
 ## Open Actions
 
--
+- `2026-10-20` · The Go emitter rejects SQL types in DTO fields (`VARCHAR(12)` raises
+  "Unsupported Go persistence field type"), while plans emit them, as LayersTesting's
+  `DATABASE.md` does. Python accepts them.
 
 ## Working Notes
 

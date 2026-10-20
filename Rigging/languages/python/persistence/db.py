@@ -64,7 +64,7 @@ class Operation:
 
     ``inputs`` are the parameters the caller supplies; for ``get``, ``list``, and ``delete`` they
     are the predicate, and for ``create`` and ``update`` they are the values written. ``row`` is
-    the dataclass a read returns, and ``columns`` are the columns it selects.
+    the dataclass a read or a create returns, and ``columns`` are the columns it selects.
     """
 
     identifier: str
@@ -280,7 +280,17 @@ class Database:
             cursor.execute(self._driver.insert(table, names, key), values)
             identity = self._driver.inserted_key(cursor)
             connection.commit()
-            return identity
+            if operation.row is None:
+                return identity
+            # The declared Output row, read back so column defaults are included. A supplied key
+            # wins over the engine's report: SQLite's lastrowid is the rowid, not a text key.
+            if key is None:
+                return self._build(operation, names, values)
+            if key in names:
+                identity = values[names.index(key)]
+            columns = operation.columns or self._columns(table)
+            cursor.execute(self._driver.select(table, columns, [key]), [identity])
+            return self._build(operation, columns, cursor.fetchone())
         if verb == "update":
             key = operation.key or self._primary_key(table)
             if key is None or key not in names:
