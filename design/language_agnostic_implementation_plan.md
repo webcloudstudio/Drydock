@@ -3,44 +3,32 @@
 | Field | Value |
 |---|---|
 | Date | 2026-10-19 |
-| Status | Proposed implementation plan; revised after review |
+| Status | Proposed implementation plan; simplified after review |
 | Branch | `main` only |
-| Initial Target languages | Python and Go |
-| Initial databases | SQLite and PostgreSQL |
+| Target languages | Python and Go |
+| Databases | SQLite and PostgreSQL |
 
-## Objective and boundaries
+## Objective and scope
 
-Drydock remains a Python application. It generates Target application code in the selected
-language. Every planning, build and repair step uses the same persisted selection.
+Drydock remains Python. It generates a Target in the language selected in
+`TECHNOLOGY_STACK.md`. Planning, compaction, build and repair use that selection.
 
-Drydock ships tested library code with the product, per language, under
-`Rigging/languages/<language>/`. Build agents write application code that calls these libraries;
-they do not write replacement libraries. The work adds minimal layers to existing mechanisms and
-does not rewrite the shipped, tested Python database library.
+The supported workflow is: select the stack, approve it, plan, then build. This work delivers
+that workflow for Python and Go. Changing languages on an already planned or built Target is
+outside scope; the operator starts a fresh Target. No language-switch recovery, plan fingerprints,
+automatic resets or new compact invalidation system are required.
 
-Excluded: Refit methodology, database versioning and change sets, impact analysis,
-per-criterion coverage and tracing, and any check that fails a build because of pre-existing
-Target code.
+Reuse the shipped language bundles, persistence generators, libraries and acceptance runners.
+Agents write application code that calls the libraries. Keep the existing Python implementation
+and correct-call behavior.
 
-## Settled decisions
+Also excluded: Refit methodology, database migrations/versioning, impact analysis, per-criterion
+coverage/tracing, and new gates that reject pre-existing Target code.
 
-- `TECHNOLOGY_STACK.md` in the Target directory is the only selection record.
-- Every Rigging file declares `**Type:**`. One configuration table states how many files of each
-  type a Target selects. Adding a type is one table row; no code change.
-- `language` is exactly one. `database` is zero or one. Other types follow the table.
-- `Type` governs selection counts only. Existing `Foundation`, `Tier` and `Category` fields keep
-  driving build order and the QuarterDeck grouping unchanged.
-- A language is selectable only when `Rigging/languages/<language>/` ships its bundle: the
-  language file, its compact and its libraries. Python and Go ship initially.
-- Drydock resolves and injects required prompt content. Correctness does not depend on an LLM
-  opening files.
-- Existing Python fallbacks stay. Required language selection makes them unreachable.
+## 1. Select a valid stack
 
-## Ordered implementation
-
-### 1. Type-based selection rules
-
-Add `Rigging/rigging_types.json`:
+`TECHNOLOGY_STACK.md` remains the only selection record. Add `**Type:**` to selectable Rigging
+files and use one count table, `Rigging/rigging_types.json`:
 
 ```json
 {
@@ -51,160 +39,81 @@ Add `Rigging/rigging_types.json`:
 }
 ```
 
-A type absent from the table has no limit. Add `**Type:**` to every selectable Rigging file;
-rename `persistence-engine` to `database`. One validation function in `technology_stack.py`
-reads the table and returns every defect. QuarterDeck save, stack approval, planning and build
-preflight call that function; none carries its own rule.
+Types absent from the table have no count limit. Rename `persistence-engine` to `database`.
+Existing `Foundation`, `Tier` and `Category` fields retain their ordering and grouping roles.
+Adding a count rule requires one table row, not another validator.
 
-`declared_language` reads only the selected language file. A free-text row naming a language
-does not establish or override the selection.
+One function in `technology_stack.py` validates counts, shipped language availability and
+language prerequisites. Save, approval, planning and build use it. Resolve language from the
+selected Rigging file, never from a free-text technology name. Python and Go are selectable
+because each ships its language file, compact and libraries under `Rigging/languages/`.
 
-Existing `Prerequisite:` lines are the dependency source. Refuse a selection whose
-prerequisites name a different language (Go plus FastAPI). Audit prerequisite lines that name
-`python.md` without requiring Python (`terraform.md`, `aws-*.md`, `github-actions.md`) so they
-do not reject Go stacks.
+Use existing `Prerequisite:`/`Prerequisites:` declarations to reject incompatible selections
+such as Go plus FastAPI. Remove incidental Python prerequisites from language-independent
+infrastructure guidance. Keep CLI, FastAPI, Flask and Django guidance Python-specific.
 
-Acceptance:
+QuarterDeck renders each `max: 1` type as a radio group; optional types include None. The table
+excludes those files from its dropdown. Autosave may retain an invalid draft and shows the
+shared validator's errors. Approval, planning and build require a valid stack; planning and
+build also require approval before an LLM call. Changing language or database clears approval.
 
-- Zero or two languages are refused. Two databases are refused. No database is accepted.
-- Go plus FastAPI is refused, naming the conflicting prerequisite.
-- A new type added to the table is enforced without code changes.
+## 2. Supply the selected language everywhere
 
-### 2. QuarterDeck selection and approval process
+The language foundation receives the full language file. Every other build and repair prompt
+receives its shipped compact, even when the block's `stack:` omits the language. Include it once
+and count it in prompt sizing. Missing required guidance is an ordinary resource error.
 
-Current behavior (`QuarterDeck/app.py`, `technology_stack.py`):
+Pass the selected language into Target compaction jobs so database, architecture and contract
+compacts describe interfaces in that language. Keep the existing compaction lifecycle and
+freshness rules. Rigging compaction remains unchanged: `go.md` supplies `go_compact.md`, and
+`python.md` supplies `python_compact.md`.
 
-| Gap | Today |
+Use existing planning context and language resolution; close omissions rather than add a
+parallel context mechanism. Existing Python fallbacks can remain behind validated selection.
+
+## 3. Build native applications with shipped libraries
+
+Complete Go guidance with standard-library CLI and `net/http` application layouts and native
+test fixtures. Keep the root application module and nested persistence module consistent.
+The language foundation initializes the project before persistence generation; Go's root
+`go.mod` must exist before linking the persistence module.
+
+Use the existing generators and shipped Python/Go persistence libraries for SQLite and
+PostgreSQL. SQL enforces required columns, nullability, defaults and other schema constraints.
+The library returns useful errors; it does not duplicate schema validation or add required-column
+metadata.
+
+Keep basic interface checks: declared operations and inputs only, and required keys for keyed
+operations. A keyless delete must fail without deleting rows. Verify database failures reach
+callers and valid calls retain their existing behavior. Do not redesign the library.
+
+## 4. Preserve native test results
+
+Carry native runner results through the outer acceptance executor: pass, failure, skipped or
+not-run, unavailable tool, compilation error and timeout. A skipped Go test is neither a pass
+nor an ordinary assertion failure. Timeouts terminate child processes. Reuse existing result
+and error handling rather than create another execution framework.
+
+## Verification and delivery
+
+Deliver one tested slice per local commit on `main`; no push. Use fake LLM runners only.
+
+| Area | Required evidence |
 |---|---|
-| Language choices | Radios list every `Foundation: language` file, including `typescript.md`, which ships no bundle |
-| Second language | A table row may select `go.md` while the radio holds `python.md`; `split_foundations` hides the second row, which the next autosave silently drops |
-| Database | Checkboxes; several may be selected |
-| Save | `api_set_technology_stack` writes any rows without validation |
-| Change after approval | Autosave carries the approval marker forward; a valid language switch stays approved |
+| Selection | Zero/two languages and two databases fail; selecting no database succeeds; Go plus FastAPI fails; a new count-table row is enforced |
+| QuarterDeck and CLI | Draft errors are visible; invalid approval fails; unapproved/invalid plan and build stop before an LLM call |
+| Context | Python and Go guidance reaches build/repair even without a block-level language entry; each Target compaction role receives the language |
+| Native applications | Temporary Python and Go CLI/HTTP fixtures work; language initialization precedes persistence generation |
+| Persistence | Both language libraries work with SQLite and PostgreSQL; keyless delete changes no rows; database errors reach callers |
+| Acceptance | Native outcomes remain distinguishable; timed-out child processes terminate |
+| Packaging | Installed-wheel language resources resolve correctly |
 
-Required process:
+Run lint and the regression suite. Report unavailable Go, CGO/C compiler or PostgreSQL DSN
+prerequisites as missing verification, never as passes. Do not run UAT or touch its evidence.
 
-1. **Select.** Each `max: 1` type renders as one radio group, with a None choice only when
-   `min` is `0`. The language group lists shipped bundles only and has no None choice. The
-   free-text table's Rigging dropdown excludes files whose type has a radio group, so a second
-   language or database cannot be entered there.
-2. **Save.** Autosave writes the draft and returns the validation defects. QuarterDeck shows
-   them inline beside the offending group. A draft may be invalid; it cannot be approved.
-3. **Approve.** Approval runs the shared validation and refuses with every defect listed.
-4. **Change.** Changing the language or database of an approved stack removes the approval
-   marker. QuarterDeck states that the plan and compacts must be regenerated. Editing other rows
-   keeps approval.
-5. **Consume.** Planning and build preflight refuse an unapproved or invalid stack before any
-   LLM call.
+Update README, changelog and affected design behavior in `foundations.md`, `run.md`, `plan.md`,
+`rigging.md`, `build.md` and `acceptance_criteria.md` with the implementation. Leave the master
+specification unchanged unless separately authorized.
 
-Acceptance:
-
-- The language group offers Python and Go only; exactly one is always selected.
-- The table cannot add a second language or database.
-- Saving two languages through the API returns the defect; approving it fails.
-- Switching an approved stack from Python to Go unapproves it.
-- Plan and build refuse an unapproved stack without invoking an LLM.
-
-### 3. Language context in build prompts
-
-Builders of a Rigging file receive the full file; consumers receive its compact (existing rule).
-Inject the selected language's `<language>_compact.md` into every build and repair prompt
-whether or not the block's `stack:` names it. The language foundation block receives the full
-file. Shared inclusions appear once; prompt sizing counts the injected compact.
-
-Acceptance:
-
-- A Go block whose `stack:` omits `go.md` receives `go_compact.md`.
-- A Python block receives `python_compact.md` the same way.
-
-### 4. Compaction by language
-
-Compaction is language-blind today: `rigging_compact.resolve_role` selects the architecture,
-database or contracts role by filename, and the three role prompts carry no language.
-
-- Pass the Target's selected language into the compaction job block for every role, so
-  `DATABASE_compact.md`, `ARCHITECTURE_compact.md` and contract compacts present interfaces and
-  call signatures in that language.
-- Record the language in each compact's provenance line. A compact whose recorded language
-  differs from the Target's selection is stale and is regenerated by the existing freshness
-  gate.
-- Rigging scope compaction is unchanged; language bundles keep their own compacts.
-
-Acceptance:
-
-- A Go Target's `DATABASE_compact.md` shows Go call signatures.
-- Switching the Target language marks Target compacts stale.
-- A fake runner verifies the language appears in each role's assembled prompt.
-
-### 5. Native application foundations
-
-`go.md` states the Go toolchain, tools and utilities, the standard-library CLI layout and the
-`net/http` server layout, with native test fixtures. `cli.md`, FastAPI, Flask and Django remain
-Python files through their prerequisites. The language foundation builds before persistence
-generation; the root `go.mod` exists before the Go persistence module is linked. Reconcile
-`go.md` with the nested persistence module.
-
-Acceptance:
-
-- Python and Go fixtures each demonstrate a CLI application and an HTTP application.
-- Persistence generation never precedes language initialization.
-
-### 6. Library errors and basic CRUD guards
-
-Keep the library interface simple. The database enforces required columns, nullability,
-defaults and other schema constraints. The library reports database failures to its caller;
-it does not duplicate schema validation or add required-column metadata to generated code.
-
-Retain basic operation guards in both languages:
-
-| Verb | Guard |
-|---|---|
-| `get`, `update`, `delete` | Key input required; refused before any SQL runs |
-| `list` | Declared filter inputs only |
-| All | Undeclared operation or input refused |
-
-Correct calls behave exactly as today. `delete` without its key raises and removes no rows
-(today it issues `DELETE FROM <table>`). Each guard has a Python and a Go unit test.
-Verify that database constraint failures reach callers as errors in both languages.
-
-### 7. Native acceptance outcomes
-
-Preserve native results through the outer executor: pass, failure, skipped/not-run,
-unavailable tool, compilation error and timeout stay distinct. A skipped Go test reported as
-`status: skip` must not become an ordinary failure. Timeouts terminate child processes.
-
-### 8. Verification and delivery
-
-One tested slice per local commit on `main`; no push. Update README, changelog and affected
-design `## Behavior` (`foundations.md`, `run.md`, `plan.md`, `rigging.md`). Fake LLM runners
-only. Verify installed-wheel resource resolution. Run lint and the regression suite. Report
-missing integration prerequisites (Go toolchain, PostgreSQL DSN) rather than treating skips as
-passes.
-
-## Completion criteria
-
-- QuarterDeck permits exactly one language and at most one database, from shipped bundles only.
-- One shared validation governs save, approval, planning and build.
-- Changing the language or database unapproves the stack.
-- Every build prompt carries the selected language's compact.
-- Target compacts are generated for, and keyed to, the selected language.
-- Python and Go libraries guard CRUD calls identically.
-- Native acceptance outcomes stay accurate.
-- Existing Python database behavior is unchanged for correct calls.
-
-## Open Actions — implementation review, 2026-10-19
-
-- **High — bind the plan to its selection (section 2).** Removing approval blocks build only
-  until the stack is approved again. Specify a persisted language/database fingerprint on the
-  generated plan and reject a mismatch before build or resume, including after reapproval.
-  `build_plan.stale_applied_specs` checks Blueprint records; the Target-level stack is outside
-  that check. Acceptance: plan Python, switch to Go, approve, then build without replanning;
-  build refuses before an LLM call. This checks generated-plan provenance, not existing code.
-- **Regenerate Target compacts after a language switch (section 4).** The shipped `go.md` and
-  `go_compact.md` already provide Go guidance. This action concerns Target-generated files such
-  as `DATABASE_compact.md`: regenerate those for Go before consuming them after a Python-to-Go
-  switch. Verify that unchanged source files do not cause old Python compacts to be reused.
-- **Delivery corrections (section 8).** Include `design/commands/build.md` and
-  `design/topics/acceptance_criteria.md` in affected behavior documentation. Native SQLite Go
-  verification also requires CGO and a C compiler, as declared by the shipped Go bundle;
-  report those prerequisites alongside the Go toolchain and PostgreSQL DSN.
+The work is complete when the supported select → approve → plan → build workflow passes these
+checks for Python and Go, with correct existing Python calls unchanged.
