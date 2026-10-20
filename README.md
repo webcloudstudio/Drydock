@@ -127,6 +127,11 @@ replaces any value inherited from the shell.
 | `max_output_tokens` | 128000 | Output tokens per response (`CLAUDE_CODE_MAX_OUTPUT_TOKENS`); the CLI caps it at the model maximum (Haiku 64000) |
 | `haiku_thinking_tokens` | 16000 | Haiku 4.x thinking budget (`MAX_THINKING_TOKENS`), drawn from the output limit; 0 disables it. Other models, including Haiku 5.5 and the `haiku` alias, size thinking from `--effort` |
 
+A Target whose stack selects `postgres.md` builds against the server named by `postgres_dsn`
+(`drydock config set postgres_dsn postgresql://<user>:<password>@<host>:<port>/<database>`).
+`drydock build`, `drydock score ac` and `drydock score release` stop with exit 1 when it is not
+set; `drydock config show` masks the password. See `docs/HOW_TO_SETUP_POSTGRES.md`.
+
 A text-only command whose response reaches the output limit fails with exit 1 and a
 `FATAL ERROR - LLM OUTPUT TRUNCATED` block naming the limit, the thinking spent, the artifact
 that was cut, and the setting to change. Nothing from the response is written.

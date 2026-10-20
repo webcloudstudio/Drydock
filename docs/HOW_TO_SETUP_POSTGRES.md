@@ -1,16 +1,19 @@
 # How To Set Up PostgreSQL for a Drydock Target
 
 A Target uses PostgreSQL when its `TECHNOLOGY_STACK.md` selects `postgres.md`. Drydock generates
-the `persistence/` package from `DATABASE.md`; the application and Drydock's own schema step
-connect through one connection string read from `DATABASE_URL`.
+the `persistence/` package from `DATABASE.md`. The `drydock config` key `postgres_dsn` names the
+server; Drydock passes it to the schema step, acceptance runs and the application as
+`DATABASE_URL`.
 
 ## 1. Facts
 
 | Item | Value |
 |---|---|
 | Stack selection | `postgres.md` (database), with `python.md` or `go.md` (language) |
-| Connection string | `DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/<database>` |
-| Fallback when unset | `DATABASE_PATH`, then the SQLite file `data/app.db` |
+| Connection string | `drydock config set postgres_dsn postgresql://<user>:<password>@<host>:<port>/<database>` |
+| Environment override | `POSTGRES_DSN` |
+| Passed to the Target as | `DATABASE_URL` |
+| When unset | `drydock build`, `drydock score ac` and `drydock score release` stop with exit 1 |
 | Python driver | `psycopg[binary]` in the Target's dependencies |
 | Go driver | `github.com/lib/pq`, pinned in the shipped persistence module |
 | Schema | `schema.sql`, generated from `DATABASE.md`, `CREATE ... IF NOT EXISTS` |
@@ -48,16 +51,19 @@ sudo -u postgres createdb marina                         # native
 
 ## 4. Point Drydock at It
 
-Export `DATABASE_URL` in the shell that runs `drydock build`, `drydock score` and QuarterDeck.
-Every child process — schema step, acceptance runs, the application — inherits it.
-
 ```bash
-export DATABASE_URL=postgresql://postgres:drydock@localhost:5432/marina
-psql "$DATABASE_URL" -c "select 1"                       # confirm the connection
+drydock config set postgres_dsn postgresql://postgres:drydock@localhost:5432/marina
+drydock config show                                      # password shown as ***
+psql postgresql://postgres:drydock@localhost:5432/marina -c "select 1"   # confirm the connection
 ```
 
-Keep the password out of the repository. Put the export in your shell profile or a local,
-untracked environment file.
+The value is stored in the user configuration file, never in the repository. The setting applies
+to every Target. To build a second Target against its own database, override it for that
+command:
+
+```bash
+POSTGRES_DSN=postgresql://postgres:drydock@localhost:5432/other drydock build Other
+```
 
 ## 5. Select, Approve, Plan, Build
 
@@ -65,10 +71,16 @@ untracked environment file.
 2. `drydock plan <Target>`
 3. `drydock build <Target>`
 
-For a Python Target, the build log reports `schema applied to postgresql://...` at the DATABASE
-block. If it reports `data/app.db`, `DATABASE_URL` was not set in that shell and the build ran
-against SQLite. A Go Target reports only `schema applied`; confirm with
-`psql "$DATABASE_URL" -c "\dt"` that the tables exist.
+If `postgres_dsn` is not set, the build stops before any work with:
+
+```text
+postgres.md is selected but no PostgreSQL connection string is configured.
+  Run: drydock config set postgres_dsn postgresql://<user>:<password>@<host>:<port>/<database>
+```
+
+The build log reports `persistence: schema applied` at the DATABASE block. Confirm the tables
+with `psql <dsn> -c "\dt"`. A wrong host, password or database fails that step and stops the
+build.
 
 For a Python Target, confirm `psycopg[binary]` is in `pyproject.toml`. Without it the schema step
 fails with `PostgreSQL was selected by the DSN but no driver is installed`.
@@ -76,7 +88,8 @@ fails with `PostgreSQL was selected by the DSN but no driver is installed`.
 ## 6. Verify the Shipped Libraries (Drydock Developers)
 
 Drydock's own test suite runs its PostgreSQL integration tests only when given a disposable
-database. These tests create and drop their own schemas.
+database. These tests create and drop their own schemas, so they read a separate variable,
+never `postgres_dsn`, and cannot reach a Target database.
 
 ```bash
 docker exec drydock-pg createdb -U postgres drydock_test
@@ -97,6 +110,7 @@ Without `DRYDOCK_TEST_POSTGRES_DSN` these tests are skipped, not passed.
 - **No migrations.** `CREATE ... IF NOT EXISTS` never alters an existing table. After changing a
   table in `DATABASE.md`, drop and recreate the Target database:
   `dropdb marina && createdb marina`.
-- **Silent SQLite fallback.** Selecting `postgres.md` does not by itself connect to PostgreSQL;
-  only `DATABASE_URL` does. Check the build log as in step 5.
-- **One database per Target.** Reusing a database across Targets mixes their tables.
+- **One database per Target.** `postgres_dsn` is shared by every Target. Reusing one database
+  across Targets mixes their tables; override `POSTGRES_DSN` per Target as in step 4.
+- **Connection checked at the DATABASE block.** Drydock checks that `postgres_dsn` is set before
+  the build starts, but first connects at the DATABASE block, after the language foundation.

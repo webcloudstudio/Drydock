@@ -122,6 +122,21 @@ class TestConfigSet:
         with pytest.raises(ConfigurationError, match="non-negative integer"):
             config_set("sandbox_mem_limit", "2GB")
 
+    def test_postgres_dsn_round_trips_and_is_masked_in_show(self, isolated_config):
+        config_set("postgres_dsn", "postgresql://app:secret@localhost:5432/marina")
+        assert config.get_postgres_dsn() == "postgresql://app:secret@localhost:5432/marina"
+        rows = {row[0]: row[1] for row in config_show()}
+        assert rows["postgres_dsn"] == "postgresql://app:***@localhost:5432/marina"
+
+    def test_postgres_dsn_rejects_a_non_postgres_scheme(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="postgresql://"):
+            config_set("postgres_dsn", "data/app.db")
+
+    def test_empty_postgres_dsn_clears_the_setting(self, isolated_config):
+        config_set("postgres_dsn", "postgres://localhost/marina")
+        config_set("postgres_dsn", "")
+        assert config.get_postgres_dsn() is None
+
     def test_sandbox_mem_limit_is_shown(self, isolated_config):
         assert any(row[0] == "sandbox_mem_limit" for row in config_show())
 

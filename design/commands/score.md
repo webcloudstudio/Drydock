@@ -36,6 +36,10 @@ drydock score <Target>                           read-only summary of the last r
 
 ### Rules
 
+`2026-10-19` · **`score ac` and `score release` require `postgres_dsn` for a `postgres.md`
+stack** and export it as `DATABASE_URL`, as build does. Cost when broken: scoring observes a
+SQLite store the stack did not select.
+
 `2026-08-13` · **Release observes the finished tree; build history is not evidence.** `score
 release` runs the governed gate and every command a trial names, reads the files trials cite, and
 lets the grader write an ephemeral probe for a behavior with no command. AC results, block states,

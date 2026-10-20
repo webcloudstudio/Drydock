@@ -35,6 +35,11 @@ acceptance-only failures as `UNVERIFIED` before continuing.
 
 ### Rules
 
+`2026-10-19` · **A `postgres.md` stack requires `postgres_dsn`.** Build refuses before any
+mutation or model call when it is unset, and otherwise exports it as `DATABASE_URL` to schema
+application, acceptance runs and the application. Cost when broken: the build silently falls back
+to SQLite and never exercises PostgreSQL.
+
 `2026-10-19` · Build requires a valid approved stack before mutation or model execution. The language foundation receives full language guidance; all other build and repair prompts receive the shipped compact once, included in prompt costing. Keyed persistence operations require their declared key; keyless deletes fail before SQL. SQL owns schema validation. Breaking these rules risks wrong-language code or unintended deletion.
 
 **Guards**

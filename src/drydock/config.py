@@ -30,7 +30,10 @@ _KEY_MAP = {
     "max_output_tokens": "DRYDOCK_MAX_OUTPUT_TOKENS",
     "haiku_thinking_tokens": "DRYDOCK_HAIKU_THINKING_TOKENS",
     "block_min_savings": "DRYDOCK_BLOCK_MIN_SAVINGS",
+    "postgres_dsn": "POSTGRES_DSN",
 }
+
+POSTGRES_SCHEMES = ("postgresql://", "postgres://")
 
 #: Keys whose value is a plain count, with the smallest value each accepts and the wording used
 #: when one is rejected. Every other key in ``_KEY_MAP`` that is not handled explicitly is a
@@ -351,6 +354,21 @@ def get_block_min_savings() -> int:
     return tokens
 
 
+def get_postgres_dsn() -> str | None:
+    """Return the PostgreSQL connection string a ``postgres.md`` Target builds against."""
+    value, _source = _get("POSTGRES_DSN")
+    return (value or "").strip() or None
+
+
+def mask_dsn(dsn: str) -> str:
+    """Hide the password in a connection string for display."""
+    scheme, sep, rest = dsn.partition("://")
+    credentials, at, host = rest.rpartition("@")
+    if not sep or not at or ":" not in credentials:
+        return dsn
+    return f"{scheme}://{credentials.split(':', 1)[0]}:***@{host}"
+
+
 def get_quarterdeck_port() -> int:
     value, _source = _get("QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT))
     try:
@@ -549,8 +567,11 @@ def config_show() -> list[tuple[str, str, str]]:
             "DRYDOCK_HAIKU_THINKING_TOKENS",
             str(DEFAULT_HAIKU_THINKING_TOKENS),
         ),
+        ("postgres_dsn", "POSTGRES_DSN", "(not set)"),
     ):
         value, source = _get(key_upper, default)
+        if key_upper == "POSTGRES_DSN" and value:
+            value = mask_dsn(value)
         # A cleared key holds an empty value; report what actually governs, not "(not set)".
         empty_label = "(provider default)" if key_upper == "DRYDOCK_EFFORT" else "(not set)"
         rows.append((display_key, value or empty_label, source))
@@ -628,6 +649,14 @@ def config_set(key: str, value: str) -> Path:
             raise ConfigurationError(
                 f"Invalid diagnose: {value!r}\n"
                 f"  Valid values: {', '.join(sorted(_TRUE_VALUES | _FALSE_VALUES))}"
+            )
+    elif upper == "POSTGRES_DSN":
+        # Empty clears the setting.
+        stored_value = value.strip()
+        if stored_value and not stored_value.startswith(POSTGRES_SCHEMES):
+            raise ConfigurationError(
+                f"Invalid postgres_dsn: {mask_dsn(value)!r}\n"
+                "  Expected postgresql://<user>:<password>@<host>:<port>/<database>."
             )
     elif upper in _NUMERIC_BOUND_KEYS:
         # The execution bounds are counts, not paths. Without this they fall through to the

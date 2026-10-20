@@ -422,3 +422,37 @@ def test_new_count_rule_is_enforced(monkeypatch):
         StackEntry("Secrets", "env_variables_and_secrets.md"),
     ])
     assert any("guidance: 2" in error for error in errors)
+
+
+def test_postgres_without_a_connection_string_is_refused(tmp_path, isolated_config):
+    import pytest
+
+    from drydock.errors import SpecificationError
+
+    technology_stack.write(tmp_path, [StackEntry("Go", "go.md"), StackEntry("PG", "postgres.md")])
+    with pytest.raises(SpecificationError, match="drydock config set postgres_dsn"):
+        technology_stack.require_database_connection(tmp_path)
+
+
+def test_postgres_connection_string_is_exported_as_database_url(
+    tmp_path, isolated_config, monkeypatch
+):
+    import os
+
+    from drydock.config import config_set
+
+    # setenv registers a restore, so the exported value cannot leak into later tests.
+    monkeypatch.setenv("DATABASE_URL", "unset")
+    config_set("postgres_dsn", "postgresql://app:secret@localhost/marina")
+    technology_stack.write(tmp_path, [StackEntry("Go", "go.md"), StackEntry("PG", "postgres.md")])
+    technology_stack.require_database_connection(tmp_path)
+    assert os.environ["DATABASE_URL"] == "postgresql://app:secret@localhost/marina"
+
+
+def test_sqlite_needs_no_connection_string(tmp_path, isolated_config, monkeypatch):
+    import os
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    technology_stack.write(tmp_path, [StackEntry("Go", "go.md"), StackEntry("DB", "sqlite.md")])
+    technology_stack.require_database_connection(tmp_path)
+    assert "DATABASE_URL" not in os.environ

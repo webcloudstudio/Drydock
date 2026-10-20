@@ -4891,3 +4891,20 @@ def test_unapproved_stack_stops_before_model(tmp_path):
 
     with pytest.raises(SpecificationError, match="approval"):
         build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+
+def test_postgres_without_connection_stops_before_model(tmp_path, isolated_config):
+    from drydock.technology_stack import StackEntry, write
+
+    target_dir, build_dir = _setup(tmp_path)
+    write(
+        target_dir,
+        [StackEntry("Python", "python.md"), StackEntry("PostgreSQL", "postgres.md")],
+        approved="2026-10-19",
+    )
+
+    def runner(*args, **kwargs):
+        pytest.fail("Unconfigured PostgreSQL reached model")
+
+    with pytest.raises(SpecificationError, match="postgres_dsn"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)

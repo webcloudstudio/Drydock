@@ -553,6 +553,9 @@ def verify_acs(
     projection of every current Blueprint assertion. A scoped run (``step_id`` names a feature or
     story) verifies only that block's assertions and leaves the board untouched.
     """
+    from drydock.technology_stack import require_database_connection
+
+    require_database_connection(target_dir)
     manifest_path = target_dir / "MANIFEST.md"
     blueprint_dir = target_dir / "blueprint"
     plan = parse_build_plan(manifest_path)
@@ -855,6 +858,9 @@ def score_release(
     Writes ``SCORECARD.md`` and ``evidence/score-release.json``. The verdict is ``PASSED``,
     ``FAILED``, or ``ERROR``.
     """
+    from drydock.technology_stack import require_database_connection
+
+    require_database_connection(target_dir)
     sea_path = target_dir / "SEA_TRIALS.md"
     blueprint_dir = target_dir / "blueprint"
     document = load_sea_trials(sea_path)

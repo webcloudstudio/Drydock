@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-19: `drydock build`, `drydock score ac` and `drydock score release` refuse a Target
+  whose `TECHNOLOGY_STACK.md` selects `postgres.md` when no PostgreSQL connection is configured,
+  instead of silently building and testing against SQLite. New `drydock config` key
+  `postgres_dsn` (`POSTGRES_DSN`) holds the connection string, accepts only `postgresql://` or
+  `postgres://`, is masked by `config show`, and is exported to schema application, acceptance
+  runs and the application as `DATABASE_URL`. Added `docs/HOW_TO_SETUP_POSTGRES.md`.
+
 - 2026-10-19: Python and Go Target workflows validate stack type counts and language prerequisites
   from shared Rigging policy before approval, planning and building. QuarterDeck preserves invalid
   drafts with validation errors and clears approval when language or database changes. Build,

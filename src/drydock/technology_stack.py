@@ -52,6 +52,9 @@ _CATEGORY_ORDER = [
 ]
 _CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
+#: The database selection that requires a configured server connection.
+POSTGRES_RIGGING = "postgres.md"
+
 _PREAMBLE = (
     "Technology decisions of record for this Target. One row per technology, naming the",
     "Rigging best-practice file that governs building it.",
@@ -481,6 +484,29 @@ def require_approved(target_dir: Path) -> None:
         )
     if defects:
         raise SpecificationError("; ".join(defects))
+
+
+def require_database_connection(target_dir: Path) -> None:
+    """Export the configured PostgreSQL connection, or refuse a stack that selects PostgreSQL.
+
+    Schema application, acceptance runs and the application inherit ``DATABASE_URL`` from this
+    process. Without it they fall back to a SQLite file and never exercise PostgreSQL.
+    """
+    import os
+
+    from drydock.config import get_postgres_dsn
+    from drydock.errors import SpecificationError
+
+    if POSTGRES_RIGGING not in stack_files(target_dir):
+        return
+    dsn = get_postgres_dsn()
+    if dsn is None:
+        raise SpecificationError(
+            f"{POSTGRES_RIGGING} is selected but no PostgreSQL connection string is configured.\n"
+            "  Run: drydock config set postgres_dsn "
+            "postgresql://<user>:<password>@<host>:<port>/<database>"
+        )
+    os.environ["DATABASE_URL"] = dsn
 
 
 def selection_identity(entries: list[StackEntry]) -> frozenset[str]:

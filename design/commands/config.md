@@ -31,9 +31,14 @@ drydock config calibrate [--probe] [--apply] [--model <model>]
 Settable keys: `drydock_build_directory`, `drydock_workspace`, `change_ticket_directory`,
 `drydock_model`, `drydock_effort`, `llm_provider`, `codex_sandbox`, `quarterdeck_port`,
 `diagnose`, `sandbox_mem_limit`, `capture_output_limit`, `repair_attempts`, `repair_stall_limit`,
-`max_output_tokens`, `haiku_thinking_tokens`, `block_min_savings`.
+`max_output_tokens`, `haiku_thinking_tokens`, `block_min_savings`, `postgres_dsn`.
 
 ### Rules
+
+`2026-10-19` · **`postgres_dsn` names the PostgreSQL server a `postgres.md` Target builds
+against.** `config set` accepts only `postgresql://` or `postgres://` values; empty clears it.
+`config show` masks the password. Build and score export it as `DATABASE_URL`. Cost when broken:
+a PostgreSQL Target is built and tested against SQLite.
 
 `2026-06-10` · **Environment overrides the user file; nothing is stored in the repository.**
 Each key maps to an environment variable (`drydock_model` → `DRYDOCK_MODEL`, …). Resolution order

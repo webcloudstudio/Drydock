@@ -128,6 +128,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "DRYDOCK_MODEL",
         "LLM_PROVIDER",
         "QUARTERDECK_PORT",
+        "POSTGRES_DSN",
     ):
         monkeypatch.delenv(key, raising=False)
 
