@@ -214,7 +214,7 @@ def parse_artifact_report(
         if parsed.rejected:
             return parsed
         if text.strip():
-            raise _outside_text_error(label)
+            raise _outside_text_error(label, text, where="with no artifact block")
         raise DrydockError(
             f"{label} failed: LLM output did not contain any delimited artifact blocks.\n"
             "  No generated artifacts were written."
@@ -403,7 +403,9 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
                 and _outside_has_text(outside)
             ):
                 if any("===" in chunk for chunk in outside):
-                    raise _outside_text_error(label)
+                    raise _outside_text_error(
+                        label, "".join(outside), where="before the first artifact block"
+                    )
                 current_name = marker_name
                 current_body = outside
                 outside = []
@@ -421,7 +423,14 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
             )
             if kind == _OPEN or orphan_opener:
                 if _outside_has_text(outside, after_artifacts=saw_delimiter):
-                    raise _outside_text_error(label)
+                    raise _outside_text_error(
+                        label,
+                        "".join(outside),
+                        where="between artifact blocks"
+                        if saw_delimiter
+                        else "before the first artifact block",
+                        after_artifacts=saw_delimiter,
+                    )
                 # An END delimiter with no block open cannot close anything: the model dropped
                 # the opener, and the block runs to the delimiter that closes it.
                 assert marker_name is not None
@@ -485,7 +494,12 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
         saw_delimiter = True
 
     if _outside_has_text(outside, after_artifacts=saw_delimiter):
-        raise _outside_text_error(label)
+        raise _outside_text_error(
+            label,
+            "".join(outside),
+            where="after the last artifact block" if saw_delimiter else "with no artifact block",
+            after_artifacts=saw_delimiter,
+        )
     for name in sorted(conflicting):
         blocks.pop(name, None)
         rejected.append(
@@ -546,7 +560,14 @@ def _parse_write_call_blocks(
         outside = text[cursor : match.start()]
         if _outside_text_in_write_transcript(outside, after_artifacts=saw_write):
             if strict:
-                raise _outside_text_error(label)
+                raise _outside_text_error(
+                    label,
+                    _FUNCTION_WRAPPER_RE.sub("", outside),
+                    where="between artifact blocks"
+                    if saw_write
+                    else "before the first artifact block",
+                    after_artifacts=saw_write,
+                )
             return {}
         raw_path = match.group("path").strip().replace("\\", "/")
         name = PurePath(raw_path).name
@@ -574,7 +595,12 @@ def _parse_write_call_blocks(
         return {}
     if _outside_text_in_write_transcript(text[cursor:], after_artifacts=saw_write):
         if strict:
-            raise _outside_text_error(label)
+            raise _outside_text_error(
+                label,
+                _FUNCTION_WRAPPER_RE.sub("", text[cursor:]),
+                where="after the last artifact block",
+                after_artifacts=saw_write,
+            )
         return {}
     return blocks
 
@@ -589,24 +615,35 @@ def _outside_text_in_write_transcript(text: str, *, after_artifacts: bool) -> bo
 
 
 def _has_substantive_outside_text(text: str, *, after_artifacts: bool) -> bool:
-    if not text.strip():
-        return False
-    if not after_artifacts:
-        return True
+    return _first_stray_line(text, after_artifacts=after_artifacts) is not None
+
+
+def _first_stray_line(text: str, *, after_artifacts: bool) -> str | None:
+    """Return the first outside line the contract rejects, or ``None`` when there is none."""
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
-        if _IGNORABLE_OUTSIDE_LINE_RE.match(stripped):
+        if after_artifacts and _IGNORABLE_OUTSIDE_LINE_RE.match(stripped):
             continue
-        return True
-    return False
+        return stripped
+    return None
 
 
-def _outside_text_error(label: str) -> DrydockError:
+def _outside_text_error(
+    label: str, outside: str = "", *, where: str = "", after_artifacts: bool = False
+) -> DrydockError:
+    # Name where the stray text sits and quote its first line, so the operator can see the
+    # violation without opening the model output.
+    stray = _first_stray_line(outside, after_artifacts=after_artifacts)
+    detail = ""
+    if stray is not None:
+        quoted = stray if len(stray) <= 120 else stray[:117] + "..."
+        detail = f"  Stray text {where}: {quoted!r}\n" if where else f"  Stray text: {quoted!r}\n"
     return DrydockError(
         f"{label} failed: LLM output did not satisfy the artifact contract.\n"
         "  Text appeared outside delimited artifact blocks.\n"
+        f"{detail}"
         "  No generated artifacts were written."
     )
 

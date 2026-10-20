@@ -75,6 +75,39 @@ def test_parse_artifact_blocks_still_rejects_preamble():
         )
 
 
+def test_outside_text_error_names_leading_preamble_and_quotes_it():
+    with pytest.raises(DrydockError) as raised:
+        parse_artifact_blocks(
+            "I can't produce this analysis yet.\n\n=== BEGIN ARTIFACT A.md ===\nalpha\n"
+            "=== END ARTIFACT ===\n",
+            label="Test",
+        )
+
+    assert 'Stray text before the first artifact block: "I can\'t produce this analysis yet."' in (
+        str(raised.value)
+    )
+
+
+def test_outside_text_error_names_trailing_text():
+    with pytest.raises(DrydockError) as raised:
+        parse_artifact_blocks(
+            "=== A.md ===\nalpha\n=== END A.md ===\nHope this helps.\n",
+            label="Test",
+        )
+
+    assert "Stray text after the last artifact block: 'Hope this helps.'" in str(raised.value)
+
+
+def test_outside_text_error_truncates_a_long_line():
+    with pytest.raises(DrydockError) as raised:
+        parse_artifact_blocks(
+            "x" * 300 + "\n=== A.md ===\nalpha\n=== END A.md ===\n",
+            label="Test",
+        )
+
+    assert "'" + "x" * 117 + "...'" in str(raised.value)
+
+
 def test_parse_artifact_blocks_ignores_transition_text_between_blocks():
     text = (
         "=== A.md ===\nalpha\n=== END A.md ===\n"

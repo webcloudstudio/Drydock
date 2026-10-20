@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-20: The artifact-contract error raised by `drydock analyze`, `drydock plan` and the other
+  delimited-artifact commands names where stray model text sits (before the first block, between
+  blocks, after the last block, or with no block) and quotes its first line, truncated at 120
+  characters. A rejected response no longer requires opening the preserved model output to locate
+  the violation.
+
 - 2026-10-19: `drydock build`, `drydock score ac` and `drydock score release` refuse a Target
   whose `TECHNOLOGY_STACK.md` selects `postgres.md` when no PostgreSQL connection is configured,
   instead of silently building and testing against SQLite. New `drydock config` key
