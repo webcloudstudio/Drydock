@@ -90,6 +90,34 @@ def test_missing_environment_is_an_error_not_a_red():
     assert (status.status, status.error_code) == (STATUS_ERROR, ERROR_ENVIRONMENT)
 
 
+def test_an_absent_deliverable_read_in_the_check_frame_is_a_valid_red():
+    # LayersTesting scaffold-pyproject: open("pyproject.toml") before the story writes it.
+    status = classify_baseline(
+        _observation(
+            skipped=True,
+            error="unverified acceptance: the assertion raised FileNotFoundError in its own frame",
+            stderr=(
+                'Traceback (most recent call last):\n  File "ac.py", line 5, in <module>\n'
+                "FileNotFoundError: [Errno 2] No such file or directory: 'pyproject.toml'\n"
+            ),
+        ),
+        _check(),
+    )
+    assert (status.status, status.error_code) == (STATUS_VALID, ERROR_PRODUCT_MISSING)
+
+
+def test_an_absent_declared_package_stays_an_environment_error():
+    status = classify_baseline(
+        _observation(
+            skipped=True,
+            error="unverified acceptance: declared python-package 'psycopg' is absent",
+            stderr="ModuleNotFoundError: No module named 'psycopg'\n",
+        ),
+        _check(),
+    )
+    assert (status.status, status.error_code) == (STATUS_ERROR, ERROR_ENVIRONMENT)
+
+
 def test_a_criterion_dying_in_its_own_frame_is_malformed():
     status = classify_baseline(
         _observation(error=f"{MALFORMED_FAILURE_PREFIX}: NameError"), _check()

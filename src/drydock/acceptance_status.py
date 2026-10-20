@@ -152,6 +152,12 @@ def classify_baseline(
         return CriterionStatus(STATUS_PREBUILD_PASSES, ERROR_CURRENT_TREE, digest, stamp)
     if error.startswith(MALFORMED_FAILURE_PREFIX):
         return CriterionStatus(STATUS_ERROR, ERROR_MALFORMED, digest, stamp, error)
+    if error.startswith(UNVERIFIED_FAILURE_PREFIX) and _reads_an_absent_path(observation.stderr):
+        # Before the build, a criterion opening a deliverable the story has not written yet
+        # fails in its own frame exactly as one reading a missing kit file does. Recording it
+        # ERROR would exclude it from every post-build run, so it could never pass; recorded
+        # VALID it runs after the build, where a still-missing file is reported UNVERIFIED.
+        return CriterionStatus(STATUS_VALID, ERROR_PRODUCT_MISSING, digest, stamp)
     if observation.skipped or error.startswith((SKIPPED_FAILURE_PREFIX, UNVERIFIED_FAILURE_PREFIX)):
         return CriterionStatus(STATUS_ERROR, ERROR_ENVIRONMENT, digest, stamp, error)
     text = f"{error}\n{observation.stderr}\n{observation.stdout}"
@@ -160,6 +166,12 @@ def classify_baseline(
     ):
         return CriterionStatus(STATUS_VALID, ERROR_PRODUCT_MISSING, digest, stamp)
     return CriterionStatus(STATUS_VALID, ERROR_BASELINE_RED, digest, stamp)
+
+
+def _reads_an_absent_path(stderr: str) -> bool:
+    """True when the traceback ends in ``FileNotFoundError``: a path the check opened is absent."""
+    lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+    return bool(lines) and lines[-1].startswith("FileNotFoundError")
 
 
 def read_acceptance_status(evidence_dir: Path) -> dict[str, CriterionStatus]:

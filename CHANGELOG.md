@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-20: `drydock build` records a pre-build acceptance criterion whose own code raises
+  `FileNotFoundError` as `VALID product-missing` instead of `ERROR environment`. A criterion that
+  reads a deliverable its story creates, such as `pyproject.toml`, previously was excluded from
+  every post-build run and settled `UNVERIFIED` although the delivered file satisfied it.
+
 - 2026-10-20: The shipped Python persistence library translates a refused or failed connection
   into `PersistenceError` from every declared operation and from `Database.execute_script`. An
   unreachable PostgreSQL server previously escaped as the raw driver exception, which no build

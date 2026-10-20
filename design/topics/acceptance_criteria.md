@@ -36,6 +36,8 @@ classifies each criterion: pass → `PREBUILD_PASSES` (or `ALWAYS_PASSES` when v
 product-missing`; other red → `VALID baseline-red`. Timeout and memory stay `VALID`. A resumed
 baseline never records `PREBUILD_PASSES`. *Broken:* an edited criterion inherits a stale verdict.
 
+`2026-10-20` · **An absent path at baseline is product-missing.** A pre-build observation that is unverified because the criterion's own frame raised `FileNotFoundError` records `VALID product-missing`, not `ERROR environment`, so the criterion runs after the build; a file still absent then reports `UNVERIFIED`. A declared package absent from the environment stays `ERROR environment`. *Broken:* a criterion reading a deliverable its story creates is excluded from every post-build run and never verifies.
+
 `2026-10-12` · **Vacuity is decided from source only.** Constant branches, code after
 `return`/`raise`, swallowing `try` bodies, and `suppress(...)` are pruned; undetermined means live.
 
@@ -132,7 +134,7 @@ file-exists stubs), and rejects a plan where no story carries it. Deferred becau
 
 ## Open Actions
 
-- `2026-10-20` · A pre-build `FileNotFoundError` raised in a criterion's own frame for a deliverable the story creates (`open("pyproject.toml")`) is classified ERROR/environment by `_environment_failure` (`src/drydock/acceptance.py`), and `build_run.py:299` then excludes ERROR criteria from the post-build run, so the criterion settles UNVERIFIED although it would pass. Seen in LayersTesting `scaffold-pyproject`, run 20261020.040609. Unfixed.
+-
 
 ## Working Notes
 
