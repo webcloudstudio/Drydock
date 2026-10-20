@@ -1,5 +1,6 @@
 # Django Foundation
 
+**Type:** web-server
 **Version:** 20260922 V3
 **Tier:** platform
 **Category:** Web Server

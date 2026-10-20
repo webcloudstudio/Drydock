@@ -1,12 +1,13 @@
 # AWS Lambda Best Practices
 
+**Type:** guidance
 **Version:** 20260528 V1
 **Category:** AWS
 **Description:** AWS Lambda (Python) patterns: handlers, IAM least privilege, CloudWatch logging, and Terraform packaging
 
 Technology reference for AWS Lambda functions in Python. This file does not change between projects.
 
-Prerequisites: `languages/python/python.md`, `stack/terraform.md`
+Prerequisites: `stack/terraform.md`
 
 Lambdas are thin: they sit behind an IAM-authorized API Gateway, validate the event, call one storage
 operation (DynamoDB/SQS/S3), and return. They hold no business logic that belongs in the cloud client

@@ -1,5 +1,6 @@
 # uv and ruff Best Practices
 
+**Type:** guidance
 **Version:** 20260716 V1  
 **Category:** Technologies
 **Description:** Python toolchain conventions — uv for environments and dependencies, ruff for linting and formatting

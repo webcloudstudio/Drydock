@@ -1,0 +1,18 @@
+{
+  "language": {
+    "min": 1,
+    "max": 1
+  },
+  "database": {
+    "min": 0,
+    "max": 1
+  },
+  "web-server": {
+    "min": 0,
+    "max": 1
+  },
+  "cli": {
+    "min": 0,
+    "max": 1
+  }
+}

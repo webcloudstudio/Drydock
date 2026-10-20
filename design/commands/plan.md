@@ -34,6 +34,8 @@ Intended workflow: `drydock plan verify <Target> || drydock plan repair <Target>
 
 ### Rules
 
+`2026-10-19` · Planning requires a valid, Commander-approved TECHNOLOGY_STACK.md before model execution, including with --override. Language comes from selected Rigging guidance. The language initialization story occupies a separate computed block so its project files exist before persistence generation; prompt sizing includes the selected full or compact language file. Breaking this rule plans an undecided or incompatible stack.
+
 **Governing**
 
 `2026-09-17` · **Repair the unambiguous, record the rest, discard nothing paid for.** Stage 2 has no
@@ -133,7 +135,7 @@ is reported.
 `2026-09-17` · **A criterion states one expectation.** A status set admitting `404` beside others,
 or both a 2xx and a 5xx, is refused. See [acceptance_criteria](../topics/acceptance_criteria.md).
 
-`2026-10-18` · Python and Go support DATABASE.md persistence. Stack validation requires exactly one language and permits several persistence engines; other exclusive foundations retain their constraints. Cost when broken: the selected stack and generated runtime disagree.
+`2026-10-18` · Python and Go support DATABASE.md persistence. Stack validation requires exactly one language and permits at most one database engine; other exclusive foundations retain their constraints. Cost when broken: the selected stack and generated runtime disagree.
 
 ### Mechanism
 
@@ -167,6 +169,8 @@ Every run records the `PLAN CREATED` (or `PLAN REPAIRED`) rung in project status
 A failing `plan verify` condemns the standing plan rung without voiding anything.
 
 ### Spec divergence
+
+- The approved-stack precondition and shared type-count policy are implemented here; the master specification is unchanged.
 
 - The specification's syntax omits `verify`, `repair`, `--override`, `--continue-attempts`, and
   `--lineage-model`.

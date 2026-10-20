@@ -1,5 +1,6 @@
 # Bootstrap 5 Interface
 
+**Type:** guidance
 **Version:** 20260922 V2
 **Tier:** interface
 **Category:** Frontend

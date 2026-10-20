@@ -483,3 +483,29 @@ class TestCompassNeverCompacted:
         assert result.items == []
         assert runner.seen == []
         assert not (spec / "COMPASS_compact.md").exists()
+
+
+def test_target_compaction_roles_receive_selected_language(tmp_path):
+    from drydock.technology_stack import StackEntry, write
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    names = ["DATABASE.md", "ARCHITECTURE.md", "SERVICE.md"]
+    for name in names:
+        (blueprint / name).write_text("# Source\n\nCallable contract.\n")
+    write(tmp_path, [StackEntry("Go", "go.md")])
+    prompts = []
+
+    def runner(prompt, *args, **kwargs):
+        prompts.append(prompt)
+        return FakeRun(text="# Contract\n\nfunc Call() error\n")
+
+    compact(
+        "Example",
+        blueprint,
+        include_files=[blueprint / name for name in names],
+        force=True,
+        runner=runner,
+    )
+    assert len(prompts) == 3
+    assert all("TARGET_LANGUAGE: go" in prompt for prompt in prompts)

@@ -305,3 +305,15 @@ def test_a_declined_repair_leaves_the_criterion_selected(tmp_path, monkeypatch):
     assert [candidate.kind for candidate in ac_repair.select_repairs(target_dir)] == [
         ac_repair.KIND_DISPUTED
     ]
+
+
+def test_repair_context_includes_selected_language_compact(tmp_path):
+    from drydock.ac_repair import assemble
+    from drydock.technology_stack import StackEntry, write
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    for language in ("python", "go"):
+        write(tmp_path, [StackEntry("Selected", f"{language}.md")])
+        assembly = assemble("Repair the criteria.", (), blueprint)
+        assert f"{language}_compact.md" in [part.label for part in assembly.parts]

@@ -2634,10 +2634,15 @@ def _tech_rigging_select(selected: str | None) -> str:
         f"<option value=''{none_selected}>{html.escape(technology_stack.NONE_CELL)}</option>"
     ]
     known = set()
+    exclusive = {
+        name for group in technology_stack.foundation_groups() for name in group["options"]
+    }
     for group in technology_stack.rigging_groups():
         label = html.escape(str(group.get("label", "")))
         opts = []
         for name in group.get("options", []):
+            if name in exclusive:
+                continue
             known.add(name)
             mark = " selected" if name == chosen else ""
             opts.append(f"<option value='{html.escape(name)}'{mark}>{html.escape(name)}</option>")
@@ -2653,7 +2658,7 @@ def _tech_rigging_select(selected: str | None) -> str:
 
 
 def _foundation_fieldset(group: dict[str, Any]) -> str:
-    """One language, optional platforms, and zero or more persistence engines."""
+    """One radio group for a count-limited selection type."""
     kind = str(group["kind"])
     name = f"ts-foundation-{kind}"
     selected = group.get("selected") or []
@@ -2756,19 +2761,9 @@ def render_technology_stack(item: dict[str, Any]) -> str:
         name.removesuffix(".md").lower().replace("-", "").replace("_", ""): name
         for name in technology_stack.rigging_names()
     })
-    unsupported = (
-        technology_stack.unsupported_persistence(source_path.parent, entries)
-        if source_path is not None
-        else None
-    )
-    required_note = (
-        "<p class='item-warning'>Drydock ships no persistence adapter for "
-        + html.escape(unsupported)
-        + ". A Target with a DATABASE.md is limited to "
-        + ", ".join(html.escape(name) for name in technology_stack.PERSISTENCE_LANGUAGES)
-        + ".</p>"
-        if unsupported
-        else ""
+    defects = technology_stack.foundation_defects(entries)
+    required_note = "".join(
+        "<p class='item-warning'>" + html.escape(error) + "</p>" for error in defects
     )
     return (
         helper
@@ -3367,13 +3362,23 @@ def api_set_technology_stack(
         ]
         path = resolve_write_path(item["path"])
         with _TS_WRITE_LOCK:
-            # Editing a row is not an act of unapproval: carry the existing marker.
+            # Language and database changes require renewed Commander approval.
             try:
-                approved = technology_stack.parse_approved(path.read_text(encoding="utf-8"))
+                prior_text = path.read_text(encoding="utf-8")
+                approved = technology_stack.parse_approved(prior_text)
+                if technology_stack.selection_identity(
+                    technology_stack.parse(prior_text)
+                ) != technology_stack.selection_identity(entries):
+                    approved = None
             except OSError:
                 approved = None
             _atomic_write_text(path, technology_stack.render(entries, approved))
-        return {"ok": True, "item_id": item_id, "rows": len(entries)}
+        return {
+            "ok": True,
+            "item_id": item_id,
+            "rows": len(entries),
+            "errors": technology_stack.foundation_defects(entries),
+        }
 
 
 @app.post("/api/approve/{item_id}")
@@ -3418,14 +3423,6 @@ def api_approve_item(item_id: str, request: Request = None) -> dict[str, Any]:
                 entries = technology_stack.parse(path.read_text(encoding="utf-8"))
             except OSError:
                 entries = []
-            unsupported = technology_stack.unsupported_persistence(path.parent, entries)
-            if unsupported:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Drydock ships no persistence adapter for {unsupported}. A Target "
-                    "with a DATABASE.md is limited to "
-                    + ", ".join(technology_stack.PERSISTENCE_LANGUAGES),
-                )
             defects = technology_stack.foundation_defects(entries)
             if defects:
                 raise HTTPException(status_code=400, detail="; ".join(defects))
@@ -4499,8 +4496,9 @@ def index(request: Request = None) -> str:
         if (!status) return;
         clearTimeout(hideTimer);
         if (r.ok) {{
-          status.textContent = 'Saved ✓';
-          hideTimer = setTimeout(() => {{ status.textContent = ''; }}, 1500);
+          const d = await r.json();
+          status.textContent = d.errors?.length ? 'Saved draft: ' + d.errors.join('; ') : 'Saved ✓';
+          if (!d.errors?.length) hideTimer = setTimeout(() => {{ status.textContent = ''; }}, 1500);
         }} else {{
           const d = await r.json().catch(() => ({{}}));
           status.textContent = 'Save failed: ' + (d.detail || r.status);

@@ -1,12 +1,13 @@
 # Cloud Client Library Best Practices
 
+**Type:** guidance
 **Version:** 20260528 V1
 **Category:** AWS
 **Description:** A project-neutral Python cloud client library — the single indirection layer between project code and AWS. Projects call the library, never boto3.
 
 Technology reference for a project-owned cloud client library. This file does not change between projects.
 
-Prerequisites: `languages/python/python.md`
+Prerequisite: `stack/common.md`
 
 The cloud client library is the **swap layer**. Every cloud touch — catalog reads/writes, reporting,
 queues, object storage, API calls — goes through one small, stable, typed Python API. The backend

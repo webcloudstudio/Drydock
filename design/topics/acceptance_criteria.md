@@ -21,6 +21,8 @@ and measured something; everything else is reported, not charged.
 
 ### Rules
 
+`2026-10-19` · Native Go statuses survive the outer executor. Skip, not-run and unavailable are UNVERIFIED; compilation errors and native failures remain failures with distinct error text. The outer process group timeout terminates descendants. Breaking this rule counts a skipped test as proof.
+
 `2026-10-12` · **Records.** `SOUNDINGS.md` (from `score ac`) is the per-criterion ledger: id,
 Blueprint, result (`PASS`, `FAIL`, `UNVERIFIED`, `PREPASSED`), evidence, time, plus Binding,
 Baseline, Previously Passed, Last Block columns read by name. Node state lives in `MANIFEST.md`.

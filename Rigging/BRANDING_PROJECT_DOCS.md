@@ -1,5 +1,6 @@
 # Branding — Project Specification Documents
 
+**Type:** guidance
 **Version:** 20260729 V1
 **Category:** Branding
 **Description:** The author's voice, structure, and editing protocol for a project's authoritative

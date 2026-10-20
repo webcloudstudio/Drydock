@@ -3622,9 +3622,20 @@ def _compute_schedule(
     grouping; the configured error threshold is an absolute gate.
     """
     from drydock.build import resolve_warning_tokens
+    from drydock.paths import get_language_dir
     from drydock.plan_graph import compute_plan
     from drydock.plan_stack import block_min_savings, block_target_tokens, resolve_stack_set
 
+    language = technology_stack.declared_language(blueprint_dir.parent)
+    if language:
+        name = f"{language}.md"
+        initializer = next((story.story_id for story in declared if name in story.stack), None)
+        declared = tuple(
+            replace(story, fields={**story.fields, "initializes_language": "yes"})
+            if story.story_id == initializer
+            else story
+            for story in declared
+        )
     resolved = resolve_stack_set(name for story in declared for name in story.stack)
 
     def specification_tokens(name: str) -> int:
@@ -3669,6 +3680,12 @@ def _compute_schedule(
 
     def block_size_fn(stories: Sequence[PlannedStory]) -> int:
         total = compass_tokens
+        if language:
+            full = any(story.fields.get("initializes_language") == "yes" for story in stories)
+            language_file = get_language_dir(language) / (
+                f"{language}.md" if full else f"{language}_compact.md"
+            )
+            total += estimate_tokens(language_file.stat().st_size)
         # Full implementation inputs win over compact context, independent of story order.
         seen_files = {story.implements for story in stories}
         total += sum(specification_tokens(name) for name in seen_files)
@@ -3687,6 +3704,8 @@ def _compute_schedule(
                         total += named_file_tokens(name, key)
             total += estimate_tokens(len(str(story.fields.get("instructions", "")).encode()))
             for name in story.stack:
+                if language and name in {f"{language}.md", f"{language}_compact.md"}:
+                    continue
                 mode = story.stack_mode or "builder"
                 if stack_modes.get(name) == "builder" or mode == "builder":
                     stack_modes[name] = "builder"
@@ -5696,17 +5715,7 @@ def create_plan(
         raise SpecificationError(
             "ANALYSIS.md quality is Blocked — resolve blockers and re-run analyze before planning."
         )
-    unsupported_persistence = technology_stack.unsupported_persistence(target_dir)
-    if unsupported_persistence:
-        raise SpecificationError(
-            f"This Target declares {unsupported_persistence} and a DATABASE.md, and Drydock ships "
-            f"no persistence adapter for {unsupported_persistence}. Build generates the "
-            "persistence package from the declaration, so a Target declares storage only in a "
-            f"language it can be generated for: {', '.join(technology_stack.PERSISTENCE_LANGUAGES)}"
-            ". Add a library to Rigging/languages/<language>/persistence/, or remove DATABASE.md."
-        )
-    # TECHNOLOGY_STACK.md otherwise never gates planning. An absent or empty stack file means the
-    # stack is undecided, which plan resolves from the sources — it is not a Commander decision to await.
+    technology_stack.require_approved(target_dir)
     waivers: list[WaivedGate] = []
     required_decisions = _required_plan_decisions(target_dir)
     if required_decisions and not override:

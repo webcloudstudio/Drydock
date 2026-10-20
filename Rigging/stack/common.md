@@ -1,5 +1,6 @@
 # Common Best Practices
 
+**Type:** guidance
 **Version:** 20260320 V1  
 **Category:** Technologies
 **Description:** Common development patterns shared across all stack configurations

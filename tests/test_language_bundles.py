@@ -48,7 +48,10 @@ func TestSkip(t *testing.T) { t.Skip("unavailable") }
     (result,) = run_programmatic_acceptance(
         (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
     )
-    assert result.passed, (result.error, result.stderr)
+    assert result.passed == (status == "pass"), (result.error, result.stderr)
+    assert result.skipped == (status in {"skip", "not-run"})
+    if status != "pass":
+        assert status in result.error
 
 
 @pytest.mark.skipif(shutil.which("go") is None, reason="Go toolchain required")
@@ -64,4 +67,25 @@ def test_go_compile_error_remains_distinct(tmp_path, monkeypatch):
     (result,) = run_programmatic_acceptance(
         (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
     )
-    assert result.passed, result.stderr
+    assert not result.passed
+    assert "execution-error" in result.error
+
+
+def test_unavailable_native_tool_is_unverified(tmp_path):
+    check = ProgrammaticAcceptance(
+        "no-go",
+        "FEATURE.md",
+        "Native tool availability",
+        """
+from unittest.mock import patch
+from drydock_go import run_test
+with patch("drydock_go.subprocess.run", side_effect=FileNotFoundError("go unavailable")):
+    result = run_test("./", "TestExample")
+assert not result.passed
+""",
+    )
+    (result,) = run_programmatic_acceptance(
+        (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
+    )
+    assert result.skipped and not result.passed
+    assert "unavailable" in result.error

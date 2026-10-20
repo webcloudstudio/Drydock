@@ -1,5 +1,6 @@
 # Environment Variables and Secrets
 
+**Type:** guidance
 **Version:** 20260716 V1  
 **Category:** Technologies
 **Description:** Secret hygiene and environment-variable discipline for specification-driven projects

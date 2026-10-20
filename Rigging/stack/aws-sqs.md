@@ -1,5 +1,6 @@
 # AWS SQS Best Practices
 
+**Type:** guidance
 **Version:** 20260528 V1
 **Category:** AWS
 **Description:** SQS as the durable store-and-forward queue — producers submit 24×7, a local consumer drains when alive
@@ -7,7 +8,7 @@
 Technology reference for Amazon SQS with Python (boto3, inside a cloud client library). This file does not
 change between projects.
 
-Prerequisites: `languages/python/python.md`, `stack/cloud-client-library.md`
+Prerequisites: `stack/cloud-client-library.md`
 
 SQS is the durable store-and-forward queue: a producer (a phone inside the firewall, a remote cron job,
 a failed script) submits work at any time, even when the local consumer is off; the local agent drains

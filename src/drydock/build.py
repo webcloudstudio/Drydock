@@ -585,6 +585,29 @@ def assemble_step(
         _canonical_spec_name(name)
         for name in _role_names(block, "implements", blueprint_dir=roots.blueprint_dir)
     }
+    from drydock.paths import get_language_dir
+    from drydock.technology_stack import declared_language
+
+    language = declared_language(roots.target_dir)
+    language_names: set[str] = set()
+    if language:
+        language_names = {f"{language}.md", f"{language}_compact.md"}
+        foundation = (
+            f"{language}.md" in implements_canonical
+            or block.fields.get("tier") == "language"
+            or (
+                block.story_type == "foundational"
+                and f"{language}.md" in block.fields.get("stack", ())
+                and f"{language}.md" not in (compact_stack or ())
+            )
+        )
+        name = f"{language}.md" if foundation else f"{language}_compact.md"
+        measured = _measure(
+            name, "implements" if foundation else "stack", (get_language_dir(language),)
+        )
+        if measured.missing:
+            raise FileNotFoundError(f"Required language guidance missing: {name}")
+        files.append(measured)
     lineage = _refit_lineage_stems(implements_canonical)
     for role in _ROLE_ORDER:
         names: list[str] = []
@@ -599,6 +622,8 @@ def assemble_step(
                 if name not in names:
                     names.append(name)
         for name in names:
+            if name in language_names:
+                continue
             if role == "context":
                 if _in_refit_lineage(name, lineage):
                     measured = _measure(name, role, roots.roots_for(role))

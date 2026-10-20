@@ -52,14 +52,6 @@ _CATEGORY_ORDER = [
 ]
 _CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
-#: Languages Drydock ships a persistence adapter for, in ``Rigging/languages/<language>/persistence/``. A Target in one of
-#: these gets its persistence package generated from ``DATABASE.md``; the build writes callers, not
-#: a repository, so no ORM or migration-framework selection is required of the Commander.
-PERSISTENCE_LANGUAGES = ("python", "go")
-#: Implementation languages a Target may declare. A Target declaring none leaves the stack
-#: undecided, which Plan resolves from the sources rather than gating on.
-_LANGUAGES = ("python", "go", "typescript", "javascript", "java", "rust", "c", "c++", "ruby")
-
 _PREAMBLE = (
     "Technology decisions of record for this Target. One row per technology, naming the",
     "Rigging best-practice file that governs building it.",
@@ -296,11 +288,7 @@ def is_approved(target_dir: Path) -> bool:
     An absent file is not approved: the stack is an outstanding action until the
     Commander either edits and approves it or approves it as proposed.
     """
-    return (
-        approved_on(target_dir) is not None
-        and unsupported_persistence(target_dir) is None
-        and not foundation_defects(load(target_dir))
-    )
+    return approved_on(target_dir) is not None and not foundation_defects(load(target_dir))
 
 
 def approve(target_dir: Path, when: str | None = None) -> Path:
@@ -310,13 +298,6 @@ def approve(target_dir: Path, when: str | None = None) -> Path:
     canonically. Approving an already approved stack re-dates it.
     """
     entries = load(target_dir)
-    unsupported = unsupported_persistence(target_dir, entries)
-    if unsupported:
-        raise ValueError(
-            f"Drydock ships no persistence adapter for {unsupported}. Targets with a DATABASE.md "
-            f"are limited to {', '.join(PERSISTENCE_LANGUAGES)}; add an adapter to "
-            "Rigging/languages/<language>/persistence/ to support another."
-        )
     defects = foundation_defects(entries)
     if defects:
         raise ValueError("; ".join(defects))
@@ -340,32 +321,16 @@ def stack_files(target_dir: Path) -> list[str]:
 def declared_language(target_dir: Path, entries: list[StackEntry] | None = None) -> str | None:
     """The Target's implementation language, or ``None`` when the stack names none."""
     rows = load(target_dir) if entries is None else entries
-    for row in rows:
-        normalized = _normalize(row.technology)
-        if normalized in _LANGUAGES:
-            return normalized
-        if row.rigging and row.rigging.removesuffix(".md") in _LANGUAGES:
-            return row.rigging.removesuffix(".md")
-    return None
+    from drydock.paths import resolve_rigging_file
 
-
-def unsupported_persistence(
-    target_dir: Path, entries: list[StackEntry] | None = None
-) -> str | None:
-    """The declared language when it has a ``DATABASE.md`` and Drydock ships no adapter for it.
-
-    Drydock generates the persistence package from the declaration, so a Target declares storage
-    only in a language it can be generated for. Returning the language rather than silently
-    returning nothing is the point: the previous check was keyed on Python, so a Go Target with a
-    database was never gated at all and reached a build that had no persistence layer to write.
-    """
-    rows = load(target_dir) if entries is None else entries
-    if not (target_dir / "blueprint" / "DATABASE.md").is_file():
-        return None
-    language = declared_language(target_dir, rows)
-    if language is None or language in PERSISTENCE_LANGUAGES:
-        return None
-    return language
+    selected = []
+    for name in stack_files_from(rows):
+        path = resolve_rigging_file(name)
+        if path and re.search(
+            r"^\*\*Type:\*\*\s*language\s*$", path.read_text(encoding="utf-8"), re.MULTILINE
+        ):
+            selected.append(path.stem)
+    return selected[0] if len(selected) == 1 else None
 
 
 # ── Seeding and migration ───────────────────────────────────────────────────────
@@ -442,49 +407,87 @@ def ensure_technology_stack(
 # ── Foundation selection ────────────────────────────────────────────────────────
 
 
+def type_counts() -> dict[str, dict[str, int]]:
+    """Load the single count policy shared by validation and selectors."""
+    return json.loads((get_rigging_root() / "rigging_types.json").read_text(encoding="utf-8"))
+
+
+def rigging_types() -> dict[str, str]:
+    from drydock.paths import resolve_rigging_file
+
+    result = {}
+    for name in rigging_names():
+        path = resolve_rigging_file(name) or get_rigging_root() / name
+        match = re.search(r"^\*\*Type:\*\*\s*(\S+)", path.read_text(encoding="utf-8"), re.MULTILINE)
+        if match:
+            result[name] = match[1]
+    return result
+
+
 def foundation_defects(entries: list[StackEntry]) -> list[str]:
-    """Return the reasons this stack cannot produce a coherent set of foundations.
+    """Validate selected types, shipped language bundles and language prerequisites."""
+    from drydock.paths import resolve_rigging_file
 
-    Two questions, both answerable from the Commander's own decisions of record.
-
-    *Unanswered*: a row names a technology whose Rigging file publishes a foundation, and the
-    Commander left the Rigging cell blank. Drydock will not choose a web server on the operator's
-    behalf — one cannot be built without someone identifying which one — so the plan stops and the
-    row is named.
-
-    *Doubled*: two selected files publish the same foundation kind. FastAPI and Flask are not a
-    richer stack; they are two application shapes in one build tree, and every acceptance criterion
-    then coin-flips between them.
-    """
-    from drydock.rigging_contract import foundation_contracts
-
-    published = foundation_contracts()
-    defects: list[str] = []
-
-    for entry in entries:
-        if entry.rigging:
+    types = rigging_types()
+    selected = stack_files_from(entries)
+    defects = []
+    for kind, bounds in type_counts().items():
+        names = [name for name in selected if types.get(name) == kind]
+        if not bounds["min"] <= len(names) <= bounds["max"]:
+            defects.append(
+                f"{kind}: {len(names)} selected; select {bounds['min']}..{bounds['max']} ({', '.join(names)})"
+            )
+    languages = [name for name in selected if types.get(name) == "language"]
+    for name in languages:
+        folder = get_rigging_root() / "languages" / Path(name).stem
+        if not all(
+            path.exists()
+            for path in (
+                folder / name,
+                folder / name.replace(".md", "_compact.md"),
+                folder / "persistence",
+                folder / "acceptance",
+            )
+        ):
+            defects.append(f"language: no complete shipped bundle for {name}")
+    for name in selected:
+        if name not in types:
             continue
-        suggested = suggest_rigging(entry.technology)
-        if suggested and (contract := published.get(suggested)) is not None:
+        path = resolve_rigging_file(name) or get_rigging_root() / name
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for declaration in re.findall(r"^Prerequisites?:\s*(.+)$", text, re.MULTILINE):
+            for prerequisite in re.findall(r"`([^`]+)`", declaration):
+                required = Path(prerequisite).name
+                if types.get(required) == "language" and required not in languages:
+                    defects.append(f"{name}: requires language {required}")
+    for entry in entries:
+        suggested = suggest_rigging(entry.technology) if not entry.rigging else None
+        if suggested and types.get(suggested) in type_counts():
             defects.append(
-                f"{entry.technology}: names a {contract.kind} but selects no Rigging file; "
-                f"set the Rigging column to {suggested} or remove the row"
+                f"{entry.technology}: selects no Rigging file; select {suggested} or remove the row"
             )
-
-    by_kind: dict[str, list[str]] = {}
-    for name in stack_files_from(entries):
-        if (contract := published.get(name)) is not None:
-            by_kind.setdefault(contract.kind, []).append(name)
-    for kind, names in sorted(by_kind.items()):
-        if len(names) > 1 and kind != "database":
-            defects.append(
-                f"{kind}: {len(names)} selected ({', '.join(sorted(names))}); "
-                f"a Target has exactly one {kind}"
-            )
-
-    if not by_kind.get("language"):
-        defects.append("language: select exactly one language Rigging file")
     return defects
+
+
+def require_approved(target_dir: Path) -> None:
+    from drydock.errors import SpecificationError
+
+    defects = foundation_defects(load(target_dir))
+    if approved_on(target_dir) is None:
+        defects.append(
+            "TECHNOLOGY_STACK.md requires Commander approval before planning or building"
+        )
+    if defects:
+        raise SpecificationError("; ".join(defects))
+
+
+def selection_identity(entries: list[StackEntry]) -> frozenset[str]:
+    types = rigging_types()
+    return frozenset(
+        name for name in stack_files_from(entries) if types.get(name) in {"language", "database"}
+    )
 
 
 def selected_foundations(entries: list[StackEntry]) -> dict[str, str | list[str]]:
@@ -515,62 +518,52 @@ def split_foundations(
     the unanswered row ``foundation_defects`` refuses: it belongs in the exclusive selector, not
     in the free-text table where it can only be half-answered.
     """
-    from drydock.rigging_contract import foundation_contracts
-
-    published = foundation_contracts()
+    types = rigging_types()
+    exclusive = {kind for kind, bounds in type_counts().items() if bounds["max"] == 1}
     chosen: dict[str, str | list[str]] = {}
-    remaining: list[StackEntry] = []
+    remaining = []
     for entry in entries:
-        name = entry.rigging or (suggest_rigging(entry.technology) if not entry.rigging else None)
-        contract = published.get(name or "")
-        if contract is None:
-            remaining.append(entry)
-            continue
-        if contract.kind == "database":
-            chosen.setdefault("database", [])
-            if entry.rigging and entry.rigging not in chosen["database"]:
-                chosen["database"].append(entry.rigging)
+        name = entry.rigging or suggest_rigging(entry.technology)
+        kind = types.get(name or "")
+        if kind in exclusive:
+            chosen.setdefault(kind, entry.rigging or "")
         else:
-            chosen.setdefault(contract.kind, entry.rigging or "")
+            remaining.append(entry)
     return chosen, remaining
 
 
 def foundation_groups(entries: list[StackEntry] | None = None) -> list[dict]:
-    """Return one exclusive choice per foundation kind, in build order.
-
-    Languages and application platforms use exclusive radios; database engines use checkboxes.
-    Approval requires one language, while persistence engines may be absent or multiple.
-
-    Order is tier order — language first, then the platform built into it, and inside the platform
-    tier the sub-order ``2.1``/``2.2``/``2.3`` — so the page reads in the order the work is done.
-
-    ``selected`` is what the stack currently names. A stack with no rows at all is a Target
-    nobody has decided for yet and takes :data:`DEFAULT_FOUNDATIONS`; a stack that has rows and
-    names no web server has decided it has none, and is left alone.
-    """
-    from drydock.rigging_contract import chain_rank, foundation_kinds, tier_label, tier_number
+    """Render each max-one type as a radio group, with None for optional types."""
+    from drydock.rigging_contract import foundation_contracts, tier_label, tier_number
 
     rows = list(entries or [])
     chosen = split_foundations(rows)[0] if rows else dict(DEFAULT_FOUNDATIONS)
-
-    def rank(group: tuple[str, str, list[str]]) -> tuple[int, int, str]:
-        tier, kind, _ = group
-        return (*chain_rank(tier, kind), kind)
-
-    return [
-        {
-            "kind": kind,
-            "tier": tier,
-            "tier_number": tier_number(tier),
-            "tier_label": tier_label(tier, kind),
-            "label": _KIND_LABELS.get(kind, kind.replace("-", " ").title()),
-            "options": options,
-            "selected": chosen.get(kind, ""),
-            "multiple": kind == "database",
-            "required": kind == "language",
-        }
-        for tier, kind, options in sorted(foundation_kinds(), key=rank)
-    ]
+    types = rigging_types()
+    contracts = foundation_contracts()
+    groups = []
+    for kind, bounds in type_counts().items():
+        if bounds["max"] != 1:
+            continue
+        options = sorted(name for name, value in types.items() if value == kind)
+        if kind == "language":
+            shipped = {folder.name + ".md" for folder in language_directories()}
+            options = [name for name in options if name in shipped]
+        contract = next((contracts[name] for name in options if name in contracts), None)
+        tier = contract.tier if contract else "application"
+        groups.append(
+            dict(
+                kind=kind,
+                tier=tier,
+                tier_number=tier_number(tier),
+                tier_label=tier_label(tier, kind),
+                label=_KIND_LABELS.get(kind, kind.replace("-", " ").title()),
+                options=options,
+                selected=chosen.get(kind, ""),
+                multiple=False,
+                required=bounds["min"] > 0,
+            )
+        )
+    return groups
 
 
 def with_foundations(

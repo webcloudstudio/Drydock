@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from dataclasses import dataclass
 
 
@@ -19,6 +20,11 @@ class GoResult:
     stdout: str
     stderr: str
     tests: dict[str, str]
+
+
+def _report(result: GoResult) -> GoResult:
+    print("DRYDOCK_NATIVE_RESULT=" + json.dumps({"status": result.status}), file=sys.stderr, flush=True)
+    return result
 
 
 def run_test(package: str, test: str) -> GoResult:
@@ -34,7 +40,7 @@ def run_test(package: str, test: str) -> GoResult:
             capture_output=True, text=True, encoding='utf-8', errors='replace', check=False,
         )
     except OSError as exc:
-        return GoResult(False, 'unavailable', None, '', str(exc), {})
+        return _report(GoResult(False, 'unavailable', None, '', str(exc), {}))
     tests = {}
     for line in process.stdout.splitlines():
         try:
@@ -54,5 +60,5 @@ def run_test(package: str, test: str) -> GoResult:
         status = 'pass'
     else:
         status = 'fail'
-    return GoResult(status == 'pass', status, process.returncode,
-                    process.stdout, process.stderr, tests)
+    return _report(GoResult(status == 'pass', status, process.returncode,
+                    process.stdout, process.stderr, tests))

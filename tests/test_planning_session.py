@@ -702,6 +702,9 @@ def _make_target(tmp_path: Path, *, analysis: str | None = _ANALYSIS) -> Path:
         }),
         encoding="utf-8",
     )
+    from drydock.technology_stack import StackEntry, write
+
+    write(target_dir, [StackEntry("Python", "python.md")], approved="2026-10-19")
     return target_dir
 
 
@@ -945,7 +948,7 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
     result = create_plan("Example", "Example", tmp_path, runner=runner, on_text=progress.append)
 
     assert result.plan.state == "draft"
-    assert progress[0].startswith(
+    assert next(line for line in progress if line.startswith("[plan] mode=")).startswith(
         "[plan] mode=reuse-manifest-first prompt=plan_reuse existing_specs=2 imported_sources=1"
     )
     assert "reuse-mode: preserving existing Blueprint specs" in "".join(progress)
@@ -1183,7 +1186,7 @@ def test_full_rewrite_mode_reports_prompt_and_inventory(tmp_path):
         "Example", "Example", tmp_path, runner=_fake(_llm_output()), on_text=progress.append
     )
 
-    assert progress[0].startswith(
+    assert next(line for line in progress if line.startswith("[plan] mode=")).startswith(
         "[plan] mode=full-rewrite prompt=plan_create existing_specs=0 imported_sources=1"
     )
 
@@ -1218,7 +1221,7 @@ def test_speckit_source_selects_speckit_prompt(tmp_path):
         "Example", "Example", tmp_path, runner=_fake(text), on_text=progress.append
     )
 
-    assert progress[0].startswith(
+    assert next(line for line in progress if line.startswith("[plan] mode=")).startswith(
         "[plan] mode=speckit-translate prompt=plan_create_speckit "
         "existing_specs=0 imported_sources=3"
     )
@@ -1610,22 +1613,19 @@ def test_blockers_file_precedes_stack_questionnaire_gate(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
 
-def test_absent_technology_stack_does_not_block_planning(tmp_path):
-    """An undecided stack is planning input, not a gate. Nothing here may raise."""
+@pytest.mark.parametrize("entries", [None, [], [technology_stack.StackEntry("Go", "go.md")]])
+def test_missing_invalid_or_unapproved_stack_blocks_before_runner(tmp_path, entries):
     target_dir = _make_target(tmp_path)
-    (target_dir / "QuarterDeck" / "questionnaires" / "discovery-stack.json").unlink()
-    assert not (target_dir / technology_stack.FILENAME).exists()
+    if entries is None:
+        (target_dir / technology_stack.FILENAME).unlink()
+    else:
+        technology_stack.write(target_dir, entries)
 
-    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
-    assert (target_dir / "MANIFEST.md").is_file()
+    def runner(*args, **kwargs):
+        pytest.fail("Invalid or unapproved stack reached LLM")
 
-
-def test_empty_technology_stack_does_not_block_planning(tmp_path):
-    target_dir = _make_target(tmp_path)
-    technology_stack.write(target_dir, [])
-
-    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
-    assert (target_dir / "MANIFEST.md").is_file()
+    with pytest.raises(SpecificationError, match="language|approval"):
+        create_plan("Example", "Example", tmp_path, runner=runner)
 
 
 def test_technology_stack_is_injected_into_the_plan_prompt(tmp_path):
@@ -1633,10 +1633,12 @@ def test_technology_stack_is_injected_into_the_plan_prompt(tmp_path):
     technology_stack.write(
         target_dir,
         [
+            technology_stack.StackEntry("Python", "python.md"),
             technology_stack.StackEntry("FastAPI", "fastapi.md"),
             technology_stack.StackEntry("marina-library", None, "Internal."),
         ],
     )
+    technology_stack.approve(target_dir)
     captured = {}
 
     def runner(*args, **kwargs):
@@ -3728,7 +3730,12 @@ def test_zone_a_reports_an_unresolvable_declared_stack_file(tmp_path):
     """TECHNOLOGY_STACK.md declares which stack is used; Zone A opens the Rigging files."""
     target_dir = _make_target(tmp_path)
     technology_stack.write(
-        target_dir, [technology_stack.StackEntry("Ghost", "ghost.md", "Technologies")]
+        target_dir,
+        [
+            technology_stack.StackEntry("Python", "python.md"),
+            technology_stack.StackEntry("Ghost", "ghost.md", "Technologies"),
+        ],
+        approved="2026-10-19",
     )
     runner = _fake(_llm_output())
 

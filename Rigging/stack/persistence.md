@@ -1,5 +1,6 @@
 # Persistence & Service Encapsulation
 
+**Type:** guidance
 **Version:** 20260919 V3
 **Category:** Persistence
 **Description:** The single boundary rule for all persistent stores and external services — typed access classes, no raw access in application code

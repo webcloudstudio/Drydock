@@ -1,5 +1,6 @@
 # SQLAlchemy 2 Persistence Boundary
 
+**Type:** guidance
 **Version:** 20260909 V1
 **Category:** Persistence
 **Description:** SQLAlchemy 2 ORM, repository, DTO, and transaction rules for Python relational applications.

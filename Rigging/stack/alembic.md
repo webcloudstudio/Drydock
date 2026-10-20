@@ -1,5 +1,6 @@
 # Alembic Migration Discipline
 
+**Type:** guidance
 **Version:** 20260909 V1
 **Category:** Persistence
 **Description:** Alembic revision, upgrade, downgrade, and verification rules for SQLAlchemy applications.

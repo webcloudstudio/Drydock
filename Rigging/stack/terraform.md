@@ -1,5 +1,6 @@
 # Terraform Best Practices
 
+**Type:** guidance
 **Version:** 20260528 V1
 **Category:** Technologies
 **Description:** Layered Terraform with an S3 + DynamoDB remote backend, bash wrappers, and one-shot vs rerun-anytime separation

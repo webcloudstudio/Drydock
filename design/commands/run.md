@@ -31,6 +31,8 @@ config or `8080`; `--host` to `127.0.0.1`.
 
 ### Rules
 
+`2026-10-19` · QuarterDeck renders max-one Rigging types as radios, including None for optional types, and excludes them from table choices. Draft saves return and display shared validation errors. Language or database changes clear approval; approval rejects invalid selections. Breaking this rule approves an incoherent stack.
+
 `2026-07-03` · **QuarterDeck owns no project state and makes no decisions.** It renders the plain
 files named in `console.yaml` and persists only into them: questionnaire answers, edited document
 source, approvals, direct decisions, and constrained `MANIFEST.md` structure edits. Cost when
@@ -61,7 +63,7 @@ prompt in the running model's tokens (see [build](build.md)); shared context rec
 so the group header reads "Combined Story Points". Cost when broken: a group appears to cost the
 sum of its steps.
 
-`2026-10-18` · The technology selector uses database-engine checkboxes and language radios without a None choice. Approval refuses a missing language. Cost when broken: the selected stack and generated runtime disagree.
+`2026-10-18` · The technology selector uses database and language radios; optional database selection includes None. Approval refuses a missing language. Cost when broken: the selected stack and generated runtime disagree.
 
 ### Mechanism
 

@@ -542,3 +542,16 @@ def test_story_count_is_not_capped():
     result = compute_plan(stories)
     assert result.fatal == ()
     assert len(result.stories) == 301
+
+
+def test_language_initialization_cannot_merge_with_persistence():
+    from drydock.plan_graph import PlannedStory, group_blocks
+
+    language = PlannedStory(
+        "language", story_type="foundational", fields={"initializes_language": "yes"}
+    )
+    database = PlannedStory("database", story_type="foundational", depends=("language",))
+    result = group_blocks((language, database), min_savings=0, block_size_fn=lambda stories: 100)
+    # The first return value contains the stamped stories.
+    stamped, _ = result
+    assert stamped[0].block != stamped[1].block

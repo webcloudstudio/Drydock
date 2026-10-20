@@ -191,6 +191,18 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 			return Result{}, fmt.Errorf("undeclared input %s", name)
 		}
 	}
+	if verb == "get" || verb == "update" || verb == "delete" {
+		for _, input := range op.Inputs {
+			if input == declared.Key {
+				if _, ok := arguments[input]; !ok {
+					return Result{}, fmt.Errorf("%s requires key %s", verb, input)
+				}
+			}
+		}
+	}
+	if verb == "delete" && len(arguments) == 0 {
+		return Result{}, errors.New("delete requires a predicate")
+	}
 	names := []string{}
 	values := []any{}
 	for _, name := range op.Inputs {

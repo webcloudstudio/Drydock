@@ -1,5 +1,6 @@
 # Branding — Papers
 
+**Type:** guidance
 **Version:** 20260804 V2
 **Category:** Branding
 **Description:** The author's voice and structure for the Drydock white paper series — what a paper

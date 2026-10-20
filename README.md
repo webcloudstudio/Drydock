@@ -23,6 +23,12 @@ Enterprise guardrails.
 
 ## Overview
 
+Target generation supports Python and Go. Select the language and optional database in
+`TECHNOLOGY_STACK.md`, approve the stack in QuarterDeck, then plan and build. SQLite and
+PostgreSQL use shipped persistence libraries. Go uses standard-library CLI/HTTP layouts and
+native tests; SQLite requires CGO and a C compiler. Start a fresh Target to change languages
+after planning. Planning and building reject an invalid or unapproved stack before an LLM call.
+
 **Drydock is a repeatable method to turn messy specifications into tested working software.**
 
 Drydock imports your source material, defines stories using agile best practices, and then decomposes your sources into typed blueprints (stories) related using a graph database.  Drydock builds with a context aware compression based algorithm and tests stories with deterministic test driven acceptance criteria.
@@ -333,5 +339,5 @@ not pass. Persistence implementation files are described by each language's cont
 Python and Go both generate persistence from `DATABASE.md`, using bundled SQLite/PostgreSQL
 libraries. Go requires an existing `go.mod`, downloaded pinned drivers, CGO and a C compiler for
 SQLite. Drydock links the generated `persistence/` module and applies schema through its command.
-Select exactly one language and zero or more persistence engines. Existing-table migrations and
+Select exactly one language and zero or one database engine. Existing-table migrations and
 automatic per-criterion code tracing remain separate capabilities.

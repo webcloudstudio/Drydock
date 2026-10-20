@@ -1,6 +1,6 @@
 # SQLite
 
-**Type:** persistence-engine
+**Type:** database
 **Version:** 20261018 V4
 **Tier:** platform
 **Category:** Persistence

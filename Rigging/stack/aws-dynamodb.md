@@ -1,12 +1,13 @@
 # AWS DynamoDB Best Practices
 
+**Type:** guidance
 **Version:** 20260528 V1
 **Category:** AWS
 **Description:** DynamoDB single-table design for hierarchical catalog/state data accessed through a cloud client library (never raw boto3)
 
 Technology reference for Amazon DynamoDB with Python. This file does not change between projects.
 
-Prerequisites: `languages/python/python.md`, `stack/cloud-client-library.md`
+Prerequisites: `stack/cloud-client-library.md`
 
 DynamoDB is correct here because the data is **simple, hierarchical, and never joined on the server**.
 It is one tree of objects per organization, read as a subtree and assembled client-side. Used this way

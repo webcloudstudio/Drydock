@@ -1,5 +1,6 @@
 # GitHub Actions Best Practices
 
+**Type:** guidance
 **Version:** 20260528 V1
 **Category:** Technologies
 **Description:** CI/CD pipelines that assume AWS roles via OIDC (no static keys), gate on lint/test, and run Terraform plan-on-PR / apply-on-merge
@@ -7,7 +8,7 @@
 Technology reference for GitHub Actions pipelines deploying a project to AWS. This file does not change
 between projects.
 
-Prerequisites: `stack/terraform.md`, `languages/python/python.md`
+Prerequisites: `stack/terraform.md`
 
 Pipelines are GitHub Actions because they are transparent to the members reading the repo. The hard rule
 is **no static AWS keys** anywhere — workflows assume a least-privilege role via OIDC. Every change is

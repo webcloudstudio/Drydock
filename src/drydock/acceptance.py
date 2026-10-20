@@ -2576,6 +2576,21 @@ def run_programmatic_acceptance(
                 or _malformed_failure(return_code, scrubbed, script.name, build_dir)
                 or _missing_fixture_failure(return_code, scrubbed, check.code, build_dir)
             )
+            native_statuses = re.findall(
+                r'^DRYDOCK_NATIVE_RESULT=\{"status": "([^"\n]+)"\}', stderr, re.MULTILINE
+            )
+            native_failure = next(
+                (status for status in native_statuses if status in {"fail", "execution-error"}),
+                None,
+            ) or next((status for status in native_statuses if status != "pass"), None)
+            if native_failure:
+                return_code = return_code or 1
+                prefix = (
+                    UNVERIFIED_FAILURE_PREFIX
+                    if native_failure in {"skip", "not-run", "unavailable"}
+                    else "native acceptance"
+                )
+                verdict = f"{prefix}: {native_failure}"
             # A malformed snippet, a missing fixture, and an environment fault all mean the
             # same thing: the code under test was never exercised. None is charged to the build.
             skipped = bool(

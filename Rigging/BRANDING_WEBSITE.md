@@ -1,5 +1,6 @@
 # Branding — Website
 
+**Type:** guidance
 **Version:** 20260523 V1
 **Tier:** branding
 **Category:** Branding

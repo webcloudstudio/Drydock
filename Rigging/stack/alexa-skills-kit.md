@@ -1,5 +1,6 @@
 # Alexa Skills Kit (ASK) Best Practices
 
+**Type:** guidance
 **Version:** 20260320 V1  
 **Category:** AWS
 **Description:** Alexa Skills Kit patterns: intent handlers, slots, and response builders

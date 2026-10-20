@@ -1,5 +1,6 @@
 # Branding — Posts
 
+**Type:** guidance
 **Version:** 20260910 V4
 **Category:** Branding
 **Description:** Standard for development-log posts Ed publishes on his site.

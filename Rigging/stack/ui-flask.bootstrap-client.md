@@ -1,5 +1,6 @@
 # Flask + Bootstrap 5 — Screen Build Reference
 
+**Type:** guidance
 **Tier:** screen-foundation
 **Category:** Frontend
 

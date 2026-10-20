@@ -213,3 +213,17 @@ def test_python_postgres_round_trip_when_server_is_configured():
     finally:
         instance.execute_script(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE;')
         instance.close()
+
+
+def test_missing_delete_key_changes_no_rows(database):
+    identity = database.tickets.create(title="preserved")
+    with pytest.raises(db.PersistenceError, match="key"):
+        database.tickets.delete()
+    assert database.tickets.get(id=identity).title == "preserved"
+
+
+def test_schema_enforces_required_columns_and_defaults(database):
+    with pytest.raises(db.PersistenceError):
+        database.tickets.create()
+    identity = database.tickets.create(title="default status")
+    assert database.tickets.get(id=identity).status == "open"

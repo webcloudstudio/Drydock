@@ -22,6 +22,21 @@ project/
 Application foundations add packages under `internal/`. The generated persistence library is a
 separate module at `persistence/`, linked by the root `go.mod`.
 
+### Native application layouts and fixtures
+
+Initialize the root `go.mod` in the language foundation before the DATABASE block.
+Use `cmd/app/main.go` for process startup, `internal/cli` for CLI behavior, and
+`internal/appserver` for HTTP behavior. The root application module requires
+`drydock.local/persistence v0.0.0` with `replace drydock.local/persistence => ./persistence`;
+the generated persistence directory owns its nested module. Run both module test suites.
+
+For a CLI, expose `Run(args []string, stdout, stderr io.Writer) int`, use a local
+`flag.FlagSet` with `flag.ContinueOnError`, and test with `bytes.Buffer`. Only main calls
+`os.Exit`. For HTTP, expose `NewHandler(...) http.Handler` using `net/http.ServeMux`.
+Use `httptest.NewRecorder` and `httptest.NewRequest` for handler tests, or
+`httptest.NewServer` with `t.Cleanup(server.Close)` when testing a real HTTP client.
+Keep business logic in application packages and persistence access in the shipped library.
+
 ### How do we execute and measure Acceptance Criteria in this language?
 
 An Acceptance Criterion (AC) is an executable check of Blueprint-required behavior. Native tests

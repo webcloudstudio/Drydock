@@ -1,5 +1,6 @@
 # FastAPI Foundation
 
+**Type:** web-server
 **Version:** 20260922 V2
 **Tier:** platform
 **Category:** Web Server

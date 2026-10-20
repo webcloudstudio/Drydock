@@ -1,5 +1,6 @@
 # AWS API Gateway Best Practices
 
+**Type:** guidance
 **Version:** 20260528 V1
 **Category:** AWS
 **Description:** API Gateway HTTP API with IAM (SigV4) authorization — a private, no-public-anonymous encapsulation boundary for Lambda

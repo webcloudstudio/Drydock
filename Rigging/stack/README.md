@@ -13,7 +13,7 @@ These technology files are **shared across all projects** in this specification 
 # Language and persistence instruction format
 
 `languages/python/python.md`, `languages/go/go.md`, `sqlite.md` and `postgres.md` use the following common format.
-The only additional header field is `**Type:** language` or `**Type:** persistence-engine`.
+Selectable files declare `**Type:**`; `Rigging/rigging_types.json` defines minimum and maximum selection counts. Types absent from the table have no count limit. Database guidance uses `**Type:** database`.
 Existing Foundation, Tier and contract fields retain their tooling roles.
 
 Each file answers both mandatory questions for its type as `###` headings inside
@@ -23,8 +23,8 @@ Each file answers both mandatory questions for its type as `###` headings inside
 |---|---|---|
 | language | How do we execute and measure Acceptance Criteria in this language? | AC format, execution command, criterion identity, result and observed-value reporting, measurement method and limitations. |
 | language | How does this language provide the shared persistence contract? | Library, supported engines, generated files, dependencies, calling/fixture instructions and verification status. |
-| persistence-engine | How is this engine configured and initialized? | Driver dependencies, connection settings, schema initialization and schema-change handling. |
-| persistence-engine | How does this engine implement the shared persistence contract? | Language bindings, calling/fixture instructions, engine differences, limitations and verification status. |
+| database | How is this engine configured and initialized? | Driver dependencies, connection settings, schema initialization and schema-change handling. |
+| database | How does this engine implement the shared persistence contract? | Language bindings, calling/fixture instructions, engine differences, limitations and verification status. |
 
 Keep answers concise. State unavailable capabilities explicitly; a proposed binding is not a
 shipped library. An Acceptance Criterion (AC) is an executable check of Blueprint-required behavior.

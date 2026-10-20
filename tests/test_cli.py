@@ -1608,6 +1608,9 @@ state: pending
     def _setup(self, tmp_target_root, monkeypatch):
         target = tmp_target_root / "ExampleTarget"
         target.mkdir()
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(self.PLAN, encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
@@ -1637,6 +1640,9 @@ state: pending
     ):
         target = tmp_target_root / "ExampleTarget"
         target.mkdir()
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: approved\nblocks: 1\n\n"
             "## story 1: Foundation\nid: foundation\ntype: foundational\nphase: 1\n"
@@ -1663,6 +1669,9 @@ state: pending
         monkeypatch.setenv("DRYDOCK_TEST_COMMAND_LOGGING", "1")
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -1720,6 +1729,9 @@ state: pending
     ):
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -1748,6 +1760,9 @@ state: pending
 
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -1786,6 +1801,9 @@ state: pending
 
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## feature 1: Catalog\nid: feature-catalog\nsummary: Catalog block.\n"
@@ -1836,6 +1854,9 @@ state: pending
         reset_diagnosis_guard()
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -1884,6 +1905,9 @@ state: pending
     ):
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         manifest = (
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -1935,6 +1959,9 @@ state: pending
 
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -1969,6 +1996,9 @@ state: pending
     ):
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -2002,6 +2032,9 @@ state: pending
 
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -2047,6 +2080,9 @@ state: pending
 
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## feature 1: Core\nid: core\nfinding: failed group\nstate: closed/failed\n\n"
@@ -2093,6 +2129,9 @@ state: pending
     ):
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -2113,6 +2152,9 @@ state: pending
     ):
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -2133,6 +2175,9 @@ state: pending
 
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
@@ -2168,6 +2213,9 @@ state: pending
 
         target = tmp_target_root / "ExampleTarget"
         (target / "blueprint").mkdir(parents=True)
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         (target / "MANIFEST.md").write_text(
             "# MANIFEST: ExampleTarget\nstate: draft\n\n"
             "## feature 1: Screen Setup\nid: screen-setup\nsummary: Screen.\nstate: pending\n\n"
@@ -2218,6 +2266,9 @@ state: pending
     ):
         target = tmp_target_root / "ExampleTarget"
         target.mkdir()
+        from drydock.technology_stack import StackEntry, write
+
+        write(target, [StackEntry("Python", "python.md")], approved="2026-10-19")
         manifest = self.PLAN.replace(
             "id: import-documents\ndepends: foundation\nstate: pending",
             "id: import-documents\ndepends: awaiting-checks\nstate: pending",
@@ -2301,6 +2352,13 @@ class TestPlanningSession:
         )
         self._patch_runner(monkeypatch)
 
+        from drydock.technology_stack import StackEntry, write
+
+        write(
+            tmp_target_root / "ExampleTarget",
+            [StackEntry("Python", "python.md")],
+            approved="2026-10-19",
+        )
         rc, out, err = run_cli("plan", "ExampleTarget")
         assert rc == 0, err
         assert "Plan state:" not in out
@@ -2354,6 +2412,13 @@ class TestPlanningSession:
         )
         self._patch_runner(monkeypatch, bad_manifest)
 
+        from drydock.technology_stack import StackEntry, write
+
+        write(
+            tmp_target_root / "ExampleTarget",
+            [StackEntry("Python", "python.md")],
+            approved="2026-10-19",
+        )
         rc, out, err = run_cli("plan", "ExampleTarget")
 
         assert rc == 1

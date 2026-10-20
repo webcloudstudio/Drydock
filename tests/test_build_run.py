@@ -221,6 +221,9 @@ def _setup(tmp_path, manifest=_TWO_STORIES):
     build_dir = tmp_path / "build"
     blueprint = target_dir / "blueprint"
     blueprint.mkdir(parents=True)
+    from drydock.technology_stack import StackEntry, write
+
+    write(target_dir, [StackEntry("Python", "python.md")], approved="2026-10-19")
     (target_dir / "MANIFEST.md").write_text(manifest, encoding="utf-8")
     (target_dir / "COMPASS.md").write_text(
         apply_guardrail("COMPASS INTENT CONTENT", "Demo", target_dir, build_dir=build_dir),
@@ -4738,6 +4741,13 @@ def test_persistence_exists_before_the_database_step_runs(tmp_path: Path, monkey
     target_dir, build_dir = _setup(
         tmp_path, manifest=_FEATURE_GROUP_MANIFEST.replace("SERVICE.md", "FEATURE-Service.md")
     )
+    from drydock.technology_stack import StackEntry, write
+
+    write(
+        target_dir,
+        [StackEntry("Python", "python.md"), StackEntry("SQLite", "sqlite.md")],
+        approved="2026-10-19",
+    )
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         "# DATABASE: Demo\n\n"
         "## Access Patterns\n\n"
@@ -4868,3 +4878,16 @@ def test_build_records_each_criterion_baseline_status(tmp_path):
     statuses = read_acceptance_status(target_dir / "evidence")
     assert statuses["foundation-file"].status == STATUS_VALID
     assert _state(target_dir, "foundation") == "closed/verified"
+
+
+def test_unapproved_stack_stops_before_model(tmp_path):
+    from drydock.technology_stack import StackEntry, write
+
+    target_dir, build_dir = _setup(tmp_path)
+    write(target_dir, [StackEntry("Go", "go.md")])
+
+    def runner(*args, **kwargs):
+        pytest.fail("Unapproved stack reached model")
+
+    with pytest.raises(SpecificationError, match="approval"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)

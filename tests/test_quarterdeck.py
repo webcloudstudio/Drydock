@@ -2044,7 +2044,7 @@ def test_technology_stack_offers_each_foundation_kind_once_in_build_order(tmp_pa
 
     assert order == sorted(order)
     assert rendered.count("class='ts-foundation'") == 4
-    assert "type='checkbox' name='ts-foundation-database'" in rendered
+    assert "type='radio' name='ts-foundation-database'" in rendered
 
 
 def test_technology_stack_preselects_the_default_for_an_undecided_target(tmp_path, monkeypatch):
@@ -2135,7 +2135,8 @@ def test_technology_stack_writeback_persists_rows_and_drops_empty_ones(tmp_path,
         None,
     )
 
-    assert result == {"ok": True, "item_id": "technology_stack", "rows": 2}
+    assert result["ok"] is True and result["rows"] == 2
+    assert result["errors"]
     assert technology_stack.load(tmp_path) == [
         technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn"),
         technology_stack.StackEntry("marina-library", None, ""),
@@ -2285,7 +2286,7 @@ def test_technology_stack_refuses_a_database_in_a_language_with_no_adapter(tmp_p
         quarterdeck.api_approve_item("technology_stack", None)
 
     assert exc.value.status_code == 400
-    assert "no persistence adapter for rust" in str(exc.value.detail)
+    assert "language" in str(exc.value.detail)
 
 
 def test_technology_stack_approves_a_python_database_without_an_orm_selection(
@@ -2478,7 +2479,7 @@ def test_technology_stack_labels_the_columns_and_shows_the_tier_chain(tmp_path, 
         assert f"Tier {number} · {name}" in rendered
 
 
-def test_technology_approval_requires_language_and_accepts_multiple_engines(tmp_path, monkeypatch):
+def test_technology_approval_requires_language_and_refuses_two_databases(tmp_path, monkeypatch):
     import pytest
 
     from drydock import technology_stack
@@ -2492,8 +2493,35 @@ def test_technology_approval_requires_language_and_accepts_multiple_engines(tmp_
         technology_stack.StackEntry("PostgreSQL", "postgres.md"),
     ]
     technology_stack.write(tmp_path, engines)
-    with pytest.raises(quarterdeck.HTTPException, match="exactly one language"):
+    with pytest.raises(quarterdeck.HTTPException, match="language: 0 selected"):
         quarterdeck.api_approve_item("technology_stack", None)
     technology_stack.write(tmp_path, [technology_stack.StackEntry("Go", "go.md"), *engines])
+    with pytest.raises(quarterdeck.HTTPException, match="database: 2 selected"):
+        quarterdeck.api_approve_item("technology_stack", None)
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("Go", "go.md"), engines[1]])
     assert quarterdeck.api_approve_item("technology_stack", None)["ok"]
     assert technology_stack.is_approved(tmp_path)
+
+
+def test_language_change_clears_approval_and_invalid_draft_returns_errors(tmp_path, monkeypatch):
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "TECHNOLOGY_STACK.md"
+    technology_stack.write(
+        tmp_path, [technology_stack.StackEntry("Python", "python.md")], "2026-10-19"
+    )
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
+    monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
+    result = quarterdeck.api_set_technology_stack(
+        "technology_stack",
+        quarterdeck.TechnologyStackUpdate(
+            rows=[
+                {"technology": "Go", "rigging": "go.md"},
+                {"technology": "FastAPI", "rigging": "fastapi.md"},
+            ]
+        ),
+        None,
+    )
+    assert result["ok"] and result["errors"]
+    assert technology_stack.approved_on(tmp_path) is None

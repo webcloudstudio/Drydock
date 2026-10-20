@@ -35,6 +35,8 @@ acceptance-only failures as `UNVERIFIED` before continuing.
 
 ### Rules
 
+`2026-10-19` · Build requires a valid approved stack before mutation or model execution. The language foundation receives full language guidance; all other build and repair prompts receive the shipped compact once, included in prompt costing. Keyed persistence operations require their declared key; keyless deletes fail before SQL. SQL owns schema validation. Breaking these rules risks wrong-language code or unintended deletion.
+
 **Guards**
 
 `2026-06-26` · **Blueprint drift halts before any mutation** and directs the Commander to
@@ -124,6 +126,8 @@ reset preserves `.git`. *Broken:* specification versions severed from code.
 | `2` | Usage error (exclusive options, negative `--repair-attempts`, provider/model conflict). |
 
 ### Spec divergence
+
+- The approved-stack precondition and shared type-count policy are implemented here; the master specification is unchanged.
 
 - The specification documents `--escalate-model`; it was removed `2026-10-13`. Escalation is now
   per-model in `model_config.jsonl` (`escalate_model`, `prompt_limit_tokens`).

@@ -23,8 +23,10 @@ was given.
 
 ### Rules
 
+`2026-10-19` · Selection uses `Rigging/rigging_types.json`: exactly one shipped language and at most one database, web server and CLI. `Type` controls counts; Foundation/Tier/Category retain ordering and grouping. Language prerequisites are checked against selected Rigging files. Breaking this rule produces incompatible foundations.
+
 `2026-09-20` · **One foundation per exclusive kind.** Exactly one language is required at approval and planning. Web server and CLI remain exclusive;
-zero or more database engines may be selected. Two languages are refused.
+zero or one database engine may be selected. Two languages are refused.
 
 `2026-09-20` · **Tiers order the chain inside every phase; they never forbid a block.**
 
@@ -53,7 +55,7 @@ the stack did not select, and importing a published entry callable from another 
 third-party imports are not judged.
 
 `2026-09-20` · **The Commander decides the set.** `TECHNOLOGY_STACK.md` is the record; plan never
-adds a kind. The QuarterDeck selector uses language/platform radios and database checkboxes, defaulting to
+adds a kind. The QuarterDeck selector uses language/platform/database radios, defaulting to
 `python.md` / `fastapi.md` / `sqlite.md`.
 
 `2026-10-18` · **Language and engine instructions answer mandatory questions.** Python and Go
@@ -74,7 +76,7 @@ advertise persistence bindings that are not shipped.
 each Rigging file; kinds are open. `technology_stack` refuses multiple selections of exclusive kinds and a missing language. `drydock rigging compact` splices the contract into the compact verbatim. The
 selected foundations' contracts ride with `TECHNOLOGY_STACK.md` in the plan prompt, and
 `plan verify` refuses `unknown-package` imports. `TIER_ORDER` is the six-tier chain;
-`PLATFORM_ORDER` sub-orders tier 2. The QuarterDeck selector uses checkboxes for database engines and radios for exclusive kinds.
+`PLATFORM_ORDER` sub-orders tier 2. The QuarterDeck selector uses radios for every max-one type, with None for optional types.
 
 ### Spec divergence
 
@@ -122,6 +124,8 @@ the existing Marina_Luna-shaped plan still schedules.
    two or the build-order validator will contradict the tier chain.
 
 ## Open Actions
+
+- `2026-10-19`: Run PostgreSQL integration for both persistence libraries with `DRYDOCK_TEST_POSTGRES_DSN`. Go and Python SQLite integration pass; PostgreSQL remains unverified (skipped, not passed).
 
 - 2026-10-18: Completed language bundles, Go/Python persistence generation, and multiple engine
   selection. Automatic per-criterion code/persistence tracing remains separate Refit work.

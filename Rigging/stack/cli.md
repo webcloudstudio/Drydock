@@ -1,5 +1,6 @@
 # Command-Line Application
 
+**Type:** cli
 **Version:** 20260920 V1
 **Tier:** platform
 **Category:** Technologies

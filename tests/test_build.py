@@ -1038,3 +1038,26 @@ class TestStagedFilesBlock:
             staged_assets=self._assets(tmp_path),
         )
         assert "- sources/harness.sh" in assembly.rendered_text
+
+
+def test_selected_language_is_injected_once_and_costed(tmp_path):
+    from dataclasses import replace
+
+    from drydock.paths import get_language_dir
+    from drydock.technology_stack import StackEntry, write
+
+    roots = _roots(tmp_path)
+    block = _plan(tmp_path).by_id()["core"]
+    for language in ("python", "go"):
+        write(roots.target_dir, [StackEntry("Display", f"{language}.md")])
+        block = replace(block, fields={**block.fields, "stack": ()})
+        assembly = assemble_step(block, roots)
+        guidance = get_language_dir(language) / f"{language}_compact.md"
+        files = [item for item in assembly.files if item.source == guidance]
+        assert len(files) == 1
+        assert files[0].byte_count == guidance.stat().st_size
+        assert assembly.total_byte_count >= guidance.stat().st_size
+        foundation = replace(block, fields={**block.fields, "tier": "language"})
+        files = assemble_step(foundation, roots).files
+        assert sum(item.source == guidance.with_name(f"{language}.md") for item in files) == 1
+        assert not any(item.source == guidance for item in files)

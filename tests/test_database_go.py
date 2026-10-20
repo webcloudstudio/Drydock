@@ -108,7 +108,15 @@ def go_env(monkeypatch):
     return dict(os.environ)
 
 
-def test_generated_go_store_and_schema_application(tmp_path, go_env):
+@pytest.mark.parametrize("engine", ["sqlite", "postgres"])
+def test_generated_go_store_and_schema_application(tmp_path, go_env, engine):
+    if engine == "postgres" and not go_env.get("DRYDOCK_TEST_POSTGRES_DSN"):
+        pytest.skip("Set DRYDOCK_TEST_POSTGRES_DSN for PostgreSQL integration")
+    go_env = dict(go_env)
+    if engine == "sqlite":
+        go_env.pop("DRYDOCK_TEST_POSTGRES_DSN", None)
+        if not shutil.which("gcc"):
+            pytest.skip("C compiler required for Go SQLite")
     blueprint = tmp_path / "blueprint"
     blueprint.mkdir()
     (blueprint / "DATABASE.md").write_text(
@@ -142,6 +150,10 @@ func TestDeclaredOperations(t *testing.T) {
  if err!=nil {t.Fatal(err)}
  found:=false;for _,row:=range rows {if row.Id==id && row.Title=="bound ' value" {found=true}}
  if !found {t.Fatal("created row not returned")}
+ if _,err=db.Run(ctx,"tickets","delete",nil);err==nil {t.Fatal("keyless delete accepted")}
+ if _,err=db.Run(ctx,"tickets","create",nil);err==nil {t.Fatal("required columns not enforced")}
+ preserved,err:=db.Tickets.Get(ctx,persistence.TicketsGetInput{Id:id})
+ if err!=nil || preserved==nil {t.Fatal("keyless delete removed row")}
  status:="closed"
  count,err:=db.Tickets.Update(ctx,persistence.TicketsUpdateInput{Id:id,Status:&status})
  if err!=nil || count!=1 {t.Fatalf("update: %v %v",count,err)}
@@ -168,3 +180,17 @@ def test_go_generator_rejects_unknown_field_type():
 def test_go_generator_refuses_a_projection_it_cannot_supply():
     with pytest.raises(SpecificationError, match="undeclared column"):
         render_go_schema(_DATABASE.replace("| title | str |\n", "| invented | str |\n"))
+
+
+def test_go_persistence_requires_language_initialization_first(tmp_path):
+    from drydock.technology_stack import StackEntry, write
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "DATABASE.md").write_text(_DATABASE)
+    write(tmp_path, [StackEntry("Go", "go.md")])
+    build = tmp_path / "build"
+    build.mkdir()
+    with pytest.raises(SpecificationError, match="create go.mod first"):
+        write_persistence_package(blueprint, build)
+    assert not (build / "persistence").exists()

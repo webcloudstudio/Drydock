@@ -36,6 +36,8 @@ drydock diagnose [<Target>] [--run <stamp>] [--apply | --no-apply]
 
 ### Rules
 
+`2026-10-19` · Acceptance repair includes the selected language compact in its specification-only context. Missing language resources raise a resource error. Breaking this rule repairs criteria against the wrong runtime.
+
 `2026-08-30` · **Free facts first, then exactly one diagnosis call.** The milestone ladder (`INIT`,
 `ANALYZE`, `PLAN`, `BUILD`, `SCORE`; `pass`, `fail`, or `[--] not run`) prints before anything is
 spent. Then one model call, verification, write, confirm, apply — no retry loop, no second pass.

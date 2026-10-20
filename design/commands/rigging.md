@@ -32,6 +32,8 @@ drydock rigging verify <Target>
 
 ### Rules
 
+`2026-10-19` · Each Target compaction role receives the selected language in its job context. Shipped Rigging compaction and source freshness rules remain unchanged. Breaking this rule emits interfaces for the wrong language.
+
 `2026-09-19` · **Compaction has two independent scopes.** A `<Target>` selects that Target's
 `blueprint/`. `--all` selects Drydock's shipped `Rigging/` tree and needs no `<Target>`; given both,
 the scopes are unioned. `--include-file` / `--include-dir` add explicit paths and need no `<Target>`;

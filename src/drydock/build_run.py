@@ -2376,6 +2376,10 @@ def build_target(
             f"MANIFEST.md not found: {manifest_path}\n  Run: drydock plan {target}"
         )
 
+    from drydock.technology_stack import require_approved
+
+    require_approved(target_dir)
+
     # This guard precedes every state, error-record, asset, and reset mutation. Refit is the
     # exclusive reconciliation point for Blueprint drift; no build option may erase its evidence.
     blueprint_dir = blueprint_dir_for(target_dir)

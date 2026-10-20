@@ -258,8 +258,6 @@ def test_a_python_target_with_a_database_needs_no_orm_selection(tmp_path):
     technology_stack.write(tmp_path, entries)
 
     assert technology_stack.declared_language(tmp_path) == "python"
-    assert technology_stack.unsupported_persistence(tmp_path) is None
-
     technology_stack.approve(tmp_path, "2026-09-19")
 
     assert technology_stack.is_approved(tmp_path)
@@ -272,16 +270,14 @@ def test_a_language_with_no_shipped_adapter_is_refused_rather_than_ignored(tmp_p
     (tmp_path / "blueprint" / "DATABASE.md").write_text("# DATABASE: Example\n", encoding="utf-8")
     technology_stack.write(tmp_path, [StackEntry("Rust", "rust.md")])
 
-    assert technology_stack.unsupported_persistence(tmp_path) == "rust"
-    with pytest.raises(ValueError, match="ships no persistence adapter for rust"):
+    assert technology_stack.declared_language(tmp_path) is None
+    with pytest.raises(ValueError, match="language"):
         technology_stack.approve(tmp_path)
     assert not technology_stack.is_approved(tmp_path)
 
 
-def test_an_unsupported_language_without_a_database_is_not_gated(tmp_path):
+def test_go_without_a_database_is_approved(tmp_path):
     technology_stack.write(tmp_path, [StackEntry("Go", "go.md")])
-
-    assert technology_stack.unsupported_persistence(tmp_path) is None
 
     technology_stack.approve(tmp_path, "2026-09-19")
 
@@ -294,7 +290,6 @@ def test_an_undeclared_language_leaves_the_stack_undecided_rather_than_blocked(t
     technology_stack.write(tmp_path, [StackEntry("Bootstrap 5", "bootstrap5.md")])
 
     assert technology_stack.declared_language(tmp_path) is None
-    assert technology_stack.unsupported_persistence(tmp_path) is None
 
 
 def test_is_approved_is_false_for_a_missing_document(tmp_path):
@@ -387,7 +382,7 @@ def test_the_frontend_files_are_no_longer_offered_as_web_servers():
     assert groups["Language"] == ["go.md", "python.md", "typescript.md"]
 
 
-def test_multiple_engines_round_trip_and_language_is_required(tmp_path):
+def test_multiple_engines_fail_and_language_is_required(tmp_path):
     import pytest
 
     entries = [
@@ -395,15 +390,35 @@ def test_multiple_engines_round_trip_and_language_is_required(tmp_path):
         StackEntry("SQLite", "sqlite.md"),
         StackEntry("PostgreSQL", "postgres.md"),
     ]
-    assert not technology_stack.foundation_defects(entries)
-    chosen, remaining = technology_stack.split_foundations(entries)
-    assert chosen["database"] == ["sqlite.md", "postgres.md"]
-    assert set(
-        technology_stack.stack_files_from(technology_stack.with_foundations(remaining, chosen))
-    ) == {"go.md", "sqlite.md", "postgres.md"}
+    assert any("database: 2" in error for error in technology_stack.foundation_defects(entries))
     technology_stack.write(tmp_path, entries)
+    with pytest.raises(ValueError, match="database"):
+        technology_stack.approve(tmp_path)
+    technology_stack.write(tmp_path, entries[:1])
     technology_stack.approve(tmp_path)
     assert technology_stack.is_approved(tmp_path)
     technology_stack.write(tmp_path, entries[1:])
-    with pytest.raises(ValueError, match="exactly one language"):
+    with pytest.raises(ValueError, match="language"):
         technology_stack.approve(tmp_path)
+
+
+def test_language_comes_from_rigging_not_display_name(tmp_path):
+    technology_stack.write(tmp_path, [StackEntry("Python", "go.md")])
+    assert technology_stack.declared_language(tmp_path) == "go"
+    assert technology_stack.foundation_defects([
+        StackEntry("Go", "go.md"),
+        StackEntry("FastAPI", "fastapi.md"),
+    ])
+    assert technology_stack.foundation_defects([
+        StackEntry("Go", "go.md"),
+        StackEntry("Python", "python.md"),
+    ])
+
+
+def test_new_count_rule_is_enforced(monkeypatch):
+    monkeypatch.setattr(technology_stack, "type_counts", lambda: {"guidance": {"min": 0, "max": 1}})
+    errors = technology_stack.foundation_defects([
+        StackEntry("Common", "common.md"),
+        StackEntry("Secrets", "env_variables_and_secrets.md"),
+    ])
+    assert any("guidance: 2" in error for error in errors)

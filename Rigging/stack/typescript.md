@@ -1,5 +1,6 @@
 # TypeScript Best Practices
 
+**Type:** language
 **Version:** 20260716 V2  
 **Foundation:** language
 **Tier:** language

@@ -223,6 +223,13 @@ def assemble(
             kind="job",
         ),
     ]
+    from drydock.paths import get_language_dir
+    from drydock.technology_stack import declared_language
+
+    language = declared_language(blueprint_dir.parent)
+    if language:
+        source = get_language_dir(language) / f"{language}_compact.md"
+        parts.append(part(source.name, source.read_text(encoding="utf-8")))
     texts: dict[str, str] = {}
     for candidate in candidates:
         source = candidate.check.source

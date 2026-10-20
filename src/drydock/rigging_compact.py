@@ -379,6 +379,7 @@ def _assemble_prompt_assembly(
     objective: str,
     source_text: str,
     existing_compact: str | None = None,
+    language: str | None = None,
 ) -> PromptAssembly:
     _ = existing_compact
     return PromptAssembly(
@@ -387,7 +388,21 @@ def _assemble_prompt_assembly(
             section_heading_part("# Input Context"),
             lines_part(
                 "Compaction job",
-                ["## Compaction job", "", f"- SOURCE_PATH: {rel_source}", f"- DATE: {today}", ""],
+                [
+                    "## Compaction job",
+                    "",
+                    f"- SOURCE_PATH: {rel_source}",
+                    f"- DATE: {today}",
+                    *(
+                        [
+                            f"- TARGET_LANGUAGE: {language}",
+                            "- Describe all interfaces in the selected Target language.",
+                        ]
+                        if language
+                        else []
+                    ),
+                    "",
+                ],
                 kind="job",
             ),
             lines_part(
@@ -551,6 +566,13 @@ def compact(
                 f"[{role.label} via {role.prompt_name}.md] "
                 f"{source_bytes} B"
             )
+        from drydock.technology_stack import declared_language
+
+        language = (
+            declared_language(blueprint_dir.parent)
+            if source.is_relative_to(blueprint_dir)
+            else None
+        )
         prompt_assembly = _assemble_prompt_assembly(
             prompt.body,
             rel_source=rel_source,
@@ -558,6 +580,7 @@ def compact(
             objective=role.objective,
             source_text=model_text,
             existing_compact=existing_compact,
+            language=language,
         )
         result = run(
             prompt_assembly.rendered_text,

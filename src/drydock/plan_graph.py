@@ -466,6 +466,9 @@ def _work_kind(story: PlannedStory) -> str:
 
 
 def _partition_key(story: PlannedStory) -> tuple[int, str, str]:
+    # Language initialization must finish before deterministic persistence emission.
+    if story.fields.get("initializes_language") == "yes":
+        return (story.phase, story.story_type, story.story_id)
     return (story.phase, story.story_type, _work_kind(story))
 
 

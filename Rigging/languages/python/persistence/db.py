@@ -232,6 +232,13 @@ class Database:
                 f"{operation.identifier} does not accept {', '.join(unknown)}. Declared inputs: "
                 f"{', '.join(operation.inputs) or 'none'}."
             )
+        if operation not in self._schema.operations:
+            raise UnknownOperation(f"{operation.identifier} is not a declared operation")
+        key = operation.key or self._primary_key(operation.table)
+        if operation.verb in ("get", "update", "delete") and key in operation.inputs and key not in arguments:
+            raise PersistenceError(f"{operation.identifier} requires key {key}")
+        if operation.verb == "delete" and not arguments:
+            raise PersistenceError(f"{operation.identifier} requires a delete predicate")
         names = [name for name in operation.inputs if name in arguments]
         values = [arguments[name] for name in names]
         connection = self._driver.connect()
