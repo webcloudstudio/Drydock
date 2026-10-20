@@ -9,4 +9,4 @@ if [ -d "$REPO_DIR/.venv" ]; then
 fi
 ruff check .
 ruff format --check .
-exec python -m pytest "$@"
+exec python -m pytest -n auto "$@"

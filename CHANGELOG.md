@@ -303,6 +303,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-20: The developer test suite runs in parallel. `pytest-xdist` is a `dev`
+  dependency and `bin/test.sh` passes `-n auto`. On a 32-core WSL2 host the full suite drops from
+  about 35 minutes to about 9.
+
 - 2026-10-12: **`drydock build` verifies, progresses, and repairs on binding criteria only.** An
   ungoverned story reaches `closed/verified` only when an own binding criterion passes that was
   not green before the build; otherwise it closes `closed/implemented` with a finding naming the

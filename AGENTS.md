@@ -126,7 +126,7 @@ by patching generated Target data.
 | Integration tests | Real temporary Blueprint and Target directories |
 | Regression tests | Existing working commands remain working |
 | Lint | `ruff check src/ tests/` |
-| Full suite | `python -m pytest` |
+| Full suite | `python -m pytest -n auto` |
 | Package test | Required when changing Rigging resolution, package data, or launch behavior |
 | Implementation evidence | Matching tests and user-facing documentation updated truthfully |
 
@@ -137,7 +137,7 @@ never spend API credits or require network access.
 
 ```bash
 uv pip install -e ".[dev]"        # install editable package
-python -m pytest                  # run tests
+python -m pytest -n auto          # run tests in parallel
 bash bin/test.sh                  # canonical test entry point
 ruff check src/ tests/            # lint
 ruff format --check src/ tests/   # verify formatting
