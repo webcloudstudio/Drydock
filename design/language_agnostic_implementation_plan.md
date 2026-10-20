@@ -149,19 +149,23 @@ Acceptance:
 - Python and Go fixtures each demonstrate a CLI application and an HTTP application.
 - Persistence generation never precedes language initialization.
 
-### 6. Library CRUD guards
+### 6. Library errors and basic CRUD guards
 
-Add standard guards to the shipped libraries in both languages:
+Keep the library interface simple. The database enforces required columns, nullability,
+defaults and other schema constraints. The library reports database failures to its caller;
+it does not duplicate schema validation or add required-column metadata to generated code.
+
+Retain basic operation guards in both languages:
 
 | Verb | Guard |
 |---|---|
 | `get`, `update`, `delete` | Key input required; refused before any SQL runs |
-| `create` | Required (NOT NULL, no default) columns supplied |
 | `list` | Declared filter inputs only |
 | All | Undeclared operation or input refused |
 
 Correct calls behave exactly as today. `delete` without its key raises and removes no rows
 (today it issues `DELETE FROM <table>`). Each guard has a Python and a Go unit test.
+Verify that database constraint failures reach callers as errors in both languages.
 
 ### 7. Native acceptance outcomes
 
@@ -196,18 +200,10 @@ passes.
   `build_plan.stale_applied_specs` checks Blueprint records; the Target-level stack is outside
   that check. Acceptance: plan Python, switch to Go, approve, then build without replanning;
   build refuses before an LLM call. This checks generated-plan provenance, not existing code.
-- **High — define CRUD guard metadata (section 6).** Both shipped runtime `Table` structures
-  retain column names and a key, but no required/default metadata. Include both schema emitters
-  and runtime declarations in this slice. Define generated-key exemptions and the treatment of
-  omitted versus explicit null values; define keyed operations on tables without a primary key
-  (the current database contract uses all columns). Verify guards through generated packages,
-  including valid defaulted/generated-key creates, rather than only hand-constructed schemas.
-- **Medium — cover every compact freshness path (section 4).** Language must participate before
-  the mtime/source-hash shortcuts in `rigging_compact._is_stale`, in build's independent
-  `_compact_is_stale` check, and in the unchanged-body provenance update. Cover compact and
-  no-surface derivatives, missing language provenance, and status callers. Acceptance: unchanged
-  source bytes with a newer compact timestamp still regenerate after a language switch; an
-  identical regenerated body records the new language and does not regenerate indefinitely.
+- **Regenerate Target compacts after a language switch (section 4).** The shipped `go.md` and
+  `go_compact.md` already provide Go guidance. This action concerns Target-generated files such
+  as `DATABASE_compact.md`: regenerate those for Go before consuming them after a Python-to-Go
+  switch. Verify that unchanged source files do not cause old Python compacts to be reused.
 - **Delivery corrections (section 8).** Include `design/commands/build.md` and
   `design/topics/acceptance_criteria.md` in affected behavior documentation. Native SQLite Go
   verification also requires CGO and a C compiler, as declared by the shipped Go bundle;
