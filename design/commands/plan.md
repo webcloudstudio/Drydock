@@ -287,6 +287,12 @@ exist.
 
 ## Open Actions
 
+- `2026-10-21` · Complete the planner as one coherent change and validate one complete command
+  at a time. The conversation record, implementation sequence, and continuation checklist are
+  in [planner_step_validation_plan.md](../planner_step_validation_plan.md). This supersedes
+  the single-batch live trial below: validate the entire plan step before advancing to verify
+  and build. Start from the database-freeze implementation in `9b83447`.
+
 - `2026-10-21` · *Closed 2026-10-21:* the Stage 2 output contract is consistent. `DATABASE.md`
   is a named Current-batch member authored in one step, in full, then frozen; no batch emits
   additions. Tests cover the database batch, its refusal and retry, the seed merge, compact
