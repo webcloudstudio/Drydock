@@ -1,157 +1,188 @@
-<!-- Compacted from Rigging/stack/persistence.md sha256=c6917d520c895dc4b1917483ce6e605fe137f6b241199b8601088e2af3bea1b3 on 2026-10-18 by Rigging maintenance -->
+<!-- Compacted from Rigging/stack/persistence.md sha256=faaae951cc9641b1a3799eb0a46030514bc49afa4ba8f9ca71949fa3861addbd on 2026-10-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # Persistence & Service Encapsulation — Contract Surface
 
-## Relational stores
-
-### function open_database
-Opens a database selected at runtime from the configured DSN.
-
-| Input | Type | Required |
-|---|---|---|
-| `dsn` | string | yes |
-
-Returns a `Database` instance with one attribute per declared table.
-
-Constraints: Callers use synchronous methods and share one instance. Returned rows are frozen dataclasses or `None`; list operations return lists of rows. Schema is applied once during the DATABASE build step and never at application startup.
-
-### Database.<table>.<verb>
-Executes a declared repository operation for a table.
-
-| Input | Type | Required |
-|---|---|---|
-| Declared operation keyword arguments | Per `DATABASE.md` `Input:` fields | Per declaration |
-
-Returns the operation’s declared result.
-
-Constraints: Only verbs declared in `DATABASE.md` are available. Undeclared verbs raise `UnknownOperation` naming the granted operations. No other arguments or access paths are accepted.
-
-## Configuration
-
-### Config
-Provides typed application configuration loaded from the environment.
-
-| Field | Type | Required |
-|---|---|---|
-| `secret_key` | string | yes |
-| `database_path` | string | no; defaults to `data/app.db` |
-| `port` | integer | no; defaults to `5001` |
-| `debug` | boolean | no; true only when `APP_DEBUG` equals `"1"` |
-
-### Config.load
-Reads and validates configuration once at startup.
-
-Returns a frozen `Config`.
-
-Constraints: `SECRET_KEY` is required. Malformed typed values fail at startup. Missing required environment variables raise `RuntimeError`. No other code reads `os.environ`. No environment-specific subclasses exist.
-
-## Files
-
-### FileStore.__init__
-Creates a file store rooted at a directory.
-
-| Input | Type | Required |
-|---|---|---|
-| `root` | string | yes |
-
-### FileStore.read
-Reads an application file by name.
-
-| Input | Type | Required |
-|---|---|---|
-| `name` | string | yes |
-
-Returns the file contents as a string.
-
-### FileStore.write
-Writes string data to an application file by name.
-
-| Input | Type | Required |
-|---|---|---|
-| `name` | string | yes |
-| `data` | string | yes |
-
-Returns `None`.
-
-### FileStore.list
-Lists files matching a pattern.
-
-| Input | Type | Required |
-|---|---|---|
-| `pattern` | string | no; defaults to `"*"` |
-
-Returns a list of file-name strings.
-
-Constraints: Callers do not construct paths or call `open()` or `shutil` directly. Path-traversal validation and atomic writes are enforced by `FileStore`.
-
-## External services
-
-### ServiceClient.__init__
-Creates a service wrapper base with a backend handle and named logger.
-
-| Input | Type | Required |
-|---|---|---|
-| `backend` | backend handle | yes |
-| `name` | string or `None` | no; defaults to the subclass name |
-
-### ServiceClient._guard
-Executes a backend operation with uniform exception logging.
-
-| Input | Type | Required |
-|---|---|---|
-| `op` | callable | yes |
-| `*args` | any | no |
-| `**kwargs` | any | no |
-
-Returns the callable’s result. Logs the service name and re-raises any exception.
-
-### MessageBus.publish
-Publishes a payload to a topic through the wrapped backend.
-
-| Input | Type | Required |
-|---|---|---|
-| `topic` | string | yes |
-| `payload` | dictionary | yes |
-
-Returns a string message identifier.
-
-### MessageBus.subscribe
-Registers a handler for a topic.
-
-| Input | Type | Required |
-|---|---|---|
-| `topic` | string | yes |
-| `handler` | callable | yes |
-
-Returns `None`.
-
-Constraints: External-service wrappers extend `ServiceClient`, expose typed methods, and never expose the SDK client. Cloud SDK imports remain inside their wrappers.
-
-## Access rules
+## Persistence
 
 ### Rule: typed-persistence-boundary
+
 All persistence and external-service access goes through typed encapsulation classes.
 
 Constraints: Route, feature, and business-logic code must not execute raw SQL, read `os.environ`, open application files, or import cloud SDKs.
 
-### Rule: generated-relational-package
-The relational persistence package is generated from `DATABASE.md`.
+### function_name
 
-Constraints: Do not hand-write repositories, DAOs, ORM models, connection helpers, session factories, or migrations. Do not edit `persistence/`; change `DATABASE.md` and rebuild.
+`open_database(dsn)` opens the generated database abstraction selected by the DSN.
 
-### Rule: database-engine-selection
-SQLite and PostgreSQL engines are available in every build and selected at runtime from the DSN.
+| Input | Type |
+|---|---|
+| `dsn` | `str` |
 
-### Rule: startup-schema
-Application startup must not create or alter the database schema.
+Returns a `Database` with one attribute per declared table.
 
-### Rule: wrapper-inheritance
-Every external-service wrapper extends `ServiceClient`.
+Constraints: The generated persistence package is derived from `DATABASE.md`; callers must not create repositories, DAOs, ORM models, session factories, migrations, or alternate storage paths.
+
+### Database.table.get
+
+Retrieves one row by identifier.
+
+| Input | Type |
+|---|---|
+| `id` | declared identifier type |
+
+Returns a frozen dataclass or `None`.
+
+### Database.table.list
+
+Lists rows matching declared access-pattern fields.
+
+Returns a list of frozen row dataclasses.
+
+### Database.table.create
+
+Creates a row using exactly the declared operation input fields.
+
+Returns the new record identifier.
+
+### Database.table.update
+
+Updates a row using exactly the declared operation input fields.
+
+Returns no specified value.
+
+### Database.table.delete
+
+Deletes a row by the declared operation input fields.
+
+Returns no specified value.
 
 ### Rule: declared-operation-surface
-Downstream code depends only on operations declared in `DATABASE.md`, not on the underlying schema.
 
-## Language bindings
+Each declared table exposes only the methods specified by its `DATABASE.md` access patterns. Unsupported verbs raise `UnknownOperation` naming the granted operations.
 
-Python and Go libraries live in `languages/<language>/persistence/`; their language contracts
-own native APIs, fixtures and dependencies. Both support SQLite and PostgreSQL.
+### Rule: database-lifecycle
+
+Callers construct one `Database`, share it, and call methods synchronously. Returned rows contain no connection state.
+
+Constraints: `schema.sql` is applied once during the DATABASE build step. Application startup must not create or alter schema.
+
+### Rule: generated-engine-access
+
+Both SQLite and PostgreSQL engines are available at runtime and selected from the DSN.
+
+Constraints: Code outside `persistence/` must not import `sqlite3` or `psycopg`, and nothing under `persistence/` is edited by hand.
+
+## Configuration
+
+### Config.load
+
+Loads and validates environment configuration once at startup.
+
+Returns a frozen `Config`.
+
+| Field | Type | Source | Default |
+|---|---|---|---|
+| `secret_key` | `str` | `SECRET_KEY` | required |
+| `database_path` | `str` | `DATABASE_PATH` | `data/app.db` |
+| `port` | `int` | `APP_PORT` | `5001` |
+| `debug` | `bool` | `APP_DEBUG == "1"` | `False` |
+
+Constraints: Missing required environment variables raise `RuntimeError`. Malformed typed values fail during startup. No code other than `Config` reads `os.environ`; no Dev/Prod/Test subclasses are permitted.
+
+## File Storage
+
+### FileStore.__init__
+
+Creates a file store rooted at the supplied directory.
+
+| Input | Type |
+|---|---|
+| `root` | `str` |
+
+### FileStore.read
+
+Reads a UTF-8 application file by name.
+
+| Input | Type |
+|---|---|
+| `name` | `str` |
+
+Returns `str`.
+
+### FileStore.write
+
+Writes UTF-8 application data by name.
+
+| Input | Type |
+|---|---|
+| `name` | `str` |
+| `data` | `str` |
+
+Returns `None`.
+
+### FileStore.list
+
+Lists application files matching a glob pattern.
+
+| Input | Type | Default |
+|---|---|---|
+| `pattern` | `str` | `"*"` |
+
+Returns `list[str]`.
+
+### Rule: file-access-boundary
+
+Only `FileStore` opens application files or uses file utilities.
+
+Constraints: Callers must not construct application paths or call `open()` or `shutil` directly. Path-traversal validation and atomic writes are required in `FileStore`.
+
+## External Services
+
+### ServiceClient.__init__
+
+Initializes a service wrapper with a backend handle and optional logger name.
+
+| Input | Type |
+|---|---|
+| `backend` | backend object |
+| `name` | `str \| None` |
+
+### ServiceClient._guard
+
+Executes a backend operation, logs failures, and re-raises exceptions.
+
+| Input | Type |
+|---|---|
+| `op` | callable |
+| `*args` | operation arguments |
+| `**kwargs` | operation keyword arguments |
+
+Returns the operation result.
+
+### MessageBus.publish
+
+Publishes a payload to a topic through the wrapped backend.
+
+| Input | Type |
+|---|---|
+| `topic` | `str` |
+| `payload` | `dict` |
+
+Returns `str`.
+
+### MessageBus.subscribe
+
+Registers a handler for a topic through the wrapped backend.
+
+| Input | Type |
+|---|---|
+| `topic` | `str` |
+| `handler` | callable |
+
+Returns `None`.
+
+### Rule: service-wrapper-boundary
+
+Every external-service wrapper extends `ServiceClient`, exposes typed methods, and does not expose the SDK client.
+
+Constraints: Cloud SDK imports must remain inside their service wrappers.
