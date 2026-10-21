@@ -236,21 +236,30 @@ REPORT_TYPES = (
 )
 
 
+#: Workspace reports take no Target and print instead of writing ``reports/<name>.txt``;
+#: the CLI dispatches them, and ``--all`` excludes them. Rows: name, command, description.
+WORKSPACE_REPORTS = (
+    (
+        "uat_report",
+        "drydock report uat_report",
+        "Passed UAT runs: LLM calls, tokens, tool calls, time",
+    ),
+)
+
+
 def report_help() -> str:
-    widths = (
-        max(len(item.name) for item in REPORT_TYPES),
-        max(len(item.command) for item in REPORT_TYPES),
-    )
+    rows = [(item.name, item.command, item.description) for item in REPORT_TYPES]
+    rows.extend(WORKSPACE_REPORTS)
+    widths = (max(len(row[0]) for row in rows), max(len(row[1]) for row in rows))
     lines = ["ReportName | Command | Description", "--- | --- | ---"]
     lines.extend(
-        f"{item.name.ljust(widths[0])} | {item.command.ljust(widths[1])} | {item.description}"
-        for item in REPORT_TYPES
+        f"{name.ljust(widths[0])} | {command.ljust(widths[1])} | {description}"
+        for name, command, description in rows
     )
     lines.extend([
         "",
         "All Targets: drydock report --all",
         "One Target: drydock report --all <Target>",
-        "Passed UAT runs (workspace, printed): drydock report uat_report",
     ])
     return "\n".join(lines)
 

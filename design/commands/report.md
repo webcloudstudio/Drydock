@@ -27,7 +27,7 @@ drydock report uat_report
 ```
 
 Names, in registry order: `status`, `manifest`, `run`, `build`, `history`, `llm`, `token`,
-`scores`.
+`scores`. Workspace report, listed after them in `report help`: `uat_report`.
 
 ### Rules
 

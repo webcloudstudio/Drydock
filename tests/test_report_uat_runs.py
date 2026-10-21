@@ -249,3 +249,10 @@ def test_cli_report_uat_report_rejects_operands_and_missing_root(tmp_path, monke
     rc, _out, err = run_cli("report", "uat_report")
     assert rc == 1
     assert "no UAT kits found" in err
+
+
+def test_report_help_lists_uat_report():
+    from drydock.report import report_help
+
+    row = next(line for line in report_help().splitlines() if line.startswith("uat_report"))
+    assert "drydock report uat_report" in row
