@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261020 V24
+version: 20261021 V25
 ---
 
 ## Overview
@@ -880,13 +880,11 @@ nothing. Declare the pattern in the same batch as the table. A `DATABASE.md` who
 Build reads that surface to fingerprint the persistence contract, and an unparseable one stops the
 build after a block has already been spent.
 
-`DATABASE.md` is the one cumulative Blueprint. Drydock opens it before the first Blueprint batch,
-seeded from the Rigging template and every table the imported source specification already
-declared, and keeps it open for the whole planning run. Emit it in a batch only when a Blueprint in
-that batch needs storage the declaration does not yet hold, and then emit only the additions: the
-new `` ## `table_name` `` sections, the new field rows for a table already declared, and the new
-`## Access Patterns` entries. Drydock appends what you emit and keeps everything already declared,
-so never restate a table, column, or operation already held.
+`DATABASE.md` is authored in one step: its own Blueprint batch, complete, and then frozen like
+every other Blueprint. That batch starts from a seed of the Rigging template and every table the
+imported source specification already declared; keep every seeded table. Declare every table and
+one access pattern for each repository operation any story in the frozen topology needs. Later
+batches receive the frozen declaration as `DATABASE_compact.md` and cite its access patterns.
 
 Each table is a top-level `` ## `table_name` `` section — lowercase snake_case in backticks — over
 a `| Field | Type | Notes |` table. A type cell is

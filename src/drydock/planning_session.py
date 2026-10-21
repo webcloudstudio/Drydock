@@ -86,7 +86,13 @@ from drydock.database_contract import (
     validate_database_interfaces,
     validate_sqlite_schema,
 )
-from drydock.database_schema import DATABASE_BLOCK, merge_schema, seed_blueprint
+from drydock.database_schema import (
+    DATABASE_BLOCK,
+    DATABASE_COMPACT_BLOCK,
+    compact_declaration,
+    merge_schema,
+    seed_blueprint,
+)
 from drydock.decisions import (
     ARCHITECTURE_BLUEPRINT,
     DECISIONS_BLOCK,
@@ -5067,8 +5073,15 @@ def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[
 
 
 def _blueprint_tranche(score: PlanScore, size: int = _PLAN_BLUEPRINT_BATCH_SIZE) -> tuple[str, ...]:
-    """The exact Stage 2 filenames the next model call is authorized to emit."""
-    return tuple(item.filename for item in score.missing[:size])
+    """The exact Stage 2 filenames the next model call is authorized to emit.
+
+    ``DATABASE.md`` is authored in one step, alone: a batch ends before it, and it is the whole
+    batch when it comes due. Every later Feature is authored against the frozen declaration.
+    """
+    names = tuple(item.filename for item in score.missing[:size])
+    if DATABASE_BLOCK not in names:
+        return names
+    return names[: names.index(DATABASE_BLOCK)] or (DATABASE_BLOCK,)
 
 
 def _render_ledger(
@@ -5087,39 +5100,32 @@ def _render_ledger(
     ``size`` bounds the Current batch; a refused batch is retried smaller.
     """
     tranche = frozenset(_blueprint_tranche(score, size))
-    frozen = sorted(name for name in score.accepted if name != DATABASE_BLOCK)
+    frozen = sorted(score.accepted)
     lines = [f"Accepted ({len(frozen)}) — already held, do not re-emit:"]
     lines.extend(f"  {name}" for name in frozen)
     if not frozen:
         lines.append("  (none)")
-    if DATABASE_BLOCK in score.accepted:
-        lines.append("")
-        lines.append(
-            f"Open ({DATABASE_BLOCK}) — the persistence declaration is cumulative. Emit it in "
-            "this batch only when a Blueprint in this batch needs storage the declaration does "
-            "not yet hold, and then emit only the additions: the new `## `table_name`` sections, "
-            "the new rows for a table already declared, and the new `## Access Patterns` entries. "
-            "Never restate a table, column, or operation already held — Drydock appends what you "
-            "emit and keeps everything already declared."
-        )
     lines.append("")
     lines.append(f"Current batch ({len(tranche)}) — emit exactly these, in this order:")
     lines.extend(f"  {item.rendered()}" for item in score.missing if item.filename in tranche)
     if not tranche:
         lines.append("  (none)")
+    if DATABASE_BLOCK in tranche:
+        # Built in one step and then frozen. A cumulative declaration left outside the Current
+        # batch read as forbidden under "nothing else", so no batch added the update and delete
+        # operations its Features needed (LayersTesting ``20261021.231950``).
+        lines.append(
+            f"  {DATABASE_BLOCK} is authored once, complete, and then frozen. Declare every table "
+            "and one access pattern for each repository operation any story in the frozen "
+            "topology needs — every get, list, create, update, and delete. Later batches cite "
+            "it and cannot add to it."
+        )
     deferred = len(score.missing) - len(tranche)
     lines.append("")
     lines.append(
         f"Deferred ({deferred}) — Drydock will provide later batches; do not emit them now."
     )
-    # DATABASE.md is seeded before the first batch, so it is never in a tranche. Filtered by the
-    # tranche its defect reached no batch, and Features were accepted against the bare template
-    # (LayersTesting ``20261021.213934``).
-    invalid = tuple(
-        item
-        for item in (*score.invalid, *rejected)
-        if item.filename in tranche or item.filename == DATABASE_BLOCK
-    )
+    invalid = tuple(item for item in (*score.invalid, *rejected) if item.filename in tranche)
     if invalid:
         lines.append("")
         lines.append(f"Defective ({len(invalid)}) — emit these again, in full, corrected:")
@@ -5148,11 +5154,13 @@ def _continuation_assembly(
     decisions: str,
     ledger: str,
     database: str | None = None,
+    database_seed: str | None = None,
 ) -> PromptAssembly:
     """Give one Stage 2 batch the frozen plan and its current bounded work queue.
 
     The original prefix stays byte-identical for provider caching. Previous batch responses are
-    excluded; DATABASE.md is the one cumulative artifact, so its accepted state is explicit.
+    excluded. Once ``DATABASE.md`` is accepted, later batches cite it from its compact form;
+    the batch that authors it gets the seed instead.
     """
     body = load_prompt("plan_continue").body.strip()
     frozen = lines_part(
@@ -5178,16 +5186,22 @@ def _continuation_assembly(
         [body, "", "## Ledger", "", ledger],
         kind="continuation",
     )
-    database_parts = (
-        contextual_markdown_parts(
-            DATABASE_BLOCK,
-            database,
-            filename=DATABASE_BLOCK,
-            role="accepted cumulative persistence declaration",
+    if database and database.strip():
+        database_parts = contextual_markdown_parts(
+            DATABASE_COMPACT_BLOCK,
+            compact_declaration(database),
+            filename=DATABASE_COMPACT_BLOCK,
+            role="frozen persistence declaration; cite its access patterns",
         )
-        if database and database.strip()
-        else ()
-    )
+    elif database_seed and database_seed.strip():
+        database_parts = contextual_markdown_parts(
+            DATABASE_BLOCK,
+            database_seed,
+            filename=DATABASE_BLOCK,
+            role="Drydock seed; keep every table it declares",
+        )
+    else:
+        database_parts = ()
     return PromptAssembly(parts=(*prompt_assembly.parts, frozen, *database_parts, instruction))
 
 
@@ -5204,7 +5218,7 @@ class _Continuation:
 def _seed_database_blueprint(
     blocks: dict[str, str], *, declared: Sequence[PlannedStory], blueprint_dir: Path
 ) -> None:
-    """Open the cumulative persistence declaration before the first Blueprint batch runs.
+    """Seed the persistence declaration that its own Stage 2 batch authors.
 
     The seed is the Rigging template plus whatever the imported source specification already
     declared. Carrying those tables across deterministically is the point: a model asked to render
@@ -5257,6 +5271,13 @@ def _continue_short_plan(
     damaged = _unpaired_artifact_names(blocks_text, blocks)
     accumulated = {name: body for name, body in blocks.items() if name not in damaged}
     current = tuple(declared)
+    # The seed is the starting point of the batch that authors DATABASE.md, not an accepted
+    # declaration: held as accepted, it was never named in a Current batch.
+    database_seed = (
+        accumulated.pop(DATABASE_BLOCK, "")
+        if any(story.implements.strip() == DATABASE_BLOCK for story in current)
+        else ""
+    )
     score = score_plan(current, accumulated)
     if on_text is not None:
         on_text(
@@ -5278,6 +5299,7 @@ def _continue_short_plan(
         passes += 1
         if on_text is not None:
             on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
+        tranche = frozenset(_blueprint_tranche(score, batch_size))
         ledger = _render_ledger(
             score, rejected=database_rejected, previous=previous_rejection, size=batch_size
         )
@@ -5287,6 +5309,7 @@ def _continue_short_plan(
             decisions=accumulated.get(DECISIONS_BLOCK, "[]"),
             ledger=ledger,
             database=accumulated.get(DATABASE_BLOCK),
+            database_seed=database_seed if DATABASE_BLOCK in tranche else None,
         )
         runner_kwargs: dict[str, object] = {
             "llm": llm_provider,
@@ -5384,7 +5407,6 @@ def _continue_short_plan(
         # be checked as one text, so this is the only point at which that check is possible.
         pass_damaged = _unpaired_artifact_names(result.text, pass_blocks)
 
-        tranche = frozenset(_blueprint_tranche(score, batch_size))
         accepted_now = frozenset(score.accepted)
         declared_names = frozenset(item.filename for item in score.declared)
         # The pass is merged into a copy and adopted only whole, so a rejected pass leaves
@@ -5399,25 +5421,6 @@ def _continue_short_plan(
                 if accumulated.get(name) != body:
                     rejection = f"{name} is frozen and this pass revised it"
                     break
-                continue
-            if name == DATABASE_BLOCK and name in declared_names:
-                # The persistence declaration is the one cumulative Blueprint. A Feature authored
-                # in a later batch may need a table, or a column on one declared batches ago, so
-                # this file is never frozen. The pass contributes additions and Drydock appends
-                # them: what is already declared cannot be retyped, reordered, or paraphrased away.
-                if name in pass_damaged:
-                    continue
-                held = candidate.get(name, "")
-                merged = merge_schema(held, body) if held.strip() else body
-                # A declaration Build cannot parse is refused at the batch that wrote it. Accepted
-                # here, it would be checked only after every later batch, and repaired from the
-                # bare defect text without the authoring contract in view. The pass is refused
-                # whole: its Features cite the operations this declaration failed to hold.
-                database_defects = database_contract_defects(merged)
-                if database_defects:
-                    rejection = f"{name} does not parse: " + "; ".join(database_defects)
-                    break
-                candidate[name] = merged
                 continue
             if name in accepted_now:
                 # An accepted artifact is frozen. A byte-identical repeat costs nothing; a
@@ -5434,6 +5437,19 @@ def _continue_short_plan(
                 rejection = f"{name} is deferred to a later batch"
                 break
             if name in pass_damaged:
+                continue
+            if name == DATABASE_BLOCK:
+                # The authored declaration is kept as written; a seeded table it dropped is
+                # appended, so a source-declared table is never paraphrased away.
+                merged = merge_schema(body, database_seed) if database_seed.strip() else body
+                # A declaration Build cannot parse is refused at the batch that wrote it. Accepted
+                # here, it would be checked only after every later batch, and repaired from the
+                # bare defect text without the authoring contract in view.
+                database_defects = database_contract_defects(merged)
+                if database_defects:
+                    rejection = f"{name} does not parse: " + "; ".join(database_defects)
+                    break
+                candidate[name] = merged
                 continue
             candidate[name] = body
         if rejection:

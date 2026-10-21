@@ -1,14 +1,13 @@
-"""``DATABASE.md`` as a cumulative declaration rather than a write-once document.
+"""``DATABASE.md`` seeding, merging, and compaction for planning.
 
-Every other Blueprint is authored once and frozen.  The persistence declaration is not: a Feature
-generated in the fifth batch may need a table, or a column on a table declared in the first.  A
-model handed the whole document and asked to produce the whole document paraphrases it, and the
-declaration shrinks with every pass.  So the model never restates what is already held — it emits
-only what is new, and this module appends it.
+A planning run authors the persistence declaration once, in its own Stage 2 batch, and freezes
+it. Drydock seeds that batch from the Rigging template and every table the imported source
+already declared, then merges the seed back into what the model wrote: a model asked to render
+an input specification paraphrases it, and a declaration that loses a source table leaves Build
+implementing a schema no Blueprint describes.
 
 The merge is append-only by construction.  A table already declared keeps its columns, their order,
-and their prose; a column already declared is never retyped or removed.  That makes a lossy model
-pass incapable of deleting a declaration, which is the failure this module exists to prevent.
+and their prose; a column already declared is never retyped or removed.
 
 Table declarations use the form :func:`drydock.database_contract.sqlite_schema_tables` reads — a
 top-level ``## `table_name``` heading over a ``| Field | Type | Notes |`` table.
@@ -22,8 +21,13 @@ from dataclasses import dataclass
 from drydock.database_contract import sqlite_schema_tables
 from drydock.errors import SpecificationError
 
-#: The one Blueprint a planning run keeps open for the whole of Stage 2.
+#: The persistence declaration Blueprint.
 DATABASE_BLOCK = "DATABASE.md"
+
+#: The frozen declaration as later Stage 2 batches read it.
+DATABASE_COMPACT_BLOCK = "DATABASE_compact.md"
+
+_COMMENT_RE = re.compile(r"[ \t]*<!--.*?-->[ \t]*\n?", re.DOTALL)
 
 _HEADING_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 _TABLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -263,6 +267,16 @@ def _merge_access_patterns(base: str, addition: str) -> str:
     head = base[: span[1]].rstrip("\n")
     tail = base[span[1] :].lstrip("\n")
     return head + "\n\n" + "\n\n".join(fresh) + ("\n\n" + tail if tail else "\n")
+
+
+def compact_declaration(text: str) -> str:
+    """The declaration without its authoring guidance: comments and examples removed.
+
+    Every table, access pattern, and field is kept verbatim, so a citation written against the
+    compact form matches the declaration Build reads.
+    """
+    compact = _COMMENT_RE.sub("", _EXAMPLE_RE.sub("", text))
+    return re.sub(r"\n{3,}", "\n\n", compact).strip() + "\n"
 
 
 def strip_examples(template: str) -> str:

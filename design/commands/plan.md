@@ -108,8 +108,8 @@ are checked against the declaration about to freeze.
 with a request for artifacts; a second prose reply fails with its text shown.
 
 `2026-10-14` · **Stage 2 batches start fresh sessions.** Each batch gets the original context,
-frozen topology and decisions, the five-Blueprint ledger, and the current `DATABASE.md` — no earlier
-conversation. *Broken:* a five-file request grows to hundreds of thousands of tokens.
+frozen topology and decisions, the five-Blueprint ledger, and `DATABASE_compact.md` once
+`DATABASE.md` is accepted — no earlier conversation. *Broken:* a five-file request grows to hundreds of thousands of tokens.
 
 `2026-08-02` · **A short plan is resumed, never discarded.** Truncated output gets up to
 `--continue-attempts` (default 3) continuation passes against the frozen declaration.
@@ -131,13 +131,20 @@ Renumbering and `Depends On` refactors do not dirty a story; `--overwrite` disca
 goes to artifact repair; if the budget runs out the run fails and writes nothing. This is the one
 exception to the governing rule, because only persistence is fully decidable from the artifacts.
 
-`2026-09-17` · **`DATABASE.md` is cumulative and append-only**, seeded from the Rigging template plus
-every source-declared table. Batches add; nothing is retyped or removed.
+`2026-10-21` · **`DATABASE.md` is authored in one step and frozen.** Every file a batch may emit is
+named in its Current batch. `DATABASE.md` is a batch of its own when it comes due — a batch ends
+before it — and starts from the seed of the Rigging template plus every source-declared table. The
+authored declaration is kept as written, and a seeded table it dropped is appended
+(`merge_schema(body, seed)`). Once accepted it is frozen like every Blueprint; a later batch that
+changes it is refused whole. Later batches receive `DATABASE_compact.md`: the declaration with
+comments and examples removed (`compact_declaration`). *Broken:* LayersTesting `20261021.231950`
+kept the seed outside every Current batch as a conditional "Open" aside under "nothing else"; no
+batch added update or delete operations, and Haiku refused `FEATURE-TxnAmend.md` three times.
 
 `2026-10-21` · **A batch whose `DATABASE.md` does not parse is refused whole at that batch.** The
 merged declaration is checked with `database_contract_defects`. On a defect no artifact of the
 batch is kept, the refusal prints on the always-shown score channel, and the next ledger lists
-`DATABASE.md` as defective with the reason whatever the tranche. *Broken:* LayersTesting
+`DATABASE.md` as defective with the reason. *Broken:* LayersTesting
 `20261021.034029` accepted a one-table `## Access Patterns` in batch 1, found it only after batch
 7, and three repairs from the bare defect text failed. LayersTesting `20261021.213934` dropped the
 defect because the seeded declaration is never in a tranche, accepted Features citing undeclared
@@ -212,10 +219,11 @@ without loading `seed_accounts.csv`; the product correctly answered `4` (absent)
    decisions; create `PLAN_COMPASS.md` and `EXCLUDE_FILES`; conform reusable imported specs with
    empty acceptance unless `--no-conform`.
 1. **Stage 1** — freeze `TOPOLOGY.md` after coverage and graph repair.
-2. **Seed** `DATABASE.md` from Rigging plus `sources/DATABASE.md`.
+2. **Seed** `DATABASE.md` from Rigging plus `sources/DATABASE.md`; the seed is context for its
+   own batch, not an accepted artifact.
 3. **Stage 2** — author Blueprints in batches of 5 against an Accepted / Current / Deferred /
-   Defective ledger. Accepted artifacts freeze, and a batch is accepted only when its merged
-   `DATABASE.md` parses.
+   Defective ledger. `DATABASE.md` is a batch alone, accepted only when it parses, then frozen
+   and supplied to later batches as `DATABASE_compact.md`. Accepted artifacts freeze.
 4. **Normalize** — deterministic fixes in order: unterminated and fused AC blocks, access values,
    owners, database interfaces, standalone imports, factory bindings, foundation imports,
    published clients (see [foundations](../topics/foundations.md)). Each is taken only when
@@ -279,14 +287,10 @@ exist.
 
 ## Open Actions
 
-- `2026-10-21` · Review of LayersTesting runs through `20261021.231950`: make the Stage 2
-  output contract consistent across `plan_continue.md`, `_render_ledger`, and the one-Blueprint
-  retry introduced by `2e121e4`. The current batch says "nothing else" while cumulative
-  `DATABASE.md` additions are separately permitted; database repairs say "in full" while the
-  cumulative declaration says additions only. Test initial, reduced, and repair batches with
-  a Feature that needs a new operation, including merge and citation validation. Preserve the
-  early database rejection from `42252b1`; do not add another retry layer. The existing diagnosis
-  row for this run remains open; this review supplies no implementation or verification claim.
+- `2026-10-21` · *Closed 2026-10-21:* the Stage 2 output contract is consistent. `DATABASE.md`
+  is a named Current-batch member authored in one step, in full, then frozen; no batch emits
+  additions. Tests cover the database batch, its refusal and retry, the seed merge, compact
+  injection, and refusal of a later change. The `42252b1` early rejection is preserved.
 
 - `2026-10-21` · Before another full LayersTesting run, establish a bounded planner check outside
   `uat/`: synthetic regression fixtures for the database/Feature boundary, then an isolated
@@ -303,8 +307,7 @@ exist.
 
 - `2026-10-21` · The Stage 2 stall block truncates the missing list (`… N more lines
   truncated`) and does not name the refused batch or its last reply excerpt
-  (`planning_session.py`, `plan generation stalled`). Its `specs: N / M` count includes
-  `DATABASE.md`, but the ledger's `Accepted (N)` does not.
+  (`planning_session.py`, `plan generation stalled`).
 
 ## Working Notes
 

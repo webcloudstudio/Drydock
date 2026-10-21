@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261020 V41
+version: 20261021 V42
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -281,11 +281,10 @@ source material genuinely leaves an item open; then put it under `## Questions`.
 
 Rules:
 
-- `DATABASE.md` is cumulative and is never restated. Drydock seeds it from the template and the
-  imported source specification before the first batch, and appends the additions each batch emits.
-  Emit only new tables, new field rows on a table already declared, and new access patterns; a
-  table, column, or operation already held is kept exactly as declared. It must declare at least
-  one table.
+- `DATABASE.md` is authored once, in its own Blueprint batch, and then frozen. Drydock seeds that
+  batch from the template and the imported source specification; every seeded table is kept. It
+  declares every table and every repository operation the topology's stories need, and at least
+  one table. Later batches cite it from `DATABASE_compact.md`.
 - `DATABASE.md` does not contain model-authored executable acceptance. Its `## Programmatic
   Acceptance` section is the inline `- None.` statement that Drydock owns SQLite schema
   construction and connectivity invariants deterministically. Do not create temporary SQLite

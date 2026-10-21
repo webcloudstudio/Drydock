@@ -4429,17 +4429,12 @@ def test_claude_blueprint_batches_do_not_carry_prior_batch_outputs():
     from drydock.llm import ClaudePromptSession
     from drydock.prompt_assembly import PromptAssembly
 
-    declared = (
-        PlannedStory(story_id="database", implements="DATABASE.md"),
-        *(PlannedStory(story_id=f"story-{n}", implements=f"FEATURE-{n}.md") for n in range(1, 7)),
+    declared = tuple(
+        PlannedStory(story_id=f"story-{n}", implements=f"FEATURE-{n}.md") for n in range(1, 7)
     )
     topology = "Six frozen stories."
-    database = "# DATABASE: Example\n\n## `items`\n"
-    blocks = {"TOPOLOGY.md": topology, "DATABASE.md": database}
-    initial_text = (
-        f"=== TOPOLOGY.md ===\n{topology}\n=== END TOPOLOGY.md ===\n"
-        f"=== DATABASE.md ===\n{database}\n=== END DATABASE.md ===\n"
-    )
+    blocks = {"TOPOLOGY.md": topology}
+    initial_text = f"=== TOPOLOGY.md ===\n{topology}\n=== END TOPOLOGY.md ===\n"
     prior_body = "# FEATURE: One\nPRIOR_BATCH_OUTPUT_MARKER"
     calls: list[tuple[str, dict[str, object]]] = []
 
@@ -4480,8 +4475,6 @@ def test_claude_blueprint_batches_do_not_carry_prior_batch_outputs():
     assert all("claude_resume_session_id" not in kwargs for _, kwargs in calls)
     assert "ORIGINAL_CONTEXT_MARKER" in first_prompt and "ORIGINAL_CONTEXT_MARKER" in second_prompt
     assert "# Frozen Stage 1 Output" in second_prompt
-    assert 'filename="DATABASE.md"' in second_prompt
-    assert "## `items`" in second_prompt
     assert "PRIOR_BATCH_OUTPUT_MARKER" not in second_prompt
     assert "Accepted (5)" in second_prompt
     assert abs(len(second_prompt) - len(first_prompt)) < 1_000
@@ -4512,17 +4505,11 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
     def runner(prompt_text, *_args, **_kwargs):
         prompts.append(prompt_text)
         if len(prompts) == 1:
-            emitted = {
-                "DATABASE.md": flat,
-                "FEATURE-1.md": "# FEATURE: 1",
-                "FEATURE-2.md": "# FEATURE: 2",
-            }
+            emitted = {"DATABASE.md": flat}
+        elif len(prompts) == 2:
+            emitted = {"DATABASE.md": _DATABASE}
         else:
-            emitted = {
-                "DATABASE.md": _DATABASE,
-                "FEATURE-1.md": "# FEATURE: 1",
-                "FEATURE-2.md": "# FEATURE: 2",
-            }
+            emitted = {"FEATURE-1.md": "# FEATURE: 1", "FEATURE-2.md": "# FEATURE: 2"}
         response = "".join(
             f"=== BEGIN ARTIFACT {name} ===\n{body}\n=== END ARTIFACT ===\n"
             for name, body in emitted.items()
@@ -4546,7 +4533,7 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
         initial_execution_id="exec-topology",
     )
 
-    assert len(prompts) == 2
+    assert len(prompts) == 3
     assert "Accepted (0)" in prompts[1]
     defective = prompts[1].split("Defective (1)")[1]
     assert "database -> DATABASE.md" in defective
@@ -4559,11 +4546,11 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
     assert result.blocks["DATABASE.md"] == _DATABASE.strip()
 
 
-def test_a_refused_seeded_declaration_is_listed_defective_and_holds_back_its_features():
+def test_a_refused_seeded_declaration_is_retried_alone_and_holds_back_its_features():
     """LayersTesting ``20261021.213934``: batch 4 wrote access patterns without their heading or
-    any table. The seeded declaration is accepted before the first batch, so it was never in a
-    tranche, the ledger dropped its defect, and the batch's Features were accepted citing
-    operations the declaration never held. Batch 6 saw the bare template and refused."""
+    any table, and the ledger dropped the defect because the seed was never in a tranche. The
+    declaration is now its own batch, so its defect is listed and no Feature is authored before
+    it parses."""
     from drydock.prompt_assembly import PromptAssembly
 
     declared = (
@@ -4580,10 +4567,16 @@ def test_a_refused_seeded_declaration_is_listed_defective_and_holds_back_its_fea
 
     def runner(prompt_text, *_args, **_kwargs):
         prompts.append(prompt_text)
-        database = headingless if len(prompts) == 1 else _DATABASE
+        emitted = (
+            {"DATABASE.md": headingless}
+            if len(prompts) == 1
+            else {"DATABASE.md": _DATABASE}
+            if len(prompts) == 2
+            else {"FEATURE-1.md": _OWNER}
+        )
         response = "".join(
             f"=== BEGIN ARTIFACT {name} ===\n{body}\n=== END ARTIFACT ===\n"
-            for name, body in {"DATABASE.md": database, "FEATURE-1.md": _OWNER}.items()
+            for name, body in emitted.items()
         )
         return FakeRun(text=response, execution_id=f"exec-{len(prompts)}")
 
@@ -4604,10 +4597,13 @@ def test_a_refused_seeded_declaration_is_listed_defective_and_holds_back_its_fea
         initial_execution_id="exec-topology",
     )
 
-    assert len(prompts) == 2
+    assert len(prompts) == 3
+    assert 'filename="DATABASE.md"' in prompts[0]
     ledger = prompts[1].split("## Ledger")[-1]
     assert "Accepted (0)" in ledger
-    assert "story-1 -> FEATURE-1.md" in ledger.split("Current batch")[1]
+    current = ledger.split("Current batch (1)")[1].split("Deferred")[0]
+    assert "database -> DATABASE.md" in current
+    assert "story-1" not in current
     assert "database -> DATABASE.md" in ledger.split("Defective (1)")[1]
     assert "Previous attempt rejected — DATABASE.md does not parse" in ledger
     assert any("[plan-score]" in line and "DATABASE.md does not parse" in line for line in progress)
@@ -4740,13 +4736,22 @@ def test_the_seeded_persistence_declaration_survives_into_the_first_blueprint_ba
         PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
     )
     seed = "# DATABASE: X\n\n## `seeded_table`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+    authored = (
+        _DATABASE
+        + "\n"
+        + _ACCESS_PATTERNS
+        .replace("## Access Patterns\n\n", "")
+        .replace("FEATURE-X-001", "FEATURE-X-002")
+        .replace("`settings.get`", "`seeded_table.get`")
+    )
     prompts: list[str] = []
 
     def runner(prompt_text, *_args, **_kwargs):
         prompts.append(prompt_text)
+        name, body = ("DATABASE.md", authored) if len(prompts) == 1 else ("FEATURE-1.md", "# F: 1")
         return FakeRun(
-            text="=== BEGIN ARTIFACT FEATURE-1.md ===\n# FEATURE: 1\n=== END ARTIFACT ===\n",
-            execution_id="exec-1",
+            text=f"=== BEGIN ARTIFACT {name} ===\n{body}\n=== END ARTIFACT ===\n",
+            execution_id=f"exec-{len(prompts)}",
         )
 
     result = ps._continue_short_plan(
@@ -4766,8 +4771,78 @@ def test_the_seeded_persistence_declaration_survives_into_the_first_blueprint_ba
     )
 
     assert "## `seeded_table`" in prompts[0]
-    assert result.blocks["DATABASE.md"] == seed
+    assert "## `seeded_table`" in result.blocks["DATABASE.md"]
+    assert "## `settings`" in result.blocks["DATABASE.md"]
     assert result.score.is_complete
+
+
+def test_the_persistence_declaration_is_one_batch_and_later_batches_cite_its_compact_form():
+    """LayersTesting ``20261021.231950``: the seeded declaration sat outside every Current batch
+    as a conditional aside, under an instruction to emit "nothing else". No batch added the
+    update and delete operations its Features needed, and Haiku refused ``FEATURE-TxnAmend.md``
+    three times rather than cite an undeclared operation. ``DATABASE.md`` is now authored alone,
+    in one step, frozen, and supplied to later batches as ``DATABASE_compact.md``."""
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (
+        PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
+        PlannedStory(story_id="database", implements="DATABASE.md"),
+        PlannedStory(story_id="story-2", implements="FEATURE-2.md"),
+        PlannedStory(story_id="story-3", implements="FEATURE-3.md"),
+    )
+    seed = "# DATABASE: X\n\n<!-- SEED_GUIDANCE_MARKER -->\n\n## Access Patterns\n\n## Schemas\n"
+    authored = _DATABASE.replace("## Access Patterns\n\n", "## Access Patterns\n\n<!-- note -->\n")
+    responses = {
+        1: {"FEATURE-1.md": "# FEATURE: 1"},
+        2: {"DATABASE.md": authored},
+        3: {"DATABASE.md": authored + "\n## `extra`\n", "FEATURE-2.md": "# FEATURE: 2"},
+        4: {"FEATURE-2.md": "# FEATURE: 2", "FEATURE-3.md": "# FEATURE: 3"},
+    }
+    prompts: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        response = "".join(
+            f"=== BEGIN ARTIFACT {name} ===\n{body}\n=== END ARTIFACT ===\n"
+            for name, body in responses[len(prompts)].items()
+        )
+        return FakeRun(text=response, execution_id=f"exec-{len(prompts)}")
+
+    progress: list[str] = []
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Four frozen stories.", "DATABASE.md": seed},
+        blocks_text="=== TOPOLOGY.md ===\nFour frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="codex",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=progress.append,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    def current(prompt: str) -> str:
+        return prompt.split("## Ledger")[-1].split("Current batch")[1].split("Deferred")[0]
+
+    assert len(prompts) == 4
+    assert "story-1 -> FEATURE-1.md" in current(prompts[0])
+    assert "DATABASE.md" not in current(prompts[0])
+    assert "SEED_GUIDANCE_MARKER" not in prompts[0]
+    assert "database -> DATABASE.md" in current(prompts[1])
+    assert "FEATURE-2.md" not in current(prompts[1])
+    assert "SEED_GUIDANCE_MARKER" in prompts[1]
+    assert 'filename="DATABASE_compact.md"' in prompts[2]
+    assert "<!-- note -->" not in prompts[2]
+    assert "### FEATURE-X-001" in prompts[2]
+    assert any(
+        "DATABASE.md is already accepted and this pass changed it" in line for line in progress
+    )
+    assert result.score.is_complete
+    assert result.blocks["DATABASE.md"] == authored.strip()
 
 
 def test_a_block_the_response_never_opened_is_not_called_truncated():
@@ -6174,7 +6249,7 @@ def test_the_authoring_contract_example_supplies_the_variables_it_documents():
     assert staged_asset_env_defects(suite_checks, {"tests/run_suite.py": asset}) == ()
 
 
-def test_stage_two_ledger_keeps_the_persistence_declaration_open_for_append():
+def test_stage_two_ledger_names_the_persistence_declaration_as_its_own_batch():
     # Every other Blueprint is frozen once accepted. This one is not: a Feature authored in a
     # later batch may need a table, or a column on a table declared batches ago.
     stories = (
@@ -6197,15 +6272,19 @@ def test_stage_two_ledger_keeps_the_persistence_declaration_open_for_append():
             implements="FEATURE-ITEMS.md",
         ),
     )
-    blocks = {"TOPOLOGY.md": "complete", "DATABASE.md": "# DATABASE: X\n"}
+    due = ps._render_ledger(score_plan(stories, {"TOPOLOGY.md": "complete"}))
 
-    ledger = ps._render_ledger(score_plan(stories, blocks))
+    current = due.split("Current batch (1)")[1].split("Deferred")[0]
+    assert "story-1 -> DATABASE.md" in current
+    assert "authored once, complete, and then frozen" in current
+    assert "FEATURE-ITEMS.md" not in current
 
-    assert "Open (DATABASE.md)" in ledger
-    assert "Accepted (0)" in ledger
-    assert "only the additions" in ledger
-    frozen_block = ledger.split("Open (DATABASE.md)")[0]
-    assert "DATABASE.md" not in frozen_block
+    held = ps._render_ledger(
+        score_plan(stories, {"TOPOLOGY.md": "complete", "DATABASE.md": "# DATABASE: X\n"})
+    )
+    assert "DATABASE.md" in held.split("Accepted (1)")[1].split("Current batch")[0]
+    assert "story-2 -> FEATURE-ITEMS.md" in held.split("Current batch (1)")[1]
+    assert "Open (" not in held
 
 
 def test_the_persistence_declaration_is_seeded_from_the_template_and_the_imported_source(tmp_path):

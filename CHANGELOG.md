@@ -32,6 +32,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-21: `drydock plan` authors `DATABASE.md` in one Stage 2 step instead of keeping it open
+  as a cumulative, append-only declaration. Every file a batch may emit is named in its Current
+  batch. `DATABASE.md` is a batch of its own when it comes due (a batch ends before it), starts from
+  the Rigging and source seed, must declare every table and repository operation the frozen
+  topology needs, and is frozen once it parses; seeded tables the model drops are appended. Later
+  batches receive it as `DATABASE_compact.md`, a deterministic copy with authoring comments and
+  examples removed, and a batch that changes it is refused whole. `plan_continue.md` V3,
+  `plan_create.md` V42, and `BLUEPRINTS_CONTRACT.md` V25 state the contract. Previously the seed
+  sat outside every Current batch under an instruction to emit nothing else, no batch added the
+  update and delete operations later Features needed, and plan stalled on refusals.
 - 2026-10-21: Acceptance binding accepts deterministic known answers. A literal of printable
   ASCII text, newlines, and tabs binds, and its only allowed backslash is an escaped quote `\"`.
   A CSV report, a status line, or quoted output no longer settles `DISPUTED` on a miss.
