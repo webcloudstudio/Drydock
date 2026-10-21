@@ -23,8 +23,10 @@ from drydock import story_guidance, technology_stack
 from drydock.artifact_blocks import (
     ArtifactDefect,
     ArtifactParseResult,
+    StrayText,
     parse_artifact_blocks,
     parse_artifact_report,
+    stray_reporter,
 )
 from drydock.compass_sources import (
     clear_compass_import_pending,
@@ -867,6 +869,7 @@ def _artifact_defect_detail(parsed: ArtifactParseResult) -> str:
 def _parse_output(
     text: str,
     on_defect: Callable[[ArtifactDefect], None] | None = None,
+    on_stray: Callable[[StrayText], None] | None = None,
 ) -> tuple[
     str, str | None, str | None, str | None, dict[str, dict], str, dict[str, str], str | None
 ]:
@@ -897,6 +900,9 @@ def _parse_output(
     if on_defect is not None:
         for defect in parsed.defects:
             on_defect(defect)
+    if on_stray is not None:
+        for stray in parsed.stray:
+            on_stray(stray)
 
     # P-3: a parse defect costs the artifact it judged, not the pass. A required artifact that did
     # not survive is still fatal, but it fails naming the artifact rather than naming a block the
@@ -1146,7 +1152,11 @@ def analyze(
             summary,
             technology_stack_text,
             story_guidance_text,
-        ) = _parse_output(result.text, on_defect=_report_artifact_defect(on_text))
+        ) = _parse_output(
+            result.text,
+            on_defect=_report_artifact_defect(on_text),
+            on_stray=stray_reporter(on_text, "analyze"),
+        )
     except (DrydockError, ValueError) as exc:
         return _fail(str(exc))
 

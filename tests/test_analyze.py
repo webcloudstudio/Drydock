@@ -759,6 +759,19 @@ class TestParseOutput:
         assert "discovery-gaps-ac.json" in spikes
         assert "discovery-guardrails.json" in spikes
 
+    def test_narration_before_the_first_block_is_discarded_and_reported(self):
+        stray = []
+        output = (
+            "I'll produce the analysis from the injected sources and job block. "
+            "No tool calls are needed for this step.\n\n" + _VALID_LLM_OUTPUT
+        )
+
+        analysis, *_ = _parse_output(output, on_stray=stray.append)
+
+        assert "Blueprint Analysis" in analysis
+        assert [item.where for item in stray] == ["before the first artifact block"]
+        assert stray[0].text.startswith("I'll produce the analysis")
+
     def test_summary_fields_parsed(self):
         _, _, _, _, _, _, summary, _, _ = _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
         assert summary.get("stories") == "5"

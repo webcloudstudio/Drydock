@@ -30,6 +30,13 @@ drydock document assemble readme <Target>
 
 ### Rules
 
+`2026-10-21` · **Stray text is discarded, never fatal.** Up to three lines of plain narration
+before, between, or after intact artifact blocks are dropped and printed as `[document] stray text
+<where> discarded: "<text>"`. Outside text shaped like content — a heading, list, table, fence,
+JSON, markup, `===`, more than three lines or 500 characters — or beside an orphan close still fails
+the parse. *Broken:* a weak model's one-line preamble fails the run, or a body that lost its opener
+is silently dropped.
+
 `2026-07-01` · **Configuration is created once and owned by the Commander.**
 `targets/<Target>/documentation.yaml` (theme, sections) is written with defaults when absent and
 never overwritten. Default sections: `OVERVIEW`, `FEATURES`, `SCREENS`, `ARCHITECTURE`, `SCHEMA`,

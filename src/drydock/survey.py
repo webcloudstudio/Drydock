@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from drydock.artifact_blocks import parse_artifact_report
+from drydock.artifact_blocks import StrayText, parse_artifact_report, stray_reporter
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm import run_prompt
 from drydock.prompt_assembly import (
@@ -386,15 +386,24 @@ def _assemble_survey_prompt_assembly(
     )
 
 
-def _parse_survey_json(text: str) -> dict:
+def _parse_survey_json(text: str, on_stray: Callable[[StrayText], None] | None = None) -> dict:
+    """Parse the survey JSON object, discarding and reporting any text around it."""
     body = text.strip()
     fence = re.search(r"```(?:json)?\s*\n(.*?)\n```", body, re.DOTALL)
+    before, after = "", ""
     if fence:
+        before, after = body[: fence.start()], body[fence.end() :]
         body = fence.group(1).strip()
     start = body.find("{")
     end = body.rfind("}")
     if start == -1 or end == -1:
         raise SpecificationError("survey model output contained no JSON object")
+    before += body[:start]
+    after = body[end + 1 :] + after
+    if on_stray is not None:
+        for where, chunk in (("before the JSON object", before), ("after the JSON object", after)):
+            if chunk.strip():
+                on_stray(StrayText(where=where, text=chunk.strip()))
     return json.loads(body[start : end + 1])
 
 
@@ -438,7 +447,7 @@ def run_survey(
     if not getattr(result, "ok", False) or not result_text.strip():
         raise SpecificationError("survey LLM execution failed or returned no output")
 
-    payload = _parse_survey_json(result_text)
+    payload = _parse_survey_json(result_text, on_stray=stray_reporter(on_text, "survey"))
     recorded_at = _now()
     head = _short_head(target_dir)
     execution_id = getattr(result, "execution_id", "")
@@ -571,6 +580,8 @@ def import_specs(
     if on_text is not None:
         for defect in parsed.defects:
             on_text(f"[survey] artifact defect — {defect}\n")
+        for stray in parsed.stray:
+            on_text(f"[survey] {stray}\n")
     written: list[Path] = []
     for name, content in sorted(parsed.blocks.items()):
         body = content.strip() + "\n"

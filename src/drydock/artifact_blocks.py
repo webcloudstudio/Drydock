@@ -57,6 +57,14 @@ _IGNORABLE_OUTSIDE_LINE_RE = re.compile(
 
 _RESERVED_NAME_RE = re.compile(r"^(?:END\s+)?AC\s")
 
+#: Stray text is narration a model wraps around intact artifact blocks ("I'll produce the analysis
+#: from the injected sources."). It is discarded and reported, never written. Outside text shaped
+#: like content — a heading, list, table, fence, JSON, markup, a delimiter, or more than a few
+#: lines — still fails the parse, because it may be an artifact body that lost its boundary.
+_STRAY_LINE_LIMIT = 3
+_STRAY_CHAR_LIMIT = 500
+_CONTENT_LINE_RE = re.compile(r"^(?:#|```|~~~|\||[-*+]\s|\d+[.)]\s|[{\[<])")
+
 _OPEN = "open"
 _CLOSE = "close"
 
@@ -73,17 +81,51 @@ class ArtifactDefect:
 
 
 @dataclass(frozen=True)
+class StrayText:
+    """Narration found outside the artifact blocks and discarded."""
+
+    where: str
+    text: str
+
+    def __str__(self) -> str:
+        flat = " ".join(self.text.split())
+        quoted = flat if len(flat) <= 200 else flat[:197] + "..."
+        return f'stray text {self.where} discarded: "{quoted}"'
+
+
+def is_stray_text(text: str) -> bool:
+    """Whether outside text is short narration rather than content that lost its boundary."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines or len(lines) > _STRAY_LINE_LIMIT or sum(map(len, lines)) > _STRAY_CHAR_LIMIT:
+        return False
+    if "===" in text:
+        return False
+    return not any(_CONTENT_LINE_RE.match(line) for line in lines)
+
+
+def stray_reporter(
+    on_text: Callable[[str], None] | None, tag: str
+) -> Callable[[StrayText], None] | None:
+    """Print each discarded stray text as one ``[tag]`` console line."""
+    if on_text is None:
+        return None
+    return lambda stray: on_text(f"[{tag}] {stray}\n")
+
+
+@dataclass(frozen=True)
 class ArtifactParseResult:
     """Accepted artifacts plus the per-artifact defects observed alongside them.
 
     ``rejected`` names artifacts the parser judged and refused. ``repaired`` names artifacts that
     were accepted despite a defect in their delimiters. Neither costs an artifact the parser did
-    not judge — that is P-3: no gate may discard work it did not judge.
+    not judge — that is P-3: no gate may discard work it did not judge. ``stray`` holds the
+    narration discarded from outside the blocks.
     """
 
     blocks: dict[str, str] = field(default_factory=dict)
     rejected: tuple[ArtifactDefect, ...] = ()
     repaired: tuple[ArtifactDefect, ...] = ()
+    stray: tuple[StrayText, ...] = ()
 
     @property
     def defects(self) -> tuple[ArtifactDefect, ...]:
@@ -136,6 +178,7 @@ def parse_artifact_blocks(
     allowed_suffixes: Iterable[str] = (),
     allowed_patterns: Iterable[str | Pattern[str]] = (),
     on_defect: Callable[[ArtifactDefect], None] | None = None,
+    on_stray: Callable[[StrayText], None] | None = None,
 ) -> dict[str, str]:
     """Return artifact-name -> body and reject malformed/noisy model output.
 
@@ -151,7 +194,8 @@ def parse_artifact_blocks(
         ...content...
         === END NAME ===
 
-    No text may appear outside artifact blocks. A block whose name is not allowed, or whose name
+    Short narration outside the blocks is discarded and reported through ``on_stray``; any other
+    outside text fails the parse. A block whose name is not allowed, or whose name
     is claimed twice with differing content, is rejected **individually**: the caller receives
     every artifact the parser did accept, and states for itself which artifacts it required.
     Defects are reported through ``on_defect``.
@@ -167,6 +211,9 @@ def parse_artifact_blocks(
     if on_defect is not None:
         for defect in result.defects:
             on_defect(defect)
+    if on_stray is not None:
+        for stray in result.stray:
+            on_stray(stray)
     return result.blocks
 
 
@@ -228,7 +275,9 @@ def parse_artifact_report(
         rejected.append(
             ArtifactDefect(name=name, reason="not an artifact this command emits; block discarded")
         )
-    return ArtifactParseResult(blocks=accepted, rejected=tuple(rejected), repaired=parsed.repaired)
+    return ArtifactParseResult(
+        blocks=accepted, rejected=tuple(rejected), repaired=parsed.repaired, stray=parsed.stray
+    )
 
 
 @dataclass(frozen=True)
@@ -376,7 +425,17 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
     current_name: str | None = None
     current_body: list[str] = []
     outside: list[str] = []
+    stray: list[StrayText] = []
+    orphan_close_outside = False
     saw_delimiter = False
+
+    def discard_stray(where: str, *, after_artifacts: bool) -> None:
+        """Keep narration out of the artifacts; fail on outside text that may be content."""
+        chunk = "".join(outside)
+        if not orphan_close_outside and is_stray_text(chunk):
+            stray.append(StrayText(where=where, text=chunk.strip()))
+            return
+        raise _outside_text_error(label, chunk, where=where, after_artifacts=after_artifacts)
 
     def record(name: str) -> None:
         """Store a parsed body; a conflicting repeat costs that name and nothing else."""
@@ -395,6 +454,8 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
         if current_name is None:
             if kind == _CLOSE and marker_name is None:
                 # An invariant close with nothing open names no artifact and can open nothing.
+                # Text beside it may be a body whose opener was dropped, so it is never stray.
+                orphan_close_outside = True
                 continue
             if (
                 kind == _CLOSE
@@ -423,10 +484,8 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
             )
             if kind == _OPEN or orphan_opener:
                 if _outside_has_text(outside, after_artifacts=saw_delimiter):
-                    raise _outside_text_error(
-                        label,
-                        "".join(outside),
-                        where="between artifact blocks"
+                    discard_stray(
+                        "between artifact blocks"
                         if saw_delimiter
                         else "before the first artifact block",
                         after_artifacts=saw_delimiter,
@@ -437,6 +496,7 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
                 current_name = marker_name
                 current_body = []
                 outside = []
+                orphan_close_outside = False
                 saw_delimiter = True
                 continue
             outside.append(line)
@@ -494,12 +554,12 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
         saw_delimiter = True
 
     if _outside_has_text(outside, after_artifacts=saw_delimiter):
-        raise _outside_text_error(
-            label,
-            "".join(outside),
-            where="after the last artifact block" if saw_delimiter else "with no artifact block",
-            after_artifacts=saw_delimiter,
-        )
+        if saw_delimiter:
+            discard_stray("after the last artifact block", after_artifacts=True)
+        else:
+            raise _outside_text_error(
+                label, "".join(outside), where="with no artifact block", after_artifacts=False
+            )
     for name in sorted(conflicting):
         blocks.pop(name, None)
         rejected.append(
@@ -510,7 +570,9 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
         )
     if not saw_delimiter:
         blocks = {}
-    return ArtifactParseResult(blocks=blocks, rejected=tuple(rejected), repaired=tuple(repaired))
+    return ArtifactParseResult(
+        blocks=blocks, rejected=tuple(rejected), repaired=tuple(repaired), stray=tuple(stray)
+    )
 
 
 def _repair_missing_leading_delimiter(text: str) -> str:

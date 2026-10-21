@@ -2820,21 +2820,28 @@ def test_missing_required_block_explains_required_response_contract(tmp_path):
     )
 
 
-def test_leading_preamble_is_reported_without_diagnostic_recovery(tmp_path):
+def test_leading_preamble_is_discarded_and_reported(tmp_path):
     target_dir = _make_target(tmp_path)
     out = "Blueprint already contains all required specs, so I'm emitting MANIFEST.md.\n\n"
     out += _llm_output()
+    progress = []
 
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    create_plan("Example", "Example", tmp_path, runner=_fake(out), on_text=progress.append)
 
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="model artifact contract failed",
-        detail='before ARCHITECTURE.md: "Blueprint already contains',
-    )
-    assert not (target_dir / "MANIFEST.md").exists()
+    assert (target_dir / "MANIFEST.md").exists()
+    assert (
+        "[plan] stray text before ARCHITECTURE.md discarded: "
+        '"Blueprint already contains all required specs, so I\'m emitting MANIFEST.md."\n'
+    ) in progress
+
+
+def test_stray_text_beside_an_unclosed_artifact_still_raises():
+    from drydock.planning_session import OutsideArtifactTextError, _parse_strict_blocks
+
+    with pytest.raises(OutsideArtifactTextError):
+        _parse_strict_blocks(
+            "Here is the plan.\n=== A.md ===\nalpha\n", FakeRun(text="", execution_id="x")
+        )
 
 
 def test_preamble_containing_delimiter_fragment_still_refuses(tmp_path):
@@ -2947,24 +2954,23 @@ def test_well_formed_output_passes_the_delimiter_check(tmp_path):
     assert (target_dir / "MANIFEST.md").exists()
 
 
-def test_transition_text_between_blocks_is_reported_without_recovery(tmp_path):
+def test_transition_text_between_blocks_is_discarded_and_reported(tmp_path):
     target_dir = _make_target(tmp_path)
     output = _llm_output().replace(
         "=== MANIFEST.md ===\n",
         "Continuing with the remaining files next.\n=== MANIFEST.md ===\n",
         1,
     )
+    progress = []
 
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(output))
+    create_plan("Example", "Example", tmp_path, runner=_fake(output), on_text=progress.append)
 
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="model artifact contract failed",
-        detail="Continuing with the remaining files next.",
+    assert (target_dir / "MANIFEST.md").exists()
+    assert any(
+        "stray text between FEATURE-Status.md and MANIFEST.md discarded: "
+        '"Continuing with the remaining files next."' in line
+        for line in progress
     )
-    assert not (target_dir / "MANIFEST.md").exists()
 
 
 def _artifact_waiver_runner(plan_output: str, decision_output: str):
@@ -2985,7 +2991,7 @@ def test_trivial_outside_text_is_written_only_after_diagnostic_approval(tmp_path
     target_dir = _make_target(tmp_path)
     output = _llm_output().replace(
         "=== MANIFEST.md ===\n",
-        "Now the Manifest.\n\n=== MANIFEST.md ===\n",
+        "- Now the Manifest.\n\n=== MANIFEST.md ===\n",
         1,
     )
     runner = _artifact_waiver_runner(
@@ -3006,15 +3012,15 @@ def test_trivial_outside_text_is_written_only_after_diagnostic_approval(tmp_path
 
     assert (target_dir / "MANIFEST.md").exists()
     assert result.waiver_execution_id == "waiver-exec"
-    assert any("diagnostic approval removed 17 outside character(s)" in w for w in result.warnings)
+    assert any("diagnostic approval removed 19 outside character(s)" in w for w in result.warnings)
     assert any(
-        'between FEATURE-Status.md and MANIFEST.md: "Now the Manifest."' in w
+        'between FEATURE-Status.md and MANIFEST.md: "- Now the Manifest."' in w
         for w in result.warnings
     )
     assert any("requesting diagnostic approval" in line for line in progress)
     assert len(runner.calls) == 2
     waiver_prompt, waiver_kwargs = runner.calls[1]
-    assert 'TEXT_JSON: "Now the Manifest."' in waiver_prompt
+    assert 'TEXT_JSON: "- Now the Manifest."' in waiver_prompt
     assert "STRUCTURE_VALID: true" in waiver_prompt
     assert "PLAN_VALID: true" in waiver_prompt
     assert waiver_kwargs["parameters"]["decision"] == "artifact-waiver"
@@ -3024,7 +3030,7 @@ def test_rejected_outside_text_writes_no_artifacts_and_spends_one_diagnostic(tmp
     target_dir = _make_target(tmp_path)
     output = _llm_output().replace(
         "=== MANIFEST.md ===\n",
-        "The Manifest omits two unresolved stories.\n=== MANIFEST.md ===\n",
+        "- The Manifest omits two unresolved stories.\n=== MANIFEST.md ===\n",
         1,
     )
     runner = _artifact_waiver_runner(
@@ -3055,7 +3061,7 @@ def test_outside_text_over_100_characters_is_not_submitted_for_waiver(tmp_path):
     target_dir = _make_target(tmp_path)
     output = _llm_output().replace(
         "=== MANIFEST.md ===\n",
-        ("x" * 101) + "\n=== MANIFEST.md ===\n",
+        "- " + ("x" * 99) + "\n=== MANIFEST.md ===\n",
         1,
     )
     calls = []

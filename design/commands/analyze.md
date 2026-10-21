@@ -58,6 +58,13 @@ supplies filename, category, purpose, and prerequisites; unknowns stay visibly u
 `COMPASS.md`, identity questionnaire, stack questionnaire, then other questionnaires lexically.
 A questionnaire never resolves a blocker.
 
+`2026-10-21` · **Stray text is discarded, never fatal.** Up to three lines of plain narration
+before, between, or after intact artifact blocks are dropped and printed as `[analyze] stray text
+<where> discarded: "<text>"`. Outside text shaped like content — a heading, list, table, fence,
+JSON, markup, `===`, more than three lines or 500 characters — or beside an orphan close still fails
+the parse. *Broken:* a weak model's one-line preamble fails the run, or a body that lost its opener
+is silently dropped.
+
 ### Mechanism
 
 1. **Seed** — clear errors, collect sources, seed `COMPASS.md`, create `ANALYZE_COMPASS.md` and

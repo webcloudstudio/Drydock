@@ -50,9 +50,12 @@ from drydock.acceptance_requirements import (
 )
 from drydock.artifact_blocks import (
     RESERVED_BLOCK_NAMESPACE,
+    StrayText,
     emission_contract_lines,
+    is_stray_text,
     pair_artifact_delimiters,
     parse_artifact_report,
+    stray_reporter,
     wrap_artifact,
 )
 from drydock.build_plan import (
@@ -460,6 +463,7 @@ def _parse_strict_blocks(
     text: str,
     result: CompletedRun,
     on_defect: Callable[[str], None] | None = None,
+    on_stray: Callable[[StrayText], None] | None = None,
 ) -> dict[str, str]:
     """Parse the required artifact block protocol, rejecting malformed artifacts individually.
 
@@ -468,6 +472,9 @@ def _parse_strict_blocks(
     untouched. The original behaviour discarded the whole response, which cost 19 Blueprints and
     eight LLM calls on CommonMark ``20260811.215210`` (D-008). Only a response from which nothing
     survived is rejected whole, and it names the artifacts it dropped.
+
+    Short narration around a response whose every artifact opens and closes exactly once is
+    discarded and reported through ``on_stray``; other outside text still raises.
     """
     repaired = _repair_missing_leading_delimiter(text)
     if repaired is not None:
@@ -492,7 +499,13 @@ def _parse_strict_blocks(
             )
         )
     if spans:
-        raise OutsideArtifactTextError(blocks=blocks, spans=spans, result=result)
+        if not _artifact_delimiters_are_complete(text, blocks) or not all(
+            is_stray_text(span.text) for span in spans
+        ):
+            raise OutsideArtifactTextError(blocks=blocks, spans=spans, result=result)
+        if on_stray is not None:
+            for span in spans:
+                on_stray(StrayText(where=span.location, text=span.normalized))
     return blocks
 
 
@@ -5270,7 +5283,10 @@ def _continue_short_plan(
 
         try:
             pass_blocks = _parse_strict_blocks(
-                result.text, result, on_defect=_defect_reporter(on_text)
+                result.text,
+                result,
+                on_defect=_defect_reporter(on_text),
+                on_stray=stray_reporter(on_text, "plan"),
             )
         except OutsideArtifactTextError as exc:
             pass_blocks = exc.blocks
@@ -6014,7 +6030,12 @@ def create_plan(
     # right text. Write-call recovery produces blocks with no delimiters, and clears this.
     blocks_text: str | None = result.text
     try:
-        blocks = _parse_strict_blocks(result.text, result, on_defect=_defect_reporter(on_text))
+        blocks = _parse_strict_blocks(
+            result.text,
+            result,
+            on_defect=_defect_reporter(on_text),
+            on_stray=stray_reporter(on_text, "plan"),
+        )
     except OutsideArtifactTextError as exc:
         if set(exc.blocks) in (
             {"PLAN_CREATE_ERROR.txt"},

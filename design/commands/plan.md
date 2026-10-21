@@ -36,6 +36,14 @@ Intended workflow: `drydock plan verify <Target> || drydock plan repair <Target>
 
 `2026-10-19` · Planning requires a valid, Commander-approved TECHNOLOGY_STACK.md before model execution, including with --override. Language comes from selected Rigging guidance. The language initialization story occupies a separate computed block so its project files exist before persistence generation; prompt sizing includes the selected full or compact language file. Breaking this rule plans an undecided or incompatible stack.
 
+`2026-10-21` · **Stray text is discarded, never fatal.** Up to three lines of plain narration
+before, between, or after intact artifact blocks are dropped and printed as `[plan] stray text
+<where> discarded: "<text>"`. Outside text shaped like content — a heading, list, table, fence,
+JSON, markup, `===`, more than three lines or 500 characters — or beside an orphan close still fails
+the parse. Plan discards it only when every artifact opens and closes exactly once; other bounded
+outside text keeps the diagnostic waiver. *Broken:* a weak model's one-line preamble fails the run,
+or a body that lost its opener is silently dropped.
+
 **Governing**
 
 `2026-09-17` · **Repair the unambiguous, record the rest, discard nothing paid for.** Stage 2 has no

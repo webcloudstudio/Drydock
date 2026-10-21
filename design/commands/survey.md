@@ -29,6 +29,13 @@ drydock survey <Target> --import <path>               regenerate survey/ac/SURVE
 
 ### Rules
 
+`2026-10-21` · **Stray text is discarded, never fatal.** Up to three lines of plain narration
+before, between, or after intact artifact blocks are dropped and printed as `[survey] stray text
+<where> discarded: "<text>"`. Outside text shaped like content — a heading, list, table, fence,
+JSON, markup, `===`, more than three lines or 500 characters — or beside an orphan close still fails
+the parse. Text around the `survey` JSON object is discarded and printed the same way. *Broken:* a
+weak model's one-line preamble fails the run, or a body that lost its opener is silently dropped.
+
 `2026-06-13` · **The model judges; the module scores.** The LLM marks each criterion `pass`,
 `partial`, or `fail` and writes recommendations; `survey.py` computes every number. Cost when
 broken: scores that cannot be reproduced.

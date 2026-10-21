@@ -24,6 +24,17 @@ command surface and Typed Specification contract are unstable and may change bet
   harness value and correct later assertions that followed from it. `drydock plan` leaves such a
   Manifest `draft`/`unbuildable` and exits `1`.
 
+### Changed
+
+- 2026-10-21: `drydock analyze`, `plan`, `survey`, `survey import`, and `document` discard short
+  model narration outside artifact blocks instead of failing, and print each discard as
+  `[<command>] stray text <where> discarded: "<text>"`. Only up to three plain lines (500
+  characters) qualify. Outside text shaped like content — a heading, list, table, fence, JSON,
+  markup, `===` — or beside an orphan close still fails the parse, and `plan` discards only when
+  every artifact opens and closes exactly once. A one-line preamble from a low-end model no longer
+  fails the run. The analyze, plan, and survey prompts drop their dead tool-call prohibitions,
+  since non-build calls run with tools disabled, and state a no-stray-text rule instead.
+
 ### Fixed
 
 - 2026-10-20: `drydock plan` requires every Programmatic Acceptance setup call to assert the success

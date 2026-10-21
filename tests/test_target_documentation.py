@@ -100,9 +100,22 @@ def test_parse_generated_docs_drops_unexpected_file_and_keeps_the_rest():
 def test_parse_generated_docs_rejects_text_outside_blocks():
     with pytest.raises(DrydockError, match="Text appeared outside"):
         parse_generated_docs(
-            "Here are the files.\n" + LLM_OUTPUT,
+            "# Files\n" + LLM_OUTPUT,
             sections=("OVERVIEW", "FEATURES", "SCREENS", "ARCHITECTURE"),
         )
+
+
+def test_parse_generated_docs_discards_and_reports_stray_text():
+    stray = []
+
+    docs = parse_generated_docs(
+        "Here are the files.\n" + LLM_OUTPUT,
+        sections=("OVERVIEW", "FEATURES", "SCREENS", "ARCHITECTURE"),
+        on_stray=stray.append,
+    )
+
+    assert "DOC-OVERVIEW.md" in docs
+    assert [item.text for item in stray] == ["Here are the files."]
 
 
 def test_parse_generated_docs_recovers_missing_final_delimiter():

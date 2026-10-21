@@ -211,7 +211,7 @@ class TestImport:
         assert written[0].name == "SURVEY-login.md"
         assert "drydock login" in written[0].read_text(encoding="utf-8")
 
-    def test_import_rejects_text_outside_blocks_without_writes(self, tmp_path):
+    def test_import_discards_and_reports_stray_text(self, tmp_path):
         target, target_dir = _make_target(tmp_path)
         source = tmp_path / "blueprint"
         source.mkdir()
@@ -221,6 +221,31 @@ class TestImport:
             return FakeRun(
                 text=(
                     "Here are the files.\n"
+                    "=== SURVEY-login.md ===\n"
+                    "# SURVEY-SPEC: drydock login\n"
+                    "=== END SURVEY-login.md ===\n"
+                )
+            )
+
+        progress = []
+        import_specs(target, target_dir, source, runner=runner, on_text=progress.append)
+
+        assert (target_dir / "survey" / "ac" / "SURVEY-login.md").exists()
+        assert (
+            '[survey] stray text before the first artifact block discarded: "Here are the files."\n'
+            in progress
+        )
+
+    def test_import_rejects_text_outside_blocks_without_writes(self, tmp_path):
+        target, target_dir = _make_target(tmp_path)
+        source = tmp_path / "blueprint"
+        source.mkdir()
+        (source / "FEATURE-Login.md").write_text("# FEATURE: Login\n", encoding="utf-8")
+
+        def runner(prompt, working_directory, **kwargs):
+            return FakeRun(
+                text=(
+                    "# Files\n"
                     "=== SURVEY-login.md ===\n"
                     "# SURVEY-SPEC: drydock login\n"
                     "=== END SURVEY-login.md ===\n"
@@ -313,3 +338,16 @@ class TestImport:
         )
         assert calls[0]["model"] == "gpt-5.4-mini"
         assert calls[0]["llm"] == "codex"
+
+
+def test_survey_json_reports_text_around_the_object():
+    from drydock.survey import _parse_survey_json
+
+    stray = []
+    payload = _parse_survey_json('Here it is.\n{"surveys": []}\nDone.', on_stray=stray.append)
+
+    assert payload == {"surveys": []}
+    assert [(item.where, item.text) for item in stray] == [
+        ("before the JSON object", "Here it is."),
+        ("after the JSON object", "Done."),
+    ]

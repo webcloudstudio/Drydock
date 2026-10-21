@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from drydock.artifact_blocks import parse_artifact_blocks
+from drydock.artifact_blocks import StrayText, parse_artifact_blocks, stray_reporter
 from drydock.errors import DrydockError, SpecificationError, UsageError
 from drydock.llm import run_prompt
 from drydock.prompt_assembly import (
@@ -334,13 +334,19 @@ def _assemble_prompt_assembly(
 _OUTER_FENCE = re.compile(r"\A```(?:markdown|md)?\s*\n(.*)\n```\s*\Z", re.DOTALL)
 
 
-def parse_generated_docs(text: str, *, sections: tuple[str, ...]) -> dict[str, str]:
+def parse_generated_docs(
+    text: str,
+    *,
+    sections: tuple[str, ...],
+    on_stray: Callable[[StrayText], None] | None = None,
+) -> dict[str, str]:
     docs: dict[str, str] = {}
     allowed = {f"DOC-{section}.md" for section in sections}
     blocks = parse_artifact_blocks(
         text,
         label="Document generation",
         allowed_names=allowed,
+        on_stray=on_stray,
     )
     for name, body in blocks.items():
         fenced = _OUTER_FENCE.match(body)
@@ -400,7 +406,9 @@ def generate_documentation(
     if not result.ok:
         raise DrydockError("LLM execution failed for document generate")
 
-    docs = parse_generated_docs(result.text, sections=config.sections)
+    docs = parse_generated_docs(
+        result.text, sections=config.sections, on_stray=stray_reporter(on_text, "document")
+    )
     docs_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for name, content in sorted(docs.items()):
