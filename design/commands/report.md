@@ -62,9 +62,9 @@ keyed by Project (kit directory), Date (run id), and Model (`environment.model`)
 Drydock LLM calls — Stories (Manifest story nodes), Build (`build` `attempt` 0), Repair (`build`
 `attempt` > 0, `diagnose`), Plan (synthesis, continuation, lineage), Plan Rep (plan
 artifact/declaration/coverage repair passes, `plan repair`), Other, Calls; Tokens — fresh input,
-cache read, cache write (`—` when the provider reports none), output, total; Tool calls and time —
-Shell, Edit, Other from raw transcripts, normalized across providers, and LLM minutes summed over
-every execution, resumes included. Run wall-clock is omitted because a resume overwrites command
+cache read, output, total, with cache writes omitted because Codex does not report them; Tool
+calls and time — Shell, Edit, Other from raw transcripts, normalized across providers, and LLM
+minutes summed over every execution, resumes included. Run wall-clock is omitted because a resume overwrites command
 times. It covers the workspace, takes no Target, writes no `reports/` file, and is outside `--all`.
 Exits `1` when `<workspace>/uat` is absent. *Broken:* failed runs skew the comparison, or
 a report write invalidates published kit evidence.

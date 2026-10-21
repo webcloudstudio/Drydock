@@ -48,7 +48,6 @@ class UatRunRow:
     calls: Mapping[str, int]
     fresh_input_tokens: int
     cache_read_tokens: int
-    cache_write_tokens: int | None
     output_tokens: int
     shell_calls: int
     edit_calls: int
@@ -68,12 +67,7 @@ class UatRunRow:
 
     @property
     def total_tokens(self) -> int:
-        return (
-            self.fresh_input_tokens
-            + self.cache_read_tokens
-            + (self.cache_write_tokens or 0)
-            + self.output_tokens
-        )
+        return self.fresh_input_tokens + self.cache_read_tokens + self.output_tokens
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -194,7 +188,6 @@ def _records(run_dir: Path) -> list[dict[str, Any]]:
 def _run_row(run_dir: Path, result: Mapping[str, Any]) -> UatRunRow:
     calls = dict.fromkeys(_CATEGORIES, 0)
     fresh = cache_read = output = llm_ms = 0
-    cache_write: int | None = None
     tools = {"shell": 0, "edit": 0, "other": 0}
     for record in _records(run_dir):
         calls[categorize(record)] += 1
@@ -205,9 +198,6 @@ def _run_row(run_dir: Path, result: Mapping[str, Any]) -> UatRunRow:
         fresh += max(total_input - cached, 0)
         cache_read += cached
         output += out
-        written = stats.get("cache_creation_input_tokens")
-        if isinstance(written, int) and not isinstance(written, bool):
-            cache_write = (cache_write or 0) + written
         llm_ms += _int(stats.get("elapsed_ms"))
         raw = _raw_transcript(record, run_dir)
         if raw is not None:
@@ -221,7 +211,6 @@ def _run_row(run_dir: Path, result: Mapping[str, Any]) -> UatRunRow:
         calls=calls,
         fresh_input_tokens=fresh,
         cache_read_tokens=cache_read,
-        cache_write_tokens=cache_write,
         output_tokens=output,
         shell_calls=tools["shell"],
         edit_calls=tools["edit"],
@@ -241,9 +230,7 @@ def successful_runs(uat_root: Path) -> list[UatRunRow]:
     return rows
 
 
-def _tokens(value: int | None) -> str:
-    if value is None:
-        return "—"
+def _tokens(value: int) -> str:
     if value >= 1_000_000:
         return f"{value / 1_000_000:.1f}M"
     if value >= 1_000:
@@ -292,13 +279,12 @@ def render_uat_report(rows: list[UatRunRow]) -> list[str]:
     )
     lines += _table(
         "TOKENS",
-        (*key, "Fresh in", "Cache read", "Cache write", "Output", "Total"),
+        (*key, "Fresh in", "Cache read", "Output", "Total"),
         [
             (
                 *k,
                 _tokens(row.fresh_input_tokens),
                 _tokens(row.cache_read_tokens),
-                _tokens(row.cache_write_tokens),
                 _tokens(row.output_tokens),
                 _tokens(row.total_tokens),
             )
@@ -323,6 +309,6 @@ def render_uat_report(rows: list[UatRunRow]) -> list[str]:
         "",
         "Build = first attempt per block · Repair = build retries and diagnose · "
         "Plan Rep = plan repairs",
-        "Cache write — = not reported by the provider · LLM min = every LLM call, resumes included",
+        "LLM min = every LLM call, resumes included",
     ]
     return lines

@@ -186,13 +186,9 @@ def test_tokens_split_by_type_per_provider(tmp_path):
     codex, claude = successful_runs(_workspace(tmp_path))
 
     assert (claude.fresh_input_tokens, claude.cache_read_tokens) == (10, 1_000)
-    assert (claude.cache_write_tokens, claude.output_tokens, claude.total_tokens) == (
-        200,
-        50,
-        1_260,
-    )
+    assert (claude.output_tokens, claude.total_tokens) == (50, 1_060)
     assert (codex.fresh_input_tokens, codex.cache_read_tokens) == (100, 300)
-    assert (codex.cache_write_tokens, codex.total_tokens) == (None, 407)
+    assert codex.total_tokens == 407
     assert claude.llm_elapsed_ms == 120_000
 
 

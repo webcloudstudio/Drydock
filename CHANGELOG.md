@@ -13,7 +13,7 @@ command surface and Typed Specification contract are unstable and may change bet
 - 2026-10-20: `drydock report uat_report` prints a read-only `UAT RUN REPORT` comparing every
   passed UAT run under `<workspace>/uat`, newest first, by project, date, and executed model. It
   counts Drydock LLM calls by category (Build, Repair, Plan, Plan Rep, Other) beside the
-  Manifest's story count, splits tokens into fresh input, cache read, cache write, and output,
+  Manifest's story count, splits tokens into fresh input, cache read, and output,
   counts agent tool calls as Shell, Edit, and Other across Claude and Codex transcripts, and sums
   LLM minutes over every execution including resumes. Exits `1` when `<workspace>/uat` is absent.
 - 2026-10-20: `drydock plan verify` reports a `harness-exit` defect when a Programmatic Acceptance
