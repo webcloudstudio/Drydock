@@ -653,17 +653,15 @@ def test_a_suite_timeout_does_not_invent_a_cause():
 @pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX-only")
 def test_the_timeout_reaps_a_grandchild_instead_of_orphaning_it(tmp_path, monkeypatch):
     """Killing only the direct child leaves the runaway that the timeout was meant to stop."""
-    monkeypatch.setattr(acceptance, "TIMEOUT_SECONDS", 2)
+    # The child records the grandchild's pid from Popen, so the timeout never has to outlast a
+    # second interpreter start-up, which a loaded parallel suite can stretch past it.
+    monkeypatch.setattr(acceptance, "TIMEOUT_SECONDS", 5)
     marker = tmp_path / "grandchild.pid"
-    (tmp_path / "sleeper.py").write_text(
-        "import os, pathlib, time\n"
-        f"pathlib.Path({str(marker)!r}).write_text(str(os.getpid()))\n"
-        "time.sleep(120)\n",
-        encoding="utf-8",
-    )
+    (tmp_path / "sleeper.py").write_text("import time\ntime.sleep(120)\n", encoding="utf-8")
     result = _run_one(
-        "import subprocess, sys, time\n"
-        "subprocess.Popen([sys.executable, 'sleeper.py'])\n"
+        "import pathlib, subprocess, sys, time\n"
+        "child = subprocess.Popen([sys.executable, 'sleeper.py'])\n"
+        f"pathlib.Path({str(marker)!r}).write_text(str(child.pid))\n"
         "time.sleep(120)\n",
         tmp_path,
     )
