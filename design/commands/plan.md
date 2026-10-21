@@ -36,6 +36,15 @@ Intended workflow: `drydock plan verify <Target> || drydock plan repair <Target>
 
 `2026-10-19` · Planning requires a valid, Commander-approved TECHNOLOGY_STACK.md before model execution, including with --override. Language comes from selected Rigging guidance. The language initialization story occupies a separate computed block so its project files exist before persistence generation; prompt sizing includes the selected full or compact language file. Breaking this rule plans an undecided or incompatible stack.
 
+`2026-10-21` · **A Stage 2 retry carries the reason the last batch was refused.** The ledger
+appends `Previous attempt rejected — <reason>` after any whole-batch refusal (malformed
+delimiters, no artifact blocks, a frozen/undeclared/deferred artifact, no complete Blueprint),
+and clears it on an accepted batch. A response with no artifact blocks prints `[plan] response
+without artifacts: "<excerpt>"`. `plan_continue.md` V2 forbids questions, tool requests, and
+refusals in place of artifacts and routes open points to `## Questions`. *Broken:* LayersTesting
+`20261021.173113` resent a byte-identical prompt three times after Haiku asked questions instead
+of emitting, and plan stalled at 16 / 31 Blueprints.
+
 `2026-10-21` · **Stray text is discarded, never fatal.** Up to three lines of plain narration
 before, between, or after intact artifact blocks are dropped and printed as `[plan] stray text
 <where> discarded: "<text>"`. Outside text shaped like content — a heading, list, table, fence,

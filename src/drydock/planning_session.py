@@ -5071,11 +5071,15 @@ def _blueprint_tranche(score: PlanScore) -> tuple[str, ...]:
     return tuple(item.filename for item in score.missing[:_PLAN_BLUEPRINT_BATCH_SIZE])
 
 
-def _render_ledger(score: PlanScore, *, rejected: Sequence[ArtifactDefect] = ()) -> str:
+def _render_ledger(
+    score: PlanScore, *, rejected: Sequence[ArtifactDefect] = (), previous: str = ""
+) -> str:
     """Render one bounded Stage 2 work queue, never the complete remaining topology.
 
     ``rejected`` names artifacts a batch emitted and Drydock refused before they reached the
     accumulator, so the score never saw them; they are listed as defective with their reason.
+    ``previous`` is why the last batch was refused whole. Without it a retry is byte-identical to
+    the call that failed and draws the same answer (LayersTesting ``20261021.173113``).
     """
     tranche = frozenset(_blueprint_tranche(score))
     frozen = sorted(name for name in score.accepted if name != DATABASE_BLOCK)
@@ -5108,7 +5112,21 @@ def _render_ledger(score: PlanScore, *, rejected: Sequence[ArtifactDefect] = ())
         lines.append("")
         lines.append(f"Defective ({len(invalid)}) — emit these again, in full, corrected:")
         lines.extend(f"  {item.rendered()}" for item in invalid)
+    if previous:
+        lines.append("")
+        lines.append(f"Previous attempt rejected — {previous}")
+        lines.append(
+            "  Nobody answers questions during planning and you have no tools. Do not ask, refuse, "
+            "or explain. Record each open point under the affected Blueprint's `## Questions`, "
+            "then emit the Current batch."
+        )
     return "\n".join(lines)
+
+
+def _response_excerpt(text: str, limit: int = 240) -> str:
+    """One line from the start of a response, for a refusal the console would otherwise hide."""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
 
 
 def _continuation_assembly(
@@ -5236,6 +5254,7 @@ def _continue_short_plan(
     execution_ids = [initial_execution_id or ""]
     passes = 0
     stalled_passes = 0
+    previous_rejection = ""
     database_rejected: tuple[ArtifactDefect, ...] = ()
 
     # One successful artifact per call is the slowest legitimate forward motion.  The additional
@@ -5246,7 +5265,7 @@ def _continue_short_plan(
         passes += 1
         if on_text is not None:
             on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
-        ledger = _render_ledger(score, rejected=database_rejected)
+        ledger = _render_ledger(score, rejected=database_rejected, previous=previous_rejection)
         assembly = _continuation_assembly(
             prompt_assembly,
             topology=accumulated[TOPOLOGY_BLOCK],
@@ -5310,12 +5329,19 @@ def _continue_short_plan(
                         result="Rejected: malformed artifact response",
                     )
                 )
+            previous_rejection = (
+                "the response broke the artifact delimiter contract; emit every file between "
+                "its own BEGIN and END delimiters"
+            )
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
             continue
         if not pass_blocks:
+            excerpt = _response_excerpt(result.text)
+            previous_rejection = f'the response held no artifact blocks. It began: "{excerpt}"'
             if on_text is not None:
+                on_text(f'[plan] response without artifacts: "{excerpt}"\n')
                 on_text(
                     "[plan-score]"
                     + score.progress_block(
@@ -5392,6 +5418,7 @@ def _continue_short_plan(
                         result=f"Rejected: {rejection}",
                     )
                 )
+            previous_rejection = rejection
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
@@ -5418,6 +5445,7 @@ def _continue_short_plan(
                         result="No complete Blueprint accepted",
                     )
                 )
+            previous_rejection = "the response completed no Current batch Blueprint"
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
@@ -5433,6 +5461,7 @@ def _continue_short_plan(
                 )
             )
         stalled_passes = 0
+        previous_rejection = ""
 
     return _Continuation(
         blocks=accumulated,

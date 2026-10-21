@@ -1,7 +1,7 @@
 ---
 name: plan_continue
 description: Stage 2 Blueprint authoring instruction appended after plan_create has accepted and frozen a complete TOPOLOGY.md declaration.
-version: 20261014 V1
+version: 20261021 V2
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
 output: A bounded batch of Blueprint specification files
@@ -27,6 +27,10 @@ Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated 
 - Do not emit or amend `TOPOLOGY.md`; Stage 1 is complete and frozen.
 - Do not emit `DECISIONS.json`; it was captured with the topology in Stage 1.
 - Do not restate your plan, summarize progress, apologize, or explain the interruption.
+- You have no tools and nobody answers questions during planning. Never ask a question,
+  request a file, refuse, or offer options instead of emitting. Record each open point under
+  the affected Blueprint's `## Questions` and emit the batch. A response without artifacts is
+  rejected and the same batch is asked again.
 - Do not emit `MANIFEST.md`; Drydock serializes it from the declaration.
 - Use exactly the same delimited block format as before, including the mandatory
   `=== END ARTIFACT ===` line for every file. The name is typed once, at the open; the

@@ -37,6 +37,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-21: `drydock plan` tells a retried Stage 2 batch why the previous attempt was refused
+  (`Previous attempt rejected — <reason>` in the ledger) instead of resending a byte-identical
+  prompt, and prints the start of a response that held no artifact blocks. `plan_continue.md`
+  V2 forbids answering with questions, tool requests, or refusals; open points go under
+  `## Questions`. A model that asked instead of emitting previously stalled the plan.
 - 2026-10-21: `drydock plan` keeps the seeded `DATABASE.md` (Rigging template plus
   `sources/DATABASE.md` tables) into the first Blueprint batch. The Stage 1 truncation check read
   the seed as a cut artifact, because the response never emitted it, and discarded it, so batch 1

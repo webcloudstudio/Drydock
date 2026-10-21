@@ -4552,6 +4552,66 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
     assert result.blocks["DATABASE.md"] == _DATABASE.strip()
 
 
+def test_a_batch_answered_with_questions_is_retried_with_the_reason():
+    """LayersTesting ``20261021.173113``: Haiku answered three Stage 2 batches with questions and
+    no artifacts. Each retry was byte-identical to the call that failed, drew the same answer, and
+    plan stalled at 16 / 31 Blueprints. The retry now names the refusal and shows it on the
+    console; an accepted batch clears it."""
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (
+        PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
+        PlannedStory(story_id="story-2", implements="FEATURE-2.md"),
+    )
+    prompts: list[str] = []
+    replies = [
+        "Tell me whether the checks should use cli_runner or a subprocess.",
+        "=== BEGIN ARTIFACT FEATURE-1.md ===\n# FEATURE: 1\n=== END ARTIFACT ===\n",
+        "=== BEGIN ARTIFACT FEATURE-2.md ===\n# FEATURE: 2\n=== END ARTIFACT ===\n",
+    ]
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        return FakeRun(text=replies[len(prompts) - 1], execution_id=f"exec-{len(prompts)}")
+
+    progress: list[str] = []
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Two frozen stories."},
+        blocks_text="=== TOPOLOGY.md ===\nTwo frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="claude",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=progress.append,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    assert result.score.is_complete
+    assert len(prompts) == 3
+    assert "Previous attempt rejected" not in prompts[0]
+    assert "Previous attempt rejected — the response held no artifact blocks" in prompts[1]
+    assert "cli_runner or a subprocess" in prompts[1]
+    assert "## Questions" in prompts[1].split("## Ledger")[-1]
+    assert "Previous attempt rejected" not in prompts[2]
+    assert any(
+        line.startswith('[plan] response without artifacts: "Tell me whether') for line in progress
+    )
+
+
+def test_plan_continue_prompt_routes_questions_into_the_blueprint():
+    from drydock.prompts import load_prompt
+
+    prompt = load_prompt("plan_continue").body
+
+    assert "nobody answers questions during planning" in prompt
+    assert "`## Questions`" in prompt
+
+
 def test_the_seeded_persistence_declaration_survives_into_the_first_blueprint_batch():
     """LayersTesting ``20261021.034029``: the seed was judged against the Stage 1 response, which
     never opened it, read as a truncated artifact, and dropped. Batch 1 then wrote the declaration
