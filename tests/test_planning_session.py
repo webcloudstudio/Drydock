@@ -4552,6 +4552,57 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
     assert result.blocks["DATABASE.md"] == _DATABASE.strip()
 
 
+def test_the_seeded_persistence_declaration_survives_into_the_first_blueprint_batch():
+    """LayersTesting ``20261021.034029``: the seed was judged against the Stage 1 response, which
+    never opened it, read as a truncated artifact, and dropped. Batch 1 then wrote the declaration
+    from scratch, so a source-declared table would have been paraphrased or lost."""
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (
+        PlannedStory(story_id="database", implements="DATABASE.md"),
+        PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
+    )
+    seed = "# DATABASE: X\n\n## `seeded_table`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+    prompts: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        return FakeRun(
+            text="=== BEGIN ARTIFACT FEATURE-1.md ===\n# FEATURE: 1\n=== END ARTIFACT ===\n",
+            execution_id="exec-1",
+        )
+
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Two frozen stories.", "DATABASE.md": seed},
+        blocks_text="=== TOPOLOGY.md ===\nTwo frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="codex",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=None,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    assert "## `seeded_table`" in prompts[0]
+    assert result.blocks["DATABASE.md"] == seed
+    assert result.score.is_complete
+
+
+def test_a_block_the_response_never_opened_is_not_called_truncated():
+    text = (
+        "=== BEGIN ARTIFACT A.md ===\nbody\n=== END ARTIFACT ===\n=== BEGIN ARTIFACT B.md ===\ncut"
+    )
+
+    damaged = ps._unpaired_artifact_names(text, {"A.md": "body", "B.md": "cut", "SEED.md": "x"})
+
+    assert damaged == frozenset({"B.md"})
+
+
 def test_continuation_stops_when_no_progress_and_reports_the_score(tmp_path):
     target_dir = _make_target(tmp_path)
     # Every continuation pass returns the same already-accepted artifact: no progress, ever.

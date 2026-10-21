@@ -37,6 +37,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-21: `drydock plan` keeps the seeded `DATABASE.md` (Rigging template plus
+  `sources/DATABASE.md` tables) into the first Blueprint batch. The Stage 1 truncation check read
+  the seed as a cut artifact, because the response never emitted it, and discarded it, so batch 1
+  rewrote the declaration from scratch and could lose source-declared tables.
 - 2026-10-21: `drydock plan` refuses a Stage 2 batch's `DATABASE.md` when the merged declaration
   does not parse, instead of accepting it and failing only after the last batch. The batch keeps
   its other Blueprints, and the next ledger lists `DATABASE.md` as defective with the reason. The

@@ -5053,9 +5053,15 @@ def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[
     ``=== END <name> ===`` lines cannot see the invariant ``=== END ARTIFACT ===`` close, which
     named every artifact of an undamaged response damaged and emptied the accumulator the
     continuation loop indexes.
+
+    A block the text never opened is not judged: the text cannot have cut it. Drydock seeds
+    ``DATABASE.md`` into the Stage 1 blocks without the model emitting it, and judging that seed
+    against the Stage 1 response discarded it before the first Blueprint batch.
     """
-    closed = Counter(pair_artifact_delimiters(text).closed)
-    unpaired = {name for name in blocks if closed[name] != 1}
+    pairing = pair_artifact_delimiters(text)
+    closed = Counter(pairing.closed)
+    opened = frozenset(pairing.opened)
+    unpaired = {name for name in blocks if name in opened and closed[name] != 1}
     unpaired |= {name for name, body in blocks.items() if _embedded_artifact_headers(body)}
     return frozenset(unpaired)
 
