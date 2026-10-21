@@ -2978,6 +2978,20 @@ def cmd_score_llm(
     return 0
 
 
+def cmd_score_uat_report() -> int:
+    """Compare successful UAT runs by turns and total tokens. Reads kit run results only."""
+    from drydock.config import get_workspace
+    from drydock.score_uat import render_uat_report, successful_runs
+
+    uat_root = get_workspace() / "uat"
+    if not uat_root.is_dir():
+        print(f"error: no UAT kits found under {uat_root}", file=sys.stderr)
+        return 1
+    for line in render_uat_report(successful_runs(uat_root)):
+        print(line)
+    return 0
+
+
 def cmd_score_summary(target: str) -> int:
     """Summarize what every other score command last reported. Reads journals only."""
     from drydock.config import get_workspace, require_target_dir
@@ -3912,6 +3926,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "                                          — lifecycle-scoped LLM usage by stage, subtype,\n"
             "                                            and model. Defaults to the latest Target's\n"
             "                                            successful executions since its latest init.\n"
+            "drydock score uat_report                 — successful UAT runs by project, date, model,\n"
+            "                                            turns, and total tokens (reads only)\n"
             "drydock score release <Target>           — LLM release gate over Sea Trials; also runs the\n"
             "                                            project's governed acceptance gate. Writes\n"
             "                                            SCORECARD.md\n"
@@ -4332,7 +4348,16 @@ def _reject_score_drydock_operands(rest: list[str]) -> None:
 
 #: The sub-verbs of ``drydock score``. A first token outside this set is a Target, which
 #: selects the summary rather than a score.
-_SCORE_SUB_VERBS = frozenset({"spec", "ac", "build", "llm", "release", "report", "drydock"})
+_SCORE_SUB_VERBS = frozenset({
+    "spec",
+    "ac",
+    "build",
+    "llm",
+    "uat_report",
+    "release",
+    "report",
+    "drydock",
+})
 
 
 def _dispatch_score(args: argparse.Namespace) -> int:
@@ -4382,6 +4407,10 @@ def _dispatch_score(args: argparse.Namespace) -> int:
             all_history=all_history,
             include_incomplete=include_incomplete,
         )
+    if first == "uat_report":
+        if len(tokens) != 1:
+            raise UsageError("Usage: drydock score uat_report")
+        return cmd_score_uat_report()
     if first == "release" and len(tokens) == 2:
         rc = cmd_score_release(tokens[1])
         from drydock.config import record_activity
@@ -4395,7 +4424,8 @@ def _dispatch_score(args: argparse.Namespace) -> int:
     if len(tokens) == 1 and first not in _SCORE_SUB_VERBS:
         return cmd_score_summary(first)
     raise UsageError(
-        "Usage: drydock score [<spec|ac|build|llm|release|report>] <Target> | drydock score drydock"
+        "Usage: drydock score [<spec|ac|build|llm|release|report>] <Target> | "
+        "drydock score uat_report | drydock score drydock"
     )
 
 
@@ -5172,6 +5202,7 @@ _LOG_TARGET_SUBVERBS = frozenset({
     "ac",
     "build",
     "llm",
+    "uat_report",
     "release",
     "report",
     "generate",
@@ -5338,7 +5369,7 @@ def _is_score_query(args: argparse.Namespace) -> bool:
         return False
     tokens = [str(token) for token in (getattr(args, "args", None) or [])]
     return (len(tokens) == 1 and tokens[0] not in _SCORE_SUB_VERBS) or (
-        bool(tokens) and tokens[0] == "llm"
+        bool(tokens) and tokens[0] in {"llm", "uat_report"}
     )
 
 

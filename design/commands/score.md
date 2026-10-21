@@ -4,7 +4,7 @@
 |---|---|
 | Version | 2026-10-15 V1 |
 | Route | score |
-| Modules | `score.py`, `score_spec.py`, `score_report.py`, `score_drydock.py`, `scorecard.py`, `sea_trials.py`, `acceptance.py`, `llm_usage.py` |
+| Modules | `score.py`, `score_uat.py`, `score_spec.py`, `score_report.py`, `score_drydock.py`, `scorecard.py`, `sea_trials.py`, `acceptance.py`, `llm_usage.py` |
 | Prompts | `score_spec.md`, `score_release.md`, `score_drydock.md` |
 | Tests | `tests/test_score*.py`, `tests/test_sea_trials*.py`, `tests/test_gate_policy*.py` |
 | Topics | [acceptance_criteria](../topics/acceptance_criteria.md) |
@@ -26,6 +26,7 @@ drydock score spec <Target>                      SPECIFICATION_SCORECARD.md (LLM
 drydock score ac <Target> [--step <id>] [--full] SOUNDINGS.md (deterministic)
 drydock score build <Target>                     build evidence report (deterministic)
 drydock score llm [<Target>] [--all|--include-incomplete]
+drydock score uat_report                         successful UAT runs: turns and tokens
 drydock score release <Target>                   acceptance gate + LLM Sea Trials judgment
 drydock score report <Target>                    drydock_receipt/index.html, sealed
 drydock score drydock                            self-assessment → docs/drydock_planning/
@@ -73,6 +74,14 @@ Programmatic Acceptance assertion with no LLM and writes `SOUNDINGS.md`; `FAIL` 
 command, UTC time). `ac`/`build` regenerate only on whole-Target runs. *Broken:* one command
 clobbers another's section.
 
+`2026-10-20` · **`score uat_report` compares only passed UAT runs and only reads.** It lists
+every `<workspace>/uat/<Kit>/runs/<run-id>/result.json` whose `status` is `passed`, newest first:
+Project (kit directory), Date (run id), Model (`environment.model`), Turns, and Total Tokens
+(`usage.input_tokens` + `usage.output_tokens`). Turns sum each LLM execution's reported `turns`;
+an execution with none (Codex) counts messages, tool calls, and file changes from its raw
+transcript. Exits `1` when `<workspace>/uat` is absent. *Broken:* failed runs skew the comparison,
+or a report write invalidates published kit evidence.
+
 `2026-08-21` · **`score build` is deterministic and still gates.** Logs only; exits `1` on missing
 evidence or unverified blocks, by decision. *Broken:* a build with no evidence reads clean.
 
@@ -101,7 +110,7 @@ convention; a command documents its own meaning in its exit table, as `status --
 
 ### Spec divergence
 
-- The specification omits `score llm` and `score drydock`.
+- The specification omits `score llm`, `score uat_report`, and `score drydock`.
 - The specification does not state that every score command regenerates `SCORECARD.md`, or that
   `score build` exits `1` on missing evidence.
 

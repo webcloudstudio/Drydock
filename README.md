@@ -258,6 +258,7 @@ ai  drydock rigging compact                    # Automanage compaction
     drydock score build       MyApp            # Post-build report: repairs, tokens, cache
     drydock score llm         [MyApp]          # Successful LLM usage since latest init; by stage/model
     drydock score llm MyApp --all              # All recorded LLM executions, including failures
+    drydock score uat_report                   # Successful UAT runs: date, model, turns, tokens
     drydock score report      MyApp            # Publish the build receipt with its evidence
     drydock score             MyApp            # Summarize the scores above: last run, result,
                                                #   and output file

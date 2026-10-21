@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-20: `drydock score uat_report` prints a read-only `UAT RUN REPORT` comparing every
+  passed UAT run under `<workspace>/uat`, newest first, by project, date, executed model, agent
+  turns, and total tokens (input including cache reads, plus output). Claude turns are the
+  provider-reported `num_turns`; Codex turns are counted from the raw transcript as messages,
+  tool calls, and file changes. Exits `1` when `<workspace>/uat` is absent.
 - 2026-10-20: `drydock plan verify` reports a `harness-exit` defect when a Programmatic Acceptance
   call that passes a staged source file asserts an exit status that no line of a staged
   `sources/*.sh` harness expects for the same command and file. Only the first such call in a
