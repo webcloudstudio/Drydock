@@ -53,7 +53,12 @@ from drydock.database_contract import (
     table_coverage_defects,
 )
 from drydock.errors import SpecificationError
-from drydock.harness_exits import contradictions, load_harness
+from drydock.harness_exits import (
+    contradictions,
+    load_harness,
+    unchecked_calls,
+    unloaded_staged_values,
+)
 from drydock.rigging_contract import import_defects
 from drydock.story_guidance import load_guidance
 
@@ -343,6 +348,36 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                             f"{line.exit_code}; assert {line.exit_code} and correct any later "
                             "assertion that followed from the wrong exit"
                             for call, line in found
+                        ),
+                    )
+                )
+                continue
+            if lines := unchecked_calls(check.code):
+                # A setup call that fails silently leaves the criterion testing state that does
+                # not exist, and the product is charged for it (LayersTesting 20261021.195808).
+                defects.append(
+                    Defect(
+                        path.name,
+                        check.check_id,
+                        "unchecked-call",
+                        "calls `cli_runner` at line(s) "
+                        + ", ".join(str(line) for line in lines)
+                        + " without asserting its exit status; bind it as "
+                        "`code, out, err = cli_runner(...)` and assert `code` before the next call",
+                    )
+                )
+                continue
+            if found_values := unloaded_staged_values(check.code, harness):
+                defects.append(
+                    Defect(
+                        path.name,
+                        check.check_id,
+                        "staged-value",
+                        "; ".join(
+                            f"uses `{value}` from staged sources/{source} without loading that "
+                            "file; create the state in this criterion under an identifier no "
+                            "staged file holds, or load the file first"
+                            for value, source in found_values
                         ),
                     )
                 )

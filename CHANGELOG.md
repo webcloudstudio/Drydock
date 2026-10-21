@@ -32,6 +32,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-21: Acceptance binding accepts deterministic known answers. A literal of printable
+  ASCII text, newlines, and tabs binds, and its only allowed backslash is an escaped quote `\"`.
+  A CSV report, a status line, or quoted output no longer settles `DISPUTED` on a miss.
+  Another backslash, a carriage return, or non-ASCII text still marks a re-typed value.
+- 2026-10-21: `drydock plan verify` reports two new acceptance defects, and `plan_repair.md` V10
+  repairs both. `unchecked-call`: a `cli_runner` call whose exit status no `assert` reads.
+  `staged-value`: a criterion whose first call on a key from a staged CSV's first column expects
+  a non-zero exit, without loading that file. Previously, a silently failed setup call or an
+  unloaded seed record left a criterion testing state that did not exist, and the product was
+  charged for it.
 - 2026-10-21: `drydock analyze`, `plan`, `survey`, `survey import`, and `document` discard short
   model narration outside artifact blocks instead of failing, and print each discard as
   `[<command>] stray text <where> discarded: "<text>"`. Only up to three plain lines (500

@@ -38,10 +38,16 @@ def test_a_declared_csv_header_or_row_is_a_contract_token():
     assert retyped_expectations(code) == ()
 
 
-def test_a_comma_does_not_admit_whitespace_or_escapes():
-    assert retyped_expectations('assert out == "a, b"\n')
-    assert retyped_expectations('assert out == "a,b\\n"\n')
+def test_plain_text_binds_and_backslashes_do_not():
+    """2026-10-21: a deterministic known answer binds; only a backslash other than ``\\"``, a
+    carriage return, or non-ASCII text still marks a re-typed value."""
+    assert not retyped_expectations('assert out == "a, b"\n')
+    assert not retyped_expectations('assert out == "a,b\\n"\n')
+    assert not retyped_expectations('assert out == "say \\"hi\\""\n')
+    assert not retyped_expectations('assert out == \'{"a": "say \\\\"hi\\\\""}\'\n')
     assert retyped_expectations('assert out == r"C:\\Users,x"\n')
+    assert retyped_expectations('assert out == "a\\r\\n"\n')
+    assert retyped_expectations('assert out == "caf\\u00e9"\n')
 
 
 def test_an_assembled_string_supplied_as_input_is_the_round_trip():
@@ -59,12 +65,12 @@ _CITED = """# FEATURE: Cited
 Intent: The banner matches the source.
 Cite: sources/spec.txt:2
 
-assert render() == "<b>Welcome</b>"
+assert render() == r"C:\\Users\\Welcome"
 === END AC banner ===
 """
 
 
-def _blueprint(tmp_path, spec: str, source: str = "Title\n<b>Welcome</b>\n"):
+def _blueprint(tmp_path, spec: str, source: str = "Title\nC:\\Users\\Welcome\n"):
     blueprint = tmp_path / "targets" / "Demo" / "blueprint"
     (blueprint / "sources").mkdir(parents=True)
     (blueprint / "sources" / "spec.txt").write_text(source, encoding="utf-8")
@@ -74,8 +80,8 @@ def _blueprint(tmp_path, spec: str, source: str = "Title\n<b>Welcome</b>\n"):
 
 def test_a_citation_resolves_one_line_or_a_range(tmp_path):
     blueprint = _blueprint(tmp_path, _CITED)
-    assert resolve_citation("sources/spec.txt:2", blueprint) == "<b>Welcome</b>\n"
-    assert resolve_citation("sources/spec.txt:1-2", blueprint) == "Title\n<b>Welcome</b>\n"
+    assert resolve_citation("sources/spec.txt:2", blueprint) == "C:\\Users\\Welcome\n"
+    assert resolve_citation("sources/spec.txt:1-2", blueprint) == "Title\nC:\\Users\\Welcome\n"
     assert resolve_citation("sources/spec.txt:9", blueprint) is None
     assert resolve_citation("sources/../FEATURE_Cited.md:1", blueprint) is None
     assert resolve_citation("FEATURE_Cited.md:1", blueprint) is None

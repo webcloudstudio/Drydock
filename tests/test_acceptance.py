@@ -1469,8 +1469,8 @@ def test_an_echoed_input_literal_binds():
     assert check.binding
 
 
-def test_a_transform_expectation_does_not_bind():
-    """A renderer's output cannot be derived from its input, so it is reported, not charged."""
+def test_a_plain_transform_expectation_binds():
+    """A renderer's deterministic known answer is the point of the criterion (2026-10-21)."""
     check = _criterion(
         "import subprocess\n"
         "result = subprocess.run(['./cmark'], input='# Hello\\n',"
@@ -1478,8 +1478,20 @@ def test_a_transform_expectation_does_not_bind():
         "assert result.stdout == '<h1>Hello</h1>\\n'\n"
     )
 
+    assert check.binding
+
+
+def test_a_backslash_transform_expectation_does_not_bind():
+    """A backslash depends on how many layers escaped it, so it is reported, not charged."""
+    check = _criterion(
+        "import subprocess\n"
+        "result = subprocess.run(['./cmark'], input='C:\\\\x\\n',"
+        " capture_output=True, text=True)\n"
+        "assert result.stdout == '<p>C:\\\\\\\\x</p>\\n'\n"
+    )
+
     assert not check.binding
-    assert check.retyped_expectations == ("<h1>Hello</h1>\n",)
+    assert check.retyped_expectations == ("<p>C:\\\\x</p>\n",)
 
 
 def test_an_unparseable_criterion_reports_no_oracle_finding():

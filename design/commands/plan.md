@@ -180,12 +180,26 @@ loader failed `transaction-post-read`.
 (`harness_exits.py`) reads each `cli_runner(<literal args>)[0] == <int>` call that passes a staged
 source file and compares the first call per command with every `sources/*.sh` line of the shape
 `<int> [<program>] <args...>`, files compared by name. An exit no matching line expects is a
-`harness-exit` defect; `plan_repair.md` V9 may change that expected exit to the harness value and
+`harness-exit` defect; `plan_repair.md` V10 may change that expected exit to the harness value and
 the assertions that followed from it. Calls addressing state are not compared: the harness rejects
 `txn delete 1` at its point in the sequence, while a fresh criterion correctly expects `0` (run
 `20261020.191708`). Unrecognized shapes are skipped, never guessed. *Broken:* LayersTesting
 `20261020.183046` asserted `load categories sources/seed_categories.csv` exits `1` against
 `run.sh:67` expecting `0`, and no build could pass five criteria.
+
+`2026-10-21` · **Every `cli_runner` call asserts its exit status.** `plan verify` reports an
+`unchecked-call` defect for a call whose result is discarded, whose exit is bound to `_`, or whose
+exit name is rebound before an `assert` reads it. `plan_repair.md` V10 binds the call and adds
+`assert code == 0` after it. *Broken:* LayersTesting `20261021.195808` ran two setup calls that
+failed silently, then tested an account that did not exist.
+
+`2026-10-21` · **A refusal about staged data requires loading it.** `plan verify` reports a
+`staged-value` defect when the first `cli_runner` call that uses a key from the first column of a
+staged `sources/*.csv` data row expects a non-zero exit, and the criterion never names that file.
+A key the criterion creates (expected `0`) or a deliberately absent key is not reported.
+`plan_repair.md` V10 creates the state inside the criterion under an identifier no staged file holds.
+*Broken:* LayersTesting `20261021.195808` asserted `account delete DRAWER1` exits `3` (in use)
+without loading `seed_accounts.csv`; the product correctly answered `4` (absent).
 
 `2026-10-18` · Python and Go support DATABASE.md persistence. Stack validation requires exactly one language and permits at most one database engine; other exclusive foundations retain their constraints. Cost when broken: the selected stack and generated runtime disagree.
 

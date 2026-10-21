@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261020 V9
+version: 20261021 V10
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -74,12 +74,20 @@ Permitted:
   `Error:` line says the staged harness expects, and correct any later assertion in the same
   criterion that held only because that call had the wrong outcome. The staged harness is the
   user's own test and outranks the criterion. Change no input and no command.
+- for an `unchecked-call` fault, bind each named `cli_runner` call as
+  `code, out, err = cli_runner(...)` and add `assert code == 0` directly after it — a setup call
+  must succeed before the criterion relies on it. Change no argument and no other assert;
+- for a `staged-value` fault, create the state the criterion depends on inside the criterion,
+  under an identifier no staged file holds, with the same commands the other criteria in the
+  Blueprint use to create it, each followed by `assert code == 0`, and use that identifier in place
+  of the staged one throughout the criterion. Keep every expected exit status and output.
 
 Forbidden:
 
 - changing any `assert` — its operands, its comparison, or its expected value — except as
   permitted above for a `harness-exit` fault;
-- changing the input payload, the program under test, or the command invoked;
+- changing the input payload, the program under test, or the command invoked, except as
+  permitted above for an `unchecked-call` or `staged-value` fault;
 - adding `try`, `except`, `pytest.skip`, or any construct that lets the criterion pass without
   testing what it claims to test;
 - deleting a criterion, renaming its id, or altering its `Intent:` line;

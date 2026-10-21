@@ -27,10 +27,11 @@ implements: FEATURE-Greeting.md
 state: closed/verified
 """
 
+#: A backslash in the expected value is what still marks it re-typed (2026-10-21).
 _DISPUTED_CODE = (
     "import subprocess\n"
     'result = subprocess.run(["./greet"], capture_output=True, text=True)\n'
-    'assert result.stdout == "Hello, World!\\n"'
+    'assert result.stdout == "Hello, C:\\\\World!\\n"'
 )
 
 _SPEC = f"""# FEATURE: Greeting
@@ -52,7 +53,7 @@ Cite: sources/banner.txt:1
 
 import subprocess
 result = subprocess.run(["./greet"], capture_output=True, text=True)
-assert result.stdout == "Hello, World!\\n"
+assert result.stdout == "Hello, C:\\\\World!\\n"
 === END AC FEATURE-Greeting.md :: greets ===
 """
 
@@ -85,7 +86,7 @@ def _target(tmp_path, *, outcome_binding=False):
     target_dir = tmp_path / "Demo"
     blueprint = target_dir / "blueprint"
     (blueprint / "sources").mkdir(parents=True)
-    (blueprint / "sources" / "banner.txt").write_text("Hello, World!\n", encoding="utf-8")
+    (blueprint / "sources" / "banner.txt").write_text("Hello, C:\\World!\n", encoding="utf-8")
     (blueprint / "FEATURE-Greeting.md").write_text(_SPEC, encoding="utf-8")
     (target_dir / "MANIFEST.md").write_text(_MANIFEST, encoding="utf-8")
     row = {
@@ -109,7 +110,7 @@ def test_a_disputed_criterion_is_selected_and_holds_the_completion_check(tmp_pat
     (candidate,) = ac_repair.select_repairs(target_dir)
 
     assert candidate.kind == ac_repair.KIND_DISPUTED
-    assert "Hello, World!" in candidate.fault
+    assert "Hello, C:" in candidate.fault
     check = completion_check("Demo", target_dir)
     assert check.outcome == RETRYABLE
     assert "disputed acceptance criteria: greets" in check.reason
@@ -143,7 +144,7 @@ def test_the_prompt_carries_specification_and_sources_never_the_product(tmp_path
     (prompt,) = calls
     assert 'kind="disputed"' in prompt
     assert "The greeter prints the banner stated in sources/banner.txt." in prompt
-    assert "    1| Hello, World!" in prompt
+    assert "    1| Hello, C:\\World!" in prompt
     assert "PRODUCT SOURCE TEXT" not in prompt
 
 

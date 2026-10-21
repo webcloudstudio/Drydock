@@ -52,9 +52,12 @@ by an earlier block verifies a story that did nothing.
 that measures nothing counts as evidence.
 
 `2026-10-12` · **Binding.** A criterion is non-binding when it compares against a re-typed or
-assembled string not supplied as input; an ASCII contract token (letters, digits, `_./+,-`, so a
-declared CSV header or row qualifies, `2026-10-20`) and a literal found verbatim at its
-`Cite: sources/<file>:<line>` count as derived, and a bad citation is a `bad-citation` plan defect. A non-binding miss settles
+assembled string not supplied as input. Printable ASCII text with newlines and tabs, whose only
+backslash is an escaped quote `\"`, binds as a deterministic known answer (`2026-10-21`; was
+identifier-shaped tokens only). Another backslash, a carriage return, or non-ASCII text still
+marks a re-typed value. A literal found verbatim at its `Cite: sources/<file>:<line>` counts as
+derived, and a bad citation is a `bad-citation` plan defect. *Broken (2026-10-21):* LayersTesting
+`20261021.195808` demoted seven known-answer CSV criteria to non-binding. A non-binding miss settles
 `DISPUTED`: reported, never charged, never repair feedback, never a regression or progress.
 
 `2026-10-12` · **A story verifies only on its own binding criterion that passed and was red before
@@ -132,6 +135,10 @@ file-exists stubs), and rejects a plan where no story carries it. Deferred becau
    genuine full run, in `proof_integrity` or the plan gate.
 3. **Residue observation is deferred (UAT gates §35).** Reporting files a criterion leaves in the
    build tree is diagnostic only and noisy; revisit if SETUP/TEARDOWN does not stop self-poisoning.
+4. **Criterion isolation versus §34 (`2026-10-21`).** Ed asked that criteria be encapsulated from
+   each other after LayersTesting `20261021.195808`, where leftover rows in a shared
+   `data/app.db` failed `account-add-round-trip` on rerun. The approved §34 decision rejects
+   fresh stores and chooses SETUP/TEARDOWN instead. Which mechanism isolates them?
 
 ## Open Actions
 

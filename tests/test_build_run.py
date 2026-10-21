@@ -4296,7 +4296,7 @@ def test_a_retyped_expectation_is_disputed_and_the_block_still_closes(tmp_path):
         "The marker matches a hand-typed expectation.\n\n"
         "```python\n"
         "from pathlib import Path\n"
-        "assert Path('foundation.txt').read_text(encoding='utf-8') == 'not what was written\\n'\n"
+        "assert Path('foundation.txt').read_text(encoding='utf-8') == 'C:\\\\not\\\\written\\n'\n"
         "```\n",
         encoding="utf-8",
     )

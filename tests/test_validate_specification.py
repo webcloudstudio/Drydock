@@ -227,7 +227,7 @@ Escapes render literally.
 ```python
 from app import convert
 
-assert convert({literal}) == "<p>*a*</p>\\n"
+assert convert({literal}) == "<p>\\\\*a\\\\*</p>\\n"
 ```
 
 ## User Acceptance

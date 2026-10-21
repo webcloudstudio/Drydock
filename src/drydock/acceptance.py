@@ -1271,17 +1271,16 @@ def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticA
     return tuple(checks)
 
 
-#: A string expectation an author cannot mis-escape: an identifier-shaped ASCII token. ``"string"``,
-#: ``"integer"``, ``"application/json"``, and ``"POST"`` are read off a declared interface and carry
-#: nothing to escape. A comma escapes nothing either, so a declared CSV header or row such as
-#: ``"account,name,transactions,balance"`` is a token. Markup, whitespace, backslashes, quotes, and
-#: control characters are excluded:
-#: each has to be escaped correctly twice — once building the input, once stating the expectation —
-#: and that is the assertion class that fails independently of the product.
+#: A string expectation an author cannot mis-escape: printable ASCII text, lines, and tabs. A
+#: deterministic known answer — a CSV report, a status line, a quoted message — is the point of a
+#: criterion, not a re-typed value. A backslash is the one character whose meaning depends on
+#: how many layers have escaped it (a Windows path, a TOML literal), so it is excluded except in
+#: ``\"``, an escaped quote, which every layer reads alike. A carriage return is excluded because
+#: CRLF against LF is an escaping decision. Revised 2026-10-21 from identifier-shaped tokens only;
+#: LayersTesting ``20261021.195808`` demoted seven known-answer criteria to non-binding.
 #:
-#: ``\Z`` rather than ``$``: ``$`` also matches before a trailing newline, which would admit exactly
-#: the rendered-output literals this is meant to exclude.
-_CONTRACT_TOKEN_RE = re.compile(r"[A-Za-z0-9_./+,-]*\Z")
+#: ``\Z`` rather than ``$``: ``$`` also matches before a trailing newline.
+_PLAIN_TEXT_RE = re.compile(r'(?:[\t\n\x20-\x5b\x5d-\x7e]|\\")*\Z')
 
 #: The path prefix that marks a staged, externally authored asset. A criterion whose verdict is
 #: such a runner's exit status did not invent its oracle.
@@ -1332,7 +1331,7 @@ def _invokes_staged_asset(code: str) -> bool:
 
 def _is_escapable(value: str) -> bool:
     """True when stating this literal requires escaping decisions that can disagree."""
-    return not value.isascii() or not _CONTRACT_TOKEN_RE.match(value)
+    return not _PLAIN_TEXT_RE.match(value)
 
 
 def _supplied_literals(tree: ast.AST) -> frozenset[str]:

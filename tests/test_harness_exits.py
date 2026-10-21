@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from drydock.harness_exits import contradictions, criterion_calls, load_harness
+from drydock.harness_exits import (
+    contradictions,
+    criterion_calls,
+    load_harness,
+    unchecked_calls,
+    unloaded_staged_values,
+)
 from drydock.plan_verify import verify
 from drydock.prompts import load_prompt
 
@@ -138,3 +144,126 @@ def test_plan_repair_may_correct_only_a_harness_exit_assertion():
 
     assert "for a `harness-exit` fault, change the named call's expected exit status" in body
     assert "except as\n  permitted above for a `harness-exit` fault" in body
+
+
+#: LayersTesting ``20261021.195808`` ``account-delete-in-use-refused``, verbatim.
+_SEED_DEPENDENT = """from cli.testing import cli_runner
+from persistence.testing import db_session
+
+with db_session() as db:
+    cli_runner("account", "add", "ACCT05", "In Use")
+    cli_runner("categories", "load", "x")
+    code, out, _ = cli_runner("account", "delete", "DRAWER1")
+    assert code == 3
+    assert out == ""
+    code, out, _ = cli_runner("account", "get", "DRAWER1")
+    assert code == 0
+"""
+
+
+def _seeded(tmp_path):
+    sources = tmp_path / "sources"
+    sources.mkdir(exist_ok=True)
+    (sources / "seed_accounts.csv").write_text(
+        "account,name\nDRAWER1,Front Drawer\n", encoding="utf-8"
+    )
+    (sources / "seed_transactions_bad.csv").write_text(
+        "txn_id,date,account\n9,2026-01-01,NOSUCH\n", encoding="utf-8"
+    )
+    return load_harness(sources)
+
+
+def test_unasserted_setup_calls_are_unchecked():
+    assert unchecked_calls(_SEED_DEPENDENT) == [5, 6]
+
+
+def test_every_checked_shape_passes():
+    code = """from cli.testing import cli_runner
+
+assert cli_runner("init")[0] == 0
+code, out, err = cli_runner("account", "add", "A1", "One")
+assert code == 0
+result = cli_runner("account", "get", "A1")
+assert result[0] == 0
+for name in ("A2", "A3"):
+    code, _, _ = cli_runner("account", "add", name, "Many")
+    assert code == 0
+"""
+    assert unchecked_calls(code) == []
+
+
+def test_a_discarded_or_rebound_exit_is_unchecked():
+    code = """from cli.testing import cli_runner
+
+_, out, _ = cli_runner("account", "add", "A1", "One")
+code, out, _ = cli_runner("account", "add", "A2", "Two")
+code, out, _ = cli_runner("account", "get", "A2")
+assert code == 0
+text = cli_runner("report")[1]
+"""
+    assert unchecked_calls(code) == [3, 4, 7]
+
+
+def test_a_refusal_about_an_unloaded_staged_key_is_reported(tmp_path):
+    assert unloaded_staged_values(_SEED_DEPENDENT, _seeded(tmp_path)) == [
+        ("DRAWER1", "seed_accounts.csv")
+    ]
+
+
+def test_created_absent_or_loaded_keys_are_not_reported(tmp_path):
+    harness = _seeded(tmp_path)
+    created = """from cli.testing import cli_runner
+
+code, _, _ = cli_runner("account", "add", "DRAWER1", "Mine")
+assert code == 0
+code, _, _ = cli_runner("account", "delete", "DRAWER1")
+assert code == 3
+"""
+    absent = """from cli.testing import cli_runner
+
+assert cli_runner("account", "delete", "NOSUCH")[0] == 4
+"""
+    loaded = """from cli.testing import cli_runner
+
+assert cli_runner("load", "accounts", "sources/seed_accounts.csv")[0] == 0
+assert cli_runner("account", "delete", "DRAWER1")[0] == 3
+"""
+    for code in (created, absent, loaded):
+        assert unloaded_staged_values(code, harness) == []
+
+
+def test_plan_verify_refuses_unchecked_calls_before_staged_values(tmp_path):
+    target = tmp_path / "Demo"
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+    _seeded(blueprint)
+    checked = _SEED_DEPENDENT.replace(
+        '    cli_runner("account", "add", "ACCT05", "In Use")\n'
+        '    cli_runner("categories", "load", "x")\n',
+        "",
+    )
+    (blueprint / "FEATURE-Account.md").write_text(
+        "# FEATURE: Account\n\n## Programmatic Acceptance\n\n"
+        "=== AC unchecked ===\nIntent: Setup is asserted.\n\n"
+        f"{_SEED_DEPENDENT}=== END AC unchecked ===\n\n"
+        "=== AC seeded ===\nIntent: State is created.\n\n"
+        f"{checked}=== END AC seeded ===\n",
+        encoding="utf-8",
+    )
+
+    result = verify("Demo", target)
+
+    assert [(d.check_id, d.kind) for d in result.defects] == [
+        ("unchecked", "unchecked-call"),
+        ("seeded", "staged-value"),
+    ]
+    assert "line(s) 5, 6" in result.defects[0].detail
+    assert "`DRAWER1` from staged sources/seed_accounts.csv" in result.defects[1].detail
+    assert result.exit_code() == 1
+
+
+def test_plan_repair_may_assert_setup_and_create_staged_state():
+    body = load_prompt("plan_repair").body
+
+    assert "for an `unchecked-call` fault" in body
+    assert "for a `staged-value` fault" in body
