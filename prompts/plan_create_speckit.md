@@ -1,7 +1,7 @@
 ---
 name: plan_create_speckit
 description: Spec Kit translation planning — convert an imported Spec Kit project (blueprint/sources/.specify, blueprint/sources/specs) into Blueprint specification files, MANIFEST.md, and a conversion report.
-version: 20260730 V4
+version: 20261020 V5
 intent: Act as an Agile Development Team translating a Spec Kit project into a Drydock Blueprint per the Spec Kit Import Contract mapping table, then emit the executable Manifest and a conversion report documenting mapped, duplicated, ambiguous, and ignored content.
 command: drydock plan create
 inputs: COMPASS.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -215,8 +215,8 @@ sections.
 ## Output Contract
 
 Emit exactly one response mode. **Nothing outside the blocks** — no preamble, no explanation, no
-commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Start your response with the
-first `=== ... ===` block.
+commentary. Start your response with the first `=== ... ===` block.
+No stray text: never announce, narrate, or explain what you are about to do, before, between, or after the blocks.
 
 ### Success Mode
 

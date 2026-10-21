@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261020 V40
+version: 20261020 V41
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -719,7 +719,7 @@ permission-bearing acceptance tooling uses the governed Blueprint question surfa
 ## Output Contract
 
 Emit exactly one response mode. **Nothing outside the blocks** — no preamble, no explanation, no
-commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited
+commentary. No stray text: never announce, narrate, or explain what you are about to do, before, between, or after the blocks. Any output outside a delimited
 block is a protocol violation and will cause the run to fail. Start your response with the first
 `=== BEGIN ARTIFACT ... ===` block.
 
@@ -827,7 +827,7 @@ Required action:
 
 ## Hard Rules
 
-- Nothing outside the required output blocks — no preamble, no summary, no prose, no tool calls, no `<invoke>` or `<function_calls>` XML.
+- Nothing outside the required output blocks — no preamble, no summary, no prose, no stray text.
 - Never emit `MANIFEST.md`; Drydock serializes it from `TOPOLOGY.md`.
 - In Success Mode `TOPOLOGY.md` is the first block, `DECISIONS.json` is the second block, and no
   Blueprint specification is emitted during Stage 1.

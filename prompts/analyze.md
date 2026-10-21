@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260909 V24
+version: 20261020 V25
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, RIGGING_MANIFEST, IMPORTED_SOURCES
@@ -327,7 +327,8 @@ Emit blocks only in this order. Conditional blocks are omitted when their condit
 `ANALYSIS.md`, `SEA_TRIALS.md`, `TECHNOLOGY_STACK.md`, `BLOCKERS.md`, `COMPASS.md`,
 `discovery-identity.json`, then `discovery-gaps*.json` and other `discovery-<slug>.json` blocks in
 lexical filename order.
-**Nothing outside the blocks.** No preamble, no explanation, no commentary, no tool calls, no `<invoke>` XML. Start your response with `=== BEGIN ARTIFACT ANALYSIS.md ===`.
+**Nothing outside the blocks.** No preamble, no explanation, no commentary. Start your response with `=== BEGIN ARTIFACT ANALYSIS.md ===`.
+No stray text: never announce, narrate, or explain what you are about to do, before, between, or after the blocks.
 
 ```
 === BEGIN ARTIFACT ANALYSIS.md ===
@@ -727,7 +728,7 @@ whatever you emit — never restate, rename, or re-scope one of those ids.
 
 ## Hard Rules
 
-- Emit **only** `=== BEGIN ARTIFACT <name> ===` / `=== END ARTIFACT ===` blocks. The name is typed once, at the open. The closing delimiter is the constant token `=== END ARTIFACT ===` — never repeat the name in it, and never substitute the artifact's title or heading for it. No text outside them — no preamble, no summary, no prose, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail.
+- Emit **only** `=== BEGIN ARTIFACT <name> ===` / `=== END ARTIFACT ===` blocks. The name is typed once, at the open. The closing delimiter is the constant token `=== END ARTIFACT ===` — never repeat the name in it, and never substitute the artifact's title or heading for it. No text outside them — no preamble, no summary, no prose, no commentary. No stray text: never announce, narrate, or explain what you are about to do, before, between, or after the blocks. Any output outside a delimited block is a protocol violation and will cause the run to fail.
 - Emit the `BLOCKERS.md` block only when one or more blockers exist; its existence halts the pipeline.
 - Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false` or
   `COMPASS_PENDING_FORMAT: true`.

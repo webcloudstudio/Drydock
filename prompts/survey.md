@@ -1,7 +1,7 @@
 ---
 name: survey
 description: Score a target's commands against their acceptance criteria and emit generalized actionable recommendations.
-version: 20260622 V2
+version: 20261020 V3
 intent: Judge each acceptance criterion as pass/partial/fail with a one-line note, flag root causes, and propose generalized fixes — not over-specific ones — that an implementation agent can act on.
 command: drydock survey
 output: scores.jsonl records (JSON)
@@ -41,7 +41,8 @@ behavior; let the implementer find the lines.
 
 ## Output
 
-Emit **only** a single JSON object — no prose, no code fence, no preamble, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Start your response with `{`.
+Emit **only** a single JSON object — no prose, no code fence, no preamble, no commentary. Start your response with `{` and end it with `}`.
+No stray text: never announce, narrate, or explain what you are about to do, before or after the object.
 
 ```
 {
