@@ -4599,8 +4599,62 @@ def test_a_batch_answered_with_questions_is_retried_with_the_reason():
     assert "## Questions" in prompts[1].split("## Ledger")[-1]
     assert "Previous attempt rejected" not in prompts[2]
     assert any(
-        line.startswith('[plan] response without artifacts: "Tell me whether') for line in progress
+        line.startswith('[plan-score][plan] response without artifacts: "Tell me whether')
+        for line in progress
     )
+
+
+def test_a_batch_answered_without_artifacts_is_retried_as_one_blueprint():
+    """LayersTesting ``20261021.183753``: the retry named the refusal but asked for the same five
+    Blueprints, and Haiku refused three times more. The retry now asks for one Blueprint, says so,
+    and the batch returns to five once a batch is accepted."""
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = tuple(
+        PlannedStory(story_id=f"story-{n}", implements=f"FEATURE-{n}.md") for n in range(1, 8)
+    )
+    prompts: list[str] = []
+
+    def emit(*numbers: int) -> str:
+        return "".join(
+            f"=== BEGIN ARTIFACT FEATURE-{n}.md ===\n# FEATURE: {n}\n=== END ARTIFACT ===\n"
+            for n in numbers
+        )
+
+    replies = [
+        "I can't produce this batch. If you want me to proceed, reply.",
+        emit(1),
+        emit(2, 3, 4, 5, 6),
+        emit(7),
+    ]
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        return FakeRun(text=replies[len(prompts) - 1], execution_id=f"exec-{len(prompts)}")
+
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Seven frozen stories."},
+        blocks_text="=== TOPOLOGY.md ===\nSeven frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="claude",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=None,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    assert result.score.is_complete
+    assert len(prompts) == 4
+    assert "Current batch (5)" in prompts[0]
+    assert "Current batch (1)" in prompts[1]
+    assert "The Current batch is now one Blueprint." in prompts[1]
+    assert "Current batch (5)" in prompts[2]
+    assert "Previous attempt rejected" not in prompts[2]
 
 
 def test_plan_continue_prompt_routes_questions_into_the_blueprint():

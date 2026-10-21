@@ -43,6 +43,11 @@ command surface and Typed Specification contract are unstable and may change bet
   reply and forbids asking, refusing, or explaining, and the console prints
   `[<command>] response without artifacts, retrying once with the reason: "<excerpt>"`. A model
   that answered with a question previously ended the run at that command.
+- 2026-10-21: `drydock plan` retries a Stage 2 batch answered without artifact blocks as a
+  one-Blueprint batch, and the retry says so, so it asks for less as well as explaining why the
+  last reply was refused. An accepted batch restores the batch size of 5. The refusal excerpt
+  (`[plan] response without artifacts: "<excerpt>"`) now prints without `--debug`. A model that
+  kept refusing the same five-Blueprint batch previously stalled the plan.
 - 2026-10-21: `drydock plan` tells a retried Stage 2 batch why the previous attempt was refused
   (`Previous attempt rejected — <reason>` in the ledger) instead of resending a byte-identical
   prompt, and prints the start of a response that held no artifact blocks. `plan_continue.md`

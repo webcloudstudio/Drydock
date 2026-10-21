@@ -5066,13 +5066,17 @@ def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[
     return frozenset(unpaired)
 
 
-def _blueprint_tranche(score: PlanScore) -> tuple[str, ...]:
+def _blueprint_tranche(score: PlanScore, size: int = _PLAN_BLUEPRINT_BATCH_SIZE) -> tuple[str, ...]:
     """The exact Stage 2 filenames the next model call is authorized to emit."""
-    return tuple(item.filename for item in score.missing[:_PLAN_BLUEPRINT_BATCH_SIZE])
+    return tuple(item.filename for item in score.missing[:size])
 
 
 def _render_ledger(
-    score: PlanScore, *, rejected: Sequence[ArtifactDefect] = (), previous: str = ""
+    score: PlanScore,
+    *,
+    rejected: Sequence[ArtifactDefect] = (),
+    previous: str = "",
+    size: int = _PLAN_BLUEPRINT_BATCH_SIZE,
 ) -> str:
     """Render one bounded Stage 2 work queue, never the complete remaining topology.
 
@@ -5080,8 +5084,9 @@ def _render_ledger(
     accumulator, so the score never saw them; they are listed as defective with their reason.
     ``previous`` is why the last batch was refused whole. Without it a retry is byte-identical to
     the call that failed and draws the same answer (LayersTesting ``20261021.173113``).
+    ``size`` bounds the Current batch; a refused batch is retried smaller.
     """
-    tranche = frozenset(_blueprint_tranche(score))
+    tranche = frozenset(_blueprint_tranche(score, size))
     frozen = sorted(name for name in score.accepted if name != DATABASE_BLOCK)
     lines = [f"Accepted ({len(frozen)}) — already held, do not re-emit:"]
     lines.extend(f"  {name}" for name in frozen)
@@ -5255,6 +5260,7 @@ def _continue_short_plan(
     passes = 0
     stalled_passes = 0
     previous_rejection = ""
+    batch_size = _PLAN_BLUEPRINT_BATCH_SIZE
     database_rejected: tuple[ArtifactDefect, ...] = ()
 
     # One successful artifact per call is the slowest legitimate forward motion.  The additional
@@ -5265,7 +5271,9 @@ def _continue_short_plan(
         passes += 1
         if on_text is not None:
             on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
-        ledger = _render_ledger(score, rejected=database_rejected, previous=previous_rejection)
+        ledger = _render_ledger(
+            score, rejected=database_rejected, previous=previous_rejection, size=batch_size
+        )
         assembly = _continuation_assembly(
             prompt_assembly,
             topology=accumulated[TOPOLOGY_BLOCK],
@@ -5339,9 +5347,19 @@ def _continue_short_plan(
             continue
         if not pass_blocks:
             excerpt = _response_excerpt(result.text)
-            previous_rejection = f'the response held no artifact blocks. It began: "{excerpt}"'
+            # A wording change alone drew the same refusal three times (LayersTesting
+            # ``20261021.183753``), so the retry also asks for less: one Blueprint until a batch
+            # is accepted. The reason tells the next call what happened and what to do instead.
+            batch_size = 1
+            previous_rejection = (
+                f'the response held no artifact blocks. It began: "{excerpt}" '
+                "The Current batch is now one Blueprint. Emit that one artifact and nothing "
+                "else; Drydock asks for the rest in later batches."
+            )
             if on_text is not None:
-                on_text(f'[plan] response without artifacts: "{excerpt}"\n')
+                # Routed through the always-printed score channel: the console hides other
+                # ``[plan]`` notices without --debug, and this one is why the plan stalls.
+                on_text(f'[plan-score][plan] response without artifacts: "{excerpt}"\n')
                 on_text(
                     "[plan-score]"
                     + score.progress_block(
@@ -5359,7 +5377,7 @@ def _continue_short_plan(
         # be checked as one text, so this is the only point at which that check is possible.
         pass_damaged = _unpaired_artifact_names(result.text, pass_blocks)
 
-        tranche = frozenset(_blueprint_tranche(score))
+        tranche = frozenset(_blueprint_tranche(score, batch_size))
         accepted_now = frozenset(score.accepted)
         declared_names = frozenset(item.filename for item in score.declared)
         # The pass is merged into a copy and adopted only whole, so a rejected pass leaves
@@ -5462,6 +5480,7 @@ def _continue_short_plan(
             )
         stalled_passes = 0
         previous_rejection = ""
+        batch_size = _PLAN_BLUEPRINT_BATCH_SIZE
 
     return _Continuation(
         blocks=accumulated,

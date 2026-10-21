@@ -45,6 +45,14 @@ refusals in place of artifacts and routes open points to `## Questions`. *Broken
 `20261021.173113` resent a byte-identical prompt three times after Haiku asked questions instead
 of emitting, and plan stalled at 16 / 31 Blueprints.
 
+`2026-10-21` · **A batch answered without artifacts is retried as one Blueprint.** After a
+no-artifact reply the Current batch shrinks to the first missing Blueprint, and the rejection
+reason states it: `The Current batch is now one Blueprint. Emit that one artifact and nothing
+else; Drydock asks for the rest in later batches.` An accepted batch restores the batch of 5. The
+`[plan] response without artifacts` excerpt prints through the `[plan-score]` channel, so it shows
+without `--debug`. *Broken:* LayersTesting `20261021.183753` retried the same five Blueprints with
+the reason attached, Haiku refused three more times, and plan stalled at 11 / 30.
+
 `2026-10-21` · **Stray text is discarded, never fatal.** Up to three lines of plain narration
 before, between, or after intact artifact blocks are dropped and printed as `[plan] stray text
 <where> discarded: "<text>"`. Outside text shaped like content — a heading, list, table, fence,
@@ -257,6 +265,11 @@ exist.
 - `2026-10-20` · Ed prefers declared expected exits to reading them from harness lines. If the
   `harness-exit` heuristic misses or misreads a harness, replace it with an explicit declaration
   (for example, an exit table the source names) rather than widening the line parser.
+
+- `2026-10-21` · The Stage 2 stall block truncates the missing list (`… N more lines
+  truncated`) and does not name the refused batch or its last reply excerpt
+  (`planning_session.py`, `plan generation stalled`). Its `specs: N / M` count includes
+  `DATABASE.md`, but the ledger's `Accepted (N)` does not.
 
 ## Working Notes
 
