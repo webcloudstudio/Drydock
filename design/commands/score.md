@@ -26,7 +26,7 @@ drydock score spec <Target>                      SPECIFICATION_SCORECARD.md (LLM
 drydock score ac <Target> [--step <id>] [--full] SOUNDINGS.md (deterministic)
 drydock score build <Target>                     build evidence report (deterministic)
 drydock score llm [<Target>] [--all|--include-incomplete]
-drydock score uat_report                         successful UAT runs: turns and tokens
+drydock score uat_report                         successful UAT runs: calls, tokens, tools, time
 drydock score release <Target>                   acceptance gate + LLM Sea Trials judgment
 drydock score report <Target>                    drydock_receipt/index.html, sealed
 drydock score drydock                            self-assessment → docs/drydock_planning/
@@ -75,12 +75,16 @@ command, UTC time). `ac`/`build` regenerate only on whole-Target runs. *Broken:*
 clobbers another's section.
 
 `2026-10-20` · **`score uat_report` compares only passed UAT runs and only reads.** It lists
-every `<workspace>/uat/<Kit>/runs/<run-id>/result.json` whose `status` is `passed`, newest first:
-Project (kit directory), Date (run id), Model (`environment.model`), Turns, and Total Tokens
-(`usage.input_tokens` + `usage.output_tokens`). Turns sum each LLM execution's reported `turns`;
-an execution with none (Codex) counts messages, tool calls, and file changes from its raw
-transcript. Exits `1` when `<workspace>/uat` is absent. *Broken:* failed runs skew the comparison,
-or a report write invalidates published kit evidence.
+every `<workspace>/uat/<Kit>/runs/<run-id>/result.json` whose `status` is `passed`, newest first,
+keyed by Project (kit directory), Date (run id), and Model (`environment.model`), in three tables:
+Drydock LLM calls — Stories (Manifest story nodes), Build (`build` `attempt` 0), Repair (`build`
+`attempt` > 0, `diagnose`), Plan (synthesis, continuation, lineage), Plan Rep (plan
+artifact/declaration/coverage repair passes, `plan repair`), Other, Calls; Tokens — fresh input,
+cache read, cache write (`—` when the provider reports none), output, total; Tool calls and time —
+Shell, Edit, Other from raw transcripts, normalized across providers, and LLM minutes summed over
+every execution, resumes included. Run wall-clock is omitted because a resume overwrites command
+times. Exits `1` when `<workspace>/uat` is absent. *Broken:* failed runs skew the comparison, or
+a report write invalidates published kit evidence.
 
 `2026-08-21` · **`score build` is deterministic and still gates.** Logs only; exits `1` on missing
 evidence or unverified blocks, by decision. *Broken:* a build with no evidence reads clean.
