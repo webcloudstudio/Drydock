@@ -116,7 +116,7 @@ from drydock.metadata import increment_version, set_build_state, set_sub_state, 
 from drydock.override import PLAN_DECISION, WaivedGate, dedupe_waivers, stamp_override
 from drydock.paths import get_prompts_root, get_spec_template_dir
 from drydock.plan_graph import PlanComputation, PlannedStory, specification_names
-from drydock.plan_score import PlanScore, score_plan
+from drydock.plan_score import ArtifactDefect, PlanScore, score_plan
 from drydock.plan_shape import OutputContract, ShapeDefect, check_contract, render_defects
 from drydock.plan_topology import TOPOLOGY_BLOCK, parse_topology
 from drydock.prompt_assembly import (
@@ -5065,8 +5065,12 @@ def _blueprint_tranche(score: PlanScore) -> tuple[str, ...]:
     return tuple(item.filename for item in score.missing[:_PLAN_BLUEPRINT_BATCH_SIZE])
 
 
-def _render_ledger(score: PlanScore) -> str:
-    """Render one bounded Stage 2 work queue, never the complete remaining topology."""
+def _render_ledger(score: PlanScore, *, rejected: Sequence[ArtifactDefect] = ()) -> str:
+    """Render one bounded Stage 2 work queue, never the complete remaining topology.
+
+    ``rejected`` names artifacts a batch emitted and Drydock refused before they reached the
+    accumulator, so the score never saw them; they are listed as defective with their reason.
+    """
     tranche = frozenset(_blueprint_tranche(score))
     frozen = sorted(name for name in score.accepted if name != DATABASE_BLOCK)
     lines = [f"Accepted ({len(frozen)}) — already held, do not re-emit:"]
@@ -5093,7 +5097,7 @@ def _render_ledger(score: PlanScore) -> str:
     lines.append(
         f"Deferred ({deferred}) — Drydock will provide later batches; do not emit them now."
     )
-    invalid = tuple(item for item in score.invalid if item.filename in tranche)
+    invalid = tuple(item for item in (*score.invalid, *rejected) if item.filename in tranche)
     if invalid:
         lines.append("")
         lines.append(f"Defective ({len(invalid)}) — emit these again, in full, corrected:")
@@ -5226,6 +5230,7 @@ def _continue_short_plan(
     execution_ids = [initial_execution_id or ""]
     passes = 0
     stalled_passes = 0
+    database_rejected: tuple[ArtifactDefect, ...] = ()
 
     # One successful artifact per call is the slowest legitimate forward motion.  The additional
     # retry allowance bounds malformed/no-progress calls without capping a large valid topology at
@@ -5235,7 +5240,7 @@ def _continue_short_plan(
         passes += 1
         if on_text is not None:
             on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
-        ledger = _render_ledger(score)
+        ledger = _render_ledger(score, rejected=database_rejected)
         assembly = _continuation_assembly(
             prompt_assembly,
             topology=accumulated[TOPOLOGY_BLOCK],
@@ -5329,6 +5334,7 @@ def _continue_short_plan(
         # nothing behind — including artifacts it emitted before the one that rejected it.
         candidate = dict(accumulated)
         rejection = ""
+        database_defects: tuple[str, ...] = ()
         for name, body in pass_blocks.items():
             if name in {TOPOLOGY_BLOCK, DECISIONS_BLOCK}:
                 # Stage 1 artifacts are frozen. A byte-identical repeat is tolerated for provider
@@ -5345,7 +5351,14 @@ def _continue_short_plan(
                 if name in pass_damaged:
                     continue
                 held = candidate.get(name, "")
-                candidate[name] = merge_schema(held, body) if held.strip() else body
+                merged = merge_schema(held, body) if held.strip() else body
+                # A declaration Build cannot parse is refused at the batch that wrote it. Accepted
+                # here, it would be checked only after every later batch, and repaired from the
+                # bare defect text without the authoring contract in view.
+                database_defects = database_contract_defects(merged)
+                if database_defects:
+                    continue
+                candidate[name] = merged
                 continue
             if name in accepted_now:
                 # An accepted artifact is frozen. A byte-identical repeat costs nothing; a
@@ -5378,6 +5391,15 @@ def _continue_short_plan(
                 break
             continue
         accumulated = candidate
+        if DATABASE_BLOCK in pass_blocks and DATABASE_BLOCK not in pass_damaged:
+            story_id = next(
+                (item.story_id for item in score.declared if item.filename == DATABASE_BLOCK), ""
+            )
+            database_rejected = tuple(
+                ArtifactDefect(story_id, DATABASE_BLOCK, defect) for defect in database_defects
+            )
+            if database_defects and on_text is not None:
+                on_text(f"[plan] {DATABASE_BLOCK} rejected: " + "; ".join(database_defects) + "\n")
 
         advanced = score_plan(current, accumulated)
         if not advanced.improved_on(score):

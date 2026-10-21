@@ -37,6 +37,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-21: `drydock plan` refuses a Stage 2 batch's `DATABASE.md` when the merged declaration
+  does not parse, instead of accepting it and failing only after the last batch. The batch keeps
+  its other Blueprints, and the next ledger lists `DATABASE.md` as defective with the reason. The
+  `## Access Patterns has no named operation` defect now states the required
+  `### <FEATURE-DOMAIN-NNN> — <Operation>` section form.
 - 2026-10-20: `drydock plan` requires every Programmatic Acceptance setup call to assert the success
   its source declares (`plan_create.md` V40, `BLUEPRINTS_CONTRACT.md` V24). A criterion that
   expected loading a valid staged asset to exit `1` created no state and failed against a correct

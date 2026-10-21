@@ -4487,6 +4487,71 @@ def test_claude_blueprint_batches_do_not_carry_prior_batch_outputs():
     assert abs(len(second_prompt) - len(first_prompt)) < 1_000
 
 
+def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_batch():
+    """LayersTesting ``20261021.034029``: batch 1 wrote ``## Access Patterns`` as one table of
+    operations and was accepted. The defect surfaced only after every later batch, and three
+    repairs from the bare defect text never restored the section shape. The batch that writes an
+    unparseable declaration is refused, keeps the rest of its work, and is asked again with the
+    reason."""
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (
+        PlannedStory(story_id="database", implements="DATABASE.md"),
+        PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
+        PlannedStory(story_id="story-2", implements="FEATURE-2.md"),
+    )
+    flat = (
+        "# DATABASE: X\n\n## Access Patterns\n\n"
+        "| Pattern | Owner | Access | Repository operation | Compatibility |\n"
+        "|---|---|---|---|---|\n"
+        "| `FEATURE-X-001` | FEATURE-1.md | read | `settings.get` | unchanged |\n\n"
+        "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n"
+    )
+    prompts: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        if len(prompts) == 1:
+            emitted = {
+                "DATABASE.md": flat,
+                "FEATURE-1.md": "# FEATURE: 1",
+                "FEATURE-2.md": "# FEATURE: 2",
+            }
+        else:
+            emitted = {"DATABASE.md": _DATABASE}
+        response = "".join(
+            f"=== BEGIN ARTIFACT {name} ===\n{body}\n=== END ARTIFACT ===\n"
+            for name, body in emitted.items()
+        )
+        return FakeRun(text=response, execution_id=f"exec-{len(prompts)}")
+
+    progress: list[str] = []
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Three frozen stories."},
+        blocks_text="=== TOPOLOGY.md ===\nThree frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="codex",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=progress.append,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    assert len(prompts) == 2
+    assert "Accepted (2)" in prompts[1]
+    defective = prompts[1].split("Defective (1)")[1]
+    assert "database -> DATABASE.md" in defective
+    assert "### <FEATURE-DOMAIN-NNN> — <Operation>" in defective
+    assert any("DATABASE.md rejected" in line for line in progress)
+    assert result.score.is_complete
+    assert result.blocks["DATABASE.md"] == _DATABASE.strip()
+
+
 def test_continuation_stops_when_no_progress_and_reports_the_score(tmp_path):
     target_dir = _make_target(tmp_path)
     # Every continuation pass returns the same already-accepted artifact: no progress, ever.
@@ -6025,6 +6090,7 @@ def test_a_persistence_declaration_build_cannot_parse_is_a_database_defect():
     assert [kind for kind, _ in defects] == ["database-contract-invalid"]
     assert defects[0][1].source == "DATABASE.md"
     assert "## Access Patterns has no named operation" in defects[0][1].reason
+    assert "### <FEATURE-DOMAIN-NNN> — <Operation>" in defects[0][1].reason
 
 
 def test_every_incomplete_access_pattern_is_reported_in_one_pass():

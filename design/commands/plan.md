@@ -117,6 +117,12 @@ exception to the governing rule, because only persistence is fully decidable fro
 `2026-09-17` · **`DATABASE.md` is cumulative and append-only**, seeded from the Rigging template plus
 every source-declared table. Batches add; nothing is retyped or removed.
 
+`2026-10-21` · **A batch whose `DATABASE.md` does not parse is refused at that batch.** The merged
+declaration is checked with `database_contract_defects`; on a defect the batch keeps its other
+artifacts, `DATABASE.md` stays unaccepted, and the next ledger lists it as defective with the
+reason. *Broken:* LayersTesting `20261021.034029` accepted a one-table `## Access Patterns` in
+batch 1, found it only after batch 7, and three repairs from the bare defect text failed.
+
 `2026-09-19` · **Only a Feature owns an access pattern; `DATABASE.md` owns shared ones.** A Screen is
 never an `| Owner |`; an illegal owner is rewritten to `DATABASE.md` deterministically. Ownership is
 read from the declaration, never from `stack:` (`2026-09-18`).
@@ -174,7 +180,8 @@ the assertions that followed from it. Calls addressing state are not compared: t
 1. **Stage 1** — freeze `TOPOLOGY.md` after coverage and graph repair.
 2. **Seed** `DATABASE.md` from Rigging plus `sources/DATABASE.md`.
 3. **Stage 2** — author Blueprints in batches of 5 against an Accepted / Current / Deferred /
-   Defective ledger; accepted artifacts freeze, `DATABASE.md` merges.
+   Defective ledger; accepted artifacts freeze, `DATABASE.md` merges only when the merged
+   declaration parses.
 4. **Normalize** — deterministic fixes in order: unterminated and fused AC blocks, access values,
    owners, database interfaces, standalone imports, factory bindings, foundation imports,
    published clients (see [foundations](../topics/foundations.md)). Each is taken only when

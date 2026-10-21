@@ -693,7 +693,11 @@ def _pattern_blocks(text: str, source: str) -> list[tuple[re.Match[str], str]]:
         raise SpecificationError(f"{source}: missing required ## Access Patterns section")
     matches = list(_H3_RE.finditer(access_patterns))
     if not matches:
-        raise SpecificationError(f"{source}: ## Access Patterns has no named operation")
+        raise SpecificationError(
+            f"{source}: ## Access Patterns has no named operation: each operation is its own "
+            "`### <FEATURE-DOMAIN-NNN> — <Operation>` section over a `| Field | Value |` table, "
+            "never a row in one table of operations"
+        )
     return [
         (
             match,
