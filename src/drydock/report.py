@@ -250,6 +250,7 @@ def report_help() -> str:
         "",
         "All Targets: drydock report --all",
         "One Target: drydock report --all <Target>",
+        "Passed UAT runs (workspace, printed): drydock report uat_report",
     ])
     return "\n".join(lines)
 

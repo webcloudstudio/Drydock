@@ -1,4 +1,4 @@
-"""Successful-run comparison for the read-only ``drydock score uat_report``."""
+"""Successful-run comparison for the read-only ``drydock report uat_report``."""
 
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ def _workspace(tmp_path: Path) -> Path:
 
 
 def test_successful_runs_exclude_failures_and_sort_newest_first(tmp_path):
-    from drydock.score_uat import successful_runs
+    from drydock.report_uat_runs import successful_runs
 
     rows = successful_runs(_workspace(tmp_path))
 
@@ -165,7 +165,7 @@ def test_successful_runs_exclude_failures_and_sort_newest_first(tmp_path):
 
 
 def test_calls_are_categorized_and_stories_counted(tmp_path):
-    from drydock.score_uat import successful_runs
+    from drydock.report_uat_runs import successful_runs
 
     claude = successful_runs(_workspace(tmp_path))[1]
 
@@ -181,7 +181,7 @@ def test_calls_are_categorized_and_stories_counted(tmp_path):
 
 
 def test_tokens_split_by_type_per_provider(tmp_path):
-    from drydock.score_uat import successful_runs
+    from drydock.report_uat_runs import successful_runs
 
     codex, claude = successful_runs(_workspace(tmp_path))
 
@@ -197,7 +197,7 @@ def test_tokens_split_by_type_per_provider(tmp_path):
 
 
 def test_tool_calls_normalized_across_providers(tmp_path):
-    from drydock.score_uat import successful_runs
+    from drydock.report_uat_runs import successful_runs
 
     codex, claude = successful_runs(_workspace(tmp_path))
 
@@ -206,7 +206,7 @@ def test_tool_calls_normalized_across_providers(tmp_path):
 
 
 def test_render_uat_report_tables(tmp_path):
-    from drydock.score_uat import render_uat_report, successful_runs
+    from drydock.report_uat_runs import render_uat_report, successful_runs
 
     lines = render_uat_report(successful_runs(_workspace(tmp_path)))
     text = "\n".join(lines)
@@ -222,30 +222,30 @@ def test_render_uat_report_tables(tmp_path):
 
 
 def test_render_uat_report_with_no_successful_runs():
-    from drydock.score_uat import render_uat_report
+    from drydock.report_uat_runs import render_uat_report
 
     assert render_uat_report([]) == ["UAT RUN REPORT", "--------------", "No successful UAT runs."]
 
 
-def test_cli_score_uat_report_reads_workspace_kits(tmp_path, monkeypatch):
+def test_cli_report_uat_report_reads_workspace_kits(tmp_path, monkeypatch):
     from tests.test_cli import run_cli
 
     _workspace(tmp_path)
     monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
 
-    rc, out, _err = run_cli("score", "uat_report")
+    rc, out, _err = run_cli("report", "uat_report")
 
     assert rc == 0
     assert "UAT RUN REPORT" in out
     assert "2026-10-20" not in out
 
 
-def test_cli_score_uat_report_rejects_operands_and_missing_root(tmp_path, monkeypatch):
+def test_cli_report_uat_report_rejects_operands_and_missing_root(tmp_path, monkeypatch):
     from tests.test_cli import run_cli
 
     monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
 
-    assert run_cli("score", "uat_report", "Toml")[0] == 2
-    rc, _out, err = run_cli("score", "uat_report")
+    assert run_cli("report", "uat_report", "Toml")[0] == 2
+    rc, _out, err = run_cli("report", "uat_report")
     assert rc == 1
     assert "no UAT kits found" in err

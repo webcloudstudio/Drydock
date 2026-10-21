@@ -4,7 +4,7 @@
 |---|---|
 | Version | 2026-10-15 V1 |
 | Route | report |
-| Modules | `report.py`, `report_render.py`, `llm_report.py`, `build_report.py` |
+| Modules | `report.py`, `report_render.py`, `llm_report.py`, `build_report.py`, `report_uat_runs.py` |
 | Prompts | — |
 | Tests | `tests/test_report*.py`, `tests/test_llm_report.py` |
 | Topics | — |
@@ -23,6 +23,7 @@ Present existing Target state and evidence through a common, named report interf
 drydock report help
 drydock report <name> <Target>
 drydock report --all [<Target>]
+drydock report uat_report
 ```
 
 Names, in registry order: `status`, `manifest`, `run`, `build`, `history`, `llm`, `token`,
@@ -54,6 +55,19 @@ console report becomes coupled to a browser renderer or claims a different front
 stage, call, model, prompt bytes, estimated prompt tokens, run time, and status. It includes
 failed and incomplete calls, since a failed call still spent the prompt. Cost when broken: the
 largest prompts and slowest calls hide inside per-stage roll-ups.
+
+`2026-10-20` · **`report uat_report` compares only passed UAT runs, reads only, and prints.** It lists
+every `<workspace>/uat/<Kit>/runs/<run-id>/result.json` whose `status` is `passed`, newest first,
+keyed by Project (kit directory), Date (run id), and Model (`environment.model`), in three tables:
+Drydock LLM calls — Stories (Manifest story nodes), Build (`build` `attempt` 0), Repair (`build`
+`attempt` > 0, `diagnose`), Plan (synthesis, continuation, lineage), Plan Rep (plan
+artifact/declaration/coverage repair passes, `plan repair`), Other, Calls; Tokens — fresh input,
+cache read, cache write (`—` when the provider reports none), output, total; Tool calls and time —
+Shell, Edit, Other from raw transcripts, normalized across providers, and LLM minutes summed over
+every execution, resumes included. Run wall-clock is omitted because a resume overwrites command
+times. It covers the workspace, takes no Target, writes no `reports/` file, and is outside `--all`.
+Exits `1` when `<workspace>/uat` is absent. *Broken:* failed runs skew the comparison, or
+a report write invalidates published kit evidence.
 
 ### Mechanism
 

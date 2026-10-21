@@ -164,6 +164,7 @@ that was cut, and the setting to change. Nothing from the response is written.
     drydock report token     MyApp             # Prompt size, model, and run time per LLM call
     drydock report --all                       # Write all reports for all Targets
     drydock report --all     MyApp             # Write all reports under targets/MyApp/reports/
+    drydock report uat_report                  # Passed UAT runs: calls, tokens, tools, time
 
 # ── A ── ANALYZE ─────────────────────────────────────────────────────────
     drydock import            MyApp <file|dir> # Import sources into the workspace
@@ -258,7 +259,6 @@ ai  drydock rigging compact                    # Automanage compaction
     drydock score build       MyApp            # Post-build report: repairs, tokens, cache
     drydock score llm         [MyApp]          # Successful LLM usage since latest init; by stage/model
     drydock score llm MyApp --all              # All recorded LLM executions, including failures
-    drydock score uat_report                   # Successful UAT runs: calls, tokens, tools, time
     drydock score report      MyApp            # Publish the build receipt with its evidence
     drydock score             MyApp            # Summarize the scores above: last run, result,
                                                #   and output file

@@ -1,6 +1,6 @@
 """Successful UAT runs compared by Drydock work, tokens, tool calls, and LLM time.
 
-Backs ``drydock score uat_report``. Reads each kit's ``runs/<run-id>/result.json``, the run's
+Backs ``drydock report uat_report``. Reads each kit's ``runs/<run-id>/result.json``, the run's
 preserved LLM execution records and raw transcripts, and its Manifest. Writes nothing.
 
 Each LLM execution is counted in one category:

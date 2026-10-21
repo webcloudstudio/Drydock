@@ -10,7 +10,7 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-10-20: `drydock score uat_report` prints a read-only `UAT RUN REPORT` comparing every
+- 2026-10-20: `drydock report uat_report` prints a read-only `UAT RUN REPORT` comparing every
   passed UAT run under `<workspace>/uat`, newest first, by project, date, and executed model. It
   counts Drydock LLM calls by category (Build, Repair, Plan, Plan Rep, Other) beside the
   Manifest's story count, splits tokens into fresh input, cache read, cache write, and output,
