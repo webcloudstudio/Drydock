@@ -279,6 +279,24 @@ exist.
 
 ## Open Actions
 
+- `2026-10-21` · Review of LayersTesting runs through `20261021.231950`: make the Stage 2
+  output contract consistent across `plan_continue.md`, `_render_ledger`, and the one-Blueprint
+  retry introduced by `2e121e4`. The current batch says "nothing else" while cumulative
+  `DATABASE.md` additions are separately permitted; database repairs say "in full" while the
+  cumulative declaration says additions only. Test initial, reduced, and repair batches with
+  a Feature that needs a new operation, including merge and citation validation. Preserve the
+  early database rejection from `42252b1`; do not add another retry layer. The existing diagnosis
+  row for this run remains open; this review supplies no implementation or verification claim.
+
+- `2026-10-21` · Before another full LayersTesting run, establish a bounded planner check outside
+  `uat/`: synthetic regression fixtures for the database/Feature boundary, then an isolated
+  subscription-CLI trial of the corrected assembled batch. Existing fake-runner tests prove
+  refusal feedback and batch reduction, not model compliance. The latest final one-Feature
+  request contains 220,735 bytes (84,583 estimated tokens); assess phase-specific context
+  reduction without dropping source requirements or consumed contracts. Sixteen completed
+  receipts record 15 failures and 4.42 hours, including one Luna pass; different revisions and
+  generated plans prevent attributing the difference to model choice alone.
+
 - `2026-10-20` · Ed prefers declared expected exits to reading them from harness lines. If the
   `harness-exit` heuristic misses or misreads a harness, replace it with an explicit declaration
   (for example, an exit table the source names) rather than widening the line parser.
