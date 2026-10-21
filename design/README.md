@@ -4,3 +4,6 @@ Behavior contracts for every `drydock` command (`commands/`) and the cross-cutti
 govern several commands (`topics/`). AGENTS.md §Design holds the manifest mapping each command and
 module to its file, the file layout, section ownership, and precedence:
 code > `design/` > `docs/Drydock_Specification.md`.
+
+`uat_diagnoses.md` is the `/ddk-uat` ledger: one row per diagnosed UAT run and root cause,
+read before each diagnosis.

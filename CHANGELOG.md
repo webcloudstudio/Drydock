@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-21: `/ddk-uat` keeps a diagnosis ledger at `design/uat_diagnoses.md`: one row per
+  diagnosed UAT run and root cause, with the implicated Area, the Fix commit, and an Outcome of
+  `open`, `unverified`, `fixed`, or `recurred`. `uat_diagnostic.md` V4 reads it before diagnosing,
+  updates earlier Outcomes from the new run, recommends revising a recurred fix instead of adding
+  another beside it, and appends its own rows. This ledger is the only file the diagnostic writes.
+  Seeded with the LayersTesting runs of 2026-10-21.
 - 2026-10-20: `drydock report uat_report` prints a read-only `UAT RUN REPORT` comparing every
   passed UAT run under `<workspace>/uat`, newest first, by project, date, and executed model. It
   counts Drydock LLM calls by category (Build, Repair, Plan, Plan Rep, Other) beside the

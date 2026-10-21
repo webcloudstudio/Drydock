@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from drydock.errors import DrydockError
@@ -62,6 +64,8 @@ class TestLoadPrompt:
         assert "specification-contaminated" in prompt.body
         assert "exactly five sections" in prompt.body
         assert "### Root Cause" in prompt.body
+        assert "design/uat_diagnoses.md" in prompt.body
+        assert "write no other file" in prompt.body
 
     def test_missing_required_field_raises(self, tmp_path, monkeypatch):
         (tmp_path / "broken.md").write_text("---\nname: broken\n---\nbody", encoding="utf-8")
@@ -245,3 +249,17 @@ class TestInputTokens:
         assert "fail explicitly" in body
         assert "instead of installing it" in body
         assert "`uv`" in body
+
+
+def test_uat_diagnosis_ledger_defines_every_outcome_it_uses():
+    ledger = (Path(__file__).resolve().parent.parent / "design" / "uat_diagnoses.md").read_text(
+        encoding="utf-8"
+    )
+    rows = [line for line in ledger.splitlines() if line.startswith("| 2")]
+    header = ledger.split("| Date |")[0]
+
+    assert rows
+    for row in rows:
+        cells = [cell.strip() for cell in row.strip("|").split("|")]
+        assert len(cells) == 10, row
+        assert f"`{cells[-1]}`" in header, row

@@ -1,7 +1,7 @@
 ---
 name: uat_diagnostic
 description: Diagnose the latest Drydock UAT run without changing the repository or generated run evidence.
-version: 20260815 V3
+version: 20261021 V4
 intent: Find the latest requested UAT run, establish its actual failure chain from preserved evidence, separate the root cause from its consequences, and recommend bounded corrective work in a form an operator can read at a glance.
 command: operator diagnostic prompt
 output: A five-section diagnosis of about 250 words in single-line bullets, ending in a prioritized action list.
@@ -11,7 +11,8 @@ output: A five-section diagnosis of about 250 words in single-line bullets, endi
 
 Act as Drydock's Principal Developer. Diagnose the latest completed UAT run for the Target named by
 the operator. This is working software: investigate only. Do not edit code, specifications, prompts,
-tests, generated Target data, or UAT evidence, and do not rerun the UAT. Recommend changes only after
+tests, generated Target data, or UAT evidence, and do not rerun the UAT. The one write is the
+diagnosis ledger described below. Recommend changes only after
 the evidence establishes a cause. Preserve the distinction between a product defect, a Drydock
 defect, a UAT-kit defect, a provider/model failure, and an expected control-flow exit.
 
@@ -40,6 +41,20 @@ defect, a UAT-kit defect, a provider/model failure, and an expected control-flow
    whether the output contract represents a valid no-op/already-satisfied result.
 8. Use Git history only to identify a regression or changed contract. Do not infer causation from a
    commit subject; verify it against the run evidence and current code.
+
+## Diagnosis Ledger
+
+`design/uat_diagnoses.md` in the Drydock repository is this diagnostic's memory across runs. Its
+header defines the columns and Outcome values.
+
+1. Read it before diagnosing. Collect every row for this Kit, and every row whose Area names a file
+   or function the evidence implicates.
+2. Update the Outcome of earlier rows from this run: `fixed` when this run, on or after the fix
+   commit, passed the stage that row stopped at; `recurred` when the same cause stopped this run.
+3. Before recommending a change, read the fixes already committed in that Area. When one recurred,
+   recommend revising or removing it rather than adding a layer beside it, and name its commit.
+4. Append one row per root cause of this run, with Fix empty and Outcome `open`. Change nothing else
+   in earlier rows, and write no other file. Commit the ledger alone.
 
 ## Audit Specification Integrity First
 
@@ -85,7 +100,8 @@ One line: the run id, its status, and the terminal stage with its exit code.
 ### Root Cause
 
 One-line bullets tracing the first causal defect to the stage that stopped. Name the exact file and
-line where the defect lives. Stop when the cause is stated; do not continue into effects.
+line where the defect lives. When a ledger row holds the same cause, name its run, fix commit, and
+new Outcome. Stop when the cause is stated; do not continue into effects.
 
 ### Consequences (not separate defects)
 
@@ -104,5 +120,7 @@ was sufficient.
 
 A numbered list, most important first. Each item is a bold one-line change plus the source location,
 with at most two indented sub-bullets: how it is verified, and its risk when the risk is not low.
+Name any committed fix the action revises or removes.
 Close with one line stating what to fix now and what to defer, and one line stating any condition
-that must hold before the UAT is rerun. Do not make changes as part of this diagnostic.
+that must hold before the UAT is rerun. Do not make changes as part of this diagnostic beyond the
+ledger.

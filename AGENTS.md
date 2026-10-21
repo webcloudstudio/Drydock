@@ -38,6 +38,8 @@ and `SHA256SUMS` attest to completed builds. Any write under it invalidates that
   lock files. Read-only inspection occurs only when Ed requests it.
 - A test, script, or command that reaches `uat/` is a defect. Report it and stop; do not run it
   to find out.
+- `design/uat_diagnoses.md` is the `/ddk-uat` ledger. A session that commits a fix for one of
+  its rows writes the commit into that row's Fix and sets its Outcome to `unverified`.
 
 ## Project Layout
 
