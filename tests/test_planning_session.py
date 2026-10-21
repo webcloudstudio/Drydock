@@ -4491,8 +4491,8 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
     """LayersTesting ``20261021.034029``: batch 1 wrote ``## Access Patterns`` as one table of
     operations and was accepted. The defect surfaced only after every later batch, and three
     repairs from the bare defect text never restored the section shape. The batch that writes an
-    unparseable declaration is refused, keeps the rest of its work, and is asked again with the
-    reason."""
+    unparseable declaration is refused whole, since its Features cite what the declaration failed
+    to hold, and is asked again with the reason."""
     from drydock.prompt_assembly import PromptAssembly
 
     declared = (
@@ -4518,7 +4518,11 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
                 "FEATURE-2.md": "# FEATURE: 2",
             }
         else:
-            emitted = {"DATABASE.md": _DATABASE}
+            emitted = {
+                "DATABASE.md": _DATABASE,
+                "FEATURE-1.md": "# FEATURE: 1",
+                "FEATURE-2.md": "# FEATURE: 2",
+            }
         response = "".join(
             f"=== BEGIN ARTIFACT {name} ===\n{body}\n=== END ARTIFACT ===\n"
             for name, body in emitted.items()
@@ -4543,13 +4547,72 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
     )
 
     assert len(prompts) == 2
-    assert "Accepted (2)" in prompts[1]
+    assert "Accepted (0)" in prompts[1]
     defective = prompts[1].split("Defective (1)")[1]
     assert "database -> DATABASE.md" in defective
     assert "### <FEATURE-DOMAIN-NNN> — <Operation>" in defective
-    assert any("DATABASE.md rejected" in line for line in progress)
+    assert any(
+        line.startswith("[plan-score]") and "Rejected: DATABASE.md does not parse" in line
+        for line in progress
+    )
     assert result.score.is_complete
     assert result.blocks["DATABASE.md"] == _DATABASE.strip()
+
+
+def test_a_refused_seeded_declaration_is_listed_defective_and_holds_back_its_features():
+    """LayersTesting ``20261021.213934``: batch 4 wrote access patterns without their heading or
+    any table. The seeded declaration is accepted before the first batch, so it was never in a
+    tranche, the ledger dropped its defect, and the batch's Features were accepted citing
+    operations the declaration never held. Batch 6 saw the bare template and refused."""
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (
+        PlannedStory(story_id="database", implements="DATABASE.md"),
+        PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
+    )
+    seed = "# DATABASE: X\n\n## Access Patterns\n\n## Schemas\n"
+    headingless = (
+        "### FEATURE-X-001 — Read a setting\n\n| Field | Value |\n|---|---|\n"
+        "| Owner | FEATURE-1.md |\n| Access | read |\n"
+        "| Repository operation | `settings.get` |\n| Compatibility | unchanged |\n"
+    )
+    prompts: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        database = headingless if len(prompts) == 1 else _DATABASE
+        response = "".join(
+            f"=== BEGIN ARTIFACT {name} ===\n{body}\n=== END ARTIFACT ===\n"
+            for name, body in {"DATABASE.md": database, "FEATURE-1.md": _OWNER}.items()
+        )
+        return FakeRun(text=response, execution_id=f"exec-{len(prompts)}")
+
+    progress: list[str] = []
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Two frozen stories.", "DATABASE.md": seed},
+        blocks_text="=== TOPOLOGY.md ===\nTwo frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="codex",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=progress.append,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    assert len(prompts) == 2
+    ledger = prompts[1].split("## Ledger")[-1]
+    assert "Accepted (0)" in ledger
+    assert "story-1 -> FEATURE-1.md" in ledger.split("Current batch")[1]
+    assert "database -> DATABASE.md" in ledger.split("Defective (1)")[1]
+    assert "Previous attempt rejected — DATABASE.md does not parse" in ledger
+    assert any("[plan-score]" in line and "DATABASE.md does not parse" in line for line in progress)
+    assert result.score.is_complete
+    assert "FEATURE-X-001" in result.blocks["DATABASE.md"]
 
 
 def test_a_batch_answered_with_questions_is_retried_with_the_reason():

@@ -134,11 +134,14 @@ exception to the governing rule, because only persistence is fully decidable fro
 `2026-09-17` · **`DATABASE.md` is cumulative and append-only**, seeded from the Rigging template plus
 every source-declared table. Batches add; nothing is retyped or removed.
 
-`2026-10-21` · **A batch whose `DATABASE.md` does not parse is refused at that batch.** The merged
-declaration is checked with `database_contract_defects`; on a defect the batch keeps its other
-artifacts, `DATABASE.md` stays unaccepted, and the next ledger lists it as defective with the
-reason. *Broken:* LayersTesting `20261021.034029` accepted a one-table `## Access Patterns` in
-batch 1, found it only after batch 7, and three repairs from the bare defect text failed.
+`2026-10-21` · **A batch whose `DATABASE.md` does not parse is refused whole at that batch.** The
+merged declaration is checked with `database_contract_defects`. On a defect no artifact of the
+batch is kept, the refusal prints on the always-shown score channel, and the next ledger lists
+`DATABASE.md` as defective with the reason whatever the tranche. *Broken:* LayersTesting
+`20261021.034029` accepted a one-table `## Access Patterns` in batch 1, found it only after batch
+7, and three repairs from the bare defect text failed. LayersTesting `20261021.213934` dropped the
+defect because the seeded declaration is never in a tranche, accepted Features citing undeclared
+operations, and stalled when later batches saw the bare template.
 
 `2026-09-19` · **Only a Feature owns an access pattern; `DATABASE.md` owns shared ones.** A Screen is
 never an `| Owner |`; an illegal owner is rewritten to `DATABASE.md` deterministically. Ownership is
@@ -211,8 +214,8 @@ without loading `seed_accounts.csv`; the product correctly answered `4` (absent)
 1. **Stage 1** — freeze `TOPOLOGY.md` after coverage and graph repair.
 2. **Seed** `DATABASE.md` from Rigging plus `sources/DATABASE.md`.
 3. **Stage 2** — author Blueprints in batches of 5 against an Accepted / Current / Deferred /
-   Defective ledger; accepted artifacts freeze, `DATABASE.md` merges only when the merged
-   declaration parses.
+   Defective ledger. Accepted artifacts freeze, and a batch is accepted only when its merged
+   `DATABASE.md` parses.
 4. **Normalize** — deterministic fixes in order: unterminated and fused AC blocks, access values,
    owners, database interfaces, standalone imports, factory bindings, foundation imports,
    published clients (see [foundations](../topics/foundations.md)). Each is taken only when

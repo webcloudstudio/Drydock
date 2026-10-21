@@ -5112,7 +5112,14 @@ def _render_ledger(
     lines.append(
         f"Deferred ({deferred}) — Drydock will provide later batches; do not emit them now."
     )
-    invalid = tuple(item for item in (*score.invalid, *rejected) if item.filename in tranche)
+    # DATABASE.md is seeded before the first batch, so it is never in a tranche. Filtered by the
+    # tranche its defect reached no batch, and Features were accepted against the bare template
+    # (LayersTesting ``20261021.213934``).
+    invalid = tuple(
+        item
+        for item in (*score.invalid, *rejected)
+        if item.filename in tranche or item.filename == DATABASE_BLOCK
+    )
     if invalid:
         lines.append("")
         lines.append(f"Defective ({len(invalid)}) — emit these again, in full, corrected:")
@@ -5404,10 +5411,12 @@ def _continue_short_plan(
                 merged = merge_schema(held, body) if held.strip() else body
                 # A declaration Build cannot parse is refused at the batch that wrote it. Accepted
                 # here, it would be checked only after every later batch, and repaired from the
-                # bare defect text without the authoring contract in view.
+                # bare defect text without the authoring contract in view. The pass is refused
+                # whole: its Features cite the operations this declaration failed to hold.
                 database_defects = database_contract_defects(merged)
                 if database_defects:
-                    continue
+                    rejection = f"{name} does not parse: " + "; ".join(database_defects)
+                    break
                 candidate[name] = merged
                 continue
             if name in accepted_now:
@@ -5428,6 +5437,15 @@ def _continue_short_plan(
                 continue
             candidate[name] = body
         if rejection:
+            if database_defects:
+                database_story = next(
+                    (item.story_id for item in score.declared if item.filename == DATABASE_BLOCK),
+                    "",
+                )
+                database_rejected = tuple(
+                    ArtifactDefect(database_story, DATABASE_BLOCK, defect)
+                    for defect in database_defects
+                )
             if on_text is not None:
                 on_text(
                     "[plan-score]"
@@ -5443,14 +5461,7 @@ def _continue_short_plan(
             continue
         accumulated = candidate
         if DATABASE_BLOCK in pass_blocks and DATABASE_BLOCK not in pass_damaged:
-            story_id = next(
-                (item.story_id for item in score.declared if item.filename == DATABASE_BLOCK), ""
-            )
-            database_rejected = tuple(
-                ArtifactDefect(story_id, DATABASE_BLOCK, defect) for defect in database_defects
-            )
-            if database_defects and on_text is not None:
-                on_text(f"[plan] {DATABASE_BLOCK} rejected: " + "; ".join(database_defects) + "\n")
+            database_rejected = ()
 
         advanced = score_plan(current, accumulated)
         if not advanced.improved_on(score):

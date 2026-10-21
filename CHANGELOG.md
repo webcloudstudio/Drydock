@@ -74,10 +74,13 @@ command surface and Typed Specification contract are unstable and may change bet
   the seed as a cut artifact, because the response never emitted it, and discarded it, so batch 1
   rewrote the declaration from scratch and could lose source-declared tables.
 - 2026-10-21: `drydock plan` refuses a Stage 2 batch's `DATABASE.md` when the merged declaration
-  does not parse, instead of accepting it and failing only after the last batch. The batch keeps
-  its other Blueprints, and the next ledger lists `DATABASE.md` as defective with the reason. The
-  `## Access Patterns has no named operation` defect now states the required
-  `### <FEATURE-DOMAIN-NNN> — <Operation>` section form.
+  does not parse, instead of accepting it and failing only after the last batch. The whole batch
+  is refused, because its Features cite operations the declaration failed to hold. The console
+  prints `Rejected: DATABASE.md does not parse: <defects>` without `--debug`, and the next ledger
+  lists `DATABASE.md` as defective with the reason even though the seeded declaration is never in
+  a batch's tranche. The `## Access Patterns has no named operation` defect now states the
+  required `### <FEATURE-DOMAIN-NNN> — <Operation>` section form. Previously the defect reached no
+  later batch and Features were accepted against the bare template.
 - 2026-10-20: `drydock plan` requires every Programmatic Acceptance setup call to assert the success
   its source declares (`plan_create.md` V40, `BLUEPRINTS_CONTRACT.md` V24). A criterion that
   expected loading a valid staged asset to exit `1` created no state and failed against a correct
