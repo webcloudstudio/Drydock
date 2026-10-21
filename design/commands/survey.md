@@ -29,6 +29,13 @@ drydock survey <Target> --import <path>               regenerate survey/ac/SURVE
 
 ### Rules
 
+`2026-10-21` · **A reply without artifacts is retried once, with the reason.** A successful reply that holds no artifact delimiter — prose, a question, a refusal — prints
+`[survey] response without artifacts, retrying once with the reason: "<excerpt>"` and reruns the
+unchanged prompt with an appended `Artifact retry` block that quotes the reply and forbids asking,
+refusing, or explaining (`survey import` only). A second such reply fails the ordinary parse. Shared mechanism:
+`artifact_blocks.retry_reply_without_artifacts`. *Broken:* LayersTesting `20261021.180733`
+ended at analyze when Haiku asked which output form to use instead of emitting.
+
 `2026-10-21` · **Stray text is discarded, never fatal.** Up to three lines of plain narration
 before, between, or after intact artifact blocks are dropped and printed as `[survey] stray text
 <where> discarded: "<text>"`. Outside text shaped like content — a heading, list, table, fence,

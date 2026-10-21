@@ -26,6 +26,7 @@ from drydock.artifact_blocks import (
     StrayText,
     parse_artifact_blocks,
     parse_artifact_report,
+    retry_reply_without_artifacts,
     stray_reporter,
 )
 from drydock.compass_sources import (
@@ -1098,17 +1099,27 @@ def analyze(
         unattended=unattended,
     )
 
-    result = run(
-        prompt_assembly.rendered_text,
-        target_dir,
-        llm=llm_provider,
-        model=model,
-        command_name="analyze",
-        parameters={"target": target, "blueprint": str(blueprint_dir)},
-        log_dir=log_dir,
-        target=target,
+    def _execute(assembly: PromptAssembly) -> CompletedRun:
+        return run(
+            assembly.rendered_text,
+            target_dir,
+            llm=llm_provider,
+            model=model,
+            command_name="analyze",
+            parameters={"target": target, "blueprint": str(blueprint_dir)},
+            log_dir=log_dir,
+            target=target,
+            on_text=on_text,
+            prompt_assembly=assembly,
+        )
+
+    result = retry_reply_without_artifacts(
+        _execute(prompt_assembly),
+        prompt_assembly,
+        _execute,
+        tag="analyze",
         on_text=on_text,
-        prompt_assembly=prompt_assembly,
+        unattended=unattended,
     )
 
     exec_id = getattr(result, "execution_id", None)

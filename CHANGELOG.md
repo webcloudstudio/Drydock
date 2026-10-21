@@ -37,6 +37,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-21: `drydock analyze`, `drydock survey import`, `drydock document`, and
+  `drydock import --format compass` retry once when a successful reply holds no artifact blocks.
+  The retry resends the unchanged prompt with an appended `Artifact retry` block that quotes the
+  reply and forbids asking, refusing, or explaining, and the console prints
+  `[<command>] response without artifacts, retrying once with the reason: "<excerpt>"`. A model
+  that answered with a question previously ended the run at that command.
 - 2026-10-21: `drydock plan` tells a retried Stage 2 batch why the previous attempt was refused
   (`Previous attempt rejected — <reason>` in the ledger) instead of resending a byte-identical
   prompt, and prints the start of a response that held no artifact blocks. `plan_continue.md`

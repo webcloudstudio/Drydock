@@ -1248,6 +1248,37 @@ class TestAnalyze:
         assert result.ok is False
         assert not errors_path.exists()
 
+    def test_reply_without_artifacts_is_retried_once_with_the_reason(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        prompts: list[str] = []
+        replies = iter([FakeRun(text="Which form do you want the artifacts in?"), FakeRun()])
+
+        def runner(prompt, *a, **k):
+            prompts.append(prompt)
+            return next(replies)
+
+        result = analyze("MyTarget", target_dir, runner=runner)
+
+        assert result.ok
+        assert len(prompts) == 2
+        assert prompts[1].startswith(prompts[0])
+        assert "Which form do you want the artifacts in?" in prompts[1][len(prompts[0]) :]
+        assert result.analysis_path.exists()
+
+    def test_second_reply_without_artifacts_fails_the_run(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        prompts: list[str] = []
+
+        def runner(prompt, *a, **k):
+            prompts.append(prompt)
+            return FakeRun(text="Which form do you want the artifacts in?")
+
+        result = analyze("MyTarget", target_dir, runner=runner)
+
+        assert not result.ok
+        assert len(prompts) == 2
+        assert "Text appeared outside delimited artifact blocks" in (result.error or "")
+
     def test_writes_all_core_artifacts(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())

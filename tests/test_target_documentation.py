@@ -198,6 +198,25 @@ def test_generate_documentation_writes_doc_files_and_config(
     assert "# MANIFEST: Demo" in calls[0][0][0]
 
 
+def test_generate_documentation_retries_a_reply_without_artifacts(
+    tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _make_target(tmp_target_root)
+    monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(tmp_path / "build"))
+    replies = iter([FakeRun(text="Do you want me to write the guides?"), FakeRun()])
+    prompts: list[str] = []
+
+    def fake_runner(prompt, *args, **kwargs):
+        prompts.append(prompt)
+        return next(replies)
+
+    result = generate_documentation("Demo", tmp_target_root, runner=fake_runner)
+
+    assert (result.docs_dir / "DOC-OVERVIEW.md").exists()
+    assert len(prompts) == 2
+    assert "Do you want me to write the guides?" in prompts[1]
+
+
 def test_generate_documentation_missing_target_fails(tmp_target_root: Path):
     with pytest.raises(SpecificationError, match="Target not found"):
         generate_documentation("Missing", tmp_target_root, runner=lambda *a, **k: FakeRun())

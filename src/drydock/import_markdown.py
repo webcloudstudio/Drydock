@@ -8,12 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from drydock.artifact_blocks import parse_artifact_blocks
+from drydock.artifact_blocks import parse_artifact_blocks, retry_reply_without_artifacts
 from drydock.compass_sources import clear_compass_import_pending, seed_compass_from_sources
 from drydock.errors import SpecificationError, UsageError
 from drydock.init_specification import init_specification
 from drydock.lineage import record_import_root, record_initial_snapshot
 from drydock.llm import failure_detail, run_prompt
+from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
 
 _COMPASS_PROMPT_NAME = "import_compass"
@@ -186,16 +187,22 @@ def import_intent(
     target_dir.mkdir(parents=True, exist_ok=True)
 
     run = runner if runner is not None else run_prompt
-    result = run(
-        _assemble_compass_prompt(target, intent_text),
-        target_dir,
-        llm=llm_provider,
-        model=model,
-        command_name="import_compass",
-        parameters={"target": target, "source": str(source)},
-        log_dir=log_dir,
-        target=target,
-    )
+
+    def _execute(assembly: PromptAssembly) -> _CompletedRun:
+        return run(
+            assembly.rendered_text,
+            target_dir,
+            llm=llm_provider,
+            model=model,
+            command_name="import_compass",
+            parameters={"target": target, "source": str(source)},
+            log_dir=log_dir,
+            target=target,
+            prompt_assembly=assembly,
+        )
+
+    assembly = PromptAssembly.single_prompt(_assemble_compass_prompt(target, intent_text))
+    result = retry_reply_without_artifacts(_execute(assembly), assembly, _execute, tag="import")
     if not result.ok or not result.text.strip():
         raise SpecificationError(
             failure_detail(result, "Compass normalization failed: LLM execution failed")

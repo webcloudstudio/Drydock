@@ -21,7 +21,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from drydock.artifact_blocks import StrayText, parse_artifact_report, stray_reporter
+from drydock.artifact_blocks import (
+    StrayText,
+    parse_artifact_report,
+    retry_reply_without_artifacts,
+    stray_reporter,
+)
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm import run_prompt
 from drydock.prompt_assembly import (
@@ -546,17 +551,23 @@ def import_specs(
             part("Prompt body", prompt.body + "\n\n", kind="prompt-body"),
         )
     )
-    result = run(
-        prompt_assembly.rendered_text,
-        target_dir,
-        llm=llm_provider,
-        model=model or prompt.model,
-        command_name="survey import",
-        parameters={"target": target, "source": str(source_path)},
-        log_dir=log_dir,
-        target=target,
-        on_text=on_text,
-        prompt_assembly=prompt_assembly,
+
+    def _execute(assembly: PromptAssembly) -> object:
+        return run(
+            assembly.rendered_text,
+            target_dir,
+            llm=llm_provider,
+            model=model or prompt.model,
+            command_name="survey import",
+            parameters={"target": target, "source": str(source_path)},
+            log_dir=log_dir,
+            target=target,
+            on_text=on_text,
+            prompt_assembly=assembly,
+        )
+
+    result = retry_reply_without_artifacts(
+        _execute(prompt_assembly), prompt_assembly, _execute, tag="survey", on_text=on_text
     )
     result_text = str(getattr(result, "text", ""))
     if not getattr(result, "ok", False) or not result_text.strip():

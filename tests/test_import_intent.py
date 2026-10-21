@@ -66,6 +66,22 @@ class TestImportIntent:
         assert "the commander's exact wording" in prompts[0]
         assert "TARGET_NAME: MyTarget" in prompts[0]
 
+    def test_reply_without_artifacts_is_retried_with_the_reason(self, tmp_path):
+        source = tmp_path / "brief.md"
+        source.write_text("the intent", encoding="utf-8")
+        replies = iter([FakeRun(text="What should the Compass cover?"), FakeRun()])
+        prompts: list[str] = []
+
+        def runner(prompt, *a, **k):
+            prompts.append(prompt)
+            return next(replies)
+
+        result = import_intent("MyTarget", source, tmp_path / "targets", runner=runner)
+
+        assert (result.blueprint_dir / "COMPASS.md").exists()
+        assert len(prompts) == 2
+        assert "What should the Compass cover?" in prompts[1]
+
     def test_result_has_correct_fields(self, tmp_path):
         source = tmp_path / "brief.md"
         source.write_text("content", encoding="utf-8")

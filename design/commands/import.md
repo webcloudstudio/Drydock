@@ -59,6 +59,13 @@ recorded root is marked deleted in `LINEAGE.json`; the local copy is retained so
 cite what was withdrawn, and the refresh is not blocked. Drydock never deletes a Blueprint
 automatically. Cost when broken: a feature removed because a file moved.
 
+`2026-10-21` · **A reply without artifacts is retried once, with the reason.** A successful reply that holds no artifact delimiter — prose, a question, a refusal — prints
+`[import] response without artifacts, retrying once with the reason: "<excerpt>"` and reruns the
+unchanged prompt with an appended `Artifact retry` block that quotes the reply and forbids asking,
+refusing, or explaining (`--format compass` only). A second such reply fails the ordinary parse. Shared mechanism:
+`artifact_blocks.retry_reply_without_artifacts`. *Broken:* LayersTesting `20261021.180733`
+ended at analyze when Haiku asked which output form to use instead of emitting.
+
 `2026-07-29` · **A Compass import is one normalization call.** `--format compass` (alias `intent`)
 reads one non-empty file, normalizes it into `COMPASS.md` at the Target root with its guardrail,
 and refuses an existing `COMPASS.md` unless `--force`. Cost when broken: Commander guidance

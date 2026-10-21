@@ -7,8 +7,12 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import PurePath
 from re import Pattern
+from typing import TypeVar
 
 from drydock.errors import DrydockError
+from drydock.prompt_assembly import PromptAssembly, lines_part
+
+R = TypeVar("R")
 
 #: Two protocols share the ``=== NAME ===`` line grammar, at different nesting levels. This module
 #: owns the *envelope*: one artifact file per block, never nested. ``acceptance.py`` owns the
@@ -110,6 +114,93 @@ def stray_reporter(
     if on_text is None:
         return None
     return lambda stray: on_text(f"[{tag}] {stray}\n")
+
+
+#: How much of a reply without artifacts the retry quotes back, matching plan's Stage 1 retry.
+_RETRY_REPLY_QUOTE_LIMIT = 4000
+
+
+def carries_no_artifact(text: str) -> bool:
+    """Whether a non-empty reply holds no artifact delimiter at all: prose, a question, a refusal.
+
+    Narration around intact artifacts is a parse question. A reply with no artifact is a
+    different outcome — the model answered in place of the task — and the only repair is to ask
+    again, saying why.
+    """
+    if not text.strip() or _WRITE_CALL_RE.search(text):
+        return False
+    delimiters = (_INVARIANT_OPEN_RE, _INVARIANT_END_RE, _OPEN_BLOCK_RE, _END_BLOCK_RE)
+    return not any(
+        pattern.match(line.strip()) for line in text.splitlines() for pattern in delimiters
+    )
+
+
+def response_excerpt(text: str, limit: int = 240) -> str:
+    """One line from the start of a response, for a refusal the console would otherwise hide."""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+
+
+def no_artifact_retry_assembly(
+    prompt_assembly: PromptAssembly, *, reply: str, unattended: bool = False
+) -> PromptAssembly:
+    """The original prompt plus why the reply was refused, for the one corrective call.
+
+    The original parts stay byte-identical so the prefix remains cacheable. Without the appended
+    reason a retry is the call that failed and draws the same answer (LayersTesting
+    ``20261021.180733``: analyze answered with a question and the run ended).
+    """
+    quoted = reply.strip()
+    if len(quoted) > _RETRY_REPLY_QUOTE_LIMIT:
+        quoted = quoted[:_RETRY_REPLY_QUOTE_LIMIT] + " …"
+    policy = (
+        "No Commander is available, and no prose reply reaches a person."
+        if unattended
+        else "A prose reply reaches no one. Drydock reads only artifact blocks."
+    )
+    lines = [
+        "# Artifact Retry",
+        "",
+        "Your previous reply contained no artifact blocks, so Drydock wrote nothing.",
+        policy,
+        "You have no tools, and nobody answers questions during this run. Do not ask, refuse,",
+        "or explain. Resolve each point you raised from the input context, choose the narrowest",
+        "reading consistent with it, and record any genuine open point where the Agent Task",
+        "routes it.",
+        "Reply now with only the artifact blocks the Agent Task requires, in its delimiter form.",
+        "",
+        "Your previous reply:",
+        "",
+        quoted,
+    ]
+    return PromptAssembly(
+        parts=(*prompt_assembly.parts, lines_part("Artifact retry", lines, kind="repair"))
+    )
+
+
+def retry_reply_without_artifacts(
+    result: R,
+    prompt_assembly: PromptAssembly,
+    rerun: Callable[[PromptAssembly], R],
+    *,
+    tag: str,
+    on_text: Callable[[str], None] | None = None,
+    unattended: bool = False,
+) -> R:
+    """Return ``result``, or one rerun carrying the refusal reason when its reply held no artifact.
+
+    ``rerun`` executes an assembly exactly as the first call did. A second reply without
+    artifacts is returned as is and fails the caller's ordinary parse.
+    """
+    text = str(getattr(result, "text", "") or "")
+    if not getattr(result, "ok", False) or not carries_no_artifact(text):
+        return result
+    if on_text is not None:
+        on_text(
+            f"[{tag}] response without artifacts, retrying once with the reason: "
+            f'"{response_excerpt(text)}"\n'
+        )
+    return rerun(no_artifact_retry_assembly(prompt_assembly, reply=text, unattended=unattended))
 
 
 @dataclass(frozen=True)

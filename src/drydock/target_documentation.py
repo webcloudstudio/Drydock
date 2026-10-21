@@ -11,7 +11,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from drydock.artifact_blocks import StrayText, parse_artifact_blocks, stray_reporter
+from drydock.artifact_blocks import (
+    StrayText,
+    parse_artifact_blocks,
+    retry_reply_without_artifacts,
+    stray_reporter,
+)
 from drydock.errors import DrydockError, SpecificationError, UsageError
 from drydock.llm import run_prompt
 from drydock.prompt_assembly import (
@@ -391,17 +396,27 @@ def generate_documentation(
         model=model,
     )
     run = runner if runner is not None else run_prompt
-    result = run(
-        assembly.rendered_text,
-        target_dir,
-        llm=llm_provider,
-        model=model or prompt.model,
-        command_name="document generate",
-        parameters={"target": target, "docs_dir": str(docs_dir), "sections": list(config.sections)},
-        log_dir=targets_root.parent / "logs",
-        target=target,
-        on_text=on_text,
-        prompt_assembly=assembly,
+
+    def _execute(prompt_assembly: PromptAssembly) -> CompletedRun:
+        return run(
+            prompt_assembly.rendered_text,
+            target_dir,
+            llm=llm_provider,
+            model=model or prompt.model,
+            command_name="document generate",
+            parameters={
+                "target": target,
+                "docs_dir": str(docs_dir),
+                "sections": list(config.sections),
+            },
+            log_dir=targets_root.parent / "logs",
+            target=target,
+            on_text=on_text,
+            prompt_assembly=prompt_assembly,
+        )
+
+    result = retry_reply_without_artifacts(
+        _execute(assembly), assembly, _execute, tag="document", on_text=on_text
     )
     if not result.ok:
         raise DrydockError("LLM execution failed for document generate")

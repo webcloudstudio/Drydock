@@ -211,6 +211,30 @@ class TestImport:
         assert written[0].name == "SURVEY-login.md"
         assert "drydock login" in written[0].read_text(encoding="utf-8")
 
+    def test_import_retries_a_reply_without_artifacts(self, tmp_path):
+        target, target_dir = _make_target(tmp_path)
+        source = tmp_path / "blueprint"
+        source.mkdir()
+        (source / "FEATURE-Login.md").write_text("# FEATURE: Login\n", encoding="utf-8")
+        replies = iter([
+            FakeRun(text="Should I write the files?"),
+            FakeRun(
+                text="=== SURVEY-login.md ===\n# SURVEY-SPEC: drydock login\n"
+                "=== END SURVEY-login.md ===\n"
+            ),
+        ])
+        prompts: list[str] = []
+
+        def runner(prompt, working_directory, **kwargs):
+            prompts.append(prompt)
+            return next(replies)
+
+        written = import_specs(target, target_dir, source, runner=runner)
+
+        assert [path.name for path in written] == ["SURVEY-login.md"]
+        assert len(prompts) == 2
+        assert "Should I write the files?" in prompts[1]
+
     def test_import_discards_and_reports_stray_text(self, tmp_path):
         target, target_dir = _make_target(tmp_path)
         source = tmp_path / "blueprint"

@@ -5,11 +5,15 @@ import pytest
 from drydock import artifact_blocks
 from drydock.artifact_blocks import (
     StrayText,
+    carries_no_artifact,
+    no_artifact_retry_assembly,
     pair_artifact_delimiters,
     parse_artifact_blocks,
     parse_artifact_report,
+    retry_reply_without_artifacts,
 )
 from drydock.errors import DrydockError
+from drydock.prompt_assembly import PromptAssembly
 
 # The response that killed Toml run 20260813.211658: four well-formed artifacts and one whose
 # closing marker lost its `.md`, because the artifact's own heading restated its filename stem.
@@ -471,3 +475,87 @@ def test_a_wrapped_artifact_parses_back_to_its_body():
     )
 
     assert parsed["TOPOLOGY.md"] == "## story one"
+
+
+# LayersTesting 20261021.180733: analyze answered with a question and no artifact, and the run ended.
+_REFUSAL = (
+    "I can't produce this analysis in the form requested.\n\n"
+    "If you want the artifact blocks themselves, tell me which form you want."
+)
+
+
+class _Run:
+    def __init__(self, text: str, ok: bool = True):
+        self.text = text
+        self.ok = ok
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (_REFUSAL, True),
+        ("", False),
+        ("=== BEGIN ARTIFACT A.md ===\nbody\n=== END ARTIFACT ===\n", False),
+        ("Preamble.\n=== A.md ===\nbody\n=== END A.md ===\n", False),
+        ("Narration.\n=== END ARTIFACT ===\n", False),
+        (
+            '<invoke name="Write"><parameter name="path">A.md</parameter>'
+            '<parameter name="content">body</parameter></invoke>',
+            False,
+        ),
+    ],
+)
+def test_carries_no_artifact(text, expected):
+    assert carries_no_artifact(text) is expected
+
+
+def test_retry_assembly_keeps_the_prompt_and_appends_the_reason():
+    original = PromptAssembly.single_prompt("ORIGINAL PROMPT\n")
+
+    retry = no_artifact_retry_assembly(original, reply=_REFUSAL, unattended=True)
+
+    assert retry.parts[0] == original.parts[0]
+    appended = retry.parts[-1].text
+    assert "Your previous reply contained no artifact blocks" in appended
+    assert "No Commander is available" in appended
+    assert "I can't produce this analysis" in appended
+
+
+def test_retry_runs_once_more_with_the_reason_and_reports_it():
+    original = PromptAssembly.single_prompt("ORIGINAL PROMPT\n")
+    sent: list[str] = []
+    progress: list[str] = []
+
+    def rerun(assembly):
+        sent.append(assembly.rendered_text)
+        return _Run("=== A.md ===\nbody\n=== END A.md ===\n")
+
+    result = retry_reply_without_artifacts(
+        _Run(_REFUSAL), original, rerun, tag="analyze", on_text=progress.append
+    )
+
+    assert result.text.startswith("=== A.md ===")
+    assert len(sent) == 1
+    assert sent[0].startswith("ORIGINAL PROMPT\n")
+    assert "Your previous reply contained no artifact blocks" in sent[0]
+    assert progress == [
+        "[analyze] response without artifacts, retrying once with the reason: "
+        "\"I can't produce this analysis in the form requested. "
+        'If you want the artifact blocks themselves, tell me which form you want."\n'
+    ]
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        _Run("=== A.md ===\nbody\n=== END A.md ===\n"),
+        _Run(_REFUSAL, ok=False),
+        _Run(""),
+    ],
+)
+def test_retry_leaves_a_reply_with_artifacts_or_a_failed_run_alone(first):
+    def rerun(assembly):
+        raise AssertionError("no retry expected")
+
+    original = PromptAssembly.single_prompt("P")
+    assert retry_reply_without_artifacts(first, original, rerun, tag="t") is first
