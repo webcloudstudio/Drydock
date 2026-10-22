@@ -887,3 +887,20 @@ def test_imports_are_not_judged_without_a_technology_stack(tmp_path):
     result = verify("Demo", _target(tmp_path, FEATURE_Catalog=_WRONG_PACKAGE))
 
     assert result.ok
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        'import os\nos.environ["DATABASE_PATH"] = "new.db"',
+        'from os import environ as env\nenv.update(DATABASE_URL="new.db")',
+        'import os\nos.putenv("DATABASE_PATH", "new.db")',
+        'from persistence.testing import db_session\nwith db_session("new.db") as db:\n    assert db is not None',
+    ],
+)
+def test_acceptance_cannot_replace_the_configured_store(tmp_path, setup):
+    target = _target(
+        tmp_path, **{"FEATURE-Test.md": _RUNNABLE.replace("import json", setup + "\nimport json")}
+    )
+    result = verify("Test", target)
+    assert any(d.kind == "acceptance-store" for d in result.defects)

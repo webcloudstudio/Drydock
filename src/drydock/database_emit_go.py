@@ -260,4 +260,7 @@ def write_go_persistence(text: str, build_dir: Path) -> tuple[Path, ...]:
     lines = set(sums.read_text().splitlines()) if sums.exists() else set()
     lines.update((package / "go.sum").read_text().splitlines())
     sums.write_text("\n".join(sorted(lines)) + "\n")
+    from drydock.database_verification import write_verification
+
+    written.append(write_verification(text, build_dir))
     return tuple([*written, build_dir / "go.mod", sums])

@@ -36,6 +36,12 @@ drydock score <Target>                           read-only summary of the last r
 
 ### Rules
 
+`2026-10-22` · Acceptance scoring and governed gates verify the existing persistence schema
+without provisioning it; missing or incompatible stores produce a persistence failure diagnostic.
+Database criteria use the rollback/committed lifecycle in [acceptance_criteria](../topics/acceptance_criteria.md).
+Cost when broken: scoring silently repairs or substitutes the store being evaluated.
+
+
 `2026-10-22` · **Structured model calls declare their output format to `llm.run_prompt`.**
 The adapter strips only bounded plain narration around intact artifact envelopes or one complete
 JSON object/array; it also removes a surrounding JSON code fence. It preserves artifact bodies,

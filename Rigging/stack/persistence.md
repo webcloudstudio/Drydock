@@ -107,6 +107,27 @@ within a release. Application startup does not create or alter schema.
 - Do not edit anything under `persistence/` — edit `DATABASE.md` and rebuild.
 - Do not create or alter schema at application startup.
 
+### Acceptance transactions
+
+**Acceptance store lifecycle.** The DATABASE step provisions and verifies the configured store
+once. Criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary database, apply DDL,
+or assume an empty store. Database criteria use `with db_session() as db:` (Go:
+`OpenSession(ctx, "")` with checked deferred cleanup) and pass that same database into feature
+operations. Setup, behavior and assertions run inside one transaction; the shipped fixture always
+rolls it back. Application operations outside that scope remain autocommitted. Never commit,
+close the owned connection, or open another connection inside the rollback scope.
+
+HTTP, CLI/subprocess, background-work and commit/restart criteria use committed behavior instead.
+Use `persistence.testing.committed_session()` (Go: `OpenCommittedSession(ctx, "")`) for
+setup/readback/cleanup on the configured store; this helper closes connections, not business records.
+Each owns a stable criterion-specific identifier, reconciles only its own residue before setup,
+asserts setup success, checks only owned records, and uses `try/finally` (Go: checked `defer`) for
+cleanup through supported product interfaces. Cleanup failure fails the criterion; retries must
+work even when prior cleanup never ran. Immutable ledger records remain identified or receive
+supported reversal entries; never delete history or reset a shared store. Include independent
+commit/reconnect durability coverage. Database acceptance must not be replaced by a project test
+count: runtime catalog and row-count evidence proves provisioning, feature criteria prove behavior.
+
 ## 2. Config / `.env` → one typed Config class
 
 One typed `Config` reads the environment once and validates at startup. Nothing else reads

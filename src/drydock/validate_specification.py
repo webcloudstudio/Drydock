@@ -60,6 +60,7 @@ _METADATA_FIELD_REMEDIATION = {
 }
 
 _ALLOWED_ROOT_NAMES = {
+    "VERIFICATION.md",
     "METADATA.md",
     "README.md",
     "COMPASS.md",

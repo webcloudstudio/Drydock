@@ -23,6 +23,8 @@ was given.
 
 ### Rules
 
+`2026-10-22` · Python and Go publish rollback fixtures over the configured, provisioned store; autocommit remains the application default. The lifecycle is governed by [acceptance_criteria](acceptance_criteria.md). Cost when broken: generated clients disagree with shipped fixtures.
+
 `2026-10-19` · Selection uses `Rigging/rigging_types.json`: exactly one shipped language and at most one database, web server and CLI. `Type` controls counts; Foundation/Tier/Category retain ordering and grouping. Language prerequisites are checked against selected Rigging files. Breaking this rule produces incompatible foundations.
 
 `2026-09-20` · **One foundation per exclusive kind.** Exactly one language is required at approval and planning. Web server and CLI remain exclusive;

@@ -130,6 +130,8 @@ def test_generated_go_store_and_schema_application(tmp_path, go_env, engine):
     write(tmp_path, [StackEntry("Go", "go.md"), StackEntry("SQLite", "sqlite.md")])
     files = write_persistence_package(blueprint, build)
     assert build / "persistence/schema.go" in files
+    if engine == "postgres":
+        go_env["DATABASE_URL"] = go_env["DRYDOCK_TEST_POSTGRES_DSN"]
     applied = apply_schema(build, env=go_env)
     assert applied.applied, applied.detail
     (build / "store_test.go").write_text("""package target
@@ -141,9 +143,8 @@ import (
 )
 func TestDeclaredOperations(t *testing.T) {
  ctx:=context.Background()
- ddl,err:=os.ReadFile("schema.sql");if err!=nil {t.Fatal(err)}
- db,cleanup,err:=persistence.OpenSession(ctx,os.Getenv("DRYDOCK_TEST_POSTGRES_DSN"),string(ddl))
- if err!=nil {t.Fatal(err)};defer cleanup()
+ db,cleanup,err:=persistence.OpenSession(ctx,os.Getenv("DRYDOCK_TEST_POSTGRES_DSN"))
+ if err!=nil {t.Fatal(err)};defer func(){if err:=cleanup();err!=nil {t.Error(err)}}()
  created,err:=db.Tickets.Create(ctx,persistence.TicketsCreateInput{Status:"open",Title:"bound ' value"})
  if err!=nil || created==nil {t.Fatalf("create: %v %v",created,err)}
  id:=created.Id
@@ -190,6 +191,7 @@ def test_go_create_on_a_text_key_returns_the_declared_row(tmp_path, go_env):
 
     write(tmp_path, [StackEntry("Go", "go.md"), StackEntry("SQLite", "sqlite.md")])
     write_persistence_package(blueprint, build)
+    assert apply_schema(build, env=go_env).applied
     (build / "store_test.go").write_text("""package target
 import (
  "context"
@@ -199,9 +201,8 @@ import (
 )
 func TestCreateReturnsDeclaredRow(t *testing.T) {
  ctx:=context.Background()
- ddl,err:=os.ReadFile("schema.sql");if err!=nil {t.Fatal(err)}
- db,cleanup,err:=persistence.OpenSession(ctx,"",string(ddl))
- if err!=nil {t.Fatal(err)};defer cleanup()
+ db,cleanup,err:=persistence.OpenSession(ctx,os.Getenv("DATABASE_URL"))
+ if err!=nil {t.Fatal(err)};defer func(){if err:=cleanup();err!=nil {t.Error(err)}}()
  account,name:="TXNA1","Commit Test"
  row,err:=db.Accounts.Create(ctx,persistence.AccountsCreateInput{Account:&account,Name:&name})
  if err!=nil || row==nil || row.Account!="TXNA1" || row.Name!="Commit Test" {t.Fatalf("create: %v %v",row,err)}

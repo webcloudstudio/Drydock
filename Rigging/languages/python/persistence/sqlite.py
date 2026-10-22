@@ -43,7 +43,7 @@ class SqliteDriver(Driver):
         if connection is None:
             if self._path != ":memory:":
                 Path(self._path).parent.mkdir(parents=True, exist_ok=True)
-            # Autocommit: every statement is written when it runs. No transactions.
+            # Autocommit by default; an explicit BEGIN suspends it until ROLLBACK.
             connection = sqlite3.connect(self._path, isolation_level=None)
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute("PRAGMA foreign_keys=ON")

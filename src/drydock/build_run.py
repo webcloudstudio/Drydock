@@ -2335,7 +2335,12 @@ def _write_persistence(
     if application is not None:
         if not application.applied:
             raise SpecificationError(f"persistence: {application.detail}")
-        _emit(on_text, f"persistence: {application.detail}")
+        evidence_dir = target_dir / "evidence"
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        (evidence_dir / "persistence-verification.json").write_text(
+            application.detail + "\n", encoding="utf-8"
+        )
+        _emit(on_text, "persistence: schema applied and runtime catalog/count probes passed")
     return written + record_derived_indexes(
         derived_indexes(tables, contract), target_dir=target_dir
     )
@@ -2859,6 +2864,7 @@ def build_target(
             ):
                 _emit(on_text, f"persistence: wrote {_rel(written, target_dir)}")
         lineage.begin(unit.block_id, unit.name, unit.steps, assemblies)
+        runtime_schema = None
         pre_acceptance = (
             tuple(
                 AcceptanceObservation(
@@ -3686,6 +3692,17 @@ def build_target(
                     for gate in gate_results.values()
                     if gate.blocks
                 )
+            runtime_schema = apply_schema(resolved_build_dir, verify_only=True)
+            if runtime_schema is not None:
+                if not runtime_schema.applied:
+                    state, status = "closed/failed", "failed"
+                    error = "persistence verification failed"
+                    failure_detail = runtime_schema.detail
+                else:
+                    (target_dir / "evidence").mkdir(parents=True, exist_ok=True)
+                    (target_dir / "evidence/persistence-verification.json").write_text(
+                        runtime_schema.detail + "\n", encoding="utf-8"
+                    )
             previous_record = attempt_records[-1] if attempt_records else None
             passed_checks = sum(1 for check in acceptance if check.passed)
             passed_cases, total_cases = _acceptance_case_totals(acceptance)
@@ -4075,6 +4092,14 @@ def build_target(
             elif status in {"failed", "blocked"}:
                 block_state = state
                 block_finding = finding
+            elif (
+                "DATABASE.md" in block.fields.get("implements", ())
+                and gate is None
+                and runtime_schema is not None
+                and runtime_schema.applied
+            ):
+                block_state = "closed/verified"
+                block_finding = "Persistence verified: evidence/persistence-verification.json"
             elif gate is not None and gate.passed:
                 block_state = "closed/verified"
                 block_finding = None
@@ -4244,7 +4269,7 @@ def build_target(
                 check for check in acceptance if check.check_id in owned_check_ids
             )
             step_status = status
-            step_state = state
+            step_state = manifest_updates.get(block.block_id, {}).get("state", state)
             step_error = error
             step_failure_detail = failure_detail
             step_result = BuildStepResult(

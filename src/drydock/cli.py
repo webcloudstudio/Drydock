@@ -2319,7 +2319,10 @@ def cmd_build(args: argparse.Namespace) -> int:
                 else ""
             )
             print()
-            print(f"  {outcome}  {kind}={unit_id}  state={step.state}{reference}{elapsed}")
+            state_label = f"  state={step.state}" if kind == "story" else ""
+            print(f"  {outcome}  {kind}={unit_id}{state_label}{reference}{elapsed}")
+        if _build_unit_ids.get(step.block_id, step.block_id) != step.block_id:
+            print(f"    story={step.block_id}  state={step.state}")
         if step.status == "failed":
             # Stories in one block share a single execution: report it once.
             fatal_key = step.execution_id or f"{step.block_id}:{step.error}"

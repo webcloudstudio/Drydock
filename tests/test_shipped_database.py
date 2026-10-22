@@ -257,3 +257,94 @@ def test_schema_enforces_required_columns_and_defaults(database):
         database.tickets.create()
     identity = database.tickets.create(title="default status")
     assert database.tickets.get(id=identity).status == "open"
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_rollback_session_preserves_existing_rows_and_default_autocommit(database, fails):
+    existing = database.tickets.create(status="open", title="existing")
+    for _ in range(2):
+        try:
+            with database.rollback_session() as session:
+                created = session.tickets.create(status="open", title="criterion")
+                assert session.tickets.get(id=created).title == "criterion"
+                session.tickets.update(id=existing, status="closed")
+                if fails:
+                    raise AssertionError("feature assertion failed")
+        except AssertionError:
+            assert fails
+        assert [(r.id, r.status) for r in database.tickets.list(status="open")] == [
+            (existing, "open")
+        ]
+    # Default autocommit resumes after rollback.
+    committed = database.tickets.create(status="open", title="committed")
+    database.close()
+    assert database.tickets.get(id=committed).title == "committed"
+
+
+def test_rollback_session_refuses_commit_schema_close_and_driver_escape(database):
+    with database.rollback_session():
+        for sql in ["COMMIT", "ROLLBACK", "CREATE TABLE other (id INTEGER)"]:
+            with pytest.raises(db.PersistenceError, match="forbidden"):
+                database.execute_script(sql)
+        with pytest.raises(db.PersistenceError, match="forbidden"):
+            _ = database.driver
+        with pytest.raises(db.PersistenceError, match="owns"):
+            database.close()
+        with pytest.raises(db.PersistenceError, match="nested"):
+            with database.rollback_session():
+                pass
+
+
+def test_rollback_session_refuses_operations_on_another_thread(database):
+    errors = []
+
+    def use_other_thread():
+        try:
+            database.tickets.create(status="open", title="wrong thread")
+        except db.PersistenceError as exc:
+            errors.append(str(exc))
+
+    with database.rollback_session():
+        thread = threading.Thread(target=use_other_thread)
+        thread.start()
+        thread.join()
+    assert errors and "owning thread" in errors[0]
+
+
+def test_failed_rollback_is_reported_and_connection_is_discarded(tmp_path):
+    class BrokenRollbackCursor:
+        def __init__(self, cursor):
+            self.cursor = cursor
+
+        def execute(self, statement, *args):
+            if statement == "ROLLBACK":
+                raise RuntimeError("rollback connection lost")
+            return self.cursor.execute(statement, *args)
+
+        def close(self):
+            self.cursor.close()
+
+        def __getattr__(self, name):
+            return getattr(self.cursor, name)
+
+    class Connection:
+        def __init__(self, raw):
+            self.raw = raw
+
+        def cursor(self):
+            return BrokenRollbackCursor(self.raw.cursor())
+
+    class Driver(sqlite_driver.SqliteDriver):
+        def connect(self):
+            return Connection(super().connect())
+
+    driver = Driver(str(tmp_path / "app.db"))
+    instance = db.Database("unused", SCHEMA, driver=driver)
+    instance.execute_script(DDL)
+    with pytest.raises(db.PersistenceError, match="acceptance rollback failed"):
+        with instance.rollback_session():
+            instance.tickets.create(status="open", title="owned")
+    assert driver._local.connection is None
+    # Closing the failed connection rolls back its uncommitted work.
+    assert instance.tickets.list(status="open") == []
+    instance.close()

@@ -145,6 +145,7 @@ def test_create_on_a_text_key_returns_the_declared_row(tmp_path: Path):
     (blueprint_dir / "DATABASE.md").write_text(_TEXT_KEY_DATABASE, encoding="utf-8")
     write_persistence_package(blueprint_dir, build_dir)
 
+    assert apply_schema(build_dir).applied
     result = _run_in_build(
         build_dir,
         "from persistence.testing import db_session\n"
@@ -175,6 +176,7 @@ def test_the_emitted_package_runs_against_sqlite(tmp_path: Path):
         "__init__.py",
         "testing.py",
         "schema.sql",
+        "schema-verification.json",
     }
 
     script = f"""
@@ -217,9 +219,10 @@ def _run_in_build(build_dir: Path, script: str, env: dict[str, str] | None = Non
     )
 
 
-def test_the_generated_db_session_opens_a_store_with_the_schema_applied(tmp_path: Path):
+def test_the_generated_db_session_uses_the_provisioned_store(tmp_path: Path):
     build_dir = _emitted_build(tmp_path)
 
+    assert apply_schema(build_dir).applied
     result = _run_in_build(
         build_dir,
         "from persistence.testing import db_session\n"
@@ -340,7 +343,7 @@ def test_the_published_contract_names_exactly_the_files_drydock_writes(
     published = {
         path
         for line in table
-        for path in re.findall(r"`((?:persistence/)?[\w.]+\.(?:py|sql))`", line)
+        for path in re.findall(r"`((?:persistence/)?[\w.-]+\.(?:py|sql|json))`", line)
     }
 
     blueprint_dir = tmp_path / "blueprint"
@@ -351,3 +354,131 @@ def test_the_published_contract_names_exactly_the_files_drydock_writes(
 
     assert published == {path.relative_to(build_dir).as_posix() for path in written}
     assert "never writes" not in section
+
+
+def test_verification_never_recreates_a_missing_store(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    result = apply_schema(build, verify_only=True)
+    assert not result.applied
+    assert "store missing" in result.detail
+    assert not (build / DEFAULT_DSN).exists()
+
+
+def test_runtime_verification_detects_missing_indexes_and_preserves_rows(tmp_path, monkeypatch):
+    import sqlite3
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    with sqlite3.connect(build / DEFAULT_DSN) as conn:
+        conn.execute("INSERT INTO tickets(status,title) VALUES ('open','existing')")
+        index = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"
+        ).fetchone()[0]
+        conn.execute(f'DROP INDEX "{index}"')
+    result = apply_schema(build, verify_only=True)
+    assert not result.applied and index in result.detail
+    with sqlite3.connect(build / DEFAULT_DSN) as conn:
+        assert conn.execute("SELECT count(*) FROM tickets").fetchone()[0] == 1
+        assert not conn.execute("SELECT name FROM sqlite_master WHERE name=?", (index,)).fetchall()
+
+
+def test_fixture_rollback_on_failed_assertion_and_process_exit(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    for ending in ["raise AssertionError('failed')", "os._exit(17)"]:
+        result = _run_in_build(
+            build,
+            "import os\nfrom persistence.testing import db_session\n"
+            "with db_session() as db:\n"
+            "    db.tickets.create(status='open', title='owned')\n"
+            f"    {ending}\n",
+        )
+        assert result.returncode != 0
+        check = _run_in_build(
+            build,
+            "from persistence.testing import db_session\n"
+            "with db_session() as db:\n"
+            "    assert db.tickets.list(status='open') == []\n",
+        )
+        assert check.returncode == 0, check.stderr
+
+
+@pytest.mark.parametrize("order", [("first", "second"), ("second", "first")])
+def test_criteria_are_order_independent_on_a_populated_store(tmp_path, monkeypatch, order):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    result = _run_in_build(
+        build,
+        "from persistence import open_database\n"
+        "with open_database('data/app.db') as db:\n"
+        "    db.tickets.create(status='open', title='unrelated')\n",
+    )
+    assert result.returncode == 0, result.stderr
+    for owned in (*order, *order):
+        result = _run_in_build(
+            build,
+            "from persistence.testing import db_session\n"
+            "with db_session() as db:\n"
+            f"    row = db.tickets.create(status='open', title={owned!r})\n"
+            "    selected = [r for r in db.tickets.list(status='open') if r.id == row.id]\n"
+            "    assert len(selected) == 1\n",
+        )
+        assert result.returncode == 0, result.stderr
+    result = _run_in_build(
+        build,
+        "from persistence.testing import db_session\n"
+        "with db_session() as db:\n"
+        "    assert [r.title for r in db.tickets.list(status='open')] == ['unrelated']\n",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "missing", ["schema.sql", "schema-verification.json", "persistence/schema.py"]
+)
+def test_missing_persistence_artifact_is_a_failure(tmp_path, monkeypatch, missing):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    (build / missing).unlink()
+    assert not apply_schema(build, verify_only=True).applied
+
+
+def test_fixture_does_not_create_a_missing_database(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    result = _run_in_build(
+        build, "from persistence.testing import db_session\nwith db_session() as db:\n    pass\n"
+    )
+    assert result.returncode != 0 and "store missing" in result.stderr
+    assert not (build / DEFAULT_DSN).exists()
+
+
+def test_committed_fixture_persists_across_connections_without_schema_setup(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    result = _run_in_build(
+        build,
+        "from persistence.testing import committed_session, db_session\n"
+        "with committed_session() as db:\n"
+        "    row = db.tickets.create(status='open', title='durable')\n"
+        "with committed_session() as db:\n"
+        "    assert [r.title for r in db.tickets.list(status='open') if r.id == row.id] == ['durable']\n"
+        "with db_session() as db:\n"
+        "    db.tickets.create(status='open', title='temporary')\n"
+        "with committed_session() as db:\n"
+        "    assert [r.title for r in db.tickets.list(status='open')] == ['durable']\n",
+    )
+    assert result.returncode == 0, result.stderr

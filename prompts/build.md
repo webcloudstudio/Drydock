@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20261005 V8
+version: 20261022 V9
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 output: evidence summary
@@ -70,8 +70,10 @@ Operating contract:
    Cover, at minimum: every public entry point and every verb it declares, including declared
    error paths; the boundaries — empty, exactly one, many, absent optional fields, declared
    maxima; declared idempotence, applied twice; one behavior per test, named for the behavior;
-   and isolation — each test arranges its own data, with a fresh store or explicit teardown, so
-   a run leaves no residue behind in the build directory.
+   and isolation — database criteria use the provisioned application store and the shipped rollback
+   fixture, passing its connection into the feature. Other connections and durability tests use
+   criterion-owned records, idempotent setup and checked cleanup through supported interfaces.
+   Never replace the configured store, reapply schema, or delete unrelated business records.
    Where a staged authoritative suite already covers a surface, that suite is the coverage:
    run it, and do not restate its cases. Run it **only through the invocation this step's
    acceptance criteria declare**. A criterion marked `Suite: scoped` names the whole of this

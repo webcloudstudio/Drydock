@@ -112,6 +112,16 @@ class TestMetadataFields:
 
 
 class TestNonSpecBlueprintFiles:
+    def test_release_verification_is_a_standard_filename(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        (target_dir / "blueprint/VERIFICATION.md").write_text(
+            "# FEATURE: Release Verification\n\n## Programmatic Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n"
+        )
+        result = validate_specification("TestProject", target_dir)
+        assert not any(
+            "Unexpected file name: VERIFICATION.md" in f.message for f in result.findings
+        )
+
     def test_agents_md_is_forbidden_in_blueprint(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
         agents = target_dir / "blueprint" / "AGENTS.md"

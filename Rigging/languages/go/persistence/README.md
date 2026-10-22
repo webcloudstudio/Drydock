@@ -14,6 +14,6 @@ The language foundation must exist first. `../templates/` owns generated support
 - Dependency downloads are setup; offline test runs use cached pinned drivers (`GOPROXY=off`).
 
 Errors propagate through returned errors; undeclared calls satisfy `errors.Is(err, ErrUnknownOperation)`.
-`OpenSession` removes only temporary stores it creates. Tests against an explicit DSN own their data.
+`OpenSession` uses the provisioned application store and an explicit rollback transaction; its deferred cleanup returns errors that fail the criterion. Outside that scope operations autocommit.
 Generated DDL creates absent objects; it does not migrate existing tables. PostgreSQL integer primary
 keys receive an identity declaration matching SQLite's generated-key behavior.

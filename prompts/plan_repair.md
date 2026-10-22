@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261021 V10
+version: 20261022 V11
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -140,3 +140,24 @@ Intent: <unchanged>
 Identify the criterion by its file and id; you do not need to know or reproduce its file's own
 internal delimiter format. Include the whole criterion — every line that was inside its block —
 not a patch or a diff.
+
+## Acceptance persistence lifecycle
+
+**Acceptance store lifecycle.** The DATABASE step provisions and verifies the configured store
+once. Criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary database, apply DDL,
+or assume an empty store. Database criteria use `with db_session() as db:` (Go:
+`OpenSession(ctx, "")` with checked deferred cleanup) and pass that same database into feature
+operations. Setup, behavior and assertions run inside one transaction; the shipped fixture always
+rolls it back. Application operations outside that scope remain autocommitted. Never commit,
+close the owned connection, or open another connection inside the rollback scope.
+
+HTTP, CLI/subprocess, background-work and commit/restart criteria use committed behavior instead.
+Use `persistence.testing.committed_session()` (Go: `OpenCommittedSession(ctx, "")`) for
+setup/readback/cleanup on the configured store; this helper closes connections, not business records.
+Each owns a stable criterion-specific identifier, reconciles only its own residue before setup,
+asserts setup success, checks only owned records, and uses `try/finally` (Go: checked `defer`) for
+cleanup through supported product interfaces. Cleanup failure fails the criterion; retries must
+work even when prior cleanup never ran. Immutable ledger records remain identified or receive
+supported reversal entries; never delete history or reset a shared store. Include independent
+commit/reconnect durability coverage. Database acceptance must not be replaced by a project test
+count: runtime catalog and row-count evidence proves provisioning, feature criteria prove behavior.

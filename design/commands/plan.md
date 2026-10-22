@@ -39,6 +39,8 @@ read before parsing, in any operand position, and refused with exit `2` by every
 
 ### Rules
 
+`2026-10-22` · Plan refuses recognized criterion DSN mutations, explicit fixture DSNs and schema calls (`acceptance-store` defects). Prompt guidance requires the shared-store lifecycle in [acceptance_criteria](../topics/acceptance_criteria.md). Cost when broken: a valid feature is graded against an unprovisioned database.
+
 `2026-10-22` · **Structured model calls declare their output format to `llm.run_prompt`.**
 The adapter strips only bounded plain narration around intact artifact envelopes or one complete
 JSON object/array; it also removes a surrounding JSON code fence. It preserves artifact bodies,
@@ -262,6 +264,8 @@ A key the criterion creates (expected `0`) or a deliberately absent key is not r
 without loading `seed_accounts.csv`; the product correctly answered `4` (absent).
 
 `2026-10-18` · Python and Go support DATABASE.md persistence. Stack validation requires exactly one language and permits at most one database engine; other exclusive foundations retain their constraints. Cost when broken: the selected stack and generated runtime disagree.
+
+`2026-10-22` · `VERIFICATION.md` is a standard release-verification Blueprint filename, accepted by naming validation. Cost when broken: generated release gates produce spurious naming warnings.
 
 ### Mechanism
 

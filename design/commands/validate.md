@@ -29,6 +29,8 @@ drydock validate <Target> [--verbose]
 
 ### Rules
 
+`2026-10-22` · `VERIFICATION.md` is a standard release-verification Blueprint name. Cost when broken: a generated release gate produces a spurious naming warning.
+
 `2026-06-10` · **Required files are gated by phase.** The phase is read from the filesystem:
 Set Up (empty Blueprint), Arrange (content, no `MANIFEST.md`), Implement (Manifest exists).
 `METADATA.md` is required in every phase; `README.md` and `ARCHITECTURE.md` only from Implement.

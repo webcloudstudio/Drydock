@@ -1873,7 +1873,7 @@ state: pending
         # Both stories are accounted for, but the failure block renders once per execution.
         assert out.count("BUILD FAILED: ExampleTarget") == 1
         assert "(1 step)" in out
-        assert "  FAILED  feature=feature-catalog  state=closed/failed  execution=exec-fake" in out
+        assert "  FAILED  feature=feature-catalog  execution=exec-fake" in out
         assert "The backend diverges from the spec." in out
         assert "Story recovery (dependency order)" in out
         assert "drydock build ExampleTarget --story foundation --repair-attempts 6" in out
@@ -2154,7 +2154,7 @@ state: pending
 
         assert rc == 0, err
         assert "reset: entire project (all blocks + build directory)" in out
-        assert "  DONE  feature=core  state=closed/verified  execution=exec-fake" in out
+        assert "  DONE  feature=core  execution=exec-fake" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert "finding: failed" not in text
         assert "state: closed/failed" not in text
@@ -2292,7 +2292,7 @@ state: pending
 
         assert rc == 0, out + err
         assert "optimize build blocks: updated MANIFEST.md" in out
-        assert "  DONE  feature=feature-core  state=closed/verified  execution=exec-fake" in out
+        assert "  DONE  feature=feature-core  execution=exec-fake" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert text.index("id: feature-core") < text.index("id: screen-setup")
 

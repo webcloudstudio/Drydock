@@ -359,3 +359,22 @@ Go requires an existing `go.mod`, downloaded pinned drivers, CGO and a C compile
 SQLite. Drydock links the generated `persistence/` module and applies schema through its command.
 Select exactly one language and zero or one database engine. Existing-table migrations and
 automatic per-criterion code tracing remain separate capabilities.
+
+### Persistence acceptance lifecycle
+
+The DATABASE build step provisions the configured application store and records runtime schema
+verification in `evidence/persistence-verification.json`: every declared table is readable with a
+nonnegative row count, and declared columns, constraints and indexes pass catalog checks.
+Subsequent acceptance runs verify that store without recreating it. Missing or incompatible schema
+fails the build with a persistence diagnostic; rebuild the DATABASE step after correcting its cause.
+
+Application operations retain autocommit. Python database criteria use
+`with persistence.testing.db_session() as db:`; Go criteria use `OpenSession(ctx, "")` and check
+the deferred cleanup error. These fixtures use the configured store, share one connection with
+feature operations, and roll back on success or failure. They never provision temporary stores.
+For HTTP, subprocess and durability criteria, `committed_session()` (Go:
+`OpenCommittedSession`) supplies the configured store with autocommit; the criteria own record
+cleanup. These criteria require committed, criterion-owned records with
+idempotent recovery and checked cleanup; rollback does not cover other connections or external
+side effects. `drydock plan verify` rejects recognized DSN overrides and schema application in
+criteria. `VERIFICATION.md` is an accepted standard release-gate Blueprint filename.

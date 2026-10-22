@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
+from contextlib import contextmanager
+import threading
 from typing import Any
 
 __all__ = [
@@ -194,6 +196,7 @@ class Database:
     """
 
     def __init__(self, dsn: str, schema: Schema, *, driver: Driver | None = None) -> None:
+        self._rollback_owner = None
         self._schema = schema
         self._driver = driver if driver is not None else open_driver(dsn)
         grouped = schema.by_table()
@@ -202,10 +205,42 @@ class Database:
 
     @property
     def driver(self) -> Driver:
+        if self._rollback_owner is not None:
+            raise PersistenceError("driver access is forbidden inside a rollback session")
         return self._driver
 
     def close(self) -> None:
+        if self._rollback_owner is not None:
+            raise PersistenceError("the rollback session owns connection lifetime")
         self._driver.close()
+
+    @contextmanager
+    def rollback_session(self):
+        """Use this connection for setup, behavior and assertions; always roll back.
+
+        Normal calls remain autocommitted. No schema creation, nested transaction,
+        driver escape, or cross-thread operation is allowed in this scope.
+        """
+        if self._rollback_owner is not None:
+            raise PersistenceError("nested rollback session")
+        connection = self._driver.connect()
+        cursor = connection.cursor()
+        try:
+            cursor.execute("BEGIN")
+            self._rollback_owner = threading.get_ident()
+            try:
+                yield self
+            finally:
+                try:
+                    cursor.execute("ROLLBACK")
+                except Exception as exc:
+                    raise PersistenceError(f"acceptance rollback failed: {exc}") from exc
+                finally:
+                    self._rollback_owner = None
+        finally:
+            cursor.close()
+            self._driver.close()
+
 
     def __enter__(self) -> Database:
         return self
@@ -215,6 +250,8 @@ class Database:
 
     def execute_script(self, sql: str) -> None:
         """Apply generated DDL. The schema is built once, at the DATABASE build step."""
+        if self._rollback_owner is not None:
+            raise PersistenceError("schema and transaction SQL are forbidden in rollback sessions")
         cursor = self._open("schema")
         try:
             for statement in statements(self._driver.prepare_schema(sql)):
@@ -241,14 +278,24 @@ class Database:
         values = [arguments[name] for name in names]
         cursor = self._open(operation.identifier)
         try:
-            return self._dispatch(operation, cursor, names, values)
+            if self._rollback_owner is not None:
+                cursor.execute("SAVEPOINT drydock_operation")
+            result = self._dispatch(operation, cursor, names, values)
+            if self._rollback_owner is not None:
+                cursor.execute("RELEASE SAVEPOINT drydock_operation")
+            return result
         except Exception as exc:  # noqa: BLE001 - translated at the boundary on purpose
+            if self._rollback_owner is not None:
+                cursor.execute("ROLLBACK TO SAVEPOINT drydock_operation")
+                cursor.execute("RELEASE SAVEPOINT drydock_operation")
             raise PersistenceError(f"{operation.identifier} failed: {exc}") from exc
         finally:
             cursor.close()
 
     def _open(self, action: str) -> Any:
         """Return a cursor, translating a refused or failed connection."""
+        if self._rollback_owner not in (None, threading.get_ident()):
+            raise PersistenceError("rollback session requires its owning thread and connection")
         try:
             return self._driver.connect().cursor()
         except PersistenceError:

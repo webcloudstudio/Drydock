@@ -2,8 +2,10 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "fmt"
     "os"
+    "strings"
     "drydock.local/persistence"
 )
 
@@ -11,11 +13,24 @@ func main() {
     dsn:=os.Getenv("DATABASE_URL")
     if dsn=="" {dsn=os.Getenv("DATABASE_PATH")}
     if dsn=="" {dsn="data/app.db"}
-    ddl,err:=os.ReadFile("schema.sql")
-    if err!=nil {panic(err)}
-    db,err:=persistence.OpenDatabase(context.Background(),dsn)
+    verifyOnly:=os.Getenv("DRYDOCK_SCHEMA_VERIFY_ONLY")=="1"
+    if verifyOnly && !strings.HasPrefix(dsn,"postgres://") && !strings.HasPrefix(dsn,"postgresql://") {
+        if _,err:=os.Stat(strings.TrimPrefix(dsn,"sqlite://"));err!=nil {panic("persistence store missing; rebuild DATABASE step")}
+    }
+    ctx:=context.Background()
+    db,err:=persistence.OpenDatabase(ctx,dsn)
     if err!=nil {panic(err)}
     defer db.Close()
-    if err=db.ApplySchema(context.Background(),string(ddl));err!=nil {panic(err)}
-    fmt.Println("schema applied")
+    if !verifyOnly {
+        ddl,err:=os.ReadFile("schema.sql")
+        if err!=nil {panic(err)}
+        if err=db.ApplySchema(ctx,string(ddl));err!=nil {panic(err)}
+    }
+    manifest,err:=os.ReadFile("schema-verification.json")
+    if err!=nil {panic(err)}
+    evidence,err:=db.VerifySchema(ctx,manifest)
+    if err!=nil {panic(err)}
+    encoded,err:=json.Marshal(evidence)
+    if err!=nil {panic(err)}
+    fmt.Println(string(encoded))
 }

@@ -1,13 +1,33 @@
+import json
 import os
-import sys
 from pathlib import Path
 
 from persistence import open_database
 
 dsn = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_PATH") or {default!r}
+schema = Path({schema!r})
+# Verification must not create an empty SQLite file when the provisioned store is missing.
+if os.environ.get("DRYDOCK_SCHEMA_VERIFY_ONLY") == "1" and not dsn.startswith(("postgres://", "postgresql://")):
+    path = dsn.split("://", 1)[-1]
+    if not Path(path).is_file():
+        raise RuntimeError("persistence store missing; rebuild the DATABASE step")
 database = open_database(dsn)
 try:
-    database.execute_script(Path({schema!r}).read_text(encoding="utf-8"))
+    if os.environ.get("DRYDOCK_SCHEMA_VERIFY_ONLY") != "1":
+        database.execute_script(schema.read_text(encoding="utf-8"))
+    engine = "postgres" if dsn.startswith(("postgres://", "postgresql://")) else "sqlite"
+    probes = json.loads(schema.with_name("schema-verification.json").read_text())[engine]
+    evidence = []
+    cursor = database.driver.connect().cursor()
+    try:
+        for probe in probes:
+            cursor.execute(probe["sql"])
+            value = cursor.fetchone()[0]
+            if value < 0 or (probe["expected"] >= 0 and value != probe["expected"]):
+                raise RuntimeError("persistence verification failed: " + probe["name"] + " observed=" + str(value))
+            evidence.append(dict(name=probe["name"], observed=value))
+    finally:
+        cursor.close()
+    print(json.dumps(evidence))
 finally:
     database.close()
-print(dsn)

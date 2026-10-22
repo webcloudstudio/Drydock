@@ -9,7 +9,7 @@
 | Tests | `tests/test_acceptance*.py`, `tests/test_ac_repair.py` |
 | Governs | [build](../commands/build.md), [score](../commands/score.md), [plan](../commands/plan.md), [diagnose](../commands/diagnose.md), [status](../commands/status.md) |
 | Pending spec | 0 |
-| Pending impl | 2 |
+| Pending impl | 1 |
 
 ## Behavior
 
@@ -20,6 +20,20 @@ staged builds. A criterion is evidence only when it binds to the product, was re
 and measured something; everything else is reported, not charged.
 
 ### Rules
+
+`2026-10-22` · **Acceptance uses the provisioned application store.** The DATABASE step emits
+runtime catalog/count probes, applies schema, verifies declared columns, keys, constraints and
+indexes, and records `evidence/persistence-verification.json`. Later acceptance runs verify without
+applying DDL and refuse a missing or incompatible store. Python `db_session()` and Go
+`OpenSession(ctx, dsn)` use one explicit rollback transaction on the configured store; ordinary
+application operations retain autocommit. Same-connection feature code receives the yielded
+store; no schema/commit/connection-lifetime escape is permitted. Expected operation failures use
+savepoints so PostgreSQL can continue inside the criterion. Multi-connection and durability
+criteria use committed, owned records with idempotent setup and checked cleanup;
+`committed_session()` / `OpenCommittedSession` expose the configured store with normal autocommit. Plan rejects
+recognized DSN mutations and schema calls. Cost when broken: criteria test an unprovisioned store,
+leave shared residue, or claim durability they never tested.
+
 
 `2026-10-19` · Native Go statuses survive the outer executor. Skip, not-run and unavailable are UNVERIFIED; compilation errors and native failures remain failures with distinct error text. The outer process group timeout terminates descendants. Breaking this rule counts a skipped test as proof.
 
@@ -99,25 +113,13 @@ See the build-loop and completion rules. Removing a criterion id is rejected; `F
 
 ## Decisions
 
-### Criteria acquire and release their own state (UAT gates §34)
-`2026-08-14` · `spec:approved` · `impl:unimplemented`
+### Criteria use the provisioned store with rollback or owned committed state
+`2026-10-22` · `spec:approved` · `impl:implemented`
 
-A criterion arrives at whatever state exists, acquires what it needs, asserts about only what it
-owns, and releases exactly that — idempotent, order-independent, against the real store. Sandboxing
-and fresh stores were rejected: both hide the class and make schema defects unreachable. Grammar:
-
-```text
-=== AC <id> ===
-=== SETUP ===      optional; acquire
-=== CHECK ===      required; the verdict
-=== TEARDOWN ===   optional; runs even after partial setup or a failed check
-=== END AC <id> ===
-```
-
-Drydock renders the control flow per language (Python `try`/`finally`, Go `defer`); the model writes
-phase bodies only. A teardown failure is a warning, never a verdict. An unsupported executable is
-`UNVERIFIED`. Closes D-027 (a criterion that inserted rows and never removed them failed itself on
-every rerun).
+Ed selected default autocommit plus explicit rollback scopes for same-connection database
+criteria. This supersedes the proposed SETUP/CHECK/TEARDOWN marker grammar: Python context
+managers and Go deferred cleanup own the lifecycle. Cross-connection and durability criteria use
+owned committed records and recover from interrupted setup/cleanup; no fresh stores or resets.
 
 ### Reject a dishonest or missing full suite at plan (conformance gate)
 `2026-07-23` · `spec:approved` · `impl:unimplemented`
@@ -129,16 +131,11 @@ file-exists stubs), and rejects a plan where no story carries it. Deferred becau
 
 ## Open Questions
 
-1. **Where do SETUP/TEARDOWN renderers live** — in the AC executor keyed by `Requires: executable`,
-   or declared in stack guidance under `Rigging/`?
 2. **What counts as sampling?** The heuristic boundary between a sampled or stubbed suite and a
    genuine full run, in `proof_integrity` or the plan gate.
 3. **Residue observation is deferred (UAT gates §35).** Reporting files a criterion leaves in the
    build tree is diagnostic only and noisy; revisit if SETUP/TEARDOWN does not stop self-poisoning.
-4. **Criterion isolation versus §34 (`2026-10-21`).** Ed asked that criteria be encapsulated from
-   each other after LayersTesting `20261021.195808`, where leftover rows in a shared
-   `data/app.db` failed `account-add-round-trip` on rerun. The approved §34 decision rejects
-   fresh stores and chooses SETUP/TEARDOWN instead. Which mechanism isolates them?
+4. **Criterion isolation:** resolved 2026-10-22 by rollback scopes and owned committed records.
 
 ## Open Actions
 

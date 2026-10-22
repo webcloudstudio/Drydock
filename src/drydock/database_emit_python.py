@@ -218,6 +218,9 @@ def write_python_persistence(blueprint_dir: Path, build_dir: Path) -> tuple[Path
             newline="\n",
         )
         written.append(path)
+    from drydock.database_verification import write_verification
+
+    written.append(write_verification(text, build_dir))
     return tuple(written)
 
 

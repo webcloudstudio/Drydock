@@ -44,9 +44,10 @@ type Result struct {
 
 // Database owns the connection pool and declared operation surface.
 type Database struct {
-	connection *sql.DB
-	schema     Schema
-	engine     string
+	connection  *sql.DB
+	transaction *sql.Tx
+	schema      Schema
+	engine      string
 }
 
 var identifier = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -119,14 +120,57 @@ func Open(ctx context.Context, dsn string, schema Schema) (*Database, error) {
 }
 
 // Close releases the database pool.
-func (db *Database) Close() error { return db.connection.Close() }
+func (db *Database) Close() error {
+	if db.transaction != nil {
+		return errors.New("rollback session owns connection lifetime")
+	}
+	return db.connection.Close()
+}
 
-// ApplySchema applies generated DDL. Every statement autocommits; there are no transactions.
+type executor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (db *Database) executor() executor {
+	if db.transaction != nil {
+		return db.transaction
+	}
+	return db.connection
+}
+
+// BeginRollback pins repository operations to one transaction; cleanup must be checked.
+// Calls outside this scope retain normal autocommit behavior.
+func (db *Database) BeginRollback(ctx context.Context) (func() error, error) {
+	if db.transaction != nil {
+		return nil, errors.New("nested rollback session")
+	}
+	tx, err := db.connection.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	db.transaction = tx
+	return func() error {
+		err := tx.Rollback()
+		db.transaction = nil
+		if err != nil {
+			db.connection.Close()
+			return fmt.Errorf("acceptance rollback failed: %w", err)
+		}
+		return nil
+	}, nil
+}
+
+// ApplySchema applies generated DDL. Schema is applied only at the DATABASE step.
 func (db *Database) ApplySchema(ctx context.Context, ddl string) error {
+	if db.transaction != nil {
+		return errors.New("schema SQL forbidden in rollback session")
+	}
 	if db.engine == "postgres" {
 		ddl = postgresSchema(ddl)
 	}
-	_, err := db.connection.ExecContext(ctx, ddl)
+	_, err := db.executor().ExecContext(ctx, ddl)
 	return err
 }
 func (db *Database) placeholder(n int) string {
@@ -148,7 +192,22 @@ func (db *Database) predicates(names []string, offset int) string {
 
 // Run invokes a declared operation; values are always bound parameters.
 func (db *Database) Run(ctx context.Context, table, verb string, arguments map[string]any) (Result, error) {
+	if db.transaction != nil {
+		if _, err := db.transaction.ExecContext(ctx, "SAVEPOINT drydock_operation"); err != nil {
+			return Result{}, err
+		}
+	}
 	result, err := db.run(ctx, table, verb, arguments)
+	if db.transaction != nil {
+		if err != nil {
+			if _, resetErr := db.transaction.ExecContext(ctx, "ROLLBACK TO SAVEPOINT drydock_operation"); resetErr != nil {
+				return result, resetErr
+			}
+		}
+		if _, releaseErr := db.transaction.ExecContext(ctx, "RELEASE SAVEPOINT drydock_operation"); releaseErr != nil {
+			return result, releaseErr
+		}
+	}
 	if err != nil {
 		return result, fmt.Errorf("%s.%s: %w", table, verb, err)
 	}
@@ -234,11 +293,11 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 		}
 		var id any
 		if db.engine == "postgres" && declared.Key != "" {
-			if err := db.connection.QueryRowContext(ctx, query+" RETURNING "+quote(declared.Key), values...).Scan(&id); err != nil {
+			if err := db.executor().QueryRowContext(ctx, query+" RETURNING "+quote(declared.Key), values...).Scan(&id); err != nil {
 				return Result{}, err
 			}
 		} else {
-			result, err := db.connection.ExecContext(ctx, query, values...)
+			result, err := db.executor().ExecContext(ctx, query, values...)
 			if err != nil {
 				return Result{}, err
 			}
@@ -276,14 +335,14 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 			return Result{}, errors.New("update requires at least one assigned column")
 		}
 		query := "UPDATE " + quote(table) + " SET " + strings.Join(assignments, ", ") + db.predicates([]string{declared.Key}, len(ordered))
-		result, err := db.connection.ExecContext(ctx, query, append(ordered, key)...)
+		result, err := db.executor().ExecContext(ctx, query, append(ordered, key)...)
 		if err != nil {
 			return Result{}, err
 		}
 		count, err := result.RowsAffected()
 		return Result{Count: count}, err
 	case "delete":
-		result, err := db.connection.ExecContext(ctx, "DELETE FROM "+quote(table)+db.predicates(names, 0), values...)
+		result, err := db.executor().ExecContext(ctx, "DELETE FROM "+quote(table)+db.predicates(names, 0), values...)
 		if err != nil {
 			return Result{}, err
 		}
@@ -295,7 +354,7 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 
 // selectRows runs a bound SELECT and returns each row keyed by column name.
 func (db *Database) selectRows(ctx context.Context, query string, columns []string, values []any) ([]map[string]any, error) {
-	rows, err := db.connection.QueryContext(ctx, query, values...)
+	rows, err := db.executor().QueryContext(ctx, query, values...)
 	if err != nil {
 		return nil, err
 	}
@@ -398,4 +457,33 @@ func indexOf(names []string, name string) int {
 		}
 	}
 	return -1
+}
+
+// VerifySchema runs generated read-only catalog and row-count probes.
+func (db *Database) VerifySchema(ctx context.Context, manifest []byte) ([]map[string]any, error) {
+	type probe struct {
+		Name     string
+		SQL      string
+		Expected int64
+	}
+	var engines map[string][]probe
+	if err := json.Unmarshal(manifest, &engines); err != nil {
+		return nil, err
+	}
+	probes, ok := engines[db.engine]
+	if !ok || len(probes) == 0 {
+		return nil, errors.New("schema verification probes missing")
+	}
+	evidence := []map[string]any{}
+	for _, p := range probes {
+		var value int64
+		if err := db.executor().QueryRowContext(ctx, p.SQL).Scan(&value); err != nil {
+			return nil, fmt.Errorf("%s: %w", p.Name, err)
+		}
+		if value < 0 || (p.Expected >= 0 && value != p.Expected) {
+			return nil, fmt.Errorf("schema verification failed: %s observed=%d", p.Name, value)
+		}
+		evidence = append(evidence, map[string]any{"name": p.Name, "observed": value})
+	}
+	return evidence, nil
 }

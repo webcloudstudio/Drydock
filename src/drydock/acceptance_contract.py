@@ -261,8 +261,11 @@ def run_gate(
         )
     from drydock.database_apply import apply_schema
 
-    # The gate drives the application, which never creates schema itself.
-    apply_schema(build_dir)
+    application = apply_schema(build_dir, verify_only=True)
+    if application is not None and not application.applied:
+        return GateResult(
+            name, OUTCOME_ERROR, argv, detail=application.detail, build_identity=identity
+        )
     started = time.monotonic()
     capture_limit_mb = get_capture_output_limit_mb()
     try:

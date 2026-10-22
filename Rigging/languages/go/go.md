@@ -79,9 +79,12 @@ Run `go mod download` during dependency provisioning; execution requires these m
 Call `persistence.OpenDatabase(ctx, dsn)`, then typed methods such as
 `db.Tickets.List(ctx, persistence.TicketsListInput{Status: "open"})`. Methods return a value and
 an error. Optional inputs use pointers; read results are generated structs. Undeclared operations
-and unsupported field types fail explicitly. Use `OpenSession(ctx, dsn, ddl)` for native tests;
-close with its cleanup function. Empty DSN creates a temporary SQLite store. An explicit DSN uses
-the named store and cleanup does not delete it. Both engines ship; the DSN selects one.
+and unsupported field types fail explicitly. Use `OpenSession(ctx, dsn)` for native database criteria;
+empty DSN selects the configured, provisioned application store. Defer its cleanup and check the
+returned error: it rolls back on success and failure, never applies schema or deletes the store.
+Pass the same Store to the feature. Other connections and external effects require committed,
+idempotent criteria with owned records and supported cleanup. Both engines retain autocommit
+outside explicit rollback scopes.
 
 The Go library and generator are verified on SQLite and PostgreSQL. Keep application SQL inside
 the library; agents write callers. The language foundation must create `go.mod` before the

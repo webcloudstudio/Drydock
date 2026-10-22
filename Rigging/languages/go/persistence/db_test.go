@@ -96,3 +96,65 @@ func TestIdentityDDLDoesNotChangeLiteralValues(t *testing.T) {
 		t.Fatalf("%s", got)
 	}
 }
+
+func TestRollbackSessionKeepsExistingRowsAndAutocommit(t *testing.T) {
+	ctx := context.Background()
+	schema := Schema{Tables: []Table{{Name: "items", Columns: []string{"id", "name"}, Key: "id"}}, Operations: []Operation{
+		{ID: "create", Table: "items", Verb: "create", Inputs: []string{"name"}},
+		{ID: "list", Table: "items", Verb: "list"},
+	}}
+	db, err := Open(ctx, filepath.Join(t.TempDir(), "app.db"), schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.ApplySchema(ctx, `CREATE TABLE items(id INTEGER PRIMARY KEY,name TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Run(ctx, "items", "create", map[string]any{"name": "existing"}); err != nil {
+		t.Fatal(err)
+	}
+	for pass := 0; pass < 2; pass++ {
+		cleanup, err := db.BeginRollback(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		func() {
+			defer func() {
+				if err := cleanup(); err != nil {
+					t.Error(err)
+				}
+			}()
+			if _, err = db.Run(ctx, "items", "create", map[string]any{"name": "criterion"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = db.Run(ctx, "items", "create", map[string]any{"name": nil}); err == nil {
+				t.Fatal("NOT NULL accepted")
+			}
+			rows, err := db.Run(ctx, "items", "list", nil)
+			if err != nil || len(rows.Rows) != 2 {
+				t.Fatalf("transaction state: %v %v", rows, err)
+			}
+			if err = db.ApplySchema(ctx, "COMMIT"); err == nil {
+				t.Fatal("commit allowed")
+			}
+			if err = db.Close(); err == nil {
+				t.Fatal("close allowed")
+			}
+			if _, err = db.BeginRollback(ctx); err == nil {
+				t.Fatal("nested scope allowed")
+			}
+		}()
+		rows, err := db.Run(ctx, "items", "list", nil)
+		if err != nil || len(rows.Rows) != 1 || rows.Rows[0]["name"] != "existing" {
+			t.Fatalf("rollback: %v %v", rows, err)
+		}
+	}
+	if _, err = db.Run(ctx, "items", "create", map[string]any{"name": "committed"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.Run(ctx, "items", "list", nil)
+	if err != nil || len(rows.Rows) != 2 {
+		t.Fatalf("autocommit: %v %v", rows, err)
+	}
+}

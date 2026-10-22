@@ -35,6 +35,19 @@ acceptance-only failures as `UNVERIFIED` before continuing.
 
 ### Rules
 
+`2026-10-22` · **Acceptance uses the provisioned application store.** The DATABASE step emits
+runtime catalog/count probes, applies schema, verifies declared columns, keys, constraints and
+indexes, and records `evidence/persistence-verification.json`; these independent probes gate the persistence story even when it has no model-authored criteria. Later acceptance runs verify without
+applying DDL and refuse a missing or incompatible store. Python `db_session()` and Go
+`OpenSession(ctx, dsn)` use one explicit rollback transaction on the configured store; ordinary
+application operations retain autocommit. Same-connection feature code receives the yielded
+store; no schema/commit/connection-lifetime escape is permitted. Expected operation failures use
+savepoints so PostgreSQL can continue inside the criterion. Multi-connection and durability
+criteria use committed, owned records with idempotent setup and checked cleanup. Plan rejects
+recognized DSN mutations and schema calls. Cost when broken: criteria test an unprovisioned store,
+leave shared residue, or claim durability they never tested.
+
+
 `2026-10-19` · **A `postgres.md` stack requires `postgres_dsn`.** Build refuses before any
 mutation or model call when it is unset, and otherwise exports it as `DATABASE_URL` to schema
 application, acceptance runs and the application. Cost when broken: the build silently falls back
@@ -109,9 +122,8 @@ key (the supplied key, else the engine's generated one); a create with no Output
 with no key, returns the key. *Broken:* criteria written against `DATABASE.md` fail on a SQLite
 rowid (LayersTesting `20261020.132808`).
 
-`2026-10-20` · **Persistence autocommits; there are no transactions.** Python connections open in
-autocommit mode and Go executes every statement, schema included, outside a transaction. Neither
-library commits, rolls back, or offers a transaction scope. A rejected command changes nothing by
+`2026-10-20` · **Persistence autocommits by default.** Python connections open in
+autocommit mode and Go executes every statement, schema included, outside a transaction. Explicit acceptance rollback scopes suspend autocommit on their owned connection. A rejected command changes nothing by
 validating before its first write. *Broken:* builds hand-roll driver wrappers to fake a scope.
 
 **Lineage**
@@ -122,6 +134,8 @@ fields, spec hashes, usage, and acceptance. Checkpoint identity survives interru
 reset preserves `.git`. *Broken:* specification versions severed from code.
 
 `2026-10-18` · Persistence generation dispatches on the selected language. Python templates and libraries come from its bundle; Go receives a linked local module with generated typed repositories. The Go language foundation must create go.mod before the DATABASE step. Go schema application runs the generated command. Cost when broken: the selected stack and generated runtime disagree.
+
+`2026-10-22` · Build progress reports the persisted per-story state rather than the aggregate step verdict; grouped summaries omit a single state and list each member story. Cost when broken: the console claims verification the Manifest does not record.
 
 ### Mechanism
 

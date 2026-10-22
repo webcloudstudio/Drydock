@@ -1,15 +1,4 @@
-"""Apply the generated ``schema.sql`` to the Target's configured store.
-
-The DATABASE step generates the DDL, and Rigging forbids the application from creating schema at
-startup, so Drydock owns applying it. It applies it at the DATABASE step and again before every
-acceptance run, so a criterion that drives the application through its own client finds the
-declared tables in any later step, after a resume, or after the store was deleted. The DDL is
-``CREATE ... IF NOT EXISTS`` throughout, so reapplying is a no-op.
-
-The schema is applied through the build's own ``persistence`` package under the Target
-interpreter, so the engine is the one the DSN selects (SQLite, PostgreSQL, or any driver the
-package carries) and the driver is the one the application itself imports.
-"""
+"""Provision schema at the DATABASE step; verify existing stores without mutation thereafter."""
 
 from __future__ import annotations
 
@@ -37,28 +26,38 @@ class SchemaApplication:
     detail: str
 
 
-def apply_schema(build_dir: Path, *, env: dict[str, str] | None = None) -> SchemaApplication | None:
-    """Apply ``schema.sql`` to the configured store. ``None`` when the build declares no schema.
+def apply_schema(
+    build_dir: Path, *, env: dict[str, str] | None = None, verify_only: bool = False
+) -> SchemaApplication | None:
+    """Apply and verify the schema, or only verify it when ``verify_only`` is true.
+
+    ``None`` means the build declares no schema. Verification never provisions a store.
 
     Runs from ``build_dir``, as the application and its criteria do, so a relative SQLite path
     resolves to the same file they open.
     """
     schema = build_dir / SCHEMA_FILENAME
-    if not schema.is_file() or not (build_dir / "persistence").is_dir():
+    package = build_dir / "persistence"
+    manifest = build_dir / "schema-verification.json"
+    if not schema.exists() and not package.exists() and not manifest.exists():
         return None
+    if not schema.is_file() or not package.is_dir() or not manifest.is_file():
+        return SchemaApplication(False, "persistence artifacts missing; rebuild the DATABASE step")
+    child_env = {**(os.environ if env is None else env)}
+    child_env["DRYDOCK_SCHEMA_VERIFY_ONLY"] = "1" if verify_only else "0"
     if (build_dir / "persistence" / "go.mod").is_file():
-        return _apply_go_schema(build_dir, env=env)
+        return _apply_go_schema(build_dir, env=child_env)
     environment = resolve_target_environment(build_dir)
     if environment.interpreter is None:
         return SchemaApplication(False, f"schema not applied: {environment.detail}")
-    child_env = {**(os.environ if env is None else env)}
     child_env["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(build_dir), child_env.get("PYTHONPATH", "")) if part
     )
     with tempfile.TemporaryDirectory(prefix="drydock-schema-") as tmp:
         script = Path(tmp) / "apply_schema.py"
         script.write_text(
-            _APPLY_SCRIPT.format(default=DEFAULT_DSN, schema=str(schema)), encoding="utf-8"
+            _APPLY_SCRIPT.format(default=DEFAULT_DSN, schema=str(schema.resolve())),
+            encoding="utf-8",
         )
         try:
             completed = subprocess.run(
@@ -81,7 +80,7 @@ def apply_schema(build_dir: Path, *, env: dict[str, str] | None = None) -> Schem
         return SchemaApplication(
             False, f"schema not applied: {lines[-1] if lines else f'exit {completed.returncode}'}"
         )
-    return SchemaApplication(True, f"schema applied to {completed.stdout.strip() or 'store'}")
+    return SchemaApplication(True, completed.stdout.strip())
 
 
 __all__ = ["DEFAULT_DSN", "SchemaApplication", "apply_schema"]

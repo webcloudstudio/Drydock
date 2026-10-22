@@ -2,23 +2,36 @@ package persistence
 
 import (
     "context"
+    "fmt"
     "os"
-    "path/filepath"
+    "strings"
 )
 
-// OpenSession opens a configured store, or a temporary SQLite store, and applies its schema.
-// The caller owns Close. Only a temporary store created here is removed by cleanup.
-func OpenSession(ctx context.Context, dsn string, ddl string) (*Store,func(),error) {
-    directory:=""
-    if dsn=="" {
-        var err error
-        directory,err=os.MkdirTemp("", "drydock-db-")
-        if err!=nil {return nil,nil,err}
-        dsn=filepath.Join(directory,"test.db")
+// OpenCommittedSession uses autocommit; criteria own idempotent business recovery/cleanup.
+func OpenCommittedSession(ctx context.Context, dsn string) (*Store,func()error,error) {
+    configured:=os.Getenv("DATABASE_URL")
+    if configured=="" {configured=os.Getenv("DATABASE_PATH")}
+    if configured=="" {configured="data/app.db"}
+    if dsn!="" && dsn!=configured {return nil,nil,fmt.Errorf("acceptance must use configured store")}
+    if !strings.HasPrefix(configured,"postgres://") && !strings.HasPrefix(configured,"postgresql://") {
+        if _,err:=os.Stat(strings.TrimPrefix(configured,"sqlite://"));err!=nil {return nil,nil,fmt.Errorf("persistence store missing; rebuild DATABASE step")}
     }
-    cleanup:=func(){if directory!="" {os.RemoveAll(directory)}}
-    store,err:=OpenDatabase(ctx,dsn)
-    if err!=nil {cleanup();return nil,nil,err}
-    if err=store.ApplySchema(ctx,ddl);err!=nil {store.Close();cleanup();return nil,nil,err}
-    return store,func(){store.Close();cleanup()},nil
+    store,err:=OpenDatabase(ctx,configured)
+    if err!=nil {return nil,nil,err}
+    return store,store.Close,nil
+}
+
+// OpenSession pins feature operations to one rollback transaction in the provisioned store.
+// Defer cleanup and fail the criterion if it returns an error.
+func OpenSession(ctx context.Context, dsn string) (*Store,func()error,error) {
+    store,closeStore,err:=OpenCommittedSession(ctx,dsn)
+    if err!=nil {return nil,nil,err}
+    rollback,err:=store.BeginRollback(ctx)
+    if err!=nil {closeStore();return nil,nil,err}
+    return store,func()error{
+        err:=rollback()
+        closeErr:=closeStore()
+        if err!=nil {return err}
+        return closeErr
+    },nil
 }

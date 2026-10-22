@@ -10,6 +10,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-22: DATABASE builds record runtime table-count and catalog verification in
+  `evidence/persistence-verification.json`, backed by generated `schema-verification.json`.
+  Python and Go database acceptance fixtures use the configured store in an explicit rollback
+  transaction; normal application operations retain autocommit. Criteria no longer receive a
+  fresh database or automatic schema application. Missing or incompatible stores fail validation;
+  committed HTTP, subprocess and durability checks use owned records and idempotent recovery.
+  `plan verify` rejects recognized criterion DSN overrides and schema provisioning calls.
+
 - 2026-10-22: `--plan-override-model <model>` runs the plan stage on its own model.
   `drydock plan` uses it in place of `--model` and the configured default. `drydock uat` passes it
   to every `drydock plan` step while the other steps use `--model`, so a model can be measured on
@@ -98,6 +106,9 @@ command surface and Typed Specification contract are unstable and may change bet
   since non-build calls run with tools disabled, and state a no-stray-text rule instead.
 
 ### Fixed
+
+- 2026-10-22: Build progress reports each story's persisted state, including implemented-only
+  stories, and Blueprint naming validation accepts the standard `VERIFICATION.md` release gate.
 
 - 2026-10-22: `drydock plan` refuses a `DATABASE.md` access pattern whose `Input:` field is not a
   column of the table its operation reaches, naming the table's columns. The generated repository

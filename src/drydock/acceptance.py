@@ -2486,10 +2486,22 @@ def run_programmatic_acceptance(
     }
     from drydock.database_apply import apply_schema
 
-    # Criteria drive the application, which never creates schema itself. A failure here surfaces
-    # in the criteria that touch the store; the DATABASE step already refused a schema it could
-    # not apply.
-    apply_schema(build_dir, env=env)
+    application = apply_schema(build_dir, env=env, verify_only=True)
+    if application is not None and not application.applied:
+        return tuple(
+            AcceptanceRunResult(
+                check_id=check.check_id,
+                source=check.source,
+                intent=check.intent,
+                passed=False,
+                return_code=1,
+                stdout="",
+                stderr=application.detail,
+                error="persistence verification failed: " + application.detail,
+                binding=check.binding,
+            )
+            for check in checks
+        )
     limit_mb = get_sandbox_mem_limit_mb()
     preexec = child_limits(limit_mb)
     packages = _foundation_packages()

@@ -45,6 +45,7 @@ from drydock.acceptance import (
     syntax_defect,
     unresolved_globals,
 )
+from drydock.acceptance_store import store_setup_defects
 from drydock.database_contract import (
     database_contract_defects,
     declared_owners,
@@ -252,6 +253,8 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
             continue
         for check in checks:
             checked_criteria += 1
+            for reason in store_setup_defects(check.code):
+                defects.append(Defect(path.name, check.check_id, "acceptance-store", reason))
             if captures_without_reporting(check.code):
                 # Advisory for the same reason as a re-typed expectation: the criterion runs and
                 # judges correctly, so refusing the Blueprint over it would be wrong. What it

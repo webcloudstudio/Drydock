@@ -3793,6 +3793,7 @@ def test_no_file_delta_is_advisory_when_acceptance_passes(tmp_path):
     )
 
     assert result.steps[0].status == "built"
+    assert result.steps[0].state == "closed/implemented"
     assert _state(target_dir, "foundation") == "closed/implemented"
     assert _finding(target_dir, "foundation") == PREPASSED_FINDING
     assert any("no files changed (advisory)" in message for message in messages)
@@ -4440,6 +4441,7 @@ def test_a_gate_that_cannot_run_never_charges_the_product(tmp_path):
     )
 
     assert result.steps[0].status == "built"
+    assert result.steps[0].state == "closed/implemented"
     assert _state(target_dir, "foundation") == "closed/implemented"
 
 
@@ -4456,6 +4458,7 @@ def test_an_ungoverned_story_is_implemented_not_verified_when_a_contract_exists(
     )
 
     assert result.steps[0].status == "built"
+    assert result.steps[0].state == "closed/implemented"
     assert _state(target_dir, "foundation") == "closed/implemented"
 
 
@@ -4715,7 +4718,7 @@ def test_the_database_step_renders_the_declaration_into_executable_ddl(tmp_path:
     assert "tickets" in tables
 
 
-def test_acceptance_applies_the_schema_before_criteria_run(tmp_path: Path, monkeypatch):
+def test_acceptance_refuses_to_recreate_schema_before_criteria_run(tmp_path: Path, monkeypatch):
     from drydock.acceptance import ProgrammaticAcceptance, run_programmatic_acceptance
     from drydock.database_emit import write_persistence_package
 
@@ -4754,7 +4757,9 @@ def test_acceptance_applies_the_schema_before_criteria_run(tmp_path: Path, monke
         (check,), build_dir=build_dir, target_dir=tmp_path, blueprint_dir=blueprint_dir
     )
 
-    assert result.passed, result.stderr
+    assert not result.passed
+    assert "store missing" in result.error
+    assert not (build_dir / "data/app.db").exists()
 
 
 def test_persistence_exists_before_the_database_step_runs(tmp_path: Path, monkeypatch):
@@ -4933,3 +4938,12 @@ def test_postgres_without_connection_stops_before_model(tmp_path, isolated_confi
 
     with pytest.raises(SpecificationError, match="postgres_dsn"):
         build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+
+def test_grouped_story_results_match_their_individual_governed_states(tmp_path):
+    target, build = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    _governed(target, stages={"foundation": (sys.executable, "-c", "raise SystemExit(0)")})
+    result = build_target("Demo", target, build_dir=build, runner=make_runner())
+    states = {step.block_id: step.state for step in result.steps}
+    assert states == {"foundation": "closed/verified", "service": "closed/implemented"}
+    assert all(state == _state(target, name) for name, state in states.items())

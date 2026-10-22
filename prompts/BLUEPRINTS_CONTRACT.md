@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261021 V25
+version: 20261022 V26
 ---
 
 ## Overview
@@ -14,6 +14,8 @@ project is, what it must do, and how it is built.
 ---
 
 ## Specification File Types
+
+`VERIFICATION.md` is the standard optional release-verification Blueprint, with a FEATURE header and the terminal full-suite acceptance gate.
 
 | File | Purpose | Required |
 |------|---------|----------|
@@ -537,7 +539,7 @@ and no execution order. A snippet that reads a name another snippet bound raises
 every run — it reports UNVERIFIED rather than failing the build, which means it verifies nothing
 and buys nothing. Each snippet imports what it uses and binds every name it reads.
 
-**Every check creates the state it depends on.** A check starts from an empty application. Before
+**Every check creates the state it depends on.** A check starts from the existing provisioned application store. Before
 the action under test, it creates every row, file, or record that its input refers to and that a
 source rule requires to exist. A check that loads a transaction for account `A` first loads account
 `A`. Without that setup, a correct product rejects the input: an expected success fails, and an
@@ -957,3 +959,24 @@ finding is written into the named file, resolving the matching `## Open Question
 **Feature specifications:** all feature purpose, status, triggers, sequences, routes, reads,
 writes, acceptance criteria, and guardrails belong in individual `FEATURE-*.md` files. README,
 METADATA, and generated files do not contain feature specifications.
+
+## Acceptance persistence lifecycle
+
+**Acceptance store lifecycle.** The DATABASE step provisions and verifies the configured store
+once. Criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary database, apply DDL,
+or assume an empty store. Database criteria use `with db_session() as db:` (Go:
+`OpenSession(ctx, "")` with checked deferred cleanup) and pass that same database into feature
+operations. Setup, behavior and assertions run inside one transaction; the shipped fixture always
+rolls it back. Application operations outside that scope remain autocommitted. Never commit,
+close the owned connection, or open another connection inside the rollback scope.
+
+HTTP, CLI/subprocess, background-work and commit/restart criteria use committed behavior instead.
+Use `persistence.testing.committed_session()` (Go: `OpenCommittedSession(ctx, "")`) for
+setup/readback/cleanup on the configured store; this helper closes connections, not business records.
+Each owns a stable criterion-specific identifier, reconciles only its own residue before setup,
+asserts setup success, checks only owned records, and uses `try/finally` (Go: checked `defer`) for
+cleanup through supported product interfaces. Cleanup failure fails the criterion; retries must
+work even when prior cleanup never ran. Immutable ledger records remain identified or receive
+supported reversal entries; never delete history or reset a shared store. Include independent
+commit/reconnect durability coverage. Database acceptance must not be replaced by a project test
+count: runtime catalog and row-count evidence proves provisioning, feature criteria prove behavior.
