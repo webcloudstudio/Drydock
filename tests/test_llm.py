@@ -20,6 +20,15 @@ from drydock.llm import LlmResult, LlmStats, failure_detail, run_prompt
 from drydock.prompt_assembly import PromptAssembly, lines_part, part
 
 
+@pytest.fixture(autouse=True)
+def isolated_provider_home(tmp_path, monkeypatch):
+    """Keep adapter tests away from real subscription credentials and user configuration."""
+    provider_home = tmp_path / "provider-home"
+    provider_home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: provider_home))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+
+
 class FakeStdin(io.StringIO):
     def close(self) -> None:
         self.seek(0)

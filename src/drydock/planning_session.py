@@ -91,6 +91,7 @@ from drydock.database_schema import (
     DATABASE_COMPACT_BLOCK,
     compact_declaration,
     merge_schema,
+    merge_seeded_schema,
     seed_blueprint,
 )
 from drydock.decisions import (
@@ -5075,13 +5076,11 @@ def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[
 def _blueprint_tranche(score: PlanScore, size: int = _PLAN_BLUEPRINT_BATCH_SIZE) -> tuple[str, ...]:
     """The exact Stage 2 filenames the next model call is authorized to emit.
 
-    ``DATABASE.md`` is authored in one step, alone: a batch ends before it, and it is the whole
-    batch when it comes due. Every later Feature is authored against the frozen declaration.
+    Freeze the database before authoring any Feature, regardless of topology text order.
     """
-    names = tuple(item.filename for item in score.missing[:size])
-    if DATABASE_BLOCK not in names:
-        return names
-    return names[: names.index(DATABASE_BLOCK)] or (DATABASE_BLOCK,)
+    if any(item.filename == DATABASE_BLOCK for item in score.missing):
+        return (DATABASE_BLOCK,)
+    return tuple(item.filename for item in score.missing[:size])
 
 
 def _render_ledger(
@@ -5439,13 +5438,12 @@ def _continue_short_plan(
             if name in pass_damaged:
                 continue
             if name == DATABASE_BLOCK:
-                # The authored declaration is kept as written; a seeded table it dropped is
-                # appended, so a source-declared table is never paraphrased away.
-                merged = merge_schema(body, database_seed) if database_seed.strip() else body
-                # A declaration Build cannot parse is refused at the batch that wrote it. Accepted
-                # here, it would be checked only after every later batch, and repaired from the
-                # bare defect text without the authoring contract in view.
-                database_defects = database_contract_defects(merged)
+                # Preserve source schema contracts before freezing the database.
+                try:
+                    merged = merge_seeded_schema(body, database_seed)
+                    database_defects = database_contract_defects(merged)
+                except SpecificationError as exc:
+                    database_defects = (str(exc),)
                 if database_defects:
                     rejection = f"{name} does not parse: " + "; ".join(database_defects)
                     break

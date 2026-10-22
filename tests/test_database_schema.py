@@ -10,6 +10,7 @@ from drydock.database_schema import (
     DATABASE_BLOCK,
     declared_table_names,
     merge_schema,
+    merge_seeded_schema,
     seed_blueprint,
     strip_examples,
     table_sections,
@@ -159,3 +160,32 @@ def test_the_seed_refuses_an_input_declaring_a_type_sqlite_cannot_build():
 
 def test_strip_examples_leaves_a_document_without_markers_untouched():
     assert strip_examples(BASE) == BASE
+
+
+def test_seed_merge_restores_columns_and_composite_constraints():
+    from drydock.database_contract import sqlite_schema_tables
+
+    seed = BASE.replace("## Guardrails", "- UNIQUE (id, path)\n- INDEX (path, id)\n\n## Guardrails")
+    authored = BASE.replace("| path | TEXT | location |\n", "")
+    merged = merge_seeded_schema(authored, seed)
+
+    assert sqlite_schema_tables(merged) == sqlite_schema_tables(seed)
+    assert merge_seeded_schema(merged, seed) == merged
+
+
+@pytest.mark.parametrize("replacement", ["INTEGER", "TEXT NOT NULL", "TEXT UNIQUE"])
+def test_seed_merge_refuses_a_changed_source_column(replacement):
+    authored = BASE.replace("| path | TEXT |", f"| path | {replacement} |")
+
+    with pytest.raises(SpecificationError, match="local_checkouts.path changes its seeded"):
+        merge_seeded_schema(authored, BASE)
+
+
+def test_compact_preserves_the_executable_database_contract():
+    from drydock.database_contract import sqlite_schema_tables
+    from drydock.database_schema import compact_declaration
+
+    source = BASE + "\n<!-- Authoring guidance. -->\n"
+    compact = compact_declaration(source)
+    assert "Authoring guidance" not in compact
+    assert sqlite_schema_tables(compact) == sqlite_schema_tables(source)

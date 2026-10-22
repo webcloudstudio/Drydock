@@ -4793,10 +4793,9 @@ def test_the_persistence_declaration_is_one_batch_and_later_batches_cite_its_com
     seed = "# DATABASE: X\n\n<!-- SEED_GUIDANCE_MARKER -->\n\n## Access Patterns\n\n## Schemas\n"
     authored = _DATABASE.replace("## Access Patterns\n\n", "## Access Patterns\n\n<!-- note -->\n")
     responses = {
-        1: {"FEATURE-1.md": "# FEATURE: 1"},
-        2: {"DATABASE.md": authored},
-        3: {"DATABASE.md": authored + "\n## `extra`\n", "FEATURE-2.md": "# FEATURE: 2"},
-        4: {"FEATURE-2.md": "# FEATURE: 2", "FEATURE-3.md": "# FEATURE: 3"},
+        1: {"DATABASE.md": authored},
+        2: {"DATABASE.md": authored + "\n## `extra`\n", "FEATURE-1.md": "# FEATURE: 1"},
+        3: {f"FEATURE-{n}.md": f"# FEATURE: {n}" for n in range(1, 4)},
     }
     prompts: list[str] = []
 
@@ -4828,13 +4827,13 @@ def test_the_persistence_declaration_is_one_batch_and_later_batches_cite_its_com
     def current(prompt: str) -> str:
         return prompt.split("## Ledger")[-1].split("Current batch")[1].split("Deferred")[0]
 
-    assert len(prompts) == 4
-    assert "story-1 -> FEATURE-1.md" in current(prompts[0])
-    assert "DATABASE.md" not in current(prompts[0])
-    assert "SEED_GUIDANCE_MARKER" not in prompts[0]
-    assert "database -> DATABASE.md" in current(prompts[1])
-    assert "FEATURE-2.md" not in current(prompts[1])
-    assert "SEED_GUIDANCE_MARKER" in prompts[1]
+    assert len(prompts) == 3
+    assert "database -> DATABASE.md" in current(prompts[0])
+    assert "FEATURE-1.md" not in current(prompts[0])
+    assert "SEED_GUIDANCE_MARKER" in prompts[0]
+    assert "story-1 -> FEATURE-1.md" in current(prompts[1])
+    assert "DATABASE.md" not in current(prompts[1])
+    assert "SEED_GUIDANCE_MARKER" not in prompts[1]
     assert 'filename="DATABASE_compact.md"' in prompts[2]
     assert "<!-- note -->" not in prompts[2]
     assert "### FEATURE-X-001" in prompts[2]
@@ -7115,3 +7114,96 @@ def test_schedule_full_implementation_wins_over_compact_context(tmp_path, isolat
         for text in ("A specification\n", "B implementation " * 400, "rule " * 2000)
     )
     assert computation.blocks[0].size_tokens == expected
+
+
+@pytest.mark.parametrize("bad_first", [False, True])
+def test_complete_plan_preserves_seed_and_freezes_crud_contract(tmp_path, bad_first):
+    from drydock.database_contract import parse_database_contract, sqlite_schema_tables
+    from drydock.plan_verify import verify
+
+    target = _make_target(tmp_path)
+    seed = "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n| value | TEXT | |\n\n- UNIQUE (key, value)\n"
+    (target / "blueprint/sources/DATABASE.md").write_text(seed)
+    declaration = """## story foundation
+summary: Initialize Python.
+type: foundational
+kind: capability
+phase: 1
+implements: ARCHITECTURE.md
+stack: python.md
+acceptance: yes
+
+## story database
+summary: Provide settings persistence.
+type: foundational
+kind: capability
+phase: 1
+implements: DATABASE.md
+stack: sqlite.md
+depends: foundation
+acceptance: yes
+
+## story status
+summary: Build the status command with settings CRUD.
+type: service
+kind: capability
+phase: 2
+implements: FEATURE-Status.md
+depends: database
+acceptance: yes
+"""
+    patterns = []
+    citations = []
+    for index, verb in enumerate(("get", "list", "create", "update", "delete"), 1):
+        access = "read" if verb in {"get", "list"} else "write"
+        identifier = f"FEATURE-X-{index:03}"
+        patterns.append(
+            _ACCESS_PATTERNS
+            .split("## Access Patterns\n\n", 1)[1]
+            .replace("FEATURE-X-001", identifier)
+            .replace("FEATURE-Example.md", "FEATURE-Status.md")
+            .replace("settings.get", f"settings.{verb}")
+            .replace("| Access | read |", f"| Access | {access} |")
+        )
+        citations.append(
+            f"- `{identifier}` — {access}: {verb} setting - supplies: `key` - returns: `key`"
+        )
+    database = _SPEC_HEADER.format(ftype="DATABASE", name="Example", ac="None.")
+    database = database.replace(
+        "## Programmatic Acceptance",
+        "## Access Patterns\n\n"
+        + "\n".join(patterns)
+        + "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n\n"
+        + "## Programmatic Acceptance",
+    )
+    feature = _feature_block().replace(
+        "## Programmatic Acceptance",
+        "## Database Interface\n\n" + "\n".join(citations) + "\n\n## Programmatic Acceptance",
+    )
+
+    def block(body):
+        return f"=== BEGIN ARTIFACT DATABASE.md ===\n{body}\n=== END ARTIFACT ===\n"
+
+    replies = [_declaration_block(declaration)]
+    if bad_first:
+        replies.append(block(database.replace("| key | TEXT PK |", "| key | INTEGER PK |")))
+    replies.extend([block(database), _arch_block() + feature])
+    runner = _sequence_runner(*replies)
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == len(replies)
+    assert {name for item in result.plan.blocks for name in item.fields.get("implements", ())} == {
+        "ARCHITECTURE.md",
+        "DATABASE.md",
+        "FEATURE-Status.md",
+    }
+    saved = (target / "blueprint/DATABASE.md").read_text()
+    table = sqlite_schema_tables(saved)[0]
+    assert [column.name for column in table.columns] == ["key", "value"]
+    assert table.constraints[0].columns == ("key", "value")
+    assert len(parse_database_contract(saved).patterns) == 5
+    assert verify("Example", target).ok
+    assert "DATABASE_compact.md" in runner.calls[-1]
+    if bad_first:
+        assert "changes its seeded type or constraints" in runner.calls[2]

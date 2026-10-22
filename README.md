@@ -343,7 +343,10 @@ Go tests execute through `drydock_go.run_test` inside Blueprint ACs; skipped or 
 not pass. Persistence implementation files are described by each language's contract.
 
 Python and Go both generate persistence from `DATABASE.md`, using bundled SQLite/PostgreSQL
-libraries. Go requires an existing `go.mod`, downloaded pinned drivers, CGO and a C compiler for
+libraries. Plan authors the database declaration separately and freezes it before dependent
+Features consume its compact contract. Missing source-declared tables, columns, and composite
+constraints are restored; changed source column contracts are rejected during planning.
+Go requires an existing `go.mod`, downloaded pinned drivers, CGO and a C compiler for
 SQLite. Drydock links the generated `persistence/` module and applies schema through its command.
 Select exactly one language and zero or one database engine. Existing-table migrations and
 automatic per-criterion code tracing remain separate capabilities.

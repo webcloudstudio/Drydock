@@ -1,7 +1,8 @@
 # Complete and validate the planner one step at a time
 
 Date: 2026-10-21
-Status: Planned; implementation and live validation remain outstanding.
+Status: Implementation in progress; deterministic whole-plan cases pass; live validation awaits
+explicit approval to transmit the saved inputs to Anthropic through the subscription CLI.
 Baseline: `9b83447`, with diagnosis bookkeeping through `ba3d7be`.
 
 ## Outcome
@@ -106,12 +107,45 @@ the result, verification command, commit, and next action. Record failures as fa
 ## Completion checklist
 
 - [x] Persist conversation decisions and this implementation plan.
-- [ ] Review and complete the contract introduced by `9b83447`.
-- [ ] Pass deterministic integration tests for the whole plan command.
+- [x] Review and complete the contract introduced by `9b83447`.
+- [x] Pass deterministic integration tests for the whole plan command.
 - [ ] Pass the live plan step from preserved inputs outside `uat/`.
 - [ ] Pass plan verification against that output.
 - [ ] Validate build separately against the accepted plan.
 - [ ] Complete required checks, documentation, and local commits.
 - [ ] Ed runs clean UAT; record its result without overstating earlier evidence.
 
-Next action: review `9b83447` and the complete plan entry point before editing implementation.
+## Execution record
+
+2026-10-21:
+
+- Reviewed `9b83447`. Found that authored column types could override seeded types and composite
+  source constraints could disappear. Added parsed-column comparison and restoration of omitted
+  composite constraints before the database freezes; rejection enters the existing retry path.
+- Added whole-command CRUD integration cases through Manifest creation and `plan verify`, with
+  a valid response and a changed-column response followed by repair. Both pass.
+- Also found that topology text order could put a Feature before database authoring. The
+  database is now the first authoring batch; a regression test lists a Feature first and verifies
+  that database acceptance still precedes it.
+- Repository lint and formatting pass. Full regression suite is in progress.
+- Saved LayersTesting inputs and their hashes under `logs/planner-step-validation/inputs/`.
+  The development workspace is separate from published UAT. No published evidence was changed.
+- Live attempt 01 encountered sandbox transport retries and was interrupted before model output.
+  Auto-review rejected network escalation because transmission of these files to Anthropic
+  requires explicit consent. Asked Ed that precise question; do not retry until answered.
+- Local receipts, prompts, and test output live under `logs/planner-step-validation/` (untracked).
+
+Next action: finish regression verification; after transmission approval, run the complete plan
+step on the saved inputs, then verify and build separately. Do not rerun import, analyze, or UAT.
+
+2026-10-22 continuation:
+
+- Ed authorized execution: "yes please - execute the plan", then asked "continue - did the
+  last command finish?" The live transmission approval remains unanswered.
+- Final focused regression run: 385 passed in 310.67 seconds across database schema, planning,
+  plan verification, and persistence generation tests.
+- Full suite stopped after 2,107 passed, one skipped, and three adapter-test failures. Those tests
+  attempted to copy real user authentication into the persistent Codex home. Added a private
+  temporary provider home to `tests/test_llm.py`; all 96 adapter tests pass. The full suite is
+  rerunning with that isolation fix.
+- No runtime adapter behavior was changed. No live plan, verify, or build success is claimed.

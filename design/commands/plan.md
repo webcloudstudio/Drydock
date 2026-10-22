@@ -127,13 +127,19 @@ Renumbering and `Depends On` refactors do not dirty a story; `--overwrite` disca
 
 **Persistence (`DATABASE.md`)**
 
+`2026-10-22` · **Database authoring preserves the source schema.** Before accepting the
+database batch, Plan restores missing seeded tables, columns, and composite `UNIQUE`/`INDEX`
+constraints. A changed seeded column type or constraint rejects the batch with the column named
+in retry feedback. Comparison uses parsed column contracts, not Markdown spelling. *Broken:*
+the database freezes with a schema different from its source and later Features cannot repair it.
+
 `2026-09-17` · **Persistence is decided, never asked, and never forgiven.** A `DatabaseDefect`
 goes to artifact repair; if the budget runs out the run fails and writes nothing. This is the one
 exception to the governing rule, because only persistence is fully decidable from the artifacts.
 
 `2026-10-21` · **`DATABASE.md` is authored in one step and frozen.** Every file a batch may emit is
-named in its Current batch. `DATABASE.md` is a batch of its own when it comes due — a batch ends
-before it — and starts from the seed of the Rigging template plus every source-declared table. The
+named in its Current batch. `DATABASE.md` is the first authoring batch, regardless of topology
+text order, and starts from the seed of the Rigging template plus every source-declared table. The
 authored declaration is kept as written, and a seeded table it dropped is appended
 (`merge_schema(body, seed)`). Once accepted it is frozen like every Blueprint; a later batch that
 changes it is refused whole. Later batches receive `DATABASE_compact.md`: the declaration with
@@ -222,7 +228,8 @@ without loading `seed_accounts.csv`; the product correctly answered `4` (absent)
 2. **Seed** `DATABASE.md` from Rigging plus `sources/DATABASE.md`; the seed is context for its
    own batch, not an accepted artifact.
 3. **Stage 2** — author Blueprints in batches of 5 against an Accepted / Current / Deferred /
-   Defective ledger. `DATABASE.md` is a batch alone, accepted only when it parses, then frozen
+   Defective ledger. `DATABASE.md` is the first batch, accepted only when it parses and preserves
+   the source schema, then frozen
    and supplied to later batches as `DATABASE_compact.md`. Accepted artifacts freeze.
 4. **Normalize** — deterministic fixes in order: unterminated and fused AC blocks, access values,
    owners, database interfaces, standalone imports, factory bindings, foundation imports,

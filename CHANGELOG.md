@@ -32,6 +32,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-22: `drydock plan` preserves source schema contracts when accepting its database
+  batch. The database is authored first regardless of topology text order, so no Feature is
+  frozen against an absent declaration. Missing seeded tables, columns, and composite
+  `UNIQUE`/`INDEX` constraints are restored;
+  a changed seeded column type or constraint rejects that batch with a precise retry reason.
+  Whole-command regression coverage exercises CRUD declarations through Manifest creation and
+  `plan verify`, including recovery from a changed source column.
+
 - 2026-10-21: `drydock plan` authors `DATABASE.md` in one Stage 2 step instead of keeping it open
   as a cumulative, append-only declaration. Every file a batch may emit is named in its Current
   batch. `DATABASE.md` is a batch of its own when it comes due (a batch ends before it), starts from

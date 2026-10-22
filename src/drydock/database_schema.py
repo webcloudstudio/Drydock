@@ -279,6 +279,34 @@ def compact_declaration(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", compact).strip() + "\n"
 
 
+def merge_seeded_schema(authored: str, seed: str) -> str:
+    """Restore omitted source declarations and refuse changes to their column contracts."""
+    merged = merge_schema(authored, seed)
+    required = sqlite_schema_tables(seed)
+    actual = {table.name: table for table in sqlite_schema_tables(merged)}
+    for table in required:
+        columns = {column.name: column for column in actual[table.name].columns}
+        for column in table.columns:
+            if columns[column.name] != column:
+                raise SpecificationError(
+                    f"DATABASE.md: {table.name}.{column.name} changes its seeded type or "
+                    "constraints; preserve the source declaration"
+                )
+        missing = [item for item in table.constraints if item not in actual[table.name].constraints]
+        if missing:
+            # Keep source constraints even when the model omits their bullets.
+            section = next(item for item in table_sections(merged) if item.name == table.name)
+            bullets = "\n".join(f"- {item.kind} ({', '.join(item.columns)})" for item in missing)
+            merged = (
+                merged[: section.end].rstrip("\n")
+                + "\n\n"
+                + bullets
+                + "\n\n"
+                + merged[section.end :]
+            )
+    return merged
+
+
 def strip_examples(template: str) -> str:
     """Remove the template's illustrative blocks, which are guidance and not declarations."""
     return _EXAMPLE_RE.sub("", template)
