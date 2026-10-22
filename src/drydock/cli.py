@@ -670,6 +670,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
             model=get_model(getattr(args, "model", None)),
             provider=_llm_provider(args),
             effort=get_effort(getattr(args, "effort", None)),
+            plan_model=args.plan_override_model,
             max_build_passes=args.max_build_passes,
             repair_attempts=repair_attempts,
             runner=make_streaming_runner(step_console),
@@ -3524,6 +3525,13 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     _add_bound_arguments(p_uat)
+    p_uat.add_argument(
+        "--plan-override-model",
+        dest="plan_override_model",
+        default=None,
+        metavar="<model>",
+        help="Model for every 'drydock plan' step; every other step uses --model.",
+    )
     p_uat.add_argument(
         "--quiet",
         action="store_true",

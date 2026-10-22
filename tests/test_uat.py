@@ -2211,3 +2211,36 @@ def test_a_complete_target_still_passes_with_an_empty_frontier_at_pass_zero(
     assert result.status == "passed"
     assert not result.degraded
     assert any(label.endswith("initial-unstarted-check") for label in seen)
+
+
+def test_plan_model_replaces_the_model_for_plan_steps_only(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    models: list[tuple[str, str]] = []
+
+    def fake_runner(argv, cwd, env, output_dir, label):
+        models.append((argv[3], env["DRYDOCK_MODEL"]))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), 0, 10, str(stdout), str(stderr), label, str(cwd))
+
+    _, results = run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="haiku-model",
+        provider="claude",
+        plan_model="sonnet-model",
+        runner=fake_runner,
+        now=datetime(2026, 8, 7, tzinfo=UTC),
+        to_step=6,
+    )
+
+    assert ("plan", "sonnet-model") in models
+    assert all(model == "sonnet-model" for verb, model in models if verb == "plan")
+    assert all(model == "haiku-model" for verb, model in models if verb != "plan")
+    assert results[0].environment["plan_model"] == "sonnet-model"
+    assert results[0].environment["requested_model"] == "haiku-model"

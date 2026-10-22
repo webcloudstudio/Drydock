@@ -1295,6 +1295,7 @@ def run_fixture(
     model: str,
     provider: str,
     effort: str | None = None,
+    plan_model: str | None = None,
     max_build_passes: int = DEFAULT_MAX_BUILD_PASSES,
     repair_attempts: int = DEFAULT_REPAIR_ATTEMPTS,
     runner: Runner = subprocess_runner,
@@ -1313,6 +1314,9 @@ def run_fixture(
     mid-stage if necessary. Every step up to and including it runs exactly as an unbounded run
     would; the ones after it simply never execute, so the result is graded the same way any run
     that stopped there would be — no separate status or verdict path.
+
+    ``plan_model`` replaces ``model`` for every ``drydock plan`` child command; every other
+    command runs on ``model``.
     """
     started = time.monotonic()
     started_at = datetime.now(UTC)
@@ -1389,7 +1393,10 @@ def run_fixture(
         if on_event:
             on_event(f"{fixture.name}: {label}")
         before = len(execution_ids(llm_records))
-        result = runner(argv, workspace, env, command_logs, f"{sequence:02d}-{label}")
+        child_env = (
+            {**env, "DRYDOCK_MODEL": plan_model} if plan_model and parts[0] == "plan" else env
+        )
+        result = runner(argv, workspace, child_env, command_logs, f"{sequence:02d}-{label}")
         result = replace(result, llm_executions=execution_ids(llm_records)[before:])
         commands.append(result)
         if required and result.returncode != 0:
@@ -1737,6 +1744,7 @@ def run_fixture(
     _collect_evidence(case_root, workspace, evidence_dir, commands)
     elapsed_ms = round((time.monotonic() - started) * 1000)
     environment = _environment(model, provider, effort)
+    environment["plan_model"] = plan_model or ""
     records, _ = read_records(workspace / "logs" / "llm.jsonl")
     environment["model"] = ", ".join(executed_models(records))
     environment["started_at"] = started_at.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
@@ -1949,6 +1957,7 @@ def run_uat(
     model: str,
     provider: str,
     effort: str | None = None,
+    plan_model: str | None = None,
     max_build_passes: int = DEFAULT_MAX_BUILD_PASSES,
     repair_attempts: int = DEFAULT_REPAIR_ATTEMPTS,
     runner: Runner = subprocess_runner,
@@ -1996,6 +2005,7 @@ def run_uat(
                 model=model,
                 provider=provider,
                 effort=effort,
+                plan_model=plan_model,
                 max_build_passes=max_build_passes,
                 repair_attempts=repair_attempts,
                 runner=runner,

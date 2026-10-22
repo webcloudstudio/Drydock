@@ -29,7 +29,8 @@ Three properties define done (UAT gate model, 2026-08-14):
 
 ```text
 drydock uat [<Project>] [--uat-root <path>] [--max-build-passes <n>] [--repair-attempts <n>]
-            [--repair-stall-limit <n>] [--capture-output-limit <mb>] [--quiet]
+            [--repair-stall-limit <n>] [--capture-output-limit <mb>]
+            [--plan-override-model <model>] [--quiet]
 drydock uat status <Project> [--run <dir>]
 drydock uat resume <Project> [--from <stage>]
 drydock uat report [<Project>]
@@ -45,6 +46,12 @@ this command (AGENTS.md §UAT Evidence).
 `2026-10-14` · **Resume selects the recorded run and its failed stage together.** `drydock uat resume <Project>` selects the recorded run and its failed lifecycle stage as one recovery point. Losing the stage would send the selected run to `init`, which the runner rejects before recovery.
 
 `2026-10-14` · **The CLI resolves run and entry stage before the runner starts.** The CLI resolves the selected run and entry stage before invoking the UAT runner. An explicit `--from <stage>` or `--from-step <n>` supplies the entry stage; otherwise `resume` infers it from the recorded failed command.
+
+`2026-10-22` · **`--plan-override-model` runs the plan stage on its own model.** Every
+`drydock plan` child command (create, verify, repair) receives the given model as `DRYDOCK_MODEL`;
+every other command uses `--model`. `result.json` records it as `environment.plan_model`, and the
+executed-model list names both. Cost when broken: a model too weak to plan cannot be measured on
+build at all.
 
 `2026-10-14` · **Receipts name the executed model, not the requested one.** Run receipts and kit indexes name models from LLM execution records, preferring the provider-reported model. `requested_model` remains provenance; using it as the run model misattributes routed and mixed-model runs. Report rebuilds derive the model from preserved evidence without rerunning UAT.
 

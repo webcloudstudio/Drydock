@@ -394,6 +394,11 @@ class TestHelpAndVersion:
         assert "--from-step" in out
         assert "Resume" in out or "resume" in out
 
+    def test_uat_accepts_a_plan_override_model(self):
+        parser = _build_parser()
+        ns = parser.parse_args(["uat", "ReadingList", "--plan-override-model", "claude-sonnet-5-5"])
+        assert ns.plan_override_model == "claude-sonnet-5-5"
+
     def test_uat_stage_accepts_verify(self):
         parser = _build_parser()
         ns = parser.parse_args(["uat", "ReadingList", "--stage", "verify"])
