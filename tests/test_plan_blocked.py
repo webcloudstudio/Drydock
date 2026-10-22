@@ -107,3 +107,67 @@ def test_rendered_and_declaration_carry_the_finding():
     assert "Drydock check: refuted —" in rendered
     declaration = parse_blocked(_BODY)[1].declaration()
     assert "Reason:" in declaration and "Required action:" in declaration
+
+
+_REPORT = "FEATURE-Report-Balances.md"
+
+
+def test_a_block_whose_required_action_names_no_decision_is_refuted():
+    # LayersTesting 20261022.165023 batch 6, verbatim Required action.
+    entry = _check(
+        BlockedBlueprint(
+            _REPORT,
+            "insufficient-specification",
+            "Stage 1 frozen TOPOLOGY.md, story report-balances",
+            details="- The access patterns define the DTO shapes, which is enough to author the spec.",
+            required_action=(
+                "- None needed to unblock: the Blueprint can be authored against "
+                "FEATURE-LEDGER-002 and FEATURE-LEDGER-010."
+            ),
+        ),
+        tranche={_REPORT},
+    )
+
+    assert "names no decision" in entry.refutation
+
+
+def test_a_claim_resting_on_accepted_blueprints_is_refuted_for_any_type():
+    # LayersTesting 20261022.165023 batch 4.
+    generic = _check(
+        BlockedBlueprint(
+            _REPORT,
+            "other",
+            'Plan continuation ledger, Current batch entry "report-balances -> '
+            'FEATURE-Report-Balances.md"',
+            details="- I cannot verify from this context that every Provides line is consistent.",
+            required_action="- Re-issue this batch with the accepted artifacts' Provides lines.",
+        ),
+        tranche={_REPORT},
+    )
+    named = _check(
+        BlockedBlueprint(
+            _REPORT,
+            "conflict",
+            "TOPOLOGY.md",
+            details="- FEATURE-Login.md may expose a different shape.",
+        ),
+        tranche={_REPORT},
+    )
+
+    assert "accepted Blueprints" in generic.refutation
+    assert "`FEATURE-Login.md` is an accepted Blueprint" in named.refutation
+
+
+def test_insufficient_specification_is_refuted_only_when_unattended():
+    entry = BlockedBlueprint(
+        _REPORT,
+        "insufficient-specification",
+        "TOPOLOGY.md",
+        details="- The aggregation layer is not stated.",
+        required_action="- Decide where aggregation lives.",
+    )
+
+    assert _check(entry, tranche={_REPORT}).stands
+    assert "unattended" in _check(entry, tranche={_REPORT}, unattended=True).refutation
+    conflict = BlockedBlueprint(_REPORT, "conflict", "TOPOLOGY.md", details="- x")
+    assert _check(conflict, tranche={_REPORT}, unattended=True).stands

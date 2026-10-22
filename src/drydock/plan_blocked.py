@@ -25,6 +25,18 @@ _FIELD_RE = re.compile(r"^(Blueprint|Error type|Cited input):\s*(.*)$", re.IGNOR
 _SECTION_RE = re.compile(r"^(Details|Required action):\s*(.*)$", re.IGNORECASE)
 _FILENAME_RE = re.compile(r"[\w./\-]+\.[A-Za-z0-9]+")
 _FROZEN_INPUTS = ("TOPOLOGY.md", "DECISIONS.json")
+#: A Required action that names no decision: the batch resolved its own block.
+_SELF_RESOLVED_RE = re.compile(
+    r"^\W*(none|no (action|decision|change)s?|nothing|n/a)\b|\bcan be authored\b", re.IGNORECASE
+)
+#: A claim that rests on accepted Blueprints, which batches do not receive by design.
+_ACCEPTED_CLAIM_RE = re.compile(
+    r"\baccepted\s+(artifact|blueprint|file|spec)s?\b|\bcan(not|'t)\s+verify\b", re.IGNORECASE
+)
+_ACCEPTED_BY_DESIGN = (
+    "Batches do not receive accepted Blueprints by design. Author against the frozen "
+    "topology's `Provides` lines and record the assumption under `## Questions`."
+)
 
 
 @dataclass(frozen=True)
@@ -149,16 +161,20 @@ def check_blocked(
     present: Collection[str],
     accepted: Collection[str],
     tranche: Collection[str],
+    unattended: bool = False,
 ) -> tuple[BlockedBlueprint, ...]:
     """Set ``refutation`` on each entry the batch's own context disproves; leave the rest standing.
 
     Only facts Drydock holds are checked: whether the Blueprint is in the Current batch, whether
-    the error type and citation are well formed, and whether a cited "missing" input is present
-    or is an accepted Blueprint, which batches do not receive by design.
+    the error type and citation are well formed, whether the entry's own Required action names
+    no decision, whether the claim rests on accepted Blueprints, which batches do not receive by
+    design, and whether a cited "missing" input is present. Unattended, no Commander answers an
+    ``insufficient-specification`` block, so the batch chooses (LayersTesting ``20261022.165023``).
     """
     checked: list[BlockedBlueprint] = []
     for entry in entries:
-        checked.append(replace(entry, refutation=_refutation(entry, present, accepted, tranche)))
+        refutation = _refutation(entry, present, accepted, tranche, unattended)
+        checked.append(replace(entry, refutation=refutation))
     return tuple(checked)
 
 
@@ -167,6 +183,7 @@ def _refutation(
     present: Collection[str],
     accepted: Collection[str],
     tranche: Collection[str],
+    unattended: bool,
 ) -> str:
     if entry.blueprint not in tranche:
         return f"`{entry.blueprint}` is not in the Current batch; block only Current-batch files."
@@ -179,15 +196,30 @@ def _refutation(
     cited = _cited_file(entry.cited)
     if not cited:
         return "the entry cites no input file. Name the file and section that block the Blueprint."
+    if _SELF_RESOLVED_RE.search(entry.required_action):
+        return (
+            "your Required action names no decision, so nothing blocks the Blueprint. Author it "
+            "with the choice you stated."
+        )
+    claim = f"{entry.details}\n{entry.required_action}"
+    named = next((name for name in sorted(accepted) if name in claim), "")
+    if named or _ACCEPTED_CLAIM_RE.search(claim):
+        subject = (
+            f"`{named}` is an accepted Blueprint."
+            if named
+            else "The claim rests on accepted Blueprints."
+        )
+        return f"{subject} {_ACCEPTED_BY_DESIGN}"
+    if unattended and entry.error_type == "insufficient-specification":
+        return (
+            "no Commander answers during an unattended run. Choose the narrowest behavior "
+            "consistent with the cited inputs and author the Blueprint on it."
+        )
     if entry.error_type != "missing-input":
         return ""
     held = _matches(cited, accepted)
     if held:
-        return (
-            f"`{held}` is an accepted Blueprint. Batches do not receive accepted Blueprints by "
-            "design. Author against the frozen topology's `Provides` lines and record the "
-            "assumption under `## Questions`."
-        )
+        return f"`{held}` is an accepted Blueprint. {_ACCEPTED_BY_DESIGN}"
     supplied = _matches(cited, present)
     if supplied:
         return f"`{supplied}` is in this context. Read it and author the Blueprint."

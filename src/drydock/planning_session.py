@@ -5301,6 +5301,7 @@ def _continue_short_plan(
     attempts: int,
     initial_execution_id: str | None,
     claude_session: ClaudePromptSession | None = None,
+    unattended: bool = False,
 ) -> _Continuation:
     """Resume a response that stopped short of its own declaration.
 
@@ -5441,6 +5442,7 @@ def _continue_short_plan(
                 present=context_inputs(assembly),
                 accepted=score.accepted,
                 tranche=tranche,
+                unattended=unattended,
             ) or (
                 BlockedBlueprint(
                     "", "", "", refutation=f"`{BLOCKED_BLOCK}` held no `Blueprint:` entry."
@@ -6506,6 +6508,7 @@ def create_plan(
                     attempts=continue_attempts,
                     initial_execution_id=exec_id,
                     claude_session=claude_session,
+                    unattended=unattended,
                 )
                 latest_plan_score = continuation.score
                 if continuation.passes:

@@ -67,8 +67,11 @@ the reason attached, Haiku refused three more times, and plan stalled at 11 / 30
 `Blueprint:`, `Error type:` (`missing-input`, `conflict`, `insufficient-specification`, `other`),
 `Cited input:`, `Details:`, and `Required action:`. The batch still emits the Blueprints it can.
 `plan_blocked.check_blocked` refutes an entry that names a file outside the Current batch, uses an
-unknown type, cites no file, or claims missing an input that is in the batch's prompt or is an
-accepted Blueprint. Every entry prints as `[plan-score][plan] blocked: <file> · <type> · cited
+unknown type, cites no file, has a `Required action` that names no decision ("None needed", "can
+be authored"), rests on accepted Blueprints (names one, "accepted artifacts", "cannot verify"),
+claims missing an input that is in the batch's prompt, or, under `DRYDOCK_UAT=1`, is typed
+`insufficient-specification`: no Commander answers, so the batch chooses the narrowest behavior
+consistent with its inputs. Every entry prints as `[plan-score][plan] blocked: <file> · <type> · cited
 <input> · stands|refuted — <finding>`. The next batch's ledger carries `Prior run error type:` and
 `Prior run error details:` with each entry and Drydock's finding. A prose reply without artifacts
 is fed back as `unstructured-refusal` with up to 600 characters of the reply. A block does not
@@ -78,7 +81,9 @@ records it as a deferred product decision and exits `2`. Any other standing bloc
 `plan generation stalled` record with the last rejection. *Broken:* LayersTesting
 `20261022.121722` refused 14 of 27 batches in prose, mostly with false claims (no tools, sources
 absent while present). At batch size 1 the retry could not change the ask, and plan stalled at
-25 / 27.
+25 / 27. LayersTesting `20261022.165023` stood two unchecked Haiku blocks, an `other` that
+asked for accepted Blueprints and an `insufficient-specification` whose Required action read
+"None needed to unblock", and deferred at 11 / 28 with exit `2`.
 
 `2026-10-21` · **Stray text is discarded, never fatal.** Up to three lines of plain narration
 before, between, or after intact artifact blocks are dropped and printed as `[plan] stray text

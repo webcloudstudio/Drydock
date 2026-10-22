@@ -42,6 +42,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-22: `drydock plan` Stage 2 refutes three more kinds of `BLUEPRINT_BLOCKED.txt` claim, so
+  a block that names no real decision is answered in the retry instead of standing and deferring to
+  the Commander (exit `2`): an entry whose `Required action` names no decision ("None needed", "can be
+  authored"); a claim of any error type that rests on accepted Blueprints, which batches do not
+  receive; and, under `DRYDOCK_UAT=1`, any `insufficient-specification` entry, which the batch
+  resolves by choosing the narrowest behavior consistent with its inputs. Unattended, only a
+  standing `conflict` defers.
+
 - 2026-10-22: Structured Analyze, Plan, score, and prompt-review calls declare an optional output
   format at `llm.run_prompt`. Narrow cleanup removes bounded wrapper narration and JSON fences,
   preserves raw evidence, and records every removal. JSON consumers reject duplicate keys and
