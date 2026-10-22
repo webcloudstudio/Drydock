@@ -66,6 +66,8 @@ class TestLoadPrompt:
         assert "### Root Cause" in prompt.body
         assert "design/uat_diagnoses.md" in prompt.body
         assert "write no other file" in prompt.body
+        assert "A failed run always" in prompt.body
+        assert "Reporting Defect" in prompt.body
 
     def test_missing_required_field_raises(self, tmp_path, monkeypatch):
         (tmp_path / "broken.md").write_text("---\nname: broken\n---\nbody", encoding="utf-8")

@@ -2,7 +2,7 @@
 name: ddk-uat
 description: Diagnose a failed, degraded, or contradictory Drydock UAT run by loading and executing Drydock's current versioned UAT diagnostic prompt. Invoke with "/ddk-uat TARGET" or "$ddk-uat TARGET" after a UAT run, including after clearing conversation context.
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Drydock UAT
@@ -25,4 +25,5 @@ future diagnoses without duplicating policy in this skill.
 4. Execute the loaded prompt as the governing instructions, substituting the invocation argument
    for the Target or run requested by the operator.
 5. Return only the output required by that prompt. Do not edit files or rerun the UAT unless the
-   loaded prompt explicitly changes those boundaries.
+   loaded prompt explicitly changes those boundaries. The prompt's diagnosis ledger,
+   `design/uat_diagnoses.md`, is such a boundary: every failed run diagnosed is recorded there.

@@ -10,7 +10,9 @@ fixes already sit in the implicated area.
 | Fix | The commit that addressed the cause; written by the session that commits the fix |
 | Outcome | `open` no fix · `unverified` fix committed, no later run has reached past the stage · `fixed` a run on or after the fix passed the stage · `recurred` the same cause stopped a run after the fix |
 
-Rules: append a row per diagnosis, and change only the Fix and Outcome of earlier rows. A fix
+Rules: every diagnosed failed run gets at least one row (`undetermined:` when no cause is
+established). Each root cause, and each contributing, independent, or reporting defect, gets its
+own row, and Stopped marks the non-terminal kinds. Change only the Fix and Outcome of earlier rows. A fix
 in an Area that already holds a `recurred` row revises or removes that fix, not layers beside it.
 
 | Date | Kit | Run | Commit | Model | Stopped | Root cause | Area | Fix | Outcome |

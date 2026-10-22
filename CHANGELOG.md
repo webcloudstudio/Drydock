@@ -74,6 +74,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-22: `/ddk-uat` records every failed run it diagnoses. `uat_diagnostic.md` V5 appends a
+  `design/uat_diagnoses.md` row even when no cause is established (`undetermined:` plus the missing
+  evidence), and a row for each contributing, independent, or reporting defect, marked in Stopped.
+  The report closes with the rows appended and the Outcomes changed.
 - 2026-10-22: `drydock plan` Stage 2 refutes three more kinds of `BLUEPRINT_BLOCKED.txt` claim, so
   a block that names no real decision is answered in the retry instead of standing and deferring to
   the Commander (exit `2`): an entry whose `Required action` names no decision ("None needed", "can be

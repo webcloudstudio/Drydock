@@ -1,7 +1,7 @@
 ---
 name: uat_diagnostic
 description: Diagnose the latest Drydock UAT run without changing the repository or generated run evidence.
-version: 20261021 V4
+version: 20261022 V5
 intent: Find the latest requested UAT run, establish its actual failure chain from preserved evidence, separate the root cause from its consequences, and recommend bounded corrective work in a form an operator can read at a glance.
 command: operator diagnostic prompt
 output: A five-section diagnosis of about 250 words in single-line bullets, ending in a prioritized action list.
@@ -53,8 +53,14 @@ header defines the columns and Outcome values.
    commit, passed the stage that row stopped at; `recurred` when the same cause stopped this run.
 3. Before recommending a change, read the fixes already committed in that Area. When one recurred,
    recommend revising or removing it rather than adding a layer beside it, and name its commit.
-4. Append one row per root cause of this run, with Fix empty and Outcome `open`. Change nothing else
-   in earlier rows, and write no other file. Commit the ledger alone.
+4. Append one row per root cause of this run, with Fix empty and Outcome `open`. A failed run always
+   gets at least one row: when the evidence does not establish a cause, the row's Root cause reads
+   `undetermined:` followed by the missing evidence.
+5. Append one row for each other defect the diagnosis names: every contributing cause, independent
+   defect, and Reporting Defect. Mark it in Stopped, after the stage, as `contributing`,
+   `independent`, or `reporting`; give it Fix empty and Outcome `open`. A consequence of a recorded
+   cause gets no row.
+6. Change nothing else in earlier rows, and write no other file. Commit the ledger alone.
 
 ## Audit Specification Integrity First
 
@@ -121,6 +127,7 @@ was sufficient.
 A numbered list, most important first. Each item is a bold one-line change plus the source location,
 with at most two indented sub-bullets: how it is verified, and its risk when the risk is not low.
 Name any committed fix the action revises or removes.
-Close with one line stating what to fix now and what to defer, and one line stating any condition
-that must hold before the UAT is rerun. Do not make changes as part of this diagnostic beyond the
+Close with one line stating what to fix now and what to defer, one line stating any condition
+that must hold before the UAT is rerun, and one line naming the ledger rows appended and the
+earlier Outcomes changed. Do not make changes as part of this diagnostic beyond the
 ledger.
