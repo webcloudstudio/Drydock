@@ -117,6 +117,41 @@ the result, verification command, commit, and next action. Record failures as fa
 
 ## Execution record
 
+### Output-shape follow-up — 2026-10-22
+
+Ed requested explicit shape enforcement for each main output format, including detection of
+extra strings, while retaining the approved removal of stray narration. This is a proposed
+follow-up; runtime behavior has not changed in this session.
+
+Inspection found existing bounded narration cleanup in `artifact_blocks.py` and the planner,
+with tests. Enforcement is not uniform: `plan_shape.OutputContract.forbid_outside_text` is
+declared but not consumed by `check_contract`; `score._parse_json` extracts a JSON object from
+surrounding text. Existing checks therefore do not establish a universal full-response contract.
+
+Recommended implementation sequence:
+
+1. Inventory each model-output consumer and declare its required/optional artifacts, allowed
+   names, body grammar, and existing recovery policy. Include Analyze, Plan topology and
+   Blueprints, database declarations, acceptance repairs, and JSON score/review payloads.
+2. Share envelope parsing and require every non-whitespace span to be accounted for as accepted
+   content, recorded normalization, or a defect. Retain bounded narration removal around intact
+   artifacts. Do not strip arbitrary lines inside artifact bodies or guess missing content.
+3. Validate bodies with their format-specific parsers: JSON types/keys and duplicate keys;
+   Markdown front matter, required sections and table columns; database and AC grammars.
+   Free-prose sections remain prose: structural checks cannot prove their semantic correctness.
+4. Gate downstream acceptance on the normalized artifact passing its declared contract. Preserve
+   raw output, cleanup diagnostics, and rejected candidates as evidence. Preserve independently
+   valid artifacts according to existing recovery policy; never label a partial set complete.
+5. Feed exact defects to the existing bounded repair path for the affected artifact or step.
+   Test extra prefix/suffix/interstitial text, duplicate/unknown/missing artifacts and keys,
+   malformed boundaries, truncation, and invalid body structure with fake runners.
+
+Start with the shared artifact envelope and planner shape checker, then extend one output family
+at a time. Do not replace all formats with JSON or introduce a new workflow engine. The guarantee
+is that accepted output conforms to the declared grammar, not that every model reply conforms or
+that structurally valid content is correct. Live plan → verify → build validation remains pending
+the separately requested transmission approval.
+
 2026-10-21:
 
 - Reviewed `9b83447`. Found that authored column types could override seeded types and composite

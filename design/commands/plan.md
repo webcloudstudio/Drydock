@@ -294,6 +294,11 @@ exist.
 
 ## Open Actions
 
+- `2026-10-22` · Enforce declared output shape consistently while retaining reported removal of
+  bounded stray narration. Audit the unused `OutputContract.forbid_outside_text` option and
+  validate artifact bodies before acceptance. The proposed scope and test cases are persisted in
+  [planner_step_validation_plan.md](../planner_step_validation_plan.md#output-shape-follow-up--2026-10-22).
+
 - `2026-10-22` · Implementation is committed in `48764ad`; 385 focused regressions pass.
   Validate the complete live plan command from saved inputs, then verify and build separately.
   Network execution awaits explicit approval to transmit the saved inputs to Anthropic through
