@@ -4716,6 +4716,165 @@ def test_a_batch_answered_without_artifacts_is_retried_as_one_blueprint():
     assert "Previous attempt rejected" not in prompts[2]
 
 
+def _blocked_block(blueprint: str, error_type: str, cited: str) -> str:
+    return (
+        "=== BEGIN ARTIFACT BLUEPRINT_BLOCKED.txt ===\n"
+        f"Blueprint: {blueprint}\nError type: {error_type}\nCited input: {cited}\n"
+        "Details:\n- The cited input does not settle it.\n"
+        "Required action:\n- Decide it.\n=== END ARTIFACT ===\n"
+    )
+
+
+def test_a_refuted_block_is_answered_in_the_next_batch_and_the_rest_is_kept():
+    """LayersTesting ``20261022.121722``: batch 27 said the sources were absent; they were in
+    the prompt. A reported block is checked against the batch's own context, the authored
+    Blueprints beside it are accepted, and the next batch reads the refutation."""
+    from drydock.prompt_assembly import PromptAssembly, PromptPart
+
+    declared = (
+        PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
+        PlannedStory(story_id="story-2", implements="FEATURE-2.md"),
+    )
+    context = PromptAssembly(
+        parts=(
+            PromptPart(
+                "sources/INSTRUCTIONS.md",
+                "CONTEXT\n",
+                kind="file",
+                path=Path("/t/blueprint/sources/INSTRUCTIONS.md"),
+            ),
+        )
+    )
+    replies = [
+        "=== BEGIN ARTIFACT FEATURE-1.md ===\n# FEATURE: 1\n=== END ARTIFACT ===\n"
+        + _blocked_block("FEATURE-2.md", "missing-input", "sources/INSTRUCTIONS.md"),
+        "=== BEGIN ARTIFACT FEATURE-2.md ===\n# FEATURE: 2\n=== END ARTIFACT ===\n",
+    ]
+    prompts: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        return FakeRun(text=replies[len(prompts) - 1], execution_id=f"exec-{len(prompts)}")
+
+    progress: list[str] = []
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Two frozen stories."},
+        blocks_text="=== TOPOLOGY.md ===\nTwo frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=context,
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="claude",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=progress.append,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    assert result.score.is_complete
+    assert result.blocked == ()
+    ledger = prompts[1].split("## Ledger")[-1]
+    assert "Prior run error type: missing-input" in ledger
+    assert "Drydock check: refuted — `sources/INSTRUCTIONS.md` is in this context" in ledger
+    assert "Previous attempt rejected" not in ledger
+    assert any(
+        line.startswith("[plan-score][plan] blocked: FEATURE-2.md · missing-input")
+        and "refuted" in line
+        for line in progress
+    )
+
+
+def test_a_standing_block_is_retried_with_its_details_and_reported_when_retries_run_out():
+    """A block is not a stop: each retry carries the prior error, without shrinking the batch.
+    Only when the allowance runs out does the standing block leave the loop for the caller."""
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (
+        PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
+        PlannedStory(story_id="story-2", implements="FEATURE-2.md"),
+    )
+    prompts: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        return FakeRun(
+            text=_blocked_block("FEATURE-1.md", "conflict", "COMPASS.md"),
+            execution_id=f"exec-{len(prompts)}",
+        )
+
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Two frozen stories."},
+        blocks_text="=== TOPOLOGY.md ===\nTwo frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="claude",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=None,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    assert len(prompts) == 3
+    assert "Current batch (2)" in prompts[1]
+    assert "Prior run error type: conflict" in prompts[1]
+    assert "- FEATURE-1.md · conflict · cited COMPASS.md" in prompts[1]
+    assert "The cited input does not settle it." in prompts[1]
+    assert [entry.blueprint for entry in result.blocked] == ["FEATURE-1.md"]
+    assert "blocked 1 Current batch Blueprint(s)" in result.last_rejection
+
+
+def test_a_prose_refusal_is_fed_back_as_an_unstructured_refusal():
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (PlannedStory(story_id="story-1", implements="FEATURE-1.md"),)
+    replies = [
+        "I can't emit this. Say the word and I'll emit it.",
+        "=== BEGIN ARTIFACT FEATURE-1.md ===\n# FEATURE: 1\n=== END ARTIFACT ===\n",
+    ]
+    prompts: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        return FakeRun(text=replies[len(prompts) - 1], execution_id=f"exec-{len(prompts)}")
+
+    ps._continue_short_plan(
+        {"TOPOLOGY.md": "One frozen story."},
+        blocks_text="=== TOPOLOGY.md ===\nOne frozen story.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="claude",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=None,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    ledger = prompts[1].split("## Ledger")[-1]
+    assert "Prior run error type: unstructured-refusal" in ledger
+    assert "Your prose reply: \"I can't emit this. Say the word" in ledger
+    assert "`BLUEPRINT_BLOCKED.txt`" in ledger
+
+
+def test_plan_continue_prompt_defines_the_blocked_blueprint_report():
+    from drydock.prompts import load_prompt
+
+    prompt = load_prompt("plan_continue").body
+
+    assert "=== BEGIN ARTIFACT BLUEPRINT_BLOCKED.txt ===" in prompt
+    assert "Error type: {missing-input|conflict|insufficient-specification|other}" in prompt
+    assert "Prior run error type" in prompt
+
+
 def test_plan_continue_prompt_routes_questions_into_the_blueprint():
     from drydock.prompts import load_prompt
 
@@ -4870,6 +5029,44 @@ def test_continuation_stops_when_no_progress_and_reports_the_score(tmp_path):
     # All-or-nothing survives: a stall writes nothing.
     assert not (target_dir / "MANIFEST.md").is_file()
     assert not (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+
+
+def test_a_product_block_standing_after_retries_defers_to_the_commander(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(
+        _short_output(),
+        "=== BEGIN ARTIFACT BLUEPRINT_BLOCKED.txt ===\n"
+        "Blueprint: FEATURE-Status.md\nError type: conflict\nCited input: COMPASS.md\n"
+        "Details:\n- COMPASS.md requires exit 1 where the source requires exit 2.\n"
+        "Required action:\n- Choose the exit status.\n=== END ARTIFACT ===\n",
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert isinstance(result, PlanDeferredResult)
+    assert "Blueprint: FEATURE-Status.md" in result.detail
+    assert "Choose the exit status." in result.error_record.recovery
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
+def test_a_standing_missing_input_block_is_named_in_the_stall_record(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(
+        _short_output(),
+        "=== BEGIN ARTIFACT BLUEPRINT_BLOCKED.txt ===\n"
+        "Blueprint: FEATURE-Status.md\nError type: missing-input\n"
+        "Cited input: sources/GRADER.md\nDetails:\n- The grader is not supplied.\n"
+        "=== END ARTIFACT ===\n",
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    detail = excinfo.value.record.detail
+    assert excinfo.value.record.classification == "plan generation stalled"
+    assert "last rejection: the response blocked 1 Current batch Blueprint(s)" in detail
+    assert "- FEATURE-Status.md · missing-input · cited sources/GRADER.md" in detail
+    assert not (target_dir / "MANIFEST.md").is_file()
 
 
 def test_continuation_stops_at_the_attempt_cap(tmp_path):

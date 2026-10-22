@@ -122,6 +122,14 @@ from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.override import PLAN_DECISION, WaivedGate, dedupe_waivers, stamp_override
 from drydock.paths import get_prompts_root, get_spec_template_dir
+from drydock.plan_blocked import (
+    BLOCKED_BLOCK,
+    PRODUCT_ERROR_TYPES,
+    BlockedBlueprint,
+    check_blocked,
+    context_inputs,
+    parse_blocked,
+)
 from drydock.plan_graph import PlanComputation, PlannedStory, specification_names
 from drydock.plan_score import ArtifactDefect, PlanScore, score_plan
 from drydock.plan_shape import OutputContract, ShapeDefect, check_contract, render_defects
@@ -195,6 +203,7 @@ _RESERVED_BLOCKS = frozenset({
     TOPOLOGY_BLOCK,
     "PLAN_CREATE_BLOCKED.txt",
     "PLAN_CREATE_ERROR.txt",
+    BLOCKED_BLOCK,
     DECISIONS_BLOCK,
 })
 # Artifacts a planning agent may never emit. ``ACCEPTANCE.json`` is the Commander's governed
@@ -2173,6 +2182,7 @@ def conform_specs(
             llm=llm_provider,
             model=model or prompt.model,
             command_name="plan conform",
+            output_format="artifacts",
             parameters={"spec": spec.filename, "prompt": _CONFORM_PROMPT_NAME},
             log_dir=log_dir,
             target=target,
@@ -2182,7 +2192,6 @@ def conform_specs(
         if not result.ok or not result.text.strip():
             warnings.append(
                 f"conform: {spec.filename} — LLM produced no output; spec left unchanged"
-            output_format="artifacts",
             )
             continue
         conformed = _extract_conformed_spec(result.text, spec.filename)
@@ -4729,6 +4738,7 @@ def _repair_declaration(
             "llm": llm_provider,
             "model": model,
             "command_name": "plan",
+            "output_format": "artifacts",
             "sub_command": "declaration repair",
             "parameters": {
                 "target": target,
@@ -4738,7 +4748,6 @@ def _repair_declaration(
             "log_dir": log_dir,
             "target": target,
             "on_text": on_text,
-            "output_format": "artifacts",
             "prompt_assembly": assembly,
         }
         if claude_session is not None:
@@ -5090,6 +5099,8 @@ def _render_ledger(
     *,
     rejected: Sequence[ArtifactDefect] = (),
     previous: str = "",
+    prior_type: str = "",
+    prior_details: Sequence[str] = (),
     size: int = _PLAN_BLUEPRINT_BATCH_SIZE,
 ) -> str:
     """Render one bounded Stage 2 work queue, never the complete remaining topology.
@@ -5098,6 +5109,8 @@ def _render_ledger(
     accumulator, so the score never saw them; they are listed as defective with their reason.
     ``previous`` is why the last batch was refused whole. Without it a retry is byte-identical to
     the call that failed and draws the same answer (LayersTesting ``20261021.173113``).
+    ``prior_type`` and ``prior_details`` carry the last batch's error in a fixed shape: its
+    reported blocks with Drydock's check on each, or the prose it sent instead of artifacts.
     ``size`` bounds the Current batch; a refused batch is retried smaller.
     """
     tranche = frozenset(_blueprint_tranche(score, size))
@@ -5131,13 +5144,19 @@ def _render_ledger(
         lines.append("")
         lines.append(f"Defective ({len(invalid)}) — emit these again, in full, corrected:")
         lines.extend(f"  {item.rendered()}" for item in invalid)
-    if previous:
+    if previous or prior_type:
         lines.append("")
-        lines.append(f"Previous attempt rejected — {previous}")
+        if previous:
+            lines.append(f"Previous attempt rejected — {previous}")
+        if prior_type:
+            lines.append(f"Prior run error type: {prior_type}")
+            lines.append("Prior run error details:")
+            lines.extend(f"  {line}" for line in prior_details)
         lines.append(
-            "  Nobody answers questions during planning and you have no tools. Do not ask, refuse, "
-            "or explain. Record each open point under the affected Blueprint's `## Questions`, "
-            "then emit the Current batch."
+            "  Nobody answers questions during planning and you have no tools. Do not ask or "
+            "offer options. Resolve each refuted point as Drydock states it, record each open "
+            "point under the affected Blueprint's `## Questions`, report a Blueprint you "
+            f"genuinely cannot author in `{BLOCKED_BLOCK}`, and emit the rest of the Current batch."
         )
     return "\n".join(lines)
 
@@ -5214,6 +5233,29 @@ class _Continuation:
     score: PlanScore
     execution_ids: tuple[str, ...]
     passes: int
+    blocked: tuple[BlockedBlueprint, ...] = ()
+    last_rejection: str = ""
+
+
+def _blocked_reporter(
+    on_text: Callable[[str], None] | None, entries: Sequence[BlockedBlueprint]
+) -> None:
+    """Print each reported block and Drydock's finding through the always-shown score channel."""
+    if on_text is None:
+        return
+    for entry in entries:
+        verdict = "stands" if entry.stands else f"refuted — {entry.refutation}"
+        on_text(
+            f"[plan-score][plan] blocked: {entry.blueprint or '(none)'} · "
+            f"{entry.error_type or '(no type)'} · cited {entry.cited or '(nothing)'} · {verdict}\n"
+        )
+
+
+def _blocked_rejection(entries: Sequence[BlockedBlueprint]) -> tuple[str, tuple[str, ...]]:
+    """The ``Prior run error type`` and ``details`` lines a batch's blocks give the next batch."""
+    types = list(dict.fromkeys(entry.error_type or "blocked" for entry in entries))
+    details = tuple(line for entry in entries for line in entry.rendered())
+    return ", ".join(types), details
 
 
 def _seed_database_blueprint(
@@ -5289,6 +5331,9 @@ def _continue_short_plan(
     passes = 0
     stalled_passes = 0
     previous_rejection = ""
+    prior_type = ""
+    prior_details: tuple[str, ...] = ()
+    last_blocked: tuple[BlockedBlueprint, ...] = ()
     batch_size = _PLAN_BLUEPRINT_BATCH_SIZE
     database_rejected: tuple[ArtifactDefect, ...] = ()
 
@@ -5302,7 +5347,12 @@ def _continue_short_plan(
             on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
         tranche = frozenset(_blueprint_tranche(score, batch_size))
         ledger = _render_ledger(
-            score, rejected=database_rejected, previous=previous_rejection, size=batch_size
+            score,
+            rejected=database_rejected,
+            previous=previous_rejection,
+            prior_type=prior_type,
+            prior_details=prior_details,
+            size=batch_size,
         )
         assembly = _continuation_assembly(
             prompt_assembly,
@@ -5316,6 +5366,7 @@ def _continue_short_plan(
             "llm": llm_provider,
             "model": model,
             "command_name": "plan",
+            "output_format": "artifacts",
             "sub_command": f"blueprint batch {passes}",
             "parameters": {
                 "target": target,
@@ -5366,13 +5417,50 @@ def _continue_short_plan(
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
                         result="Rejected: malformed artifact response",
-            "output_format": "artifacts",
                     )
                 )
             previous_rejection = (
                 "the response broke the artifact delimiter contract; emit every file between "
                 "its own BEGIN and END delimiters"
             )
+            prior_type, prior_details = "", ()
+            last_blocked = ()
+            stalled_passes += 1
+            if stalled_passes >= attempts:
+                break
+            continue
+
+        # A Blueprint the batch could not author is reported, checked against this batch's own
+        # context, and fed to the retry with Drydock's finding. A refuted claim is answered, so
+        # the retry differs from the call that failed (LayersTesting ``20261022.121722``).
+        blocked_body = pass_blocks.pop(BLOCKED_BLOCK, None)
+        blocked: tuple[BlockedBlueprint, ...] = ()
+        if blocked_body is not None:
+            blocked = check_blocked(
+                parse_blocked(blocked_body),
+                present=context_inputs(assembly),
+                accepted=score.accepted,
+                tranche=tranche,
+            ) or (
+                BlockedBlueprint(
+                    "", "", "", refutation=f"`{BLOCKED_BLOCK}` held no `Blueprint:` entry."
+                ),
+            )
+            _blocked_reporter(on_text, blocked)
+        last_blocked = tuple(entry for entry in blocked if entry.stands)
+        prior_type, prior_details = _blocked_rejection(blocked) if blocked else ("", ())
+        if blocked and not pass_blocks:
+            previous_rejection = (
+                f"the response blocked {len(blocked)} Current batch Blueprint(s) and authored none"
+            )
+            if on_text is not None:
+                on_text(
+                    "[plan-score]"
+                    + score.progress_block(
+                        stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
+                        result=f"Rejected: {len(blocked)} Blueprint(s) blocked",
+                    )
+                )
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
@@ -5384,9 +5472,16 @@ def _continue_short_plan(
             # is accepted. The reason tells the next call what happened and what to do instead.
             batch_size = 1
             previous_rejection = (
-                f'the response held no artifact blocks. It began: "{excerpt}" '
-                "The Current batch is now one Blueprint. Emit that one artifact and nothing "
-                "else; Drydock asks for the rest in later batches."
+                "the response held no artifact blocks. The Current batch is now one Blueprint. "
+                "Emit that one artifact and nothing else; Drydock asks for the rest in later "
+                "batches."
+            )
+            prior_type = "unstructured-refusal"
+            prior_details = (
+                f'Your prose reply: "{_response_excerpt(result.text, 600)}"',
+                "Drydock reads only artifact blocks; prose reaches no one. Report a Blueprint "
+                f"you cannot author in `{BLOCKED_BLOCK}` with its error type, cited input, and "
+                "details.",
             )
             if on_text is not None:
                 # Routed through the always-printed score channel: the console hides other
@@ -5515,6 +5610,8 @@ def _continue_short_plan(
         score=score,
         execution_ids=tuple(item for item in execution_ids if item),
         passes=passes,
+        blocked=() if score.is_complete else last_blocked,
+        last_rejection=previous_rejection,
     )
 
 
@@ -6033,6 +6130,7 @@ def create_plan(
         "llm": llm_provider,
         "model": model or prompt.model,
         "command_name": "plan",
+        "output_format": "artifacts",
         "sub_command": "topology",
         "parameters": {"target": target, "blueprint": str(blueprint_dir)},
         "log_dir": log_dir,
@@ -6130,7 +6228,6 @@ def create_plan(
     contributing_execution_ids: tuple[str, ...] = ()
     waiver_execution_id: str | None = None
     waiver_warning: str | None = None
-        "output_format": "artifacts",
     # The delimited response the blocks came from, tracked so the pairing check measures the
     # right text. Write-call recovery produces blocks with no delimiters, and clears this.
     blocks_text: str | None = result.text
@@ -6235,6 +6332,7 @@ def create_plan(
                     "llm": llm_provider,
                     "model": model or prompt.model,
                     "command_name": "plan",
+                    "output_format": "artifacts",
                     "sub_command": "conflict challenge",
                     "parameters": {
                         "target": target,
@@ -6332,7 +6430,6 @@ def create_plan(
                     declaration=deferred_block,
                     initial_declaration=initial_declaration,
                     initial_execution_id=exec_id,
-                    "output_format": "artifacts",
                     challenge_execution_id=challenge_exec_id,
                     log_dir=log_dir,
                 )
@@ -6417,7 +6514,38 @@ def create_plan(
                     # The merged set spans several responses and can no longer be pairing-checked
                     # as one text; each contribution was already checked against its own response.
                     blocks_text = None
+                    product_blocks = tuple(
+                        entry
+                        for entry in continuation.blocked
+                        if entry.error_type in PRODUCT_ERROR_TYPES
+                    )
+                    if not continuation.score.is_complete and product_blocks:
+                        # Retries ran out with a checked, unrefuted product block standing: the
+                        # Commander decides, as with a Stage 1 Error Mode conflict.
+                        declaration = "\n\n".join(entry.declaration() for entry in product_blocks)
+                        record = _record_confirmed_plan_conflict(
+                            target_dir,
+                            target=target,
+                            declaration=declaration,
+                            initial_declaration=declaration,
+                            initial_execution_id=(continuation.execution_ids or (exec_id,))[-1],
+                            challenge_execution_id=None,
+                            log_dir=log_dir,
+                        )
+                        return PlanDeferredResult(
+                            target_dir=target_dir,
+                            error_record=record,
+                            errors_path=errors_path(target_dir),
+                            detail=record.detail,
+                            initial_execution_id=record.execution_id or None,
+                            plan_mode=plan_mode,
+                        )
                     if not continuation.score.is_complete:
+                        blocked_lines = "".join(
+                            f"  {line}\n"
+                            for entry in continuation.blocked
+                            for line in entry.rendered()
+                        )
                         raise _record_plan_error(
                             target_dir,
                             classification="plan generation stalled",
@@ -6425,7 +6553,13 @@ def create_plan(
                                 "Blueprint generation stalled after TOPOLOGY.md was accepted "
                                 f"and frozen, after {continuation.passes} Stage 2 pass(es).\n"
                                 f"{continuation.score.render()}\n"
-                                "  execution ids: "
+                                + (
+                                    f"  last rejection: {continuation.last_rejection}\n"
+                                    if continuation.last_rejection
+                                    else ""
+                                )
+                                + (f"  blocked:\n{blocked_lines}" if blocked_lines else "")
+                                + "  execution ids: "
                                 + ", ".join(continuation.execution_ids)
                                 + "\n  No Blueprint or Manifest artifacts were written."
                             ),
@@ -6468,6 +6602,7 @@ def create_plan(
                         "llm": llm_provider,
                         "model": model or prompt.model,
                         "command_name": "plan",
+                        "output_format": "artifacts",
                         "sub_command": "topology repair",
                         "parameters": {
                             "target": target,
@@ -6580,6 +6715,7 @@ def create_plan(
                         "llm": llm_provider,
                         "model": model or prompt.model,
                         "command_name": "plan",
+                        "output_format": "artifacts",
                         "sub_command": "artifact repair",
                         "parameters": {
                             "target": target,
@@ -6602,7 +6738,6 @@ def create_plan(
                         )
                     try:
                         repair_result = cast(
-                        "output_format": "artifacts",
                             CompletedRun,
                             run(
                                 repair_assembly.rendered_text, target_dir, **artifact_repair_kwargs
@@ -6715,7 +6850,6 @@ def create_plan(
                 result="Manifest validated and serialized",
             )
         )
-                        "output_format": "artifacts",
 
     requirement_decisions = project_plan_requirement_decisions(
         blocks, target_dir=target_dir, build_dir=build_dir_for(target)

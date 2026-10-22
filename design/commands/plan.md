@@ -62,6 +62,24 @@ else; Drydock asks for the rest in later batches.` An accepted batch restores th
 without `--debug`. *Broken:* LayersTesting `20261021.183753` retried the same five Blueprints with
 the reason attached, Haiku refused three more times, and plan stalled at 11 / 30.
 
+`2026-10-22` · **A Blueprint a batch cannot author is reported, checked, and fed back.**
+`plan_continue.md` V4 defines `BLUEPRINT_BLOCKED.txt`: one entry per Current-batch Blueprint with
+`Blueprint:`, `Error type:` (`missing-input`, `conflict`, `insufficient-specification`, `other`),
+`Cited input:`, `Details:`, and `Required action:`. The batch still emits the Blueprints it can.
+`plan_blocked.check_blocked` refutes an entry that names a file outside the Current batch, uses an
+unknown type, cites no file, or claims missing an input that is in the batch's prompt or is an
+accepted Blueprint. Every entry prints as `[plan-score][plan] blocked: <file> · <type> · cited
+<input> · stands|refuted — <finding>`. The next batch's ledger carries `Prior run error type:` and
+`Prior run error details:` with each entry and Drydock's finding. A prose reply without artifacts
+is fed back as `unstructured-refusal` with up to 600 characters of the reply. A block does not
+stop the loop. A block-only batch counts as a stalled pass and keeps the batch size. When the
+retry allowance runs out with a standing `conflict` or `insufficient-specification` block, plan
+records it as a deferred product decision and exits `2`. Any other standing block is listed in the
+`plan generation stalled` record with the last rejection. *Broken:* LayersTesting
+`20261022.121722` refused 14 of 27 batches in prose, mostly with false claims (no tools, sources
+absent while present). At batch size 1 the retry could not change the ask, and plan stalled at
+25 / 27.
+
 `2026-10-21` · **Stray text is discarded, never fatal.** Up to three lines of plain narration
 before, between, or after intact artifact blocks are dropped and printed as `[plan] stray text
 <where> discarded: "<text>"`. Outside text shaped like content — a heading, list, table, fence,
@@ -257,7 +275,7 @@ without loading `seed_accounts.csv`; the product correctly answered `4` (absent)
 |---|---|
 | `0` | Plan written and `plan verify` clean; Manifest `approved`. `plan verify`: no defects. |
 | `1` | Plan written but unbuildable (Manifest `draft`, sub-state `unbuildable`); unrepaired `DatabaseDefect`; any operational failure. `plan verify`: defects found. `plan repair`: post-repair verification not clean. |
-| `2` | Usage error, or a declared conflict confirmed by its challenge (`PlanDeferredResult`): `ERRORS.md` records it and `PLAN CREATED` is recorded failed with detail `plan deferred`. |
+| `2` | Usage error, a declared conflict confirmed by its challenge, or a Stage 2 product block standing after the retry allowance (`PlanDeferredResult`): `ERRORS.md` records it and `PLAN CREATED` is recorded failed with detail `plan deferred`. |
 
 Every run records the `PLAN CREATED` (or `PLAN REPAIRED`) rung in project status, pass or fail.
 A failing `plan verify` condemns the standing plan rung without voiding anything.
@@ -328,8 +346,8 @@ exist.
   (for example, an exit table the source names) rather than widening the line parser.
 
 - `2026-10-21` · The Stage 2 stall block truncates the missing list (`… N more lines
-  truncated`) and does not name the refused batch or its last reply excerpt
-  (`planning_session.py`, `plan generation stalled`).
+  truncated`) (`planning_session.py`, `plan generation stalled`). *Partly closed 2026-10-22:* the
+  record now names the last rejection and any standing blocked Blueprints.
 
 ## Working Notes
 

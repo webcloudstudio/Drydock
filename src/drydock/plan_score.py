@@ -40,6 +40,7 @@ RESERVED_ARTIFACTS = frozenset({
     "DECISIONS.json",
     "PLAN_CREATE_ERROR.txt",
     "PLAN_CREATE_BLOCKED.txt",
+    "BLUEPRINT_BLOCKED.txt",
 })
 
 #: Markdown artifacts exempt from the typed ``# Kind: Name`` heading requirement.

@@ -1,7 +1,7 @@
 ---
 name: plan_continue
 description: Stage 2 Blueprint authoring instruction appended after plan_create has accepted and frozen a complete TOPOLOGY.md declaration.
-version: 20261021 V3
+version: 20261022 V4
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
 output: A bounded batch of Blueprint specification files
@@ -32,9 +32,11 @@ Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated 
 - Do not emit `DECISIONS.json`; it was captured with the topology in Stage 1.
 - Do not restate your plan, summarize progress, apologize, or explain the interruption.
 - You have no tools and nobody answers questions during planning. Never ask a question,
-  request a file, refuse, or offer options instead of emitting. Record each open point under
-  the affected Blueprint's `## Questions` and emit the batch. A response without artifacts is
+  request a file, or offer options. Record each open point under the affected Blueprint's
+  `## Questions` and emit the batch. Prose reaches no one: a response without artifacts is
   rejected and the same batch is asked again.
+- A Current-batch Blueprint you genuinely cannot author is reported in `BLUEPRINT_BLOCKED.txt`
+  (see Blocked Blueprints), and the rest of the batch is still emitted.
 - Do not emit `MANIFEST.md`; Drydock serializes it from the declaration.
 - Use exactly the same delimited block format as before, including the mandatory
   `=== END ARTIFACT ===` line for every file. The name is typed once, at the open; the
@@ -43,6 +45,31 @@ Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated 
   version is not accepted.
 - Emit each missing artifact under the exact filename the ledger names. A filename that does not
   match its declaration cannot be accepted.
+
+## Blocked Blueprints
+
+Report a Blueprint only when its inputs contradict each other, or do not define the behavior it
+must specify, and no reasonable assumption recorded under `## Questions` can bridge the gap.
+Never report: having no tools, response length, accepted Blueprints being absent from this
+context (author against the frozen topology's `Provides` lines), or an input that is present
+above. Drydock checks every claim against this context and returns its finding to the next batch
+as `Prior run error type` and `Prior run error details`. Answer each refuted claim by authoring the
+Blueprint.
+
+Emit one `BLUEPRINT_BLOCKED.txt` block after the Blueprints you did author, with one entry per
+blocked Blueprint:
+
+```text
+=== BEGIN ARTIFACT BLUEPRINT_BLOCKED.txt ===
+Blueprint: {Current-batch filename}
+Error type: {missing-input|conflict|insufficient-specification|other}
+Cited input: {exact input file and section}
+Details:
+- {what the cited input says or lacks, and why it blocks this Blueprint}
+Required action:
+- {the product decision or source correction that unblocks it}
+=== END ARTIFACT ===
+```
 
 ## Budget
 
