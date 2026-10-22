@@ -2082,6 +2082,13 @@ def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
     except Exception:
         pass
     _render_status(result)
+    from drydock.stop_condition import read_stop, render_stop
+
+    stop = read_stop(target_dir)
+    if stop is not None:
+        # Printed last, so the halt and its recovery are the final lines the operator reads.
+        print()
+        print(render_stop(stop, target))
     record_activity("status", blueprint, target)
     return 0
 
@@ -2117,6 +2124,13 @@ def cmd_status_ready(target: str) -> int:
 
     target_dir = get_target_directory() / target
     _resolve_check_target(target)
+    from drydock.stop_condition import STOP_FILENAME, read_stop
+
+    stop = read_stop(target_dir)
+    if stop is not None:
+        # A recorded halt outranks buildable work: the loop ends here, and the one line says why.
+        print(f"STOPPED: {target}  ({stop.line()}; see {STOP_FILENAME})")
+        return 1
     state, reason = execution_state(target_dir)
     ready = state == "buildable"
     if ready:
@@ -2431,7 +2445,14 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"{len(result.steps) - len(result.built()) - len(result.failed())} unchanged"
     )
     print(f"elapsed: {_elapsed_text(time.monotonic() - build_started)}")
-    if result.stalled():
+    from drydock.llm import fatal_stop
+
+    if result.stalled() and (stop := fatal_stop()) is not None:
+        # Not a stall: the provider failed fatally and no block could be sent. STOP_NOW.md and
+        # its banner follow and carry the cause and the recovery.
+        print()
+        print(f"BUILD STOPPED — {stop.kind}; {len(result.stalled_blocks)} block(s) outstanding.")
+    elif result.stalled():
         # A stalled run used to be indistinguishable from a finished Target. Name the outstanding
         # work and fail, so an unattended driver stops here instead of reporting success.
         print()
@@ -5144,6 +5165,90 @@ def _render_plan_deferred(result, *, target: str) -> str:
     return "\n".join(lines)
 
 
+#: LLM-assisted commands the stop gate leaves alone. ``uat`` manages its own run workspace's
+#: halts, and ``run`` starts the QuarterDeck, which shows a halt rather than obeying it.
+_STOP_GATE_EXEMPT = frozenset({"uat", "run"})
+
+
+def _stop_target_dir(args: argparse.Namespace) -> Path | None:
+    command = getattr(args, "command", None) or ""
+    if command in _STOP_GATE_EXEMPT:
+        return None
+    if not (_invocation_uses_llm(args) or command == "diagnose"):
+        return None
+    if command == "plan":
+        # ``plan`` carries sub-verbs in its operand slot; ``plan verify`` is deterministic.
+        try:
+            sub_verb, target = _parse_plan_args(args)
+        except UsageError:
+            return None
+        if sub_verb == "verify":
+            return None
+    else:
+        target = _log_target(args)
+    if not target:
+        return None
+    from drydock.config import get_target_directory
+
+    target_dir = get_target_directory() / target
+    return target_dir if target_dir.is_dir() else None
+
+
+def _process_stop_gate(args: argparse.Namespace) -> bool:
+    """Whether this invocation may run, given the Target's ``STOP_NOW.md``.
+
+    A command that would call a model refuses while a halt is recorded. At a terminal the
+    operator is shown the halt and may clear it; a script or a UAT child is refused, so an
+    unattended loop stops instead of spending against a provider that already failed.
+    """
+    target_dir = _stop_target_dir(args)
+    if target_dir is None:
+        return True
+    from drydock.stop_condition import clear_stop, read_stop, render_stop
+
+    stop = read_stop(target_dir)
+    if stop is None:
+        return True
+    banner = render_stop(stop, target_dir.name)
+    if sys.stdin.isatty() and sys.__stdout__ is not None and sys.__stdout__.isatty():
+        print(banner)
+        try:
+            answer = input("Clear this stop and continue? [y/N] ")
+        except EOFError:
+            answer = ""
+        if answer.strip().lower() in {"y", "yes"}:
+            clear_stop(target_dir)
+            return True
+        return False
+    print(banner, file=sys.stderr)
+    return False
+
+
+def _declare_process_stop(args: argparse.Namespace, argv: list[str] | None) -> bool:
+    """Record a fatal provider failure from this invocation as the Target's ``STOP_NOW.md``."""
+    from drydock.llm import fatal_stop
+
+    stop = fatal_stop()
+    if stop is None:
+        return False
+    target_dir = _stop_target_dir(args)
+    if target_dir is None:
+        return True
+    from drydock.stop_condition import read_stop, render_stop, write_stop
+
+    tokens = argv if argv is not None else sys.argv[1:]
+    write_stop(
+        target_dir,
+        _command_log_name(args),
+        f"{stop.kind}: {stop.message} (execution {stop.execution_id})",
+        f"{stop.recovery()}\nThen rerun: drydock {' '.join(tokens)}",
+    )
+    recorded = read_stop(target_dir)
+    if recorded is not None:
+        print(render_stop(recorded, target_dir.name), file=sys.stderr)
+    return True
+
+
 def _standoff_diagnosis(
     args,
     argv: list[str] | None,
@@ -5157,6 +5262,11 @@ def _standoff_diagnosis(
     Advisory only: any failure here is swallowed so the original error and exit code stand.
     """
     if getattr(args, "command", None) == "report":
+        return
+    from drydock.llm import fatal_stop
+
+    if fatal_stop() is not None:
+        # The provider just failed fatally; a diagnosis call would hit the same wall.
         return
     try:
         from drydock.config import get_diagnose_enabled, get_model, get_workspace
@@ -5556,9 +5666,12 @@ def main(argv: list[str] | None = None) -> None:
             if not _is_machine_readable_query(args):
                 print(f"Drydock {__version__}  {__copyright__}")
             try:
-                _prepare_target_repository(args)
-                exit_code = _dispatch(args, parser)
-                _commit_target_repository(args)
+                if _process_stop_gate(args):
+                    _prepare_target_repository(args)
+                    exit_code = _dispatch(args, parser)
+                    _commit_target_repository(args)
+                else:
+                    exit_code = 1
             except UsageError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 exit_code = 2
@@ -5593,6 +5706,8 @@ def main(argv: list[str] | None = None) -> None:
                 exit_code = 1
                 _standoff_diagnosis(args, argv, exc=exc)
 
+            if _declare_process_stop(args, argv):
+                exit_code = exit_code or 1
             if not inherited_transcript:
                 # Child processes need the inherited transcript only while the top-level
                 # command runs. Clear it before recording that top-level command itself.

@@ -35,6 +35,8 @@ acceptance-only failures as `UNVERIFIED` before continuing.
 
 ### Rules
 
+`2026-10-22` · **A provider stop is not a stall.** When a fatal provider failure ends the build, the console prints `BUILD STOPPED — <kind>` in place of `BUILD STALLED`, the Target's `STOP_NOW.md` names the cause and recovery, and the failed block stays `closed/failed`, which a plain `drydock build` resumes ([process_stops](../topics/process_stops.md)). Cost when broken: a quota stop reads as a planning deadlock.
+
 `2026-10-22` · **Acceptance uses the provisioned application store.** The DATABASE step emits
 runtime catalog/count probes, applies schema, verifies declared columns, keys, constraints and
 indexes, and records `evidence/persistence-verification.json`; these independent probes gate the persistence story even when it has no model-authored criteria. Later acceptance runs verify without

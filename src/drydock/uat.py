@@ -1399,6 +1399,10 @@ def run_fixture(
         result = replace(result, llm_executions=execution_ids(llm_records)[before:])
         commands.append(result)
         if required and result.returncode != 0:
+            # A child that halted on a fatal provider failure recorded why; that is the cause.
+            halt = read_stop(workspace / "targets" / fixture.target)
+            if halt is not None:
+                raise DrydockError(f"{fixture.name}: stopped at {halt.stage}: {halt.reason}")
             raise DrydockError(f"{fixture.name}: {label} exited {result.returncode}")
         if to_step is not None and sequence >= to_step:
             raise _StepBoundReached()
@@ -1439,8 +1443,11 @@ def run_fixture(
         if not target_dir.is_dir():
             return
         write_stop(target_dir, stage, reason)
-        if on_event:
-            on_event(f"{fixture.name}: STOP declared by {stage} — {reason}")
+        # The first declaration wins, so announce the halt actually recorded: a child command
+        # that stopped on its provider has already named the cause.
+        recorded = read_stop(target_dir)
+        if on_event and recorded is not None:
+            on_event(f"{fixture.name}: STOP declared by {recorded.stage} — {recorded.reason}")
 
     def stopped() -> StopCondition | None:
         return read_stop(workspace / "targets" / fixture.target)

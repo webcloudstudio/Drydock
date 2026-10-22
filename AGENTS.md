@@ -210,6 +210,7 @@ Find the file by command, or by the module being edited.
 | `validate` | `design/commands/validate.md` | `validate_specification.py` |
 | *Acceptance criteria* | `design/topics/acceptance_criteria.md` | `acceptance*.py`, `ac_repair.py`, `proof_integrity.py` |
 | *Foundations* | `design/topics/foundations.md` | `rigging_contract.py`, `technology_stack.py` |
+| *Process stops* | `design/topics/process_stops.md` | `stop_condition.py`, `llm.py` (`fatal_stop`), `cli.py` (stop gate) |
 
 A topic governs several commands; read it with any command whose file links it. A module shared
 by several commands (`llm.py`, `cli.py`, `paths.py`) has no design file; read the file of the

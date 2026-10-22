@@ -37,7 +37,8 @@ completion: `COMPLETE` (0) when every executable block is `closed/verified` and 
 decision is open; `RETRYABLE` (1) when the Manifest is approved and work is pending, implemented,
 failed, or a `DISPUTED` criterion awaits repair; `BLOCKED` (2) for no, unparsable, draft, or empty
 Manifest, or a verified Manifest with open blocking decisions. `--ready` reports only whether a
-build can advance the frontier: `0` when buildable, `1` when complete or not ready.
+build can advance the frontier: `0` when buildable, `1` when complete, not ready, or stopped by
+`STOP_NOW.md` ([process_stops](../topics/process_stops.md)), which outranks buildable work.
 `closed/implemented` ends scheduling but is incomplete under governed verification. Cost when
 broken: a build loop that never ends on a stalled Target, or ends on an unverified one.
 
@@ -64,7 +65,7 @@ orientation command changes what it reports.
 | Code | Condition |
 |---|---|
 | `0` | Dashboard printed; `--check` `COMPLETE`; `--ready` buildable. |
-| `1` | `--check` `RETRYABLE`; `--ready` complete or not ready. |
+| `1` | `--check` `RETRYABLE`; `--ready` complete, not ready, or `STOPPED`. |
 | `2` | `--check` `BLOCKED`; usage error, including an unknown Target with a gate flag. |
 
 ### Spec divergence

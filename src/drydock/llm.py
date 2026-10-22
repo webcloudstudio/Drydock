@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import signal
 import subprocess
@@ -1310,6 +1311,89 @@ def provider_unavailable_reason(*texts: str | None) -> str | None:
     return None
 
 
+#: A provider that answered 5xx, or could not be reached, is down; another call fails the same way.
+_OUTAGE_STATUS = re.compile(r"provider error 5\d\d\b")
+_OUTAGE_MARKERS = (
+    "overloaded",
+    "service unavailable",
+    "temporarily unavailable",
+    "internal server error",
+    "bad gateway",
+    "gateway timeout",
+    "connection refused",
+    "connection reset",
+    "could not connect",
+    "stream disconnected",
+)
+
+
+@dataclass(frozen=True)
+class FatalStop:
+    """The provider failure that ended this process's LLM work."""
+
+    kind: str
+    message: str
+    llm: str
+    command_name: str
+    execution_id: str
+
+    def recovery(self) -> str:
+        """The operator's way back, one instruction per line."""
+        if self.kind == "provider rate limit":
+            return (
+                "Wait for the provider limit to reset (the reason above names when), or switch\n"
+                "provider or model with --llm-provider / --model."
+            )
+        if self.kind == "provider authentication required":
+            return f"Log in again: {_login_command(self.llm)}"
+        if self.kind == "provider timeout":
+            return (
+                "Check the provider's status and the network. A timed-out call may already have\n"
+                "spent tokens, so Drydock does not retry it on its own."
+            )
+        if self.kind == "provider outage":
+            return "Check the provider's status page; rerun once it recovers, or switch provider."
+        return f"Install or repair the {self.llm} CLI so it runs from this shell."
+
+
+_fatal: FatalStop | None = None
+
+
+def fatal_stop_reason(
+    error: str | None, provider_error: str | None, raw_output: str = "", *, timed_out: bool = False
+) -> str | None:
+    """Why no further call to this provider can succeed in this run, or None when one can.
+
+    Rate limits, expired logins, timeouts, and outages are fatal. A malformed or truncated
+    response is not: its shape is observed and the calling command repairs or retries it.
+    """
+    if (reason := provider_unavailable_reason(error, provider_error, raw_output)) is not None:
+        return reason
+    if timed_out:
+        return "provider timeout"
+    haystack = "\n".join(text for text in (error, provider_error) if text).lower()
+    if _OUTAGE_STATUS.search(haystack) or any(marker in haystack for marker in _OUTAGE_MARKERS):
+        return "provider outage"
+    return None
+
+
+def fatal_stop() -> FatalStop | None:
+    """The fatal provider failure this process recorded, if any."""
+    return _fatal
+
+
+def reset_fatal_stop() -> None:
+    global _fatal
+    _fatal = None
+
+
+def _record_fatal_stop(stop: FatalStop) -> None:
+    """Keep the first fatal failure; later ones are its consequences."""
+    global _fatal
+    if _fatal is None:
+        _fatal = stop
+
+
 def render_fatal_provider_error_block(
     *,
     llm: str,
@@ -1951,6 +2035,14 @@ def run_prompt(
         if conflict is not None:
             raise LlmConfigurationError(f"escalate_model: {conflict}")
 
+    if _fatal is not None:
+        # One fatal failure ends this process's provider work. A retry loop above this call
+        # would otherwise resubmit into the same limit, outage, or timeout, and a timed-out
+        # call may already have spent its tokens.
+        raise LlmError(
+            f"{_fatal.kind}: {command_name} was not sent; execution {_fatal.execution_id} "
+            f"already failed fatally: {_fatal.message}"
+        )
     artifacts = ExecutionArtifacts.create(
         working_directory, command_name, selected, log_dir=log_dir, target=target
     )
@@ -2102,6 +2194,18 @@ def run_prompt(
             if returncode
             else failure
         )
+        if returncode and (
+            kind := fatal_stop_reason(error, provider_error, raw_output, timed_out=timed_out)
+        ):
+            _record_fatal_stop(
+                FatalStop(
+                    kind,
+                    " ".join((error or provider_error or kind).split())[:600],
+                    selected,
+                    command_name,
+                    artifacts.execution_id,
+                )
+            )
         if returncode and error:
             _print_llm_failure_block(
                 llm=selected,
@@ -2246,6 +2350,15 @@ def run_prompt(
             on_event,
         )
         logger.exception("execution failed id=%s", artifacts.execution_id)
+        _record_fatal_stop(
+            FatalStop(
+                "provider unavailable",
+                f"Could not run {selected}: {exc}",
+                selected,
+                command_name,
+                artifacts.execution_id,
+            )
+        )
         raise LlmError(
             f"Could not run {selected}; execution_id={artifacts.execution_id}: {exc}"
         ) from exc

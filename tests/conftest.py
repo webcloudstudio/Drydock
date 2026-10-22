@@ -26,6 +26,16 @@ def _isolate_console_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_fatal_stop():
+    """A fatal provider failure ends one process's LLM work; here that process is the suite."""
+    from drydock.llm import reset_fatal_stop
+
+    reset_fatal_stop()
+    yield
+    reset_fatal_stop()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_model_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch):
     """Point every test at a private copy of the packaged ``model_config.jsonl``.
 

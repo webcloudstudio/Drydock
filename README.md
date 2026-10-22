@@ -224,6 +224,12 @@ fixed list of models, printing that list with each model's cost when given anyth
 The loop ends at verified build completion; scoring is separate. `status --ready` retains its
 boolean buildability contract, and `status --check` supplies the separate completion check.
 
+A rate or usage limit, expired login, timeout, or provider outage writes `<Target>/STOP_NOW.md`
+with the stage, the provider message, and the recovery. While it exists `status --ready` prints
+`STOPPED: <Target>` and exits 1, and every LLM-assisted command, `diagnose` included, refuses;
+at a terminal the command shows the stop and asks `Clear this stop and continue? [y/N]`.
+`drydock status <Target>` ends with the same banner.
+
 `drydock build` checkpoints the application and Target Git repositories after each agent
 execution (including repairs and failures) and completed step. Existing changes receive a
 separate baseline checkpoint. Git uses the configured author identity, respects ignored files,

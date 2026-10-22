@@ -11,7 +11,12 @@ several commands exit non-zero as ordinary state signals — but "an earlier sta
 over".
 
 The file is Commander-readable on purpose. It is the first thing to open in a stopped run tree,
-and it names the stage, the reason, and when the halt was declared.
+and it names the stage, the reason, when the halt was declared, and how to recover.
+
+Two writers declare a halt. ``drydock uat`` declares one when a stage it drives cannot go on, and
+every command declares one when its provider fails in a way another call cannot fix: a rate or
+usage limit, an expired login, a timeout, or an outage (``llm.fatal_stop``). Every LLM-assisted
+command checks for it before it spends anything (``cli._process_stop_gate``).
 """
 
 from __future__ import annotations
@@ -25,11 +30,12 @@ STOP_FILENAME = "STOP_NOW.md"
 
 @dataclass(frozen=True)
 class StopCondition:
-    """A recorded halt: which stage declared it, why, and when."""
+    """A recorded halt: which stage declared it, why, when, and how to recover."""
 
     stage: str
     reason: str
     declared_at: str = ""
+    recovery: str = ""
 
     def line(self) -> str:
         return f"{self.stage}: {self.reason}"
@@ -39,7 +45,7 @@ def stop_path(target_dir: Path) -> Path:
     return target_dir / STOP_FILENAME
 
 
-def write_stop(target_dir: Path, stage: str, reason: str) -> Path:
+def write_stop(target_dir: Path, stage: str, reason: str, recovery: str = "") -> Path:
     """Declare the run over. The first declaration wins and is never overwritten.
 
     A later stage that also fails is describing a consequence of the halt, not a second cause,
@@ -57,9 +63,11 @@ def write_stop(target_dir: Path, stage: str, reason: str) -> Path:
         f"- declared: {declared_at}\n\n"
         "## Reason\n\n"
         f"{reason.strip()}\n\n"
-        "## Clearing\n\n"
-        "Fix the cause, then delete this file. Every lifecycle stage refuses to run while it\n"
-        "exists, so a run that continues past a halt cannot be produced by accident.\n",
+        + (f"## Recovery\n\n{recovery.strip()}\n\n" if recovery.strip() else "")
+        + "## Clearing\n\n"
+        "Fix the cause, then delete this file, or answer `y` when an interactive Drydock command\n"
+        "offers to clear it. Every LLM-assisted command refuses to run while it exists, so a run\n"
+        "that continues past a halt cannot be produced by accident.\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -79,20 +87,40 @@ def read_stop(target_dir: Path) -> StopCondition | None:
         return StopCondition("unknown", f"{STOP_FILENAME} exists but could not be read")
     stage = ""
     declared_at = ""
-    reason_lines: list[str] = []
-    in_reason = False
+    sections: dict[str, list[str]] = {"Reason": [], "Recovery": []}
+    section = ""
     for line in text.splitlines():
-        if line.startswith("- stage:"):
+        if line.startswith("- stage:") and not section:
             stage = line.split(":", 1)[1].strip()
-        elif line.startswith("- declared:"):
+        elif line.startswith("- declared:") and not section:
             declared_at = line.split(":", 1)[1].strip()
-        elif line.startswith("## Reason"):
-            in_reason = True
         elif line.startswith("## "):
-            in_reason = False
-        elif in_reason and line.strip():
-            reason_lines.append(line.strip())
-    return StopCondition(stage or "unknown", " ".join(reason_lines), declared_at)
+            section = line[3:].strip()
+        elif section in sections and line.strip():
+            sections[section].append(line.rstrip())
+    return StopCondition(
+        stage or "unknown",
+        " ".join(line.strip() for line in sections["Reason"]),
+        declared_at,
+        "\n".join(sections["Recovery"]),
+    )
+
+
+def render_stop(stop: StopCondition, target: str = "") -> str:
+    """The console banner for a recorded halt: what stopped, why, and the way back."""
+    border = "=" * 72
+    lines = [
+        border,
+        f"STOPPED{f': {target}' if target else ''}  ·  {stop.stage}"
+        + (f"  ·  {stop.declared_at}" if stop.declared_at else ""),
+        border,
+        "",
+        f"  {stop.reason}",
+    ]
+    if stop.recovery:
+        lines += ["", "  Recovery", *(f"    {line.strip()}" for line in stop.recovery.splitlines())]
+    lines += ["", f"  Clear: delete {STOP_FILENAME}, or answer y when a command offers to.", border]
+    return "\n".join(lines)
 
 
 def clear_stop(target_dir: Path) -> None:

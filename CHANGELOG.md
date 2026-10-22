@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-22: Fatal provider failures halt the Target through `STOP_NOW.md`. A rate or usage
+  limit, expired login, timeout, outage, or unrunnable provider CLI ends the command's provider
+  work: later calls in the same process are not sent, the standoff diagnosis is skipped, and the
+  command writes `STOP_NOW.md` with its stage, the provider message, the execution id, and a
+  Recovery section naming the operator action and the command to rerun. Every LLM-assisted command
+  and `drydock diagnose` refuse while the file exists; at a terminal they offer
+  `Clear this stop and continue? [y/N]`. `drydock status <Target> --ready` prints
+  `STOPPED: <Target>` and exits `1`, `drydock status <Target>` ends with the stop banner,
+  `drydock build` prints `BUILD STOPPED` instead of `BUILD STALLED`, and `drydock uat` reports the
+  recorded provider cause. Malformed or truncated responses remain recoverable.
+
 - 2026-10-22: Go CLI acceptance criteria run the built executable through
   `drydock_go.cli_runner(*args, package=None, input=None)`, which builds the single `./cmd/<name>`
   main package once with `go build` and returns `(exit_code, stdout, stderr)`. A build failure
