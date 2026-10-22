@@ -303,6 +303,27 @@ def test_apply_schema_is_skipped_without_a_generated_schema(tmp_path: Path):
     assert apply_schema(tmp_path) is None
 
 
+def test_apply_schema_is_skipped_for_a_persistence_package_before_the_database_step(
+    tmp_path: Path,
+):
+    # ReadingList 20261022.220045: foundation stood up persistence/ for create_app before the
+    # DATABASE step ran, and verification failed the block as missing DATABASE artifacts.
+    (tmp_path / "persistence").mkdir()
+    (tmp_path / "persistence" / "__init__.py").write_text("", encoding="utf-8")
+
+    assert apply_schema(tmp_path, verify_only=True) is None
+
+
+def test_apply_schema_reports_a_partial_database_step(tmp_path: Path):
+    (tmp_path / "persistence").mkdir()
+    (tmp_path / "schema.sql").write_text("", encoding="utf-8")
+
+    application = apply_schema(tmp_path, verify_only=True)
+
+    assert application is not None and not application.applied
+    assert "persistence artifacts missing" in application.detail
+
+
 def test_a_declaration_with_no_tables_emits_no_package(tmp_path: Path):
     blueprint_dir = tmp_path / "blueprint"
     blueprint_dir.mkdir()

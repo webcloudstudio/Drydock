@@ -31,7 +31,10 @@ def apply_schema(
 ) -> SchemaApplication | None:
     """Apply and verify the schema, or only verify it when ``verify_only`` is true.
 
-    ``None`` means the build declares no schema. Verification never provisions a store.
+    ``None`` means the DATABASE step has not emitted ``schema.sql`` or its verification manifest:
+    either the build declares no schema or that step has not run yet. A ``persistence/`` package
+    alone does not count, because a step ordered before DATABASE may stand one up for the
+    application factory to import. Verification never provisions a store.
 
     Runs from ``build_dir``, as the application and its criteria do, so a relative SQLite path
     resolves to the same file they open.
@@ -39,7 +42,7 @@ def apply_schema(
     schema = build_dir / SCHEMA_FILENAME
     package = build_dir / "persistence"
     manifest = build_dir / "schema-verification.json"
-    if not schema.exists() and not package.exists() and not manifest.exists():
+    if not schema.exists() and not manifest.exists():
         return None
     if not schema.is_file() or not package.is_dir() or not manifest.is_file():
         return SchemaApplication(False, "persistence artifacts missing; rebuild the DATABASE step")

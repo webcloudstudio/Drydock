@@ -40,7 +40,9 @@ acceptance-only failures as `UNVERIFIED` before continuing.
 `2026-10-22` · **Acceptance uses the provisioned application store.** The DATABASE step emits
 runtime catalog/count probes, applies schema, verifies declared columns, keys, constraints and
 indexes, and records `evidence/persistence-verification.json`; these independent probes gate the persistence story even when it has no model-authored criteria. Later acceptance runs verify without
-applying DDL and refuse a missing or incompatible store. Python `db_session()` and Go
+applying DDL and refuse a missing or incompatible store. Verification starts once the DATABASE
+step has emitted `schema.sql` or `schema-verification.json`; a `persistence/` package alone, stood
+up by an earlier step, is not checked. Python `db_session()` and Go
 `OpenSession(ctx, dsn)` use one explicit rollback transaction on the configured store; ordinary
 application operations retain autocommit. Same-connection feature code receives the yielded
 store; no schema/commit/connection-lifetime escape is permitted. Expected operation failures use
