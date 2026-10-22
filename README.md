@@ -135,6 +135,15 @@ set; `drydock config show` masks the password. See `docs/HOW_TO_SETUP_POSTGRES.m
 A text-only command whose response reaches the output limit fails with exit 1 and a
 `FATAL ERROR - LLM OUTPUT TRUNCATED` block naming the limit, the thinking spent, the artifact
 that was cut, and the setting to change. Nothing from the response is written.
+
+Structured model responses are normalized at the shared CLI adapter when the caller declares
+`output_format="artifacts"` or `output_format="json"`. Analyze and planning artifact calls,
+score spec/release/drydock, and prompt review use this contract. Short wrapper narration is
+removed only around complete payloads; JSON code fences are removed as well. Bodies remain
+unchanged. Raw output remains in execution evidence, and `logs/llm.jsonl` records removals and
+cleanup defects. Existing command validators and retry budgets still govern acceptance; malformed
+JSON, duplicate keys, and ambiguous extra content are not silently extracted away.
+
 ## Build workflow
 
 `init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`

@@ -2182,6 +2182,7 @@ def conform_specs(
         if not result.ok or not result.text.strip():
             warnings.append(
                 f"conform: {spec.filename} — LLM produced no output; spec left unchanged"
+            output_format="artifacts",
             )
             continue
         conformed = _extract_conformed_spec(result.text, spec.filename)
@@ -4737,6 +4738,7 @@ def _repair_declaration(
             "log_dir": log_dir,
             "target": target,
             "on_text": on_text,
+            "output_format": "artifacts",
             "prompt_assembly": assembly,
         }
         if claude_session is not None:
@@ -5364,6 +5366,7 @@ def _continue_short_plan(
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
                         result="Rejected: malformed artifact response",
+            "output_format": "artifacts",
                     )
                 )
             previous_rejection = (
@@ -6127,6 +6130,7 @@ def create_plan(
     contributing_execution_ids: tuple[str, ...] = ()
     waiver_execution_id: str | None = None
     waiver_warning: str | None = None
+        "output_format": "artifacts",
     # The delimited response the blocks came from, tracked so the pairing check measures the
     # right text. Write-call recovery produces blocks with no delimiters, and clears this.
     blocks_text: str | None = result.text
@@ -6328,6 +6332,7 @@ def create_plan(
                     declaration=deferred_block,
                     initial_declaration=initial_declaration,
                     initial_execution_id=exec_id,
+                    "output_format": "artifacts",
                     challenge_execution_id=challenge_exec_id,
                     log_dir=log_dir,
                 )
@@ -6597,6 +6602,7 @@ def create_plan(
                         )
                     try:
                         repair_result = cast(
+                        "output_format": "artifacts",
                             CompletedRun,
                             run(
                                 repair_assembly.rendered_text, target_dir, **artifact_repair_kwargs
@@ -6709,6 +6715,7 @@ def create_plan(
                 result="Manifest validated and serialized",
             )
         )
+                        "output_format": "artifacts",
 
     requirement_decisions = project_plan_requirement_decisions(
         blocks, target_dir=target_dir, build_dir=build_dir_for(target)

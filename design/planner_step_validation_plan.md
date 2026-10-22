@@ -109,9 +109,9 @@ the result, verification command, commit, and next action. Record failures as fa
 - [x] Persist conversation decisions and this implementation plan.
 - [x] Review and complete the contract introduced by `9b83447`.
 - [x] Pass deterministic integration tests for the whole plan command.
-- [ ] Pass the live plan step from preserved inputs outside `uat/`.
-- [ ] Pass plan verification against that output.
-- [ ] Validate build separately against the accepted plan.
+- [ ] Deferred by Ed ("do not transmit"): live plan from preserved inputs outside `uat/`.
+- [ ] Deferred with live plan: verify its output.
+- [ ] Deferred with live plan: validate build against the accepted plan.
 - [x] Complete required checks, documentation, and local commits.
 - [ ] Ed runs clean UAT; record its result without overstating earlier evidence.
 
@@ -194,3 +194,29 @@ then verify and build separately. Do not rerun import, analyze, or UAT.
 - Local implementation and deterministic verification are complete. Live plan, separate verify,
   and build remain pending explicit transmission approval. Do not infer model convergence from
   these local results. The UAT ledger outcome remains `unverified`.
+
+
+### Adapter output cleanup — 2026-10-22
+
+Ed approved implementing output cleanup through an optional `llm.py` call argument and asked
+for the remaining live validation. Automatic approval review rejected the live invocation before
+execution. Ed then explicitly instructed: **"do not transmit"**. Live plan → verify → build is
+therefore deferred; do not retry it or transmit the saved inputs. Local deterministic verification
+continues. No live convergence claim is made.
+
+Implemented scope:
+
+- `run_prompt(..., output_format="artifacts" | "json")`, default `None` for unchanged behavior.
+- Shared pure cleanup preserves original artifact bodies and raw execution evidence. Every
+  removed wrapper and the normalized hash are recorded in `llm.jsonl`. Ambiguous responses remain
+  intact for caller validation. No extra model call is introduced.
+- Analyze and Plan (topology, continuation, repairs, conformance) declare artifact output.
+  Score spec/release/drydock and prompt review declare JSON output. Existing domain validators
+  remain responsible for Markdown, database, AC, and JSON schema semantics.
+- JSON consumption rejects duplicate keys, nonstandard constants, second payloads, and
+  content-shaped wrappers. The shape checker now enforces `forbid_outside_text` when given text.
+- Standalone AC-repair protocols and tool-using build summaries retain their existing parsers;
+  they are not file-envelope or JSON responses. No arbitrary body-line stripping is performed.
+
+This completes the shared cleanup capability, not a claim that all prose sections can be checked
+for semantic correctness. Further output families should opt in only with an explicit grammar.

@@ -34,6 +34,15 @@ Intended workflow: `drydock plan verify <Target> || drydock plan repair <Target>
 
 ### Rules
 
+`2026-10-22` · **Structured model calls declare their output format to `llm.run_prompt`.**
+The adapter strips only bounded plain narration around intact artifact envelopes or one complete
+JSON object/array; it also removes a surrounding JSON code fence. It preserves artifact bodies,
+JSON values, and original execution output. The execution record reports removed spans, cleanup
+defects, and the normalized payload hash. Ambiguous output remains unchanged for the command's
+validators and existing bounded recovery; the adapter does not add model calls. Format
+cleanup does not replace the command's schema or semantic checks. *Broken:* wrapper narration
+pollutes an artifact, or broad substring extraction silently hides malformed output.
+
 `2026-10-19` · Planning requires a valid, Commander-approved TECHNOLOGY_STACK.md before model execution, including with --override. Language comes from selected Rigging guidance. The language initialization story occupies a separate computed block so its project files exist before persistence generation; prompt sizing includes the selected full or compact language file. Breaking this rule plans an undecided or incompatible stack.
 
 `2026-10-21` · **A Stage 2 retry carries the reason the last batch was refused.** The ledger
@@ -294,15 +303,14 @@ exist.
 
 ## Open Actions
 
-- `2026-10-22` · Enforce declared output shape consistently while retaining reported removal of
-  bounded stray narration. Audit the unused `OutputContract.forbid_outside_text` option and
-  validate artifact bodies before acceptance. The proposed scope and test cases are persisted in
+- `2026-10-22` · *Closed locally:* optional adapter output-format cleanup is wired into planning calls;
+  `OutputContract.forbid_outside_text` is enforced. Existing body validators remain authoritative. The proposed scope and test cases are persisted in
   [planner_step_validation_plan.md](../planner_step_validation_plan.md#output-shape-follow-up--2026-10-22).
 
 - `2026-10-22` · Implementation is committed in `48764ad`; 385 focused regressions pass.
   Validate the complete live plan command from saved inputs, then verify and build separately.
-  Network execution awaits explicit approval to transmit the saved inputs to Anthropic through
-  the subscription CLI. Resume from
+  Live execution is deferred: Ed instructed "do not transmit" on 2026-10-22. Do not send
+  the saved inputs or retry the live sequence. Resume from
   [planner_step_validation_plan.md](../planner_step_validation_plan.md), which records the
   conversation, implementation, evidence paths, and continuation checklist.
 

@@ -41,6 +41,7 @@ from drydock.execution import (
 )
 from drydock.llm_usage import normalize_tokens
 from drydock.logging import close_execution_logger, create_execution_logger
+from drydock.output_format import OutputFormat, clean_output
 from drydock.prompt_assembly import PromptAssembly
 
 # A provider agent runs shell commands, and those grandchildren inherit the provider's
@@ -1882,6 +1883,7 @@ def run_prompt(
     sub_command: str | None = None,
     claude_session_id: str | None = None,
     claude_resume_session_id: str | None = None,
+    output_format: OutputFormat | None = None,
 ) -> LlmResult:
     """Run a fully assembled prompt and persist reproducible execution evidence.
 
@@ -1892,7 +1894,12 @@ def run_prompt(
     ``effort`` selects the provider's reasoning depth. An explicit level wins; otherwise the
     configured ``drydock_effort`` applies, and with neither set the provider's own default
     stands. The level is mapped to what the selected provider and model actually serve.
+
+    ``output_format`` opts into narrow wrapper cleanup. Original output remains evidence;
+    cleanup is recorded separately. Callers still validate bodies and own retry budgets.
     """
+    if output_format not in (None, "artifacts", "json"):
+        raise LlmConfigurationError(f"Unsupported output format: {output_format}")
     debug = debug or os.environ.get("DRYDOCK_DEBUG", "").strip().lower() in {
         "1",
         "true",
@@ -2071,6 +2078,18 @@ def run_prompt(
             if truncation is not None and not allow_tools and returncode == 0
             else None
         )
+        cleanup = None
+        if output_format is not None and returncode == 0 and failure is None:
+            cleanup = clean_output(text, output_format)
+            # Keep provider/output evidence unchanged; only the returned payload is normalized.
+            text = cleanup.text
+            if on_text is not None:
+                for removed in cleanup.removed:
+                    on_text(f"[output] {output_format} wrapper discarded: {removed.strip()!r}\n")
+                if cleanup.defect:
+                    on_text(
+                        f"[output] {output_format}: {cleanup.defect}; retained for validation\n"
+                    )
         completed_at = utc_now()
         elapsed_ms = _elapsed_ms(started_at, completed_at)
         stats = LlmStats(**{**asdict(stats), "elapsed_ms": elapsed_ms})
@@ -2131,6 +2150,13 @@ def run_prompt(
             claude_session_id=claude_session_id,
             claude_resume_session_id=claude_resume_session_id,
         )
+        if output_format is not None:
+            record["output_contract"] = {
+                "format": output_format,
+                "removed": list(cleanup.removed) if cleanup else [],
+                "defect": cleanup.defect if cleanup else None,
+                "normalized_sha256": sha256_bytes(text.encode("utf-8")),
+            }
         append_execution_record(artifacts.records_file, record)
         _emit_event(
             artifacts,

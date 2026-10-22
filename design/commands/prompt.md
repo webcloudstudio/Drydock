@@ -26,6 +26,16 @@ drydock prompt review <component>     components: analyze, plan
 
 ### Rules
 
+`2026-10-22` · **Structured model calls declare their output format to `llm.run_prompt`.**
+The adapter strips only bounded plain narration around intact artifact envelopes or one complete
+JSON object/array; it also removes a surrounding JSON code fence. It preserves artifact bodies,
+JSON values, and original execution output. The execution record reports removed spans, cleanup
+defects, and the normalized payload hash. Ambiguous output remains unchanged for the command's
+validators and existing bounded recovery; the adapter does not add model calls. JSON consumers
+reject duplicate keys, non-JSON numeric constants, and content-shaped surrounding text. Format
+cleanup does not replace the command's schema or semantic checks. *Broken:* wrapper narration
+pollutes an artifact, or broad substring extraction silently hides malformed output.
+
 `2026-06-15` · **A review is assembled from four sources.** The prompt file, its design file
 (`design/commands/<command>.md`, `2026-10-15`), one named specification section, and support
 files. Each is required; a missing one fails before any model call. Cost when broken: a review

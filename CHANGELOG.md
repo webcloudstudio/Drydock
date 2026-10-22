@@ -42,6 +42,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 - 2026-10-21: `drydock plan` authors `DATABASE.md` in one Stage 2 step instead of keeping it open
   as a cumulative, append-only declaration. Every file a batch may emit is named in its Current
+- 2026-10-22: Structured Analyze, Plan, score, and prompt-review calls declare an optional output
+  format at `llm.run_prompt`. Narrow cleanup removes bounded wrapper narration and JSON fences,
+  preserves raw evidence, and records every removal. JSON consumers reject duplicate keys and
+  ambiguous surrounding content; existing command validators and retry budgets remain authoritative.
+
   batch. `DATABASE.md` is a batch of its own when it comes due (a batch ends before it), starts from
   the Rigging and source seed, must declare every table and repository operation the frozen
   topology needs, and is frozen once it parses; seeded tables the model drops are appended. Later

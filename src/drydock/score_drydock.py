@@ -12,7 +12,6 @@ decomposed into Agile stories with TDD acceptance criteria.
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 from collections.abc import Callable
@@ -23,6 +22,7 @@ from typing import Protocol
 
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm import run_prompt
+from drydock.output_format import parse_json_output
 from drydock.paths import get_repo_root
 from drydock.prompt_assembly import (
     PromptAssembly,
@@ -224,22 +224,12 @@ def _parse_gap(payload: object, index: int) -> ProjectTypeGap:
     )
 
 
-def _strip_fence(text: str) -> str:
-    """Tolerate a fenced JSON reply. The contract forbids the fence; the parse does not depend
-    on the model honoring it."""
-    stripped = text.strip()
-    if not stripped.startswith("```"):
-        return stripped
-    body = stripped.split("\n", 1)[1] if "\n" in stripped else ""
-    return body.rsplit("```", 1)[0].strip()
-
-
 def parse_assessment(text: str) -> DrydockAssessment:
     """Validate the model payload into a typed assessment. Ranked ordering is applied here so the
     written plan is deterministic regardless of the order the model emitted."""
     try:
-        payload = json.loads(_strip_fence(text))
-    except json.JSONDecodeError as exc:
+        payload = parse_json_output(text)
+    except ValueError as exc:
         raise DrydockError(f"score drydock output is not valid JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise DrydockError("score drydock output must be a JSON object")
@@ -593,6 +583,7 @@ def score_drydock(
         model=model or prompt.model or HIGHEST_MODEL,
         effort=effort or prompt.effort,
         command_name="score drydock",
+        output_format="json",
         parameters={"subject": "drydock"},
         log_dir=log_dir,
         on_text=on_text,

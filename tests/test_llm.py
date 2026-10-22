@@ -2191,3 +2191,51 @@ def test_claude_run_records_a_calibration_observation(tmp_path, monkeypatch):
     assert observation.first_request_tokens == 9_437
     assert observation.cli_version == "2.1.296"
     assert not observation.resumed
+
+
+@pytest.mark.parametrize("output_format", [None, "json", "artifacts"])
+def test_output_cleanup_is_opt_in_and_preserves_evidence(tmp_path, monkeypatch, output_format):
+    payload = (
+        "=== BEGIN ARTIFACT A.md ===\nbody\n=== END ARTIFACT ===\n"
+        if output_format == "artifacts"
+        else '{"a": 1}'
+    )
+    original = "Here it is.\n" + payload
+    raw = json.dumps({"type": "result", "result": original}) + "\n"
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda command, **kwargs: FakePopen(command, stdout_text=raw, **kwargs)
+    )
+    result = run_prompt("Work", tmp_path, llm="claude", output_format=output_format)
+    assert result.ok
+    assert result.text == (payload if output_format else original)
+    assert result.artifacts.output_file.read_text() == original
+    if output_format:
+        assert result.record["output_contract"]["removed"] == ["Here it is.\n"]
+        assert result.record["output_contract"]["defect"] is None
+    else:
+        assert "output_contract" not in result.record
+
+
+def test_invalid_output_format_fails_before_provider_execution(tmp_path, monkeypatch):
+    def unexpected(*args, **kwargs):
+        pytest.fail("Provider must not run")
+
+    monkeypatch.setattr(subprocess, "Popen", unexpected)
+    with pytest.raises(LlmConfigurationError, match="Unsupported output format"):
+        run_prompt("Work", tmp_path, llm="claude", output_format="guess")
+
+
+def test_ambiguous_output_is_not_rewritten_or_retried(tmp_path, monkeypatch):
+    original = '{"a": 1, "a": 2}'
+    raw = json.dumps({"type": "result", "result": original}) + "\n"
+    calls = []
+
+    def invoke(command, **kwargs):
+        calls.append(command)
+        return FakePopen(command, stdout_text=raw, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", invoke)
+    result = run_prompt("Work", tmp_path, llm="claude", output_format="json")
+    assert result.text == original
+    assert result.record["output_contract"]["defect"] == "duplicate JSON key: a"
+    assert len(calls) == 1

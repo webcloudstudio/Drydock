@@ -184,3 +184,14 @@ def test_invariant_boundary_form_satisfies_the_contract():
 def test_unclosed_invariant_block_is_still_detected():
     text = "=== BEGIN ARTIFACT ARCHITECTURE.md ===\n# ARCHITECTURE: Demo\n"
     assert codes(check_delimiters(text)) == ["unclosed"]
+
+
+def test_outside_text_contract_is_enforced_and_can_be_disabled():
+    text = "Here it is.\n" + WELL_FORMED
+    blocks = parsed(text)
+    assert "outside-text" in codes(check_contract(text, blocks, CONTRACT))
+    assert check_contract(text, blocks, OutputContract(forbid_outside_text=False)) == ()
+
+
+def test_prose_only_reply_cannot_satisfy_shape_contract():
+    assert "envelope" in codes(check_contract("Done.", {}, OutputContract()))

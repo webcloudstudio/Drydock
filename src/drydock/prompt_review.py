@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 from collections.abc import Callable
@@ -13,6 +12,7 @@ from typing import Protocol
 
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm import run_prompt
+from drydock.output_format import parse_json_output
 from drydock.paths import get_repo_root
 from drydock.prompt_assembly import (
     PromptAssembly,
@@ -294,8 +294,8 @@ def _compute_overall(scorecard: dict[str, float]) -> float:
 
 def parse_review_payload(text: str, *, component: PromptReviewComponent) -> PromptReview:
     try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
+        payload = parse_json_output(text)
+    except ValueError as exc:
         raise DrydockError(f"prompt review output is not valid JSON: {exc}") from exc
 
     if not isinstance(payload, dict):
@@ -435,6 +435,7 @@ def review_prompt(
         llm=llm_provider,
         model=model or prompt.model,
         command_name="prompt-review",
+        output_format="json",
         parameters={"component": component.name, "command": component.command},
         log_dir=log_dir,
         prompt_assembly=prompt_assembly,

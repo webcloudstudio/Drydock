@@ -471,6 +471,39 @@ def _classify(line: str) -> tuple[str, str | None] | None:
     return None
 
 
+def envelope_spans(text: str) -> tuple[tuple[bool, str], ...]:
+    """Split intact envelopes into body/boundary spans and outside spans, without rewriting.
+
+    Ambiguous boundaries must reach the owning parser unchanged for its recovery policy.
+    """
+    spans: list[tuple[bool, str]] = []
+    current: str | None = None
+    seen: set[str] = set()
+    for line in text.splitlines(keepends=True):
+        marker = _classify(line)
+        inside = current is not None
+        if marker is not None:
+            kind, name = marker
+            if kind == _OPEN:
+                if current is not None or name in seen:
+                    raise ValueError("nested or duplicate artifact opener")
+                assert name is not None
+                seen.add(name)
+                current = name
+            else:
+                if current is None or (name is not None and name != current):
+                    raise ValueError("orphan or mismatched artifact close")
+                current = None
+            inside = True
+        if spans and spans[-1][0] == inside:
+            spans[-1] = (inside, spans[-1][1] + line)
+        else:
+            spans.append((inside, line))
+    if current is not None or not seen:
+        raise ValueError("incomplete or missing artifact envelope")
+    return tuple(spans)
+
+
 def _guarded(kind: str, raw_name: str) -> tuple[str, str | None] | None:
     name = raw_name.strip()
     if _RESERVED_NAME_RE.match(name):

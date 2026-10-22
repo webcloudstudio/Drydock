@@ -1106,6 +1106,7 @@ def analyze(
             llm=llm_provider,
             model=model,
             command_name="analyze",
+            output_format="artifacts",
             parameters={"target": target, "blueprint": str(blueprint_dir)},
             log_dir=log_dir,
             target=target,

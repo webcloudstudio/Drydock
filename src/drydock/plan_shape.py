@@ -20,7 +20,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from drydock.artifact_blocks import pair_artifact_delimiters
+from drydock.artifact_blocks import envelope_spans, pair_artifact_delimiters
 
 # Delimiter grammar — including the ``AC`` namespace reservation that keeps the nested
 # ``=== AC <id> ===`` proof blocks out of the envelope — lives in ``artifact_blocks`` and is
@@ -101,6 +101,14 @@ def check_contract(
 ) -> tuple[ShapeDefect, ...]:
     """Measure a parsed response against its declared output contract."""
     defects: list[ShapeDefect] = list(check_delimiters(text))
+    if contract.forbid_outside_text and text.strip():
+        try:
+            outside = [span for inside, span in envelope_spans(text) if not inside and span.strip()]
+        except ValueError as exc:
+            outside = []
+            defects.append(ShapeDefect("envelope", "", str(exc)))
+        if outside:
+            defects.append(ShapeDefect("outside-text", "", "text outside artifact blocks"))
 
     for name in contract.required:
         if name not in blocks:

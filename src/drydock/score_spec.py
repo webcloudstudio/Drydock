@@ -19,6 +19,7 @@ from typing import Protocol
 
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
+from drydock.output_format import parse_json_output
 from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
 from drydock.source_files import iter_source_files
@@ -149,7 +150,6 @@ class _TreeStamp:
 
 
 _HEADING = re.compile(r"^#{1,6}\s+\S", re.MULTILINE)
-_FENCE = re.compile(r"\A```[A-Za-z0-9_-]*\n|\n?```\Z")
 _ENTITY_TYPES = FACT_TYPES - {
     "reference",
     "consumer",
@@ -313,19 +313,10 @@ def assemble_extraction_prompt(body: str, chunks: tuple[SourceChunk, ...]) -> Pr
 
 
 def _json_object(text: str) -> dict[str, object]:
-    stripped = _FENCE.sub("", text.strip()).strip()
     try:
-        payload = json.loads(stripped)
-    except json.JSONDecodeError as exc:
-        # Tolerate a model that wraps the object in commentary; the object itself must still parse.
-        invalid = SpecificationError(f"score spec extraction returned invalid JSON: {exc}")
-        start, end = stripped.find("{"), stripped.rfind("}")
-        if start == -1 or end <= start:
-            raise invalid from exc
-        try:
-            payload = json.loads(stripped[start : end + 1])
-        except json.JSONDecodeError:
-            raise invalid from exc
+        payload = parse_json_output(text)
+    except ValueError as exc:
+        raise SpecificationError(f"score spec extraction returned invalid JSON: {exc}") from exc
     if not isinstance(payload, dict) or set(payload) != {"covered", "facts"}:
         raise SpecificationError("score spec extraction must contain exactly 'covered' and 'facts'")
     return payload
@@ -899,6 +890,7 @@ def score_spec(
             model=model or prompt.model,
             effort=effort or prompt.effort,
             command_name="score spec",
+            output_format="json",
             parameters={"target": target, "pass": pass_number, "passes": len(batches)},
             log_dir=log_dir,
             target=target,

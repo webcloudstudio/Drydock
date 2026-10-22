@@ -60,6 +60,7 @@ from drydock.gate_policy import (
 )
 from drydock.llm import run_prompt
 from drydock.metadata import get_build_dir
+from drydock.output_format import parse_json_output
 from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
 from drydock.sea_trials import (
@@ -213,16 +214,9 @@ def _evidence_fact(trial: SeaTrial, target_dir: Path) -> dict[str, object] | Non
 
 
 def _parse_json(text: str) -> dict:
-    body = text.strip()
-    fence = re.search(r"```(?:json)?\s*\n(.*?)\n```", body, re.DOTALL)
-    if fence:
-        body = fence.group(1).strip()
-    start, end = body.find("{"), body.rfind("}")
-    if start < 0 or end < start:
-        raise SpecificationError("score model output contained no JSON object")
     try:
-        payload = json.loads(body[start : end + 1])
-    except json.JSONDecodeError as exc:
+        payload = parse_json_output(text)
+    except ValueError as exc:
         raise SpecificationError(f"score model output is invalid JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise SpecificationError("score model output must be a JSON object")
@@ -931,6 +925,7 @@ def score_release(
             llm=llm_provider,
             model=model or prompt.model,
             command_name="score release",
+            output_format="json",
             parameters={"target": target},
             log_dir=log_dir,
             target=target,
