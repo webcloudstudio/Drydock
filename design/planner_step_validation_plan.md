@@ -1,7 +1,7 @@
 # Complete and validate the planner one step at a time
 
 Date: 2026-10-21
-Status: Implementation in progress; deterministic whole-plan cases pass; live validation awaits
+Status: Implementation committed as `48764ad`; deterministic whole-plan cases pass; live validation awaits
 explicit approval to transmit the saved inputs to Anthropic through the subscription CLI.
 Baseline: `9b83447`, with diagnosis bookkeeping through `ba3d7be`.
 
@@ -112,7 +112,7 @@ the result, verification command, commit, and next action. Record failures as fa
 - [ ] Pass the live plan step from preserved inputs outside `uat/`.
 - [ ] Pass plan verification against that output.
 - [ ] Validate build separately against the accepted plan.
-- [ ] Complete required checks, documentation, and local commits.
+- [x] Complete required checks, documentation, and local commits.
 - [ ] Ed runs clean UAT; record its result without overstating earlier evidence.
 
 ## Execution record
@@ -135,8 +135,8 @@ the result, verification command, commit, and next action. Record failures as fa
   requires explicit consent. Asked Ed that precise question; do not retry until answered.
 - Local receipts, prompts, and test output live under `logs/planner-step-validation/` (untracked).
 
-Next action: finish regression verification; after transmission approval, run the complete plan
-step on the saved inputs, then verify and build separately. Do not rerun import, analyze, or UAT.
+Next action: after transmission approval, run the complete plan step on the saved inputs,
+then verify and build separately. Do not rerun import, analyze, or UAT.
 
 2026-10-22 continuation:
 
@@ -149,3 +149,13 @@ step on the saved inputs, then verify and build separately. Do not rerun import,
   temporary provider home to `tests/test_llm.py`; all 96 adapter tests pass. The full suite is
   rerunning with that isolation fix.
 - No runtime adapter behavior was changed. No live plan, verify, or build success is claimed.
+
+- Implementation committed as `48764ad` (`Freeze source-faithful database contracts before
+  authoring Features`). The latest UAT ledger row includes this follow-up and remains `unverified`.
+
+- Final full-suite result: `PYTEST_XDIST_AUTO_NUM_WORKERS=8 python -u -m pytest -n auto`:
+  **3,892 passed, 2 skipped in 533.22 seconds**. Output: `logs/planner-step-validation/pytest-final.log`.
+- `ruff check src/ tests/`, `ruff format --check src/ tests/`, and `git diff --check` pass.
+- Local implementation and deterministic verification are complete. Live plan, separate verify,
+  and build remain pending explicit transmission approval. Do not infer model convergence from
+  these local results. The UAT ledger outcome remains `unverified`.

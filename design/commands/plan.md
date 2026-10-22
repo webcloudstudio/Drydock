@@ -294,25 +294,21 @@ exist.
 
 ## Open Actions
 
-- `2026-10-21` · Complete the planner as one coherent change and validate one complete command
-  at a time. The conversation record, implementation sequence, and continuation checklist are
-  in [planner_step_validation_plan.md](../planner_step_validation_plan.md). This supersedes
-  the single-batch live trial below: validate the entire plan step before advancing to verify
-  and build. Start from the database-freeze implementation in `9b83447`.
+- `2026-10-22` · Implementation is committed in `48764ad`; 385 focused regressions pass.
+  Validate the complete live plan command from saved inputs, then verify and build separately.
+  Network execution awaits explicit approval to transmit the saved inputs to Anthropic through
+  the subscription CLI. Resume from
+  [planner_step_validation_plan.md](../planner_step_validation_plan.md), which records the
+  conversation, implementation, evidence paths, and continuation checklist.
 
 - `2026-10-21` · *Closed 2026-10-21:* the Stage 2 output contract is consistent. `DATABASE.md`
   is a named Current-batch member authored in one step, in full, then frozen; no batch emits
   additions. Tests cover the database batch, its refusal and retry, the seed merge, compact
   injection, and refusal of a later change. The `42252b1` early rejection is preserved.
 
-- `2026-10-21` · Before another full LayersTesting run, establish a bounded planner check outside
-  `uat/`: synthetic regression fixtures for the database/Feature boundary, then an isolated
-  subscription-CLI trial of the corrected assembled batch. Existing fake-runner tests prove
-  refusal feedback and batch reduction, not model compliance. The latest final one-Feature
-  request contains 220,735 bytes (84,583 estimated tokens); assess phase-specific context
-  reduction without dropping source requirements or consumed contracts. Sixteen completed
-  receipts record 15 failures and 4.42 hours, including one Luna pass; different revisions and
-  generated plans prevent attributing the difference to model choice alone.
+- `2026-10-22` · The proposed single-batch live trial is superseded by command-level validation
+  above. Keep the existing database compact; assess further context reduction from live evidence
+  before changing which source requirements and contracts the planner receives.
 
 - `2026-10-20` · Ed prefers declared expected exits to reading them from harness lines. If the
   `harness-exit` heuristic misses or misreads a harness, replace it with an explicit declaration
