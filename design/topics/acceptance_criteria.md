@@ -102,6 +102,8 @@ suite verified a broken build.
 
 `2026-10-18` · The Python execution harness is shipped in its language bundle. Go native tests run through the staged `drydock_go.run_test` helper inside the existing AC container; skipped and absent tests cannot pass. Cost when broken: valid language resources are omitted or acceptance evidence is misclassified.
 
+`2026-10-22` · Go CLI criteria run through the staged `drydock_go.cli_runner(*args, package=None, input=None)`, which builds the single `./cmd/<name>` main package once with `go build -o` and returns `(exit_code, stdout, stderr)` from the binary. A failed build reports `execution-error`, an absent toolchain `unavailable`. Cost when broken: `go run` rewrites every non-zero exit to 1, so exit-status criteria fail a correct product or pass a wrong one.
+
 ### Mechanism
 
 See the build-loop and completion rules. Removing a criterion id is rejected; `FLAKY`,

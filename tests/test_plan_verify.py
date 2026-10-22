@@ -904,3 +904,51 @@ def test_acceptance_cannot_replace_the_configured_store(tmp_path, setup):
     )
     result = verify("Test", target)
     assert any(d.kind == "acceptance-store" for d in result.defects)
+
+
+def _go_criterion(body: str) -> str:
+    return (
+        "# FEATURE: Go CLI\n\n## Programmatic Acceptance\n\n=== AC usage ===\n"
+        "Intent: Malformed invocations return the usage-error exit status.\n\n"
+        f"{body}\n=== END AC usage ===\n"
+    )
+
+
+def test_go_run_of_the_application_is_a_defect(tmp_path):
+    """CsvStat 20261022.203215: ``go run`` reports exit 2 as 1, so a correct parser failed."""
+    code = (
+        "import subprocess\n\n"
+        'result = subprocess.run(["go", "run", "./cmd/csvstat"], capture_output=True, text=True)\n'
+        "assert result.returncode == 2"
+    )
+    result = verify("Demo", _target(tmp_path, FEATURE_Cli=_go_criterion(code)))
+
+    (defect,) = result.defects
+    assert defect.kind == "go-run"
+    assert "line(s) 3" in defect.detail
+    assert "cli_runner" in defect.detail
+
+
+def test_go_run_as_a_shell_string_is_a_defect(tmp_path):
+    code = (
+        "import subprocess\n\n"
+        'result = subprocess.run("go run ./cmd/csvstat --top 0", shell=True)\n'
+        "assert result.returncode == 2"
+    )
+    result = verify("Demo", _target(tmp_path, FEATURE_Cli=_go_criterion(code)))
+
+    assert [defect.kind for defect in result.defects] == ["go-run"]
+
+
+def test_a_pinned_go_tool_and_the_go_cli_runner_verify_clean(tmp_path):
+    code = (
+        "import subprocess\n"
+        "from drydock_go import cli_runner\n\n"
+        'lint = subprocess.run(["go", "run", "honnef.co/go/tools/cmd/staticcheck@v0.5.1", "./..."])\n'
+        "assert lint.returncode == 0\n"
+        'code, out, err = cli_runner("--top", "0", "data.csv")\n'
+        "assert code == 2, (code, out, err)"
+    )
+    result = verify("Demo", _target(tmp_path, FEATURE_Cli=_go_criterion(code)))
+
+    assert result.ok, result.defects

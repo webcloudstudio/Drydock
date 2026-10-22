@@ -10,6 +10,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-22: Go CLI acceptance criteria run the built executable through
+  `drydock_go.cli_runner(*args, package=None, input=None)`, which builds the single `./cmd/<name>`
+  main package once with `go build` and returns `(exit_code, stdout, stderr)`. A build failure
+  settles the criterion as `execution-error`. `drydock plan verify` reports a `go-run` defect for
+  any criterion that launches the application with `go run`, which reports every non-zero exit as
+  `1`, and `plan_repair.md` V12 rewrites such calls to `cli_runner`. The harness-exit,
+  unchecked-call and staged-value checks now apply to Go criteria.
+
 - 2026-10-22: DATABASE builds record runtime table-count and catalog verification in
   `evidence/persistence-verification.json`, backed by generated `schema-verification.json`.
   Python and Go database acceptance fixtures use the configured store in an explicit rollback

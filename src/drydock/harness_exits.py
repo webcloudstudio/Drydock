@@ -28,8 +28,12 @@ import shlex
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-#: The CLI test helper the ``cli`` stack publishes (``Rigging/stack/cli.md``).
+#: The CLI test helper the ``cli`` stack publishes (``Rigging/stack/cli.md``) and the Go
+#: acceptance helper ships (``Rigging/languages/go/acceptance/drydock_go.py``).
 RUNNER_NAME = "cli_runner"
+
+#: ``go run <pkg>`` as a shell string; a pinned tool (``go run tool@v1``) is not the application.
+_GO_RUN_TEXT = re.compile(r"^\s*go\s+run\s+(?:-\S+\s+)*(?P<target>\S+)")
 
 #: A token that ends the command and starts a redirection, pipe, or list operator.
 _OPERATOR = re.compile(r"^(\d*[<>]|[|&;])")
@@ -286,6 +290,35 @@ def unchecked_calls(code: str) -> list[int]:
     except SyntaxError:
         return []
     return sorted({item.call.lineno for item in _checked_calls(tree) if not item.checked})
+
+
+def go_run_calls(code: str) -> list[int]:
+    """Lines that launch the application through ``go run``.
+
+    CsvStat ``20261022.203215``: criteria ran ``["go", "run", "./cmd/csvstat", ...]`` and asserted
+    usage exit ``2``. ``go run`` reports every non-zero program exit as ``1``, so a correct parser
+    failed them on every build, and an asserted exit ``1`` passed whatever the program did.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.List, ast.Tuple)):
+            words = [
+                item.value
+                for item in node.elts
+                if isinstance(item, ast.Constant) and isinstance(item.value, str)
+            ]
+            if words[:2] == ["go", "run"]:
+                targets = [word for word in words[2:] if not word.startswith("-")]
+                if not targets or "@" not in targets[0]:
+                    lines.add(node.lineno)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if (match := _GO_RUN_TEXT.match(node.value)) and "@" not in match["target"]:
+                lines.add(node.lineno)
+    return sorted(lines)
 
 
 def unloaded_staged_values(code: str, harness: Harness) -> list[tuple[str, str]]:

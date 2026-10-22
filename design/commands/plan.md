@@ -263,6 +263,15 @@ A key the criterion creates (expected `0`) or a deliberately absent key is not r
 *Broken:* LayersTesting `20261021.195808` asserted `account delete DRAWER1` exits `3` (in use)
 without loading `seed_accounts.csv`; the product correctly answered `4` (absent).
 
+`2026-10-22` · **A criterion never launches the application through `go run`.** `plan verify`
+(`harness_exits.go_run_calls`) reports a `go-run` defect for an argv list or shell string that
+starts `go run` with a target other than a pinned tool (`tool@version`). The defect names
+`drydock_go.cli_runner`, which runs the built executable, so the harness-exit, unchecked-call, and
+staged-value rules apply to Go criteria unchanged. `plan_repair.md` V12 replaces the call with
+`cli_runner` on the same arguments and keeps every expected value. *Broken:* CsvStat `20261022.203215` asserted
+usage exit `2` through `go run`, which reports every non-zero exit as `1`; a correct parser failed
+two criteria on every build, and an asserted exit `1` passed whatever the program did.
+
 `2026-10-18` · Python and Go support DATABASE.md persistence. Stack validation requires exactly one language and permits at most one database engine; other exclusive foundations retain their constraints. Cost when broken: the selected stack and generated runtime disagree.
 
 `2026-10-22` · `VERIFICATION.md` is a standard release-verification Blueprint filename, accepted by naming validation. Cost when broken: generated release gates produce spurious naming warnings.

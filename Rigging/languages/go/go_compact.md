@@ -55,6 +55,19 @@ The enclosing AC provides identity, timeout, result storage and repair state. Co
 remain distinct from assertion failures in `result.status`. Coverage and persistence observations
 require explicit instrumentation per criterion; unavailable observations are unknown.
 
+A criterion that exercises the command line runs the built executable through the same helper,
+never `go run`, which reports every non-zero program exit as 1:
+
+```python
+from drydock_go import cli_runner
+code, out, err = cli_runner("--top", "0", "data.csv")
+assert code == 2, (code, out, err)
+```
+
+`cli_runner` builds the single `./cmd/<name>` main package once with `go build` and returns
+`(exit_code, stdout, stderr)`; pass `package="./cmd/<name>"` when there are several, and `input=`
+for standard input. A failed build settles the criterion as `execution-error`.
+
 ### How does this language provide the shared persistence contract?
 
 Use the shipped module in `Rigging/languages/go/persistence/`. Drydock copies it to the Target's

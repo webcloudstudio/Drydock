@@ -89,3 +89,47 @@ assert not result.passed
     )
     assert result.skipped and not result.passed
     assert "unavailable" in result.error
+
+
+@pytest.mark.skipif(shutil.which("go") is None, reason="Go toolchain required")
+def test_go_cli_runner_returns_the_program_exit_status(tmp_path, monkeypatch):
+    """``go run`` reports exit 2 as 1 (CsvStat 20261022.203215); the built binary does not."""
+    monkeypatch.setenv("GOCACHE", "/tmp/drydock-go-cache")
+    (tmp_path / "go.mod").write_text("module example.test/tool\n\ngo 1.22\n")
+    (tmp_path / "cmd" / "tool").mkdir(parents=True)
+    (tmp_path / "cmd" / "tool" / "main.go").write_text("""package main
+import ("bufio"; "fmt"; "os")
+func main() {
+\tif len(os.Args) < 2 { fmt.Fprintln(os.Stderr, "usage: tool ARG"); os.Exit(2) }
+\tline, _ := bufio.NewReader(os.Stdin).ReadString('\\n')
+\tfmt.Print(os.Args[1], ":", line)
+}
+""")
+    code = (
+        "from drydock_go import cli_runner\n"
+        "code, out, err = cli_runner()\n"
+        "assert (code, out) == (2, ''), (code, out, err)\n"
+        "assert 'usage' in err\n"
+        "code, out, err = cli_runner('x', input='piped\\n')\n"
+        "assert (code, out) == (0, 'x:piped\\n'), (code, out, err)\n"
+    )
+    check = ProgrammaticAcceptance("go-cli", "FEATURE.md", "Observe the program exit status", code)
+    (result,) = run_programmatic_acceptance(
+        (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
+    )
+    assert result.passed, (result.error, result.stderr)
+
+
+@pytest.mark.skipif(shutil.which("go") is None, reason="Go toolchain required")
+def test_go_cli_runner_build_failure_is_an_execution_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("GOCACHE", "/tmp/drydock-go-cache")
+    (tmp_path / "go.mod").write_text("module example.test/broken\n\ngo 1.22\n")
+    (tmp_path / "cmd" / "tool").mkdir(parents=True)
+    (tmp_path / "cmd" / "tool" / "main.go").write_text("package main\nthis does not compile\n")
+    code = "from drydock_go import cli_runner\nassert cli_runner()[0] == 0\n"
+    check = ProgrammaticAcceptance("go-cli-broken", "FEATURE.md", "Observe a build failure", code)
+    (result,) = run_programmatic_acceptance(
+        (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
+    )
+    assert not result.passed and not result.skipped
+    assert "execution-error" in result.error
