@@ -11,6 +11,7 @@ a row dataclass per read or create; statements are constructed by the driver for
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -50,12 +51,55 @@ def _identifier(name: str) -> str:
     return cleaned[0].upper() + cleaned[1:]
 
 
+#: Declared DTO types, SQL or Python spelling, as the Python type a row field holds. Derived DTOs
+#: carry the column's SQL type, and an annotation of ``INTEGER`` names nothing in Python.
+_PYTHON_TYPES = {
+    "int": "int",
+    "integer": "int",
+    "int64": "int",
+    "bigint": "int",
+    "smallint": "int",
+    "str": "str",
+    "string": "str",
+    "text": "str",
+    "varchar": "str",
+    "char": "str",
+    "character varying": "str",
+    "date": "str",
+    "timestamp": "str",
+    "bool": "bool",
+    "boolean": "bool",
+    "float": "float",
+    "float64": "float",
+    "number": "float",
+    "real": "float",
+    "double precision": "float",
+    "numeric": "float",
+    "decimal": "float",
+    "bytes": "bytes",
+    "any": "object",
+    "object": "object",
+}
+
+
+def _python_type(declared: str) -> str:
+    """Map a declared field type to Python; a type outside the map is kept as written."""
+    value = declared.strip()
+    if not value:
+        return "object"
+    lowered = value.lower()
+    if lowered.endswith(" | none"):
+        return f"{_python_type(value[: -len(' | none')])} | None"
+    # A SQL column type such as VARCHAR(12) maps by its base name; the length is the schema's.
+    return _PYTHON_TYPES.get(re.sub(r"\s*\(.*\)$", "", lowered), value)
+
+
 def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, str]]:
     """One dataclass per distinct read or create output, keyed by pattern id.
 
-    A create returns its declared Output row, as a read does. Two patterns naming the same DTO share one class. Field annotations are emitted as written in
-    the declaration and never evaluated — ``from __future__ import annotations`` keeps them
-    strings — so a declared type this module cannot import is preserved rather than dropped.
+    A create returns its declared Output row, as a read does. Two patterns naming the same DTO share one class. Field annotations are emitted in
+    Python as mapped by ``_python_type`` and never evaluated — ``from __future__ import annotations``
+    keeps them strings — so a declared type outside the map is preserved rather than dropped.
     """
     emitted: dict[str, str] = {}
     by_pattern: dict[str, tuple[str, str]] = {}
@@ -65,7 +109,7 @@ def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, st
             continue
         name = _identifier(pattern.output_name or f"{pattern.identifier}Row")
         annotations = "\n".join(
-            f"    {field.name}: {field.type or 'object'}" for field in pattern.outputs
+            f"    {field.name}: {_python_type(field.type)}" for field in pattern.outputs
         )
         body = f"@dataclass(frozen=True)\nclass {name}:\n{annotations}\n"
         emitted.setdefault(name, body)

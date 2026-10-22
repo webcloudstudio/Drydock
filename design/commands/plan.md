@@ -201,6 +201,13 @@ read from the declaration, never from `stack:` (`2026-09-18`).
 grant, never widen it; every table is reached by some pattern; every operation names a declared
 table.
 
+`2026-10-22` · **Every `Input:` field is a column of its operation's table.** The generated
+repository binds each Input field as the column of that name, so `database_contract_defects`
+refuses a field the table does not declare and names the table's columns. A placeholder row such
+as `(none)` or `—` declares no field. *Broken:* ReadingList `20261022.180908` declared
+`books.delete` with Input `book_id` against `books(id)`. SQLite read `"book_id" = ?` as a string
+comparison, every delete removed nothing, and block-2 spent six repairs on a protected file.
+
 `2026-09-19` · **One pattern is one `<table>.<verb>` operation**, verb ∈ `get`, `list`, `create`,
 `update`, `delete`. A Blueprint's `## Database Interface` entry is one checked line
 (`id — access, supplies:, returns:`) or `- None — <why>.`; a parse failure quotes the line and the

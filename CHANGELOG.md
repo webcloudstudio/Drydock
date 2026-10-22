@@ -99,6 +99,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-22: `drydock plan` refuses a `DATABASE.md` access pattern whose `Input:` field is not a
+  column of the table its operation reaches, naming the table's columns. The generated repository
+  bound such a field as a column, and SQLite compared it as a string literal, so a `delete` keyed
+  on `book_id` against `books(id)` removed nothing without an error. A placeholder Input row such
+  as `(none)` now declares no field instead of a field named `(none)`, and generated Python row
+  classes annotate fields with Python types (`int`, `str`, `float`) instead of SQL type names.
 - 2026-10-21: `drydock analyze`, `drydock survey import`, `drydock document`, and
   `drydock import --format compass` retry once when a successful reply holds no artifact blocks.
   The retry resends the unchanged prompt with an appended `Artifact retry` block that quotes the

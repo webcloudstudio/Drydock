@@ -593,6 +593,21 @@ def _rows(text: str) -> list[tuple[str, str]]:
     return result
 
 
+def _no_field(name: str) -> bool:
+    """True for a row that says a DTO carries nothing — ``(none)``, ``—`` — rather than a field.
+
+    LLM-authored declarations write a placeholder row under an empty ``Input:``. Read as a field,
+    it became an input named ``(none)`` in the generated repository and an undeclared column to
+    the Go emitter.
+    """
+    stripped = name.strip()
+    return (
+        stripped in {"", "—", "-"}
+        or stripped.casefold() == "none"
+        or (stripped.startswith("(") and stripped.endswith(")"))
+    )
+
+
 def _field_table(text: str, start: int) -> tuple[Field, ...]:
     fields: list[Field] = []
     seen_table = False
@@ -613,6 +628,8 @@ def _field_table(text: str, start: int) -> tuple[Field, ...]:
         if len(cells) < 2:
             continue
         seen_table = True
+        if _no_field(cells[0].strip("`")):
+            continue
         fields.append(
             Field(
                 name=cells[0].strip("`"),
@@ -962,6 +979,41 @@ def database_contract_defects(text: str, *, source: str = "DATABASE.md") -> tupl
     duplicates = sorted({ident for ident in ids if ids.count(ident) > 1})
     if duplicates:
         defects.append(f"{source}: duplicate access-pattern identifier(s): {', '.join(duplicates)}")
+    if not defects:
+        defects.extend(input_column_defects(text, source=source))
+    return tuple(defects)
+
+
+def input_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
+    """Name every ``Input:`` field that is not a column of the table its operation reaches.
+
+    The generated repository binds each Input field as the column of that name: the predicate of
+    a ``get``, ``list``, or ``delete`` and the values of a ``create`` or ``update``. A field the
+    table does not declare cannot be bound, and SQLite reads a double-quoted unknown identifier as
+    a string literal, so ``"book_id" = ?`` matches nothing and a delete silently removes nothing
+    (ReadingList ``20261022.180908``). An unreadable schema or an undeclared table is reported by
+    the checks that own them.
+    """
+    try:
+        tables = sqlite_schema_tables(text, source=source)
+        contract = parse_database_contract(text, source=source)
+    except SpecificationError:
+        return ()
+    columns_of = {table.name: tuple(column.name for column in table.columns) for table in tables}
+    defects: list[str] = []
+    for pattern in contract.patterns:
+        for operation in pattern.operations:
+            table = operation.split(".", 1)[0]
+            columns = columns_of.get(table)
+            if columns is None:
+                continue
+            for field in pattern.inputs:
+                if field.name not in columns:
+                    defects.append(
+                        f"{source}: {pattern.identifier} Input field `{field.name}` is not a "
+                        f"column of `{table}` ({', '.join(columns)}). Each Input field is bound "
+                        f"as the column of the same name; name the column it means."
+                    )
     return tuple(defects)
 
 
@@ -1051,7 +1103,9 @@ def replace_database_interface(text: str, body: str) -> str:
 
 def _names(value: str) -> tuple[str, ...]:
     return tuple(
-        item.strip().strip("`") for item in value.split(",") if item.strip() and item.strip() != "—"
+        name
+        for name in (item.strip().strip("`") for item in value.split(","))
+        if not _no_field(name)
     )
 
 

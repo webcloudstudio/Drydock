@@ -739,3 +739,83 @@ def test_dtos_are_not_invented_for_an_undeclared_table():
 
     assert "FEATURE-GITHUB-001" not in completed
     assert "requires Input and Output tables" in "".join(database_contract_defects(derived))
+
+
+_READING_LIST = """# DATABASE: ReadingList
+
+## Access Patterns
+
+### FEATURE-BOOK-001 — List books
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-BookList.md |
+| Access | read |
+| Repository operation | `books.list` |
+| Compatibility | unchanged |
+
+Input: BookListQuery
+
+| Field | Type | Notes |
+|---|---|---|
+| (none) | — | No input. |
+
+Output: Book
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER | |
+| title | TEXT | |
+
+### FEATURE-BOOK-002 — Delete a book
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-BookRemove.md |
+| Access | write |
+| Repository operation | `books.delete` |
+| Compatibility | unchanged |
+
+Input: BookDelete
+
+| Field | Type | Notes |
+|---|---|---|
+| book_id | INTEGER | Identifier of the book to remove. |
+
+Output: Removal
+
+| Field | Type | Notes |
+|---|---|---|
+| removed | INTEGER | |
+
+## `books`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| title | TEXT NOT NULL | |
+"""
+
+
+def test_an_input_field_that_is_not_a_column_of_its_table_is_a_defect():
+    # ReadingList 20261022.180908: `book_id` was bound as a column of `books(id)`, and SQLite read
+    # `"book_id" = ?` as a string comparison, so every delete removed nothing.
+    defects = database_contract_defects(_READING_LIST)
+
+    assert len(defects) == 1
+    assert (
+        "FEATURE-BOOK-002 Input field `book_id` is not a column of `books` (id, title)"
+        in (defects[0])
+    )
+    assert database_contract_defects(_READING_LIST.replace("| book_id |", "| id |")) == ()
+
+
+def test_a_placeholder_input_row_declares_no_field():
+    contract = parse_database_contract(_READING_LIST)
+
+    assert contract.by_id()["FEATURE-BOOK-001"].inputs == ()
+    uses = parse_database_interface(
+        "## Database Interface\n\n"
+        "- `FEATURE-BOOK-001` — read: books.list - supplies: (none) - returns: `id`\n"
+    )
+    assert uses[0].supplies == ()

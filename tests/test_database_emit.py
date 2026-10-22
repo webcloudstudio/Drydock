@@ -87,6 +87,19 @@ def test_a_create_pattern_gets_its_declared_output_row_class():
     assert "verb='create',\n        inputs=('status', 'title'),\n        row=TicketId," in module
 
 
+def test_row_fields_are_annotated_with_python_types_and_a_placeholder_is_no_input():
+    declared = _DATABASE.replace(
+        "| id | int |\n| status | str |", "| id | INTEGER |\n| status | TEXT |"
+    )
+    declared = declared.replace(
+        "| status | str | yes |\n\nOutput: Ticket", "| (none) | — | no |\n\nOutput: Ticket"
+    )
+    module = render_schema_module(declared)
+
+    assert "class Ticket:\n    id: int\n    status: str\n    title: str\n" in module
+    assert "verb='list',\n        inputs=()," in module
+
+
 _TEXT_KEY_DATABASE = """# DATABASE: Ledger
 
 ## Access Patterns
