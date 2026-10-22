@@ -273,6 +273,7 @@ def _extract_global_overrides(
     if argv is None:
         return None, {
             "model": None,
+            "plan_override_model": None,
             "llm_provider": None,
             "effort": None,
             "debug": False,
@@ -285,6 +286,7 @@ def _extract_global_overrides(
     cleaned: list[str] = []
     overrides: dict[str, str | bool | None] = {
         "model": None,
+        "plan_override_model": None,
         "llm_provider": None,
         "effort": None,
         "debug": False,
@@ -320,6 +322,15 @@ def _extract_global_overrides(
                 raise UsageError("argument --model: expected one argument")
             overrides["model"] = argv[index + 1]
             index += 2
+            continue
+        if option == "--plan-override-model":
+            if separator:
+                overrides["plan_override_model"], consumed = inline, 1
+            elif index + 1 < len(argv):
+                overrides["plan_override_model"], consumed = argv[index + 1], 2
+            else:
+                raise UsageError("argument --plan-override-model: expected one argument")
+            index += consumed
             continue
         if token == "--llm-provider":
             if index + 1 >= len(argv):
@@ -3852,6 +3863,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_llm_override_flags(p_plan)
     p_plan.add_argument(
+        "--plan-override-model",
+        dest="plan_override_model",
+        default=None,
+        metavar="<model>",
+        help="Model for this plan; overrides --model and the configured default.",
+    )
+    p_plan.add_argument(
         "--lineage-model",
         default=None,
         metavar="<model>",
@@ -5460,6 +5478,18 @@ def main(argv: list[str] | None = None) -> None:
             args.debug = bool(getattr(args, "debug", False) or value)
         elif getattr(args, key, None) is None:
             setattr(args, key, value)
+    plan_model = getattr(args, "plan_override_model", None)
+    if plan_model:
+        # Plan-stage only: ``drydock plan`` runs on it, and ``drydock uat`` hands it to its plan
+        # steps. Any other command would silently ignore it, so it is refused.
+        if args.command not in {"plan", "uat"}:
+            print(
+                "error: --plan-override-model applies only to drydock plan and drydock uat",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if args.command == "plan":
+            args.model = plan_model
     glyphs = getattr(args, "glyphs", None)
     if glyphs is None and getattr(args, "ascii", None) is not None:
         glyphs = "ascii" if args.ascii else "emoji"

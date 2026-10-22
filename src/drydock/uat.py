@@ -1315,8 +1315,8 @@ def run_fixture(
     would; the ones after it simply never execute, so the result is graded the same way any run
     that stopped there would be — no separate status or verdict path.
 
-    ``plan_model`` replaces ``model`` for every ``drydock plan`` child command; every other
-    command runs on ``model``.
+    ``plan_model`` is passed to every ``drydock plan`` child command as ``--plan-override-model``;
+    every other command runs on ``model``.
     """
     started = time.monotonic()
     started_at = datetime.now(UTC)
@@ -1389,14 +1389,13 @@ def run_fixture(
     def execute(parts: Sequence[str], label: str, *, required: bool = True) -> CommandResult:
         nonlocal sequence
         sequence += 1
+        if plan_model and parts[0] == "plan":
+            parts = (*parts, "--plan-override-model", plan_model)
         argv = (sys.executable, "-m", "drydock", *parts)
         if on_event:
             on_event(f"{fixture.name}: {label}")
         before = len(execution_ids(llm_records))
-        child_env = (
-            {**env, "DRYDOCK_MODEL": plan_model} if plan_model and parts[0] == "plan" else env
-        )
-        result = runner(argv, workspace, child_env, command_logs, f"{sequence:02d}-{label}")
+        result = runner(argv, workspace, env, command_logs, f"{sequence:02d}-{label}")
         result = replace(result, llm_executions=execution_ids(llm_records)[before:])
         commands.append(result)
         if required and result.returncode != 0:

@@ -25,11 +25,16 @@ written.
 ```text
 drydock plan <Target> [--overwrite] [--no-conform] [--override] [--continue-attempts <n>]
                       [--lineage-model <model>] [--model <model>] [--llm-provider <p>]
+                      [--plan-override-model <model>]
 drydock plan verify <Target>     deterministic, read-only, no LLM call
 drydock plan repair <Target>     one LLM pass making unrunnable criteria runnable
 ```
 
 Intended workflow: `drydock plan verify <Target> || drydock plan repair <Target>`.
+
+`--plan-override-model` replaces `--model` and the configured default for every `plan` form. It is
+read before parsing, in any operand position, and refused with exit `2` by every command except
+`plan` and `uat`.
 `--lineage-model` is accepted only by `drydock plan <Target>`.
 
 ### Rules

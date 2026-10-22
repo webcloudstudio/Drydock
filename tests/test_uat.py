@@ -2213,13 +2213,13 @@ def test_a_complete_target_still_passes_with_an_empty_frontier_at_pass_zero(
     assert any(label.endswith("initial-unstarted-check") for label in seen)
 
 
-def test_plan_model_replaces_the_model_for_plan_steps_only(tmp_path: Path) -> None:
+def test_plan_model_is_passed_to_plan_steps_only(tmp_path: Path) -> None:
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
-    models: list[tuple[str, str]] = []
+    calls: list[tuple[tuple[str, ...], str]] = []
 
     def fake_runner(argv, cwd, env, output_dir, label):
-        models.append((argv[3], env["DRYDOCK_MODEL"]))
+        calls.append((tuple(argv[3:]), env["DRYDOCK_MODEL"]))
         output_dir.mkdir(parents=True, exist_ok=True)
         stdout = output_dir / f"{label}.stdout.log"
         stderr = output_dir / f"{label}.stderr.log"
@@ -2239,8 +2239,9 @@ def test_plan_model_replaces_the_model_for_plan_steps_only(tmp_path: Path) -> No
         to_step=6,
     )
 
-    assert ("plan", "sonnet-model") in models
-    assert all(model == "sonnet-model" for verb, model in models if verb == "plan")
-    assert all(model == "haiku-model" for verb, model in models if verb != "plan")
+    flag = ("--plan-override-model", "sonnet-model")
+    assert any(parts[0] == "plan" for parts, _ in calls)
+    assert all((parts[-2:] == flag) == (parts[0] == "plan") for parts, _ in calls)
+    assert all(model == "haiku-model" for _, model in calls)
     assert results[0].environment["plan_model"] == "sonnet-model"
     assert results[0].environment["requested_model"] == "haiku-model"

@@ -1171,6 +1171,36 @@ class TestAnalyzeCommand:
         assert seen["Target"] == "Marina"
         assert seen["ungate"] is True
 
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ("plan", "Marina", "--model", "haiku", "--plan-override-model", "sonnet"),
+            ("plan", "--plan-override-model=sonnet", "Marina"),
+        ],
+    )
+    def test_plan_override_model_replaces_the_model_for_plan(self, monkeypatch, argv):
+        seen = {}
+
+        def fake_plan(plan_args):
+            plan_args.Target = "Marina"
+            seen.update(vars(plan_args))
+            return 0
+
+        monkeypatch.setattr("drydock.cli.cmd_plan", fake_plan)
+        monkeypatch.setattr("drydock.config.record_activity", lambda *args: None)
+        monkeypatch.setenv("DRYDOCK_MODEL", "haiku")
+
+        rc, _out, err = run_cli(*argv)
+
+        assert rc == 0, err
+        assert seen["model"] == "sonnet"
+
+    def test_plan_override_model_is_refused_outside_plan_and_uat(self):
+        rc, _out, err = run_cli("build", "Marina", "--plan-override-model", "sonnet")
+
+        assert rc == 2
+        assert "only to drydock plan and drydock uat" in err
+
     def test_plan_and_build_help_describe_override(self):
         for command in ("plan", "build"):
             rc, out, _ = run_cli(command, "--help")

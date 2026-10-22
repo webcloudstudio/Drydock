@@ -48,8 +48,8 @@ this command (AGENTS.md §UAT Evidence).
 `2026-10-14` · **The CLI resolves run and entry stage before the runner starts.** The CLI resolves the selected run and entry stage before invoking the UAT runner. An explicit `--from <stage>` or `--from-step <n>` supplies the entry stage; otherwise `resume` infers it from the recorded failed command.
 
 `2026-10-22` · **`--plan-override-model` runs the plan stage on its own model.** Every
-`drydock plan` child command (create, verify, repair) receives the given model as `DRYDOCK_MODEL`;
-every other command uses `--model`. `result.json` records it as `environment.plan_model`, and the
+`drydock plan` child command (create, verify, repair) is invoked with `--plan-override-model
+<model>`, so its argv records the model; every other command uses `--model`. `result.json` records it as `environment.plan_model`, and the
 executed-model list names both. Cost when broken: a model too weak to plan cannot be measured on
 build at all.
 

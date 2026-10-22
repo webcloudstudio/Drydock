@@ -115,7 +115,10 @@ loop `build || diagnose --apply` ends early on a stalled Target.
 
 ## Open Actions
 
--
+- `2026-10-22` · A test whose stubbed command raised reached the crash diagnosis in
+  `diagnose.py`, which started a real `claude/sonnet` call from pytest
+  (`tests/test_cli.py` plan-override test, before its stub was fixed). Tests must never reach a
+  provider: disable crash diagnosis under pytest or behind an injectable runner.
 
 ## Working Notes
 

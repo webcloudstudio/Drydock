@@ -10,10 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-10-22: `drydock uat --plan-override-model <model>` runs every `drydock plan` step of the
-  run on that model while the other steps use `--model`, so a model can be measured on build
-  with a plan authored by a stronger one. `result.json` records the override as
-  `environment.plan_model`.
+- 2026-10-22: `--plan-override-model <model>` runs the plan stage on its own model.
+  `drydock plan` uses it in place of `--model` and the configured default. `drydock uat` passes it
+  to every `drydock plan` step while the other steps use `--model`, so a model can be measured on
+  build with a plan authored by a stronger one, and `result.json` records it as
+  `environment.plan_model`. Every other command refuses the flag with exit `2`.
 - 2026-10-22: `drydock plan` Stage 2 accepts `BLUEPRINT_BLOCKED.txt`, a structured report of a
   Current-batch Blueprint the model cannot author: `Blueprint`, `Error type` (`missing-input`,
   `conflict`, `insufficient-specification`, `other`), `Cited input`, `Details`, and
