@@ -85,6 +85,28 @@ def get_rigging_root() -> Path:
         ) from exc
 
 
+def get_model_config_seed() -> Path:
+    """
+    Return the seed ``model_config.jsonl``.
+
+    Precedence:
+      1. Root-level model_config.jsonl when running from the source tree.
+      2. drydock/resources/model_config.jsonl inside the installed package.
+    """
+    for candidate in _repo_root_candidates():
+        seed = candidate / "model_config.jsonl"
+        if seed.is_file() and (candidate / "src" / "drydock").is_dir():
+            return seed
+    try:
+        pkg_file = importlib.resources.files("drydock") / "resources" / "model_config.jsonl"
+        with importlib.resources.as_file(pkg_file) as p:
+            return Path(p)
+    except (FileNotFoundError, TypeError) as exc:
+        raise FileNotFoundError(
+            "model_config.jsonl resource not found. Reinstall drydock or run from the source tree."
+        ) from exc
+
+
 def get_prompts_root() -> Path:
     """
     Return the authoritative prompts/ directory.

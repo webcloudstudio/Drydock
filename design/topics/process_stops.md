@@ -37,6 +37,14 @@ first fatal failure, and every later `run_prompt` call in that process raises `L
 sending the prompt. The standoff diagnosis is skipped. Cost when broken: a retry or repair loop
 above the adapter spends against the same wall.
 
+`2026-10-23` · **An invalid model is fatal.** `run_prompt` refuses, before sending, a model that
+`model_config.jsonl` does not allow for the selected provider, and records the fatal kind
+`invalid model` with execution id `not-sent`. A provider response naming a rejected model
+(`model is not supported`, `model_not_found`, `model not found`, `unknown model`, `invalid model`,
+`issue with the selected model`) is the same kind. Its recovery names `--model`,
+`drydock config set drydock_model`, and every allowed model. Cost when broken: each later call
+fails the same way, with the reason buried in a provider payload.
+
 `2026-10-22` · **The failure is recorded as `STOP_NOW.md`.** At exit, a command that recorded a
 fatal failure writes the Target's `STOP_NOW.md` with the command as its stage, the kind, provider
 message and execution id as its reason, and a `## Recovery` section naming the operator action

@@ -143,7 +143,17 @@ _MODEL_FAMILY_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 
 def _model_provider_family(model: str) -> str | None:
-    """Return the provider a model name clearly belongs to, or ``None`` if unknown."""
+    """Return the provider a model name clearly belongs to, or ``None`` if unknown.
+
+    A provider row that lists the name or its alias decides first; the family markers cover
+    names no row lists.
+    """
+    try:
+        listed = model_config.provider_of(model)
+    except ConfigurationError:
+        listed = None
+    if listed is not None:
+        return listed
     lowered = model.lower().strip()
     for provider, markers in _MODEL_FAMILY_MARKERS:
         if any(marker in lowered for marker in markers):
@@ -1338,6 +1348,16 @@ def provider_unavailable_reason(*texts: str | None) -> str | None:
     return None
 
 
+#: A provider that rejects the requested model rejects every call that names it.
+_INVALID_MODEL_MARKERS = (
+    "model is not supported",
+    "model_not_found",
+    "model not found",
+    "unknown model",
+    "invalid model",
+    "issue with the selected model",
+)
+
 #: A provider that answered 5xx, or could not be reached, is down; another call fails the same way.
 _OUTAGE_STATUS = re.compile(r"provider error 5\d\d\b")
 _OUTAGE_MARKERS = (
@@ -1380,6 +1400,16 @@ class FatalStop:
             )
         if self.kind == "provider outage":
             return "Check the provider's status page; rerun once it recovers, or switch provider."
+        if self.kind == "invalid model":
+            try:
+                allowed = ", ".join(model_config.load().provider(self.llm).allowed())
+            except ConfigurationError:
+                allowed = ""
+            return (
+                f"Choose an allowed {self.llm} model with --model, or set one with\n"
+                f"drydock config set drydock_model <model>."
+                + (f"\nAllowed {self.llm} models: {allowed}" if allowed else "")
+            )
         return f"Install or repair the {self.llm} CLI so it runs from this shell."
 
 
@@ -1391,7 +1421,7 @@ def fatal_stop_reason(
 ) -> str | None:
     """Why no further call to this provider can succeed in this run, or None when one can.
 
-    Rate limits, expired logins, timeouts, and outages are fatal. A malformed or truncated
+    Rate limits, expired logins, timeouts, outages, and a rejected model are fatal. A malformed or truncated
     response is not: its shape is observed and the calling command repairs or retries it.
     """
     if (reason := provider_unavailable_reason(error, provider_error, raw_output)) is not None:
@@ -1399,6 +1429,8 @@ def fatal_stop_reason(
     if timed_out:
         return "provider timeout"
     haystack = "\n".join(text for text in (error, provider_error) if text).lower()
+    if any(marker in haystack for marker in _INVALID_MODEL_MARKERS):
+        return "invalid model"
     if _OUTAGE_STATUS.search(haystack) or any(marker in haystack for marker in _OUTAGE_MARKERS):
         return "provider outage"
     return None
@@ -2022,6 +2054,10 @@ def run_prompt(
         raise LlmConfigurationError("Claude session start and resume cannot be used together.")
     if (claude_session_id or claude_resume_session_id) and selected != "claude":
         raise LlmConfigurationError("Claude session options require the claude provider.")
+    try:
+        model = model_config.resolve_model(model)
+    except ConfigurationError as exc:
+        raise LlmConfigurationError(str(exc)) from None
     conflict = provider_model_conflict(selected, model)
     if conflict is not None:
         raise LlmConfigurationError(conflict)
@@ -2072,6 +2108,15 @@ def run_prompt(
             f"{_fatal.kind}: {command_name} was not sent; execution {_fatal.execution_id} "
             f"already failed fatally: {_fatal.message}"
         )
+    try:
+        invalid = model_config.invalid_model(selected, model)
+    except ConfigurationError as exc:
+        raise LlmConfigurationError(str(exc)) from None
+    if invalid is not None:
+        # A model the provider does not serve fails every call that names it: bad configuration,
+        # recorded as a fatal stop before anything is sent.
+        _record_fatal_stop(FatalStop("invalid model", invalid, selected, command_name, "not-sent"))
+        raise LlmConfigurationError(invalid)
     artifacts = ExecutionArtifacts.create(
         working_directory, command_name, selected, log_dir=log_dir, target=target
     )

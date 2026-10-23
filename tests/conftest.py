@@ -55,6 +55,10 @@ def _isolate_model_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch)
         row = json.loads(line)
         if row.get("kind") == "model":
             row["bytes_per_token"] = 4.0
+        # Allowed models are the operator's account, not test input; tests that check them
+        # load the seed's lists themselves.
+        for name in ("catalog", "models", "aliases"):
+            row.pop(name, None)
         rows.append(json.dumps(row))
     path = tmp_path_factory.mktemp("model_config") / "model_config.jsonl"
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")

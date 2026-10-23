@@ -233,10 +233,13 @@ def get_model(cli_override: str | None = None) -> str:
     Resolution order: cli_override → DRYDOCK_MODEL (env or config file). There is no built-in
     default. The model now selects the provider, so falling back to one would silently choose
     a provider as well — a run configured for one vendor would quietly execute on another.
-    An unset model is a configuration error instead.
+    An unset model is a configuration error instead. An alias in ``model_config.jsonl`` returns
+    the newest model it selects.
     """
+    from drydock.model_config import resolve_model
+
     if cli_override:
-        return cli_override.strip()
+        return resolve_model(cli_override.strip()) or ""
     value, _source = _get("DRYDOCK_MODEL")
     model = (value or "").strip()
     if not model:
@@ -245,7 +248,18 @@ def get_model(cli_override: str | None = None) -> str:
             "  Pass --model <model>, or set one for every run:\n"
             "    drydock config set drydock_model <model>"
         )
-    return model
+    return resolve_model(model) or ""
+
+
+def model_problem(model: str) -> str | None:
+    """Why ``model`` cannot run on its provider, naming the allowed models, else ``None``.
+
+    The provider the model's name selects decides; otherwise the configured provider's.
+    """
+    from drydock.llm import resolve_provider
+    from drydock.model_config import invalid_model
+
+    return invalid_model(resolve_provider(None, model), model)
 
 
 def invalid_effort_message(label: str, value: str) -> str:
@@ -574,8 +588,36 @@ def config_show() -> list[tuple[str, str, str]]:
             value = mask_dsn(value)
         # A cleared key holds an empty value; report what actually governs, not "(not set)".
         empty_label = "(provider default)" if key_upper == "DRYDOCK_EFFORT" else "(not set)"
+        if key_upper == "DRYDOCK_MODEL" and value:
+            value = _model_display(value)
         rows.append((display_key, value or empty_label, source))
     return rows
+
+
+def allowed_model_rows() -> list[tuple[str, str, str]]:
+    """Each provider's allowed models, and the file the list was read from."""
+    from drydock.model_config import load
+
+    models = load()
+    rows = []
+    for provider, profile in models.providers.items():
+        if profile.restricts():
+            origin = profile.catalog if profile.catalog_models() else str(models.path)
+            rows.append((provider, ", ".join(profile.allowed()), str(origin)))
+    return rows
+
+
+def _model_display(model: str) -> str:
+    """The configured model, the model an alias selects, and whether its provider serves it."""
+    from drydock.model_config import resolve_model
+
+    resolved = resolve_model(model)
+    shown = model if resolved == model else f"{model} -> {resolved}"
+    try:
+        problem = model_problem(model)
+    except ConfigurationError as exc:
+        problem = str(exc)
+    return f"{shown}  INVALID: {problem.splitlines()[0]}" if problem else shown
 
 
 def record_activity(
@@ -619,6 +661,8 @@ def config_set(key: str, value: str) -> Path:
         stored_value = value.strip()
         if not stored_value:
             raise ConfigurationError("drydock_model must not be empty.")
+        if (problem := model_problem(stored_value)) is not None:
+            raise ConfigurationError(problem)
     elif upper == "DRYDOCK_EFFORT":
         # Empty clears the setting: no effort is requested and the provider default stands.
         stored_value = normalize_effort(value, "drydock_effort") or ""

@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-23: `model_config.jsonl` provider rows name the models each provider accepts and the
+  aliases that select the newest one. Codex aliases `sol`, `luna`, `astra`, and `terra` resolve to
+  the highest-versioned match in `~/.codex/models_cache.json`, falling back to the row's `models`
+  list. Claude and Gemini aliases pass through to their CLIs. An invalid model is a fatal
+  `invalid model` stop that writes `STOP_NOW.md` before any call is sent, and a provider
+  response rejecting the model is the same stop. Both name every allowed model.
+  `drydock config set drydock_model` refuses an invalid model, and `drydock config show` shows
+  alias resolution, flags an invalid model, and lists each provider's allowed models. The seed
+  moved from `Rigging/model_config.jsonl` to the repository root.
+
 - 2026-10-22: Every story must carry at least one Programmatic Acceptance criterion, `DATABASE.md`
   included. `drydock plan` refuses a Stage 2 response whose story Blueprints declare none
   (`criteria-missing`, sent to artifact repair). `drydock plan verify` reports the same defect,

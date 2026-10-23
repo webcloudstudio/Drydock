@@ -111,8 +111,9 @@ Environment variables override saved configuration for the current process:
 | `llm_provider` | `LLM_PROVIDER` |
 | `quarterdeck_port` | `QUARTERDECK_PORT` |
 
-Per-model token settings live in `model_config.jsonl` beside `.env`, created from the packaged
-copy on first use: the bytes-per-token ratio, the CLI's fixed request payload, the stacking
+Per-model token settings and each provider's allowed models and aliases live in
+`model_config.jsonl` beside `.env`, created on first use from the copy at the repository root
+(packaged with the wheel). `drydock config show` lists the allowed models. Token settings are: the bytes-per-token ratio, the CLI's fixed request payload, the stacking
 target (`prompt_target_tokens`), the warning threshold (`prompt_warning_tokens`), and an optional
 price-tier limit (`prompt_limit_tokens`) with the model that runs a prompt crossing 98% of it
 (`escalate_model`). `drydock config calibrate` compares these values with measured runs, and

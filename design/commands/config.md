@@ -56,6 +56,22 @@ key is a directory. Cost when broken: a megabyte figure silently resolved as a r
 and reads `GEMINI_API_KEY` from the environment only. Cost when broken: a vendor becomes a
 requirement, or a key lands in a file.
 
+`2026-10-23` · **`model_config.jsonl` names the models each provider accepts.** Its seed is the
+repository-root `model_config.jsonl`, packaged as `drydock/resources/model_config.jsonl`. A
+provider row's `models` lists full names and native aliases by hand. `catalog` names the provider
+CLI's model cache (codex: `~/.codex/models_cache.json`, hidden entries excluded), which replaces
+`models` when readable. `aliases` maps a short name to a `*` pattern that resolves to the
+highest-versioned model it matches (`sol` → `gpt-6.1-sol`). Claude (`haiku`, `sonnet`, `opus`,
+`fable`) and Gemini (`auto`, `pro`, `flash`, `flash-lite`) aliases pass through because their CLIs
+resolve them to the newest model. A row without these fields restricts nothing. `get_model`
+returns the resolved name. Cost when broken: a short name reaches a CLI that rejects it.
+
+`2026-10-23` · **An invalid model is refused with the allowed list.** `config set drydock_model`
+refuses a model its provider row does not allow, naming every allowed model; the provider is the
+one the name selects, else the configured one. `config show` prints `<model> -> <resolved>` for an
+alias, appends `INVALID:` for a disallowed model, and ends with each provider's allowed models and
+their source file. Cost when broken: a bad model is found only when a run fails.
+
 `2026-10-13` · **Scripts learn paths from `config env`.** It prints `DRYDOCK_WORKSPACE`,
 `DRYDOCK_TARGETS_ROOT`, `DRYDOCK_BUILD_DIRECTORY`, and, with a Target, its directory and build
 directory (honoring a `METADATA.md` redirect) as shell-quoted assignments for `eval`. The Target

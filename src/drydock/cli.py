@@ -381,11 +381,16 @@ def _extract_global_overrides(
 
 
 def cmd_config_show(_args: argparse.Namespace) -> int:
-    from drydock.config import config_show
+    from drydock.config import allowed_model_rows, config_show
 
     rows = config_show()
     for display_key, value, source in rows:
         print(f"  {display_key:<30} {value}  ({source})")
+    models = allowed_model_rows()
+    if models:
+        print("\n  Allowed models")
+    for provider, names, source in models:
+        print(f"  {provider:<30} {names}  ({source})")
     return 0
 
 

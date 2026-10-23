@@ -1,7 +1,10 @@
 """Per-model token accounting and provider argument rules, read from ``model_config.jsonl``.
 
 One JSON object per line. ``kind: provider`` rows carry the CLI arguments that shape a
-provider's tool surface (``build_args`` for tool-using runs, ``text_args`` for text-only runs).
+provider's tool surface (``build_args`` for tool-using runs, ``text_args`` for text-only runs)
+and the models the provider accepts: ``models`` lists them by hand, ``catalog`` names the
+provider CLI's own model cache that replaces that list when it can be read, and ``aliases`` maps
+a short name to a ``*`` pattern that resolves to the newest model it matches.
 ``kind: model`` rows carry everything Drydock needs to cost and route a prompt for a model
 family: the tokenizer ratio (``bytes_per_token``), the CLI's fixed request payload
 (``overhead_tokens`` by run mode), the stacking target, the warning threshold, and an optional
@@ -12,16 +15,18 @@ A model name matches the first ``model`` row, in file order, whose ``match`` lis
 substring of the lowercased name; ``*`` matches anything. Order is therefore significant:
 ``haiku-4`` precedes the bare ``haiku`` alias, which selects the current Haiku.
 
-The packaged seed lives in Rigging. The live copy is user configuration, created from the seed
+The seed is ``model_config.jsonl`` at the repository root. The live copy is user configuration, created from the seed
 on first use beside the Drydock ``.env``; ``DRYDOCK_MODEL_CONFIG`` names another file. Only
 ``drydock config calibrate --apply`` rewrites the live copy, from measured evidence.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import math
 import os
+import re
 import shutil
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -63,9 +68,52 @@ class ProviderProfile:
     provider: str
     build_args: tuple[str, ...] = ()
     text_args: tuple[str, ...] = ()
+    models: tuple[str, ...] = ()
+    aliases: Mapping[str, str] = field(default_factory=dict)
+    catalog: str | None = None
 
     def args(self, allow_tools: bool) -> tuple[str, ...]:
         return self.build_args if allow_tools else self.text_args
+
+    def restricts(self) -> bool:
+        """Whether this row names the models its provider accepts."""
+        return bool(self.models or self.aliases or self.catalog)
+
+    def catalog_models(self) -> tuple[str, ...] | None:
+        """Models the provider CLI's cache lists for this account, or ``None`` when unreadable."""
+        if not self.catalog:
+            return None
+        try:
+            data = json.loads(Path(self.catalog).expanduser().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        entries = data.get("models") if isinstance(data, dict) else data
+        if not isinstance(entries, list):
+            return None
+        names = tuple(
+            str(entry["slug"])
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("slug") and entry.get("visibility") != "hide"
+        )
+        return names or None
+
+    def available(self) -> tuple[str, ...]:
+        """Full model names this provider accepts: the catalog when readable, else ``models``."""
+        return self.catalog_models() or self.models
+
+    def allowed(self) -> tuple[str, ...]:
+        """Every name ``--model`` may give for this provider: aliases, then full names."""
+        return tuple(self.aliases) + self.available()
+
+    def resolve(self, name: str) -> str | None:
+        """The newest model an alias names, ``name`` for a non-alias, ``None`` when unresolved."""
+        pattern = self.aliases.get(name.lower())
+        if pattern is None:
+            return name
+        if "*" not in pattern:
+            return pattern
+        matched = [model for model in self.available() if fnmatch.fnmatchcase(model, pattern)]
+        return max(matched, key=_version_key) if matched else None
 
 
 @dataclass(frozen=True)
@@ -140,9 +188,9 @@ class Escalation:
 
 
 def seed_path() -> Path:
-    from drydock.paths import get_rigging_root
+    from drydock.paths import get_model_config_seed
 
-    return get_rigging_root() / MODEL_CONFIG_NAME
+    return get_model_config_seed()
 
 
 def config_path() -> Path:
@@ -192,10 +240,16 @@ def parse(text: str, path: Path) -> ModelConfig:
             name = str(row.get("provider") or "").strip()
             if not name:
                 raise ConfigurationError(f"{path}:{number}: provider row has no provider.")
+            aliases = row.get("aliases") or {}
+            if not isinstance(aliases, Mapping):
+                raise ConfigurationError(f"{path}:{number}: aliases must map a name to a model.")
             providers[name] = ProviderProfile(
                 provider=name,
                 build_args=tuple(str(a) for a in row.get("build_args") or ()),
                 text_args=tuple(str(a) for a in row.get("text_args") or ()),
+                models=tuple(str(m) for m in row.get("models") or ()),
+                aliases={str(k).lower(): str(v) for k, v in aliases.items()},
+                catalog=str(row["catalog"]) if row.get("catalog") else None,
             )
         elif kind == "model":
             models.append(_model_row(row, path, number, len(rows) - 1))
@@ -249,6 +303,54 @@ def _model_row(row: Mapping[str, Any], path: Path, number: int, index: int) -> M
         measured=row.get("measured"),
         index=index,
     )
+
+
+def _version_key(model: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"\d+", model))
+
+
+def provider_of(model: str | None, config: ModelConfig | None = None) -> str | None:
+    """The provider whose row lists ``model`` or its alias, or ``None`` when no row does."""
+    name = (model or "").strip()
+    if not name:
+        return None
+    for provider, profile in (config or load()).providers.items():
+        if name.lower() in profile.aliases or name in profile.available():
+            return provider
+    return None
+
+
+def resolve_model(model: str | None, config: ModelConfig | None = None) -> str | None:
+    """The full model name an alias selects; any other name, or an unresolved alias, unchanged."""
+    name = (model or "").strip()
+    if not name:
+        return model
+    for profile in (config or load()).providers.values():
+        if name.lower() in profile.aliases:
+            return profile.resolve(name) or name
+    return name
+
+
+def invalid_model(
+    provider: str, model: str | None, config: ModelConfig | None = None
+) -> str | None:
+    """Why ``model`` cannot run on ``provider``, naming the allowed models, else ``None``.
+
+    A provider row that lists no models restricts nothing.
+    """
+    name = (model or "").strip()
+    profile = (config or load()).provider(provider)
+    if not name or not profile.restricts():
+        return None
+    resolved = profile.resolve(name)
+    if resolved is not None and resolved in profile.available():
+        return None
+    reason = (
+        f"alias {name!r} matches no {provider} model ({profile.aliases[name.lower()]})"
+        if resolved is None
+        else f"model {name!r} is not available on {provider}"
+    )
+    return f"Invalid model: {reason}.\n  Allowed {provider} models: {', '.join(profile.allowed())}"
 
 
 def active_model() -> str:
