@@ -55,7 +55,8 @@ leave shared residue, or claim durability they never tested.
 `2026-10-22` · **A DATABASE-only step is graded, not built.** When every story in a step
 implements only `DATABASE.md` and the persistence package was generated, no model is called. The
 step's criteria run against the generated package and decide the close: `closed/verified`,
-`closed/implemented` when unexamined, `closed/failed` on a red criterion. Persistence is generated
+`closed/implemented` when unexamined, `closed/failed` on a red criterion or when no criterion
+runs, since 0/0 grades nothing. Persistence is generated
 after the criteria baseline, so those criteria are red before the step. Cost when broken: the agent
 can only report that it wrote nothing, and every repair fails the same way (ReadingList
 `20261022.231143`).
@@ -191,6 +192,11 @@ reset preserves `.git`. *Broken:* specification versions severed from code.
 
 ## Open Actions
 
+- `2026-10-22` · Build's entry gate still omits `criteria-missing` (`build_run.py` `build_target`,
+  the `verify_plan` filter), so a Manifest approved past Plan's gate builds a story with no
+  criteria and closes it on the agent's word. Keeping the defect makes it fatal, but 139 build and
+  CLI tests fail because `_setup` in `tests/test_build_run.py` writes Blueprints with no criteria.
+  The fixtures need a criterion first.
 - `2026-10-20` · The acceptance-failure Recovery still says `drydock build <Target>` when the agent
   disputes the criterion in prose that neither `_defective_acceptance_claim` (`build_run.py`) nor
   `_BLUEPRINT_REPAIR_SIGNALS` (`cli.py`) recognizes. LayersTesting `20261020.161323` blocker: "The

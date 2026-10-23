@@ -4894,6 +4894,30 @@ def test_a_database_only_step_fails_on_a_red_criterion_without_a_model_call(
     assert _state(target_dir, "foundation") == "closed/failed"
 
 
+def test_a_database_only_step_with_no_criteria_fails_instead_of_closing(
+    tmp_path: Path, monkeypatch
+):
+    """0/0 grades nothing, so a DATABASE-only step that ran no criterion is not implemented."""
+    target_dir, build_dir = _database_only_target(tmp_path, monkeypatch, "True")
+    database = target_dir / "blueprint" / "DATABASE.md"
+    text = database.read_text(encoding="utf-8")
+    database.write_text(
+        text[: text.index("## Programmatic Acceptance")]
+        + "## Programmatic Acceptance\n\n- None.\n",
+        encoding="utf-8",
+    )
+    runner = make_runner()
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation"
+    )
+
+    assert runner.calls == []
+    assert result.exit_code() == 1
+    assert _state(target_dir, "foundation") == "closed/failed"
+    assert "no acceptance criteria graded" in (_finding(target_dir, "foundation") or "")
+
+
 def test_a_declaration_with_no_tables_writes_no_schema(tmp_path: Path):
     from drydock.build_run import _write_persistence
 

@@ -3055,7 +3055,15 @@ def build_target(
                     check.check_id for check in failed_checks
                 )
                 failure_detail = _render_ac_failure_chain(unit, failed_checks, story_by_check)
-            elif not acceptance or _unverified_finding(acceptance, prepassed_ids) is not None:
+            elif not acceptance:
+                # Nothing graded means nothing verified, and no repair can author a criterion.
+                state, status = "closed/failed", "failed"
+                error = "no acceptance criteria graded"
+                failure_detail = (
+                    f"{unit.block_id} ran no criteria; author them in its Blueprint with "
+                    f"`drydock plan {target}`"
+                )
+            elif _unverified_finding(acceptance, prepassed_ids) is not None:
                 state, status, error, failure_detail = "closed/implemented", "built", None, ""
             else:
                 state, status, error, failure_detail = "closed/verified", "built", None, ""
