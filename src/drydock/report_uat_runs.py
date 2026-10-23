@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -228,6 +229,48 @@ def successful_runs(uat_root: Path) -> list[UatRunRow]:
             rows.append(_run_row(result_path.parent, result))
     rows.sort(key=lambda row: (row.run_id, row.project), reverse=True)
     return rows
+
+
+def render_uat_summary(uat_root: Path, *, now: datetime | None = None) -> list[str]:
+    """List kits with a Claude/Codex pass in the preceding 30 days; read results only.
+
+    Completion time governs the window, falling back to the UTC run id for older receipts.
+    A later failure does not erase a qualifying pass. Unknown providers and dates are skipped.
+    """
+    end = now or datetime.now(UTC)
+    start = end - timedelta(days=30)
+    kits = sorted(path for path in uat_root.iterdir() if path.is_dir())
+    width = max(20, *(len(kit.name) for kit in kits)) if kits else 20
+    lines = ["# 30 Day UAT Summary Report", f"# {'':<{width}}  Claude  Codex"]
+    for kit in kits:
+        passed: set[str] = set()
+        for result_path in (kit / "runs").glob("*/result.json"):
+            result = _read_json(result_path)
+            if result.get("status") != "passed":
+                continue
+            environment = _mapping(result.get("environment"))
+            provider = str(environment.get("provider") or "").lower()
+            if provider not in {"claude", "codex"}:
+                continue
+            try:
+                finished = environment.get("finished_at")
+                stamp = (
+                    datetime.fromisoformat(str(finished).replace("Z", "+00:00"))
+                    if finished
+                    else datetime.strptime(
+                        str(result.get("run_id") or result_path.parent.name), "%Y%m%d.%H%M%S"
+                    ).replace(tzinfo=UTC)
+                )
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=UTC)
+            except ValueError:
+                continue
+            if start <= stamp <= end:
+                passed.add(provider)
+        claude = "Y" if "claude" in passed else ""
+        codex = "Y" if "codex" in passed else ""
+        lines.append(f"# {kit.name:<{width}}  {claude:<6}  {codex}".rstrip())
+    return lines
 
 
 def _tokens(value: int) -> str:

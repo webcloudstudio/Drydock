@@ -174,6 +174,7 @@ JSON, duplicate keys, and ambiguous extra content are not silently extracted awa
     drydock report --all                       # Write all reports for all Targets
     drydock report --all     MyApp             # Write all reports under targets/MyApp/reports/
     drydock report uat_report                  # Passed UAT runs: calls, tokens, tools, time
+    drydock report uat_summary                 # 30-day passed-kit matrix: Claude / Codex
 
 # ── A ── ANALYZE ─────────────────────────────────────────────────────────
     drydock import            MyApp <file|dir> # Import sources into the workspace
@@ -295,6 +296,13 @@ Target under `targets/<Target>/reports/`; `--all <Target>` limits the run to one
 prints each path relative to the current directory when it can. These reports read recorded
 evidence and do not run models, builds, acceptance checks, or UAT. Existing QuarterDeck views
 and published receipts remain available through their current commands.
+
+`drydock report uat_summary` prints `# 30 Day UAT Summary Report` followed by an aligned
+kit matrix with Claude and Codex columns. `Y` means at least one passed run completed in the
+preceding 30 days (UTC); otherwise the cell is blank. Older receipts without completion time
+use the UTC run id. Every kit directory is listed, including kits without recent passes; files
+such as `README.md` are excluded. The report reads only `result.json` receipts under
+`<workspace>/uat/`, writes no files, takes no Target, and is excluded from `--all`.
 
 ## The QuarterDeck Web Server
 

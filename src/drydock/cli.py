@@ -3667,7 +3667,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock report --all            — write every report for every Target\n"
             "drydock report --all <Target>   — write every report for one Target\n"
             "drydock report uat_report       — print passed UAT runs: Drydock LLM calls,\n"
-            "                                  tokens by type, tool calls, LLM time"
+            "                                  tokens by type, tool calls, LLM time\n"
+            "drydock report uat_summary      — print 30-day UAT passes by Claude and Codex"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -4158,16 +4159,19 @@ def _dispatch_status(args: argparse.Namespace) -> int:
         raise UsageError("Usage: drydock status [<Target>] [--check | --ready]")
 
 
-def cmd_report_uat_runs() -> int:
-    """Compare successful UAT runs by turns and total tokens. Reads kit run results only."""
+def cmd_report_uat_runs(*, summary: bool = False) -> int:
+    """Print the selected read-only workspace UAT report."""
     from drydock.config import get_workspace
-    from drydock.report_uat_runs import render_uat_report, successful_runs
+    from drydock.report_uat_runs import render_uat_report, render_uat_summary, successful_runs
 
     uat_root = get_workspace() / "uat"
     if not uat_root.is_dir():
         print(f"error: no UAT kits found under {uat_root}", file=sys.stderr)
         return 1
-    for line in render_uat_report(successful_runs(uat_root)):
+    lines = (
+        render_uat_summary(uat_root) if summary else render_uat_report(successful_runs(uat_root))
+    )
+    for line in lines:
         print(line)
     return 0
 
@@ -4182,6 +4186,8 @@ def _dispatch_report(args: argparse.Namespace) -> int:
         return 0
     if not args.all and tokens == ["uat_report"]:
         return cmd_report_uat_runs()
+    if not args.all and tokens == ["uat_summary"]:
+        return cmd_report_uat_runs(summary=True)
     if args.all and len(tokens) <= 1:
         name, target = "--all", tokens[0] if tokens else ""
     elif not args.all and len(tokens) == 2 and tokens[0] in {item.name for item in REPORT_TYPES}:
@@ -4189,7 +4195,8 @@ def _dispatch_report(args: argparse.Namespace) -> int:
     else:
         raise UsageError(
             "Usage: drydock report help | drydock report <name> <Target> | "
-            "drydock report --all [<Target>] | drydock report uat_report"
+            "drydock report --all [<Target>] | drydock report uat_report | "
+            "drydock report uat_summary"
         )
     if target and (target in {".", ".."} or Path(target).name != target):
         raise UsageError("Report Target must be a name under the configured targets directory")

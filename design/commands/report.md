@@ -24,10 +24,11 @@ drydock report help
 drydock report <name> <Target>
 drydock report --all [<Target>]
 drydock report uat_report
+drydock report uat_summary
 ```
 
 Names, in registry order: `status`, `manifest`, `run`, `build`, `history`, `llm`, `token`,
-`scores`. Workspace report, listed after them in `report help`: `uat_report`.
+`scores`. Workspace reports, listed after them in `report help`: `uat_summary`, `uat_report`.
 
 ### Rules
 
@@ -68,6 +69,18 @@ minutes summed over every execution, resumes included. Run wall-clock is omitted
 times. It covers the workspace, takes no Target, writes no `reports/` file, and is outside `--all`.
 Exits `1` when `<workspace>/uat` is absent. *Broken:* failed runs skew the comparison, or
 a report write invalidates published kit evidence.
+
+`2026-10-23` · **`report uat_summary` prints a 30-day passed-kit matrix.** The first line is
+`# 30 Day UAT Summary Report`; every table line starts with `#`. Sorted kit directories form
+rows, with fixed Claude and Codex columns. A cell is `Y` when any `passed` receipt for that
+`environment.provider` completed in the inclusive UTC interval `[now - 30 days, now]`; it is
+blank otherwise. `environment.finished_at` supplies completion time; receipts without it use
+`run_id` (or the run directory name) as a UTC timestamp. Invalid dates, malformed receipts,
+other providers, and future runs do not qualify. Later failures do not erase a qualifying pass.
+Files such as `README.md` are excluded. Only result receipts are read, with no transcript scans,
+UAT execution, or writes. Like `uat_report`, it takes no Target, is excluded from `--all`, and
+exits `1` when the UAT root is absent. Cost when broken: stale or failed runs appear as recent
+passes, or a summary changes the evidence it describes.
 
 ### Mechanism
 

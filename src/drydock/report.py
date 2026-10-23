@@ -240,6 +240,11 @@ REPORT_TYPES = (
 #: the CLI dispatches them, and ``--all`` excludes them. Rows: name, command, description.
 WORKSPACE_REPORTS = (
     (
+        "uat_summary",
+        "drydock report uat_summary",
+        "30-day UAT summary: passed kits by Claude and Codex",
+    ),
+    (
         "uat_report",
         "drydock report uat_report",
         "Passed UAT runs: LLM calls, tokens, tool calls, time",
