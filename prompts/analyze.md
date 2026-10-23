@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20261020 V25
+version: 20261023 V26
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, RIGGING_MANIFEST, IMPORTED_SOURCES
@@ -252,6 +252,10 @@ depends on the answer. It never resolves a blocker. Do not duplicate a questionn
 - *Emits:* the Agile feature list and story list at title + high-level AC level (powers ANALYSIS.md `## Story List`).
 - Each feature is an Agile feature area that groups related stories.
 - Each story corresponds to one spec file scope.
+- A story delivers behavior a user or caller can observe. A stated foundation fact is not a
+  story: the language, framework, or database belongs in `TECHNOLOGY_STACK.md`, and a mandated
+  table, column, or file layout is a `## Constraints` bullet in `COMPASS.md`. A Sea Trial may
+  still check it; no story owns it.
 - Story cap: ~100 stories. If you identify more than 100, the spec is over-decomposed; surface
   this as a blocker and offer to consolidate.
 - Group all stories under `### Feature: {Feature Name}` headings. Do not use Screens as a

@@ -81,7 +81,7 @@ around it:
 | `get` | the Output row, or `None` (Go `nil`) when nothing matches |
 | `list` | a list of Output rows, one per record; the Output names the row's columns |
 | `create` | the Output row, read back by key; the key when no Output is declared |
-| `update` | the count of rows changed |
+| `update` | the Output row, read back by key, or `None` when nothing matched; the count when no Output is declared |
 | `delete` | the Output built from the given key, or `None` when nothing matched; the count when no Output is declared |
 
 ```python

@@ -253,6 +253,56 @@ print("DELETE OK")
     assert "DELETE OK" in result.stdout
 
 
+_UPDATE_PATTERN = """### FEATURE-TICKET-004 — Close ticket
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-Ticket.md |
+| Access | write |
+| Repository operation | `tickets.update` |
+| Compatibility | rebuild |
+
+Input: TicketUpdate
+
+| Field | Type | Required |
+|---|---|---|
+| id | int | yes |
+| status | str | yes |
+
+Output: Ticket
+
+| Field | Type |
+|---|---|
+| id | int |
+| status | str |
+| title | str |
+
+"""
+
+
+def test_an_update_returns_its_declared_output_row_read_back_by_key(tmp_path: Path):
+    declared = _DATABASE.replace("## `tickets`", _UPDATE_PATTERN + "## `tickets`")
+    blueprint_dir = tmp_path / "blueprint"
+    build_dir = tmp_path / "build"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text(declared, encoding="utf-8")
+    write_persistence_package(blueprint_dir, build_dir)
+    script = f"""
+from {PACKAGE} import open_database
+db = open_database("app.db")
+db.execute_script(open("schema.sql").read())
+created = db.tickets.create(status="open", title="Plan discovery")
+updated = db.tickets.update(id=created.id, status="closed")
+assert (updated.id, updated.status, updated.title) == (created.id, "closed", "Plan discovery")
+assert db.tickets.update(id=created.id + 1000, status="closed") is None
+print("UPDATE OK")
+"""
+    result = _run_in_build(build_dir, script)
+
+    assert result.returncode == 0, result.stderr
+    assert "UPDATE OK" in result.stdout
+
+
 def _emitted_build(tmp_path: Path) -> Path:
     blueprint_dir = tmp_path / "blueprint"
     build_dir = tmp_path / "build"

@@ -3872,9 +3872,7 @@ def test_uncovered_analyzed_story_is_repaired_at_stage_1(tmp_path):
         "implements:   FEATURE-Status.md",
         "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
     )
-    repaired = uncovered.replace(
-        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
-    )
+    repaired = uncovered.replace("covers:       STATUS-001", "covers:       STATUS-001, ARCH-001")
     runner = _sequence_runner(_topology_output(uncovered), _declaration_block(repaired))
 
     result = create_plan("Example", "Example", tmp_path, runner=runner)
@@ -3883,7 +3881,7 @@ def test_uncovered_analyzed_story_is_repaired_at_stage_1(tmp_path):
     assert "Plan Topology Repair" in runner.calls[1]
     assert "not delivered by any Manifest story: ARCH-001" in runner.calls[1]
     assert (target_dir / "MANIFEST.md").is_file()
-    assert result.plan.by_id()["story-foundation"].fields["covers"] == ("ARCH-001",)
+    assert result.plan.by_id()["story-status"].fields["covers"] == ("STATUS-001", "ARCH-001")
 
 
 # Regression shape from Marina_Haiku 20260913.042433: one story lists two files, and the second
@@ -3977,9 +3975,7 @@ def test_a_coverage_only_repair_carries_no_split_rules(tmp_path):
         "implements:   FEATURE-Status.md",
         "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
     )
-    repaired = uncovered.replace(
-        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
-    )
+    repaired = uncovered.replace("covers:       STATUS-001", "covers:       STATUS-001, ARCH-001")
     runner = _sequence_runner(_topology_output(uncovered), _declaration_block(repaired))
 
     create_plan("Example", "Example", tmp_path, runner=runner)
@@ -4012,9 +4008,7 @@ def test_stage_1_coverage_repair_is_skipped_when_the_declaration_covers_every_st
     covered = _TOPOLOGY_DECLARATION.replace(
         "implements:   FEATURE-Status.md",
         "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
-    ).replace(
-        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
-    )
+    ).replace("covers:       STATUS-001", "covers:       STATUS-001, ARCH-001")
     runner = _sequence_runner(_topology_output(covered))
 
     create_plan("Example", "Example", tmp_path, runner=runner)
@@ -6081,16 +6075,14 @@ def test_a_coverage_repair_wrapped_in_an_xml_envelope_is_still_read(tmp_path):
         "implements:   FEATURE-Status.md",
         "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
     )
-    repaired = uncovered.replace(
-        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
-    )
+    repaired = uncovered.replace("covers:       STATUS-001", "covers:       STATUS-001, ARCH-001")
     envelope = f"<TOPOLOGY.md>\n{repaired}\n</TOPOLOGY.md>\n"
     runner = _sequence_runner(_topology_output(uncovered), envelope)
 
     result = create_plan("Example", "Example", tmp_path, runner=runner)
 
     assert (target_dir / "MANIFEST.md").is_file()
-    assert result.plan.by_id()["story-foundation"].fields["covers"] == ("ARCH-001",)
+    assert result.plan.by_id()["story-status"].fields["covers"] == ("STATUS-001", "ARCH-001")
 
 
 def test_a_coverage_repair_prefaced_by_prose_is_still_read(tmp_path):
@@ -6100,16 +6092,14 @@ def test_a_coverage_repair_prefaced_by_prose_is_still_read(tmp_path):
         "implements:   FEATURE-Status.md",
         "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
     )
-    repaired = uncovered.replace(
-        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
-    )
+    repaired = uncovered.replace("covers:       STATUS-001", "covers:       STATUS-001, ARCH-001")
     reply = "I corrected the missing coverage.\n\n" + _declaration_block(repaired)
     runner = _sequence_runner(_topology_output(uncovered), reply)
 
     result = create_plan("Example", "Example", tmp_path, runner=runner)
 
     assert (target_dir / "MANIFEST.md").is_file()
-    assert result.plan.by_id()["story-foundation"].fields["covers"] == ("ARCH-001",)
+    assert result.plan.by_id()["story-status"].fields["covers"] == ("STATUS-001", "ARCH-001")
 
 
 def test_the_repair_prompt_states_the_grammar_and_demonstrates_no_other(tmp_path):

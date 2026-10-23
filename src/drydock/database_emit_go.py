@@ -94,10 +94,11 @@ def render_go_schema(text: str) -> str:
                 raise SpecificationError(f"Go operation {operation} refers to an undeclared table")
             declared = table_map[table]
             column_names = {column.name for column in declared.columns}
-            # A keyed create returns its declared Output row, read back by key, as a get does.
+            # A keyed create or update returns its declared Output row, read back by key, as a
+            # get does, and a keyed delete returns its Output built from the key.
             keyed = any(column.primary_key for column in declared.columns)
             returns_row = verb in ("get", "list") or (
-                verb in ("create", "delete") and keyed and bool(pattern.outputs)
+                verb in ("create", "update", "delete") and keyed and bool(pattern.outputs)
             )
             for field in (*pattern.inputs, *(pattern.outputs if returns_row else ())):
                 if field.name not in column_names:

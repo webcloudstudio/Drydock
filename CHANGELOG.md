@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-23: `drydock report uat_summary` prints a read-only 30-day UAT pass matrix,
+  with every kit directory and Claude/Codex columns. `Y` marks at least one passed run
+  completed in the preceding 30 days; older receipts fall back to the UTC run id.
+  The report takes no Target, writes no files, and is excluded from `report --all`.
+
 - 2026-10-23: `model_config.jsonl` provider rows name the models each provider accepts and the
   aliases that select the newest one. Codex aliases `sol`, `luna`, `astra`, and `terra` resolve to
   the highest-versioned match in `~/.codex/models_cache.json`, falling back to the row's `models`
@@ -190,6 +195,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-23: An `update` with a declared Output returns that row read back by key, or
+  `None`/`nil` when no row matched, in the Python and Go repositories. Its Output fields must be
+  table columns. An `update` with no Output still returns the count.
+
 - 2026-10-23: Generated persistence now returns what `DATABASE.md` declares. `drydock plan`
   refuses an `Output:` field that the operation cannot return. `get`, `list`, and `create`
   Output fields must be table columns, so a `list` Output declares the row, never a wrapper
@@ -198,9 +207,11 @@ command surface and Typed Specification contract are unstable and may change bet
   both the Python and Go repositories. A `delete` with no Output still returns the count. The
   SQLite and PostgreSQL stack guidance and the `DATABASE.md` template state each verb's return
   shape for the planner.
-- 2026-10-23: The story that implements `DATABASE.md` no longer claims `covers:` or `accepts:`.
-  `drydock plan` drops both fields, and the Feature that reaches the data owns the analyzed story
-  and its Sea Trials.
+- 2026-10-23: Foundational stories no longer claim `covers:` or `accepts:`. `drydock plan` drops
+  both from every `type: foundational` story and from the story implementing `DATABASE.md`, and
+  the Feature or Screen that delivers the behavior owns the analyzed story and its Sea Trials.
+  `drydock analyze` no longer turns a stated language, database, or mandated table into a story.
+  It records the fact in `TECHNOLOGY_STACK.md` or as a `COMPASS.md` constraint.
 
 - 2026-10-23: `drydock score release` reads a tool-using grader's JSON from its final turn when
   the narration streamed from earlier turns fails JSON cleanup, and records `earlier-turn text` as

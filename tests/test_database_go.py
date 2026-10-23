@@ -54,11 +54,13 @@ Input: UpdateTicket
 | id | int | yes |
 | status | str | no |
 
-Output: Count
+Output: UpdatedTicket
 
 | Field | Type |
 |---|---|
-| count | int |
+| id | int |
+| status | str |
+| title | str |
 
 ### FEATURE-TICKET-005 — Delete ticket
 
@@ -157,8 +159,10 @@ func TestDeclaredOperations(t *testing.T) {
  preserved,err:=db.Tickets.Get(ctx,persistence.TicketsGetInput{Id:id})
  if err!=nil || preserved==nil {t.Fatal("keyless delete removed row")}
  status:="closed"
- count,err:=db.Tickets.Update(ctx,persistence.TicketsUpdateInput{Id:id,Status:&status})
- if err!=nil || count!=1 {t.Fatalf("update: %v %v",count,err)}
+ updated,err:=db.Tickets.Update(ctx,persistence.TicketsUpdateInput{Id:id,Status:&status})
+ if err!=nil || updated==nil || updated.Status!="closed" || updated.Title!="bound ' value" {t.Fatalf("update: %v %v",updated,err)}
+ missing,err:=db.Tickets.Update(ctx,persistence.TicketsUpdateInput{Id:id+1000,Status:&status})
+ if err!=nil || missing!=nil {t.Fatalf("update of a missing row: %v %v",missing,err)}
  row,err:=db.Tickets.Get(ctx,persistence.TicketsGetInput{Id:id})
  if err!=nil || row==nil || row.Status!="closed" {t.Fatalf("get: %v %v",row,err)}
  deleted,err:=db.Tickets.Delete(ctx,persistence.TicketsDeleteInput{Id:id})

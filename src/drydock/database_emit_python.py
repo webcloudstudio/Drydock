@@ -95,10 +95,10 @@ def _python_type(declared: str) -> str:
 
 
 def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, str]]:
-    """One dataclass per distinct read, create, or delete output, keyed by pattern id.
+    """One dataclass per distinct output, keyed by pattern id.
 
-    A create returns its declared Output row, as a read does, and a delete returns its Output
-    built from the key it was given. Two patterns naming the same DTO share one class. Field annotations are emitted in
+    A create or update returns its declared Output row, as a read does, and a delete returns its
+    Output built from the key it was given. Two patterns naming the same DTO share one class. Field annotations are emitted in
     Python as mapped by ``_python_type`` and never evaluated — ``from __future__ import annotations``
     keeps them strings — so a declared type outside the map is preserved rather than dropped.
     """
@@ -106,7 +106,7 @@ def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, st
     by_pattern: dict[str, tuple[str, str]] = {}
     for pattern in patterns:
         verbs = {operation.partition(".")[2] for operation in pattern.operations}
-        if not pattern.outputs or not verbs & {"get", "list", "create", "delete"}:
+        if not pattern.outputs or not verbs & {"get", "list", "create", "update", "delete"}:
             continue
         name = _identifier(pattern.output_name or f"{pattern.identifier}Row")
         annotations = "\n".join(

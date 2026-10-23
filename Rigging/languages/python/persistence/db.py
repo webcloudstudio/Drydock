@@ -66,7 +66,7 @@ class Operation:
 
     ``inputs`` are the parameters the caller supplies; for ``get``, ``list``, and ``delete`` they
     are the predicate, and for ``create`` and ``update`` they are the values written. ``row`` is
-    the dataclass a read, a create, or a delete returns, and ``columns`` are its fields.
+    the dataclass a read, a create, an update, or a delete returns, and ``columns`` are its fields.
     """
 
     identifier: str
@@ -342,7 +342,14 @@ class Database:
             assigned = [name for name in names if name != key]
             ordered = [values[names.index(name)] for name in assigned] + [values[names.index(key)]]
             cursor.execute(self._driver.update(table, assigned, [key]), ordered)
-            return cursor.rowcount
+            if operation.row is None:
+                return cursor.rowcount
+            if not cursor.rowcount:
+                return None
+            # The declared Output row, read back by key so unassigned columns are included.
+            columns = operation.columns or self._columns(table)
+            cursor.execute(self._driver.select(table, columns, [key]), [values[names.index(key)]])
+            return self._build(operation, columns, cursor.fetchone())
         if verb == "delete":
             cursor.execute(self._driver.delete(table, names), values)
             if operation.row is None:

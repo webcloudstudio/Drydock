@@ -27,6 +27,12 @@ drydock analyze <Target> [--model <model>] [--llm-provider <p>]
 
 ### Rules
 
+`2026-10-23` · **A stated foundation fact is not a story.** The Story List holds behavior a user
+or caller observes. A language, framework, or database goes to `TECHNOLOGY_STACK.md`, and a
+mandated table, column, or layout is a `COMPASS.md` `## Constraints` bullet. A Sea Trial may check
+it at `score release`. *Broken:* plan cannot place an analyzed story that only a foundation could
+own, because foundational stories carry no `covers:`.
+
 `2026-10-22` · **Structured model calls declare their output format to `llm.run_prompt`.**
 The adapter strips only bounded plain narration around intact artifact envelopes or one complete
 JSON object/array; it also removes a surrounding JSON code fence. It preserves artifact bodies,

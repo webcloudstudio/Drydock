@@ -1021,12 +1021,11 @@ def input_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str
 def output_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
     """Name every ``Output:`` field the generated repository cannot return.
 
-    A ``get``, ``list``, or ``create`` returns its Output row built from the table's columns, and
-    a ``list`` returns one such row per record, so a collection field such as
+    A ``get``, ``list``, ``create``, or ``update`` returns its Output row built from the table's
+    columns, and a ``list`` returns one such row per record, so a collection field such as
     ``books: list[Book]`` names no column and builds an empty row (ReadingList
     ``20261023.200606``). A ``delete`` returns its Output built from the key it was given, so
-    every field must be one of its Input fields. ``update`` returns the affected-row count and
-    its Output is not checked here.
+    every field must be one of its Input fields.
     """
     try:
         tables = sqlite_schema_tables(text, source=source)
@@ -1041,7 +1040,7 @@ def output_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[st
             columns = columns_of.get(table)
             if columns is None:
                 continue
-            if verb in ("get", "list", "create"):
+            if verb in ("get", "list", "create", "update"):
                 shape = (
                     "one Output row per record, so the Output names the row's columns, never a "
                     "collection of rows"

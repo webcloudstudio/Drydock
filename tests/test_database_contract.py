@@ -828,6 +828,20 @@ def test_a_list_output_that_wraps_its_rows_is_a_defect():
     assert "never a collection of rows" in defects[0]
 
 
+def test_an_update_output_names_only_columns():
+    # An update returns its Output row read back by key, so a count field names no column.
+    updated = _READING_LIST.replace("| book_id |", "| id |").replace(
+        "`books.delete`", "`books.update`"
+    )
+    defects = database_contract_defects(
+        updated.replace("| id | INTEGER | |\n\n## `books`", "| removed | INTEGER | |\n\n## `books`")
+    )
+
+    assert len(defects) == 1
+    assert "FEATURE-BOOK-002 Output field `removed` is not a column of `books`" in defects[0]
+    assert database_contract_defects(updated) == ()
+
+
 def test_a_delete_output_names_only_its_input_key():
     # ReadingList 20261023.200606: `books.delete` returned the affected-row count, so a criterion
     # reading `deleted.id` failed on an int. A delete Output is built from the key it was given.

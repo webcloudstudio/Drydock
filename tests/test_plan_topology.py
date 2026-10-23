@@ -84,6 +84,21 @@ depends:    database
     assert add_book.fields["accepts"] == "st-002"
 
 
+def test_a_foundational_story_claims_no_analyzed_story_or_sea_trial():
+    declaration = """
+## story architecture
+summary:    Stand up the application factory.
+type:       foundational
+implements: ARCHITECTURE.md
+covers:     READING-001
+accepts:    st-001
+"""
+    (architecture,), defects = parse_topology(declaration)
+
+    assert defects == ()
+    assert "covers" not in architecture.fields and "accepts" not in architecture.fields
+
+
 def test_declaration_order_carries_no_schedule_meaning():
     """Parsing reads the declaration only; nothing is sorted, grouped, or repositioned."""
     stories, _ = parse_topology(DECLARATION)

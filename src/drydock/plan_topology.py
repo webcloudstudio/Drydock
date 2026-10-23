@@ -124,13 +124,18 @@ def _parse_phase(raw: str) -> int | None:
 def _withheld(values: dict[str, str]) -> frozenset[str]:
     """Fields a story may not declare, dropped rather than refused.
 
-    The story that implements ``DATABASE.md`` builds the store every Feature reaches and delivers
-    no behavior of its own, so it owns no analyzed story and no Sea Trial. A ``covers:`` there
-    duplicates the Feature that owns the behavior, and its ``accepts:`` gates a foundation on a
-    product trial (ReadingList ``20261023.200606``). An analyzed story left uncovered by the drop
-    is reported by :func:`coverage_defects`.
+    A foundational story, and the story that implements ``DATABASE.md`` whatever its type, builds
+    what every Feature stands on and delivers no behavior of its own, so it owns no analyzed story
+    and no Sea Trial. A ``covers:`` there duplicates the Feature that owns the behavior, and its
+    ``accepts:`` gates a foundation on a product trial (ReadingList ``20261023.200606``). A
+    stated foundation fact, such as the language or a table name, is checked by the stack and the
+    schema, and a Sea Trial naming it is graded at ``score release``. An analyzed story left
+    uncovered by the drop is reported by :func:`coverage_defects`.
     """
-    if values.get("implements", "").strip() == "DATABASE.md":
+    if (
+        values.get("type", "").strip().lower() == "foundational"
+        or values.get("implements", "").strip() == "DATABASE.md"
+    ):
         return frozenset({"covers", "accepts"})
     return frozenset()
 
@@ -382,7 +387,8 @@ def coverage_defects(
             "analyzed stories are not delivered by any Manifest story: "
             + ", ".join(uncovered)
             + " — name each analyzed Story ID in the covers: field of the story "
-            "that delivers it"
+            "that delivers it. A foundational story and the story implementing DATABASE.md own "
+            "no analyzed story; their covers: is dropped, so name the Feature or Screen instead"
         )
     return tuple(fatal), tuple(warnings)
 

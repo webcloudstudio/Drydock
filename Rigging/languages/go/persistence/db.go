@@ -340,7 +340,13 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 			return Result{}, err
 		}
 		count, err := result.RowsAffected()
-		return Result{Count: count}, err
+		if err != nil || count == 0 || len(op.Columns) == 0 {
+			return Result{Count: count}, err
+		}
+		// The declared Output row, read back by key so unassigned columns are included.
+		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates([]string{declared.Key}, 0)
+		rows, err := db.selectRows(ctx, query, op.Columns, []any{key})
+		return Result{Rows: rows, Count: count}, err
 	case "delete":
 		result, err := db.executor().ExecContext(ctx, "DELETE FROM "+quote(table)+db.predicates(names, 0), values...)
 		if err != nil {
