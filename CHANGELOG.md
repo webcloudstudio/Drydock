@@ -84,6 +84,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-23: `model_config.jsonl` model rows accept an optional `effort` that applies when no
+  effort is requested by `--effort`, `drydock_effort`, or prompt frontmatter. The seed gives
+  `opus` and `sol` rows `effort: low`. Opus is split from the `fable|claude` row. `sol` selects
+  the `codex` provider. An existing live `model_config.jsonl` keeps its rows until it is replaced
+  from the seed.
+
 - 2026-10-23: `drydock plan` packs build blocks by assembled token cost alone. The per-block
   cap of 5 Programmatic Acceptance criteria (`DEFAULT_BLOCK_ACCEPTANCE_LIMIT`) is removed. Once
   every story carried criteria, typically 3–8 each, the cap forbade every merge: ReadingList

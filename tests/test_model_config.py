@@ -57,12 +57,27 @@ class TestSeed:
             ("haiku", "haiku"),
             ("claude-haiku-5-5", "haiku"),
             ("Sonnet", "sonnet"),
-            ("claude-opus-5-5", "opus|fable|claude"),
+            ("claude-opus-5-5", "opus"),
+            ("claude-fable-5-1", "fable|claude"),
+            ("gpt-6.1-sol", "sol"),
             ("gpt-5.6-luna", "gpt-|gpt5|codex|luna|o3-|o4-"),
         ],
     )
     def test_first_matching_row_wins(self, model, label):
         assert _seed().model(model).label == label
+
+    def test_only_opus_and_sol_default_to_low_effort(self):
+        config = _seed()
+        assert {p.label: p.effort for p in config.models if p.effort} == {
+            "opus": "low",
+            "sol": "low",
+        }
+
+    def test_invalid_row_effort_is_rejected(self, tmp_path):
+        row = _seed().rows[-1] | {"effort": "extreme"}
+        path = tmp_path / "model_config.jsonl"
+        with pytest.raises(ConfigurationError, match="extreme"):
+            parse(json.dumps(row), path)
 
     def test_only_haiku_5_5_has_a_price_limit(self):
         config = _seed()

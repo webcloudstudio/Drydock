@@ -115,6 +115,11 @@ family `bytes_per_token`, fixed CLI overhead, `prompt_target_tokens` (70000),
 over 98% of the limit runs on `escalate_model` (Haiku → `sonnet`). *Broken:* a step silently billed
 at the upper tier.
 
+`2026-10-23` · **A model row may set a default effort.** A row's optional `effort` applies when
+no effort is requested by `--effort`, `drydock_effort`, or prompt frontmatter, and is read from
+the row of the model that runs, after escalation. The seed sets `low` for `opus` and `sol`. *Broken:*
+an unflagged Opus or Sol run spends the provider's default effort.
+
 `2026-10-13` · **A builder gets builder tools only.** Claude builds run
 `--tools Bash,Read,Edit,Write,Glob,Grep --strict-mcp-config`; codex disables non-build features.
 

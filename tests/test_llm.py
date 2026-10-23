@@ -1443,6 +1443,55 @@ def test_claude_session_is_queryable_in_execution_evidence(tmp_path, monkeypatch
     assert "Claude session: resume id=session-123" in result.artifacts.llm_log_file.read_text()
 
 
+def _run_effort(tmp_path, monkeypatch, llm: str, model: str, effort: str | None = None):
+    from drydock import llm as llm_module
+
+    seen: dict = {}
+
+    def fake_command(*_args, **kwargs):
+        seen.update(kwargs)
+        return ("true",)
+
+    monkeypatch.setattr(llm_module, "_command", fake_command)
+    monkeypatch.delenv("DRYDOCK_EFFORT", raising=False)
+    llm_module.run_prompt("x", tmp_path, llm=llm, model=model, effort=effort, announce=False)
+    return seen["effort"]
+
+
+@pytest.mark.parametrize(
+    ("llm", "model", "expected"),
+    [
+        ("claude", "opus", "low"),
+        ("claude", "claude-opus-5-5", "low"),
+        ("codex", "gpt-6.1-sol", "low"),
+        ("claude", "sonnet", None),
+        ("codex", "gpt-5.6-luna", None),
+    ],
+)
+def test_model_row_effort_applies_when_none_is_requested(
+    tmp_path, monkeypatch, llm, model, expected
+):
+    assert _run_effort(tmp_path, monkeypatch, llm, model) == expected
+
+
+def test_requested_effort_overrides_the_model_row(tmp_path, monkeypatch):
+    assert _run_effort(tmp_path, monkeypatch, "claude", "opus", effort="high") == "high"
+    monkeypatch.setenv("DRYDOCK_EFFORT", "medium")
+    from drydock import llm as llm_module
+
+    seen: dict = {}
+    monkeypatch.setattr(llm_module, "_command", lambda *_a, **kw: seen.update(kw) or ("true",))
+    llm_module.run_prompt("x", tmp_path, llm="claude", model="opus", announce=False)
+    assert seen["effort"] == "medium"
+
+
+def test_sol_selects_codex():
+    from drydock.llm import resolve_provider
+
+    assert resolve_provider(None, "sol") == "codex"
+    assert resolve_provider(None, "gpt-6.1-sol") == "codex"
+
+
 def test_codex_command_maps_effort_to_its_config_key(tmp_path):
     """codex has no --effort flag; the level rides in as a config override."""
     command = _effort_command("codex", "high", tmp_path)

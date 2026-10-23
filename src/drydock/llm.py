@@ -137,7 +137,7 @@ SUPPORTED_PROVIDERS = LLM_PROVIDERS
 # valid model a provider CLI accepts.
 _MODEL_FAMILY_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("claude", ("claude", "opus", "sonnet", "haiku", "fable")),
-    ("codex", ("gpt-", "gpt5", "codex", "luna", "o3-", "o4-")),
+    ("codex", ("gpt-", "gpt5", "codex", "luna", "sol", "o3-", "o4-")),
     ("gemini", ("gemini", "gemma")),
 )
 
@@ -403,6 +403,14 @@ def _prompt_limit_escalation(
             allow_tools=allow_tools,
             prior_context_tokens=prior[1] if prior else 0,
         )
+    except ConfigurationError as exc:
+        raise LlmConfigurationError(str(exc)) from None
+
+
+def _model_effort(model: str | None) -> str | None:
+    """The model row's default effort, for a run that requested none."""
+    try:
+        return model_config.profile_for(model).effort
     except ConfigurationError as exc:
         raise LlmConfigurationError(str(exc)) from None
 
@@ -1995,8 +2003,8 @@ def run_prompt(
     deterministic-write contract.
 
     ``effort`` selects the provider's reasoning depth. An explicit level wins; otherwise the
-    configured ``drydock_effort`` applies, and with neither set the provider's own default
-    stands. The level is mapped to what the selected provider and model actually serve.
+    configured ``drydock_effort`` applies, then the model row's ``effort`` in
+    ``model_config.jsonl``, and with none set the provider's own default stands. The level is mapped to what the selected provider and model actually serve.
 
     ``output_format`` opts into narrow wrapper cleanup. Original output remains evidence;
     cleanup is recorded separately. Callers still validate bodies and own retry budgets.
@@ -2053,6 +2061,8 @@ def run_prompt(
         conflict = provider_model_conflict(selected, model)
         if conflict is not None:
             raise LlmConfigurationError(f"escalate_model: {conflict}")
+    if effort is None:
+        effort = _model_effort(model)
 
     if _fatal is not None:
         # One fatal failure ends this process's provider work. A retry loop above this call

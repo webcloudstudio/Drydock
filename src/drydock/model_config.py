@@ -5,7 +5,8 @@ provider's tool surface (``build_args`` for tool-using runs, ``text_args`` for t
 ``kind: model`` rows carry everything Drydock needs to cost and route a prompt for a model
 family: the tokenizer ratio (``bytes_per_token``), the CLI's fixed request payload
 (``overhead_tokens`` by run mode), the stacking target, the warning threshold, and an optional
-price-tier limit with the model to escalate to when a prompt would cross it.
+price-tier limit with the model to escalate to when a prompt would cross it, and an optional
+default ``effort`` for runs that request none.
 
 A model name matches the first ``model`` row, in file order, whose ``match`` list contains a
 substring of the lowercased name; ``*`` matches anything. Order is therefore significant:
@@ -78,6 +79,7 @@ class ModelProfile:
     prompt_limit_tokens: int | None = None
     escalate_model: str | None = None
     thinking: str = "effort"
+    effort: str | None = None
     measured: Mapping[str, Any] | None = None
     index: int = 0
 
@@ -229,6 +231,9 @@ def _model_row(row: Mapping[str, Any], path: Path, number: int, index: int) -> M
     thinking = str(row.get("thinking") or "effort")
     if thinking not in {"effort", "budget"}:
         raise ConfigurationError(f"{path}:{number}: thinking must be 'effort' or 'budget'.")
+    from drydock.config import normalize_effort
+
+    effort = normalize_effort(row.get("effort"), f"effort in {path}:{number}")
     match = row["match"]
     return ModelProfile(
         provider=str(row["provider"]),
@@ -240,6 +245,7 @@ def _model_row(row: Mapping[str, Any], path: Path, number: int, index: int) -> M
         prompt_limit_tokens=limit,
         escalate_model=str(row["escalate_model"]) if row.get("escalate_model") else None,
         thinking=thinking,
+        effort=effort,
         measured=row.get("measured"),
         index=index,
     )
