@@ -176,6 +176,15 @@ opening `sqlite3.connect(":memory:")` is an `acceptance-store` defect. `plan rep
 `criteria-missing` unrepaired for `drydock plan`. *Broken:* ReadingList `20261022.231143` planned
 `persistence-store` with no criteria; Build could only fail it on seven calls.
 
+`2026-10-22` · **Every declared repository operation is called by a criterion.** `plan verify`
+and Stage 2 refuse a `DATABASE.md` whose criteria never call a declared `<table>.<verb>`
+(`operation-untested`): Python `db.<table>.<verb>(`, Go `db.<Table>.<Verb>(`. A story naming no
+Blueprint, or a file outside `blueprint/` such as a Rigging stack file, is `criteria-missing`;
+a story implementing a Refit ticket under `changes/` is counted from that ticket. `plan repair`
+leaves `operation-untested` for `drydock plan`. The buildable `Rigging/spec_template/` files seed
+a `Required.` acceptance note, never `- None.`. *Broken:* a declared operation ships untested
+and a template teaches the refused `- None.`.
+
 `2026-10-22` · **Database authoring preserves the source schema.** Before accepting the
 database batch, Plan restores missing seeded tables, columns, and composite `UNIQUE`/`INDEX`
 constraints. A changed seeded column type or constraint rejects the batch with the column named

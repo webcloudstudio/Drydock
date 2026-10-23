@@ -39,7 +39,10 @@ __PROJECT_SLUG__/
 
 ## Programmatic Acceptance
 
-- None.
+<!-- Required. The foundation story implements this file. One criterion per delivered capability:
+the application starts, its entry point imports, a health route answers. Each criterion is a
+standalone script: act on the product, read the state back, assert it. A story implementing this
+file is refused without one. -->
 
 ## User Acceptance
 

@@ -23,7 +23,9 @@
 
 ## Programmatic Acceptance
 
-- None.
+<!-- Required. One criterion per observable behavior, route, invariant, and error mode; call every
+route this feature provides by its literal path. Each criterion is a standalone script: act on the
+product, read the state back, assert it. A story implementing this file is refused without one. -->
 
 ## User Acceptance
 

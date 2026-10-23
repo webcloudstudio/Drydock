@@ -196,6 +196,7 @@ def make_runner(
             (Path(working_directory) / changed[0]).write_text(
                 f"built {step_id}\n", encoding="utf-8"
             )
+            _write_markers(prompt, working_directory)
         calls.append({"prompt": prompt, "wd": working_directory, **kwargs})
         return FakeResult(
             ok=ok,
@@ -229,9 +230,37 @@ def _setup(tmp_path, manifest=_TWO_STORIES):
         apply_guardrail("COMPASS INTENT CONTENT", "Demo", target_dir, build_dir=build_dir),
         encoding="utf-8",
     )
-    (blueprint / "DATABASE.md").write_text("DB SPEC CONTENT\n", encoding="utf-8")
-    (blueprint / "SERVICE.md").write_text("SVC SPEC CONTENT\n", encoding="utf-8")
+    (blueprint / "DATABASE.md").write_text(_spec("DB SPEC CONTENT"), encoding="utf-8")
+    (blueprint / "SERVICE.md").write_text(_spec("SVC SPEC CONTENT"), encoding="utf-8")
     return target_dir, build_dir
+
+
+def _marker(content: str) -> str:
+    """The file the fake runner writes when a prompt carries ``content``: the Blueprint it built."""
+    return content.split()[0].lower() + ".built"
+
+
+def _write_markers(prompt: str, working_directory) -> None:
+    """Satisfy the ``_setup`` criterion of each fixture Blueprint this prompt builds."""
+    for word in set(re.findall(r"\b(\w+) SPEC CONTENT\b", prompt)):
+        (Path(working_directory) / _marker(word)).write_text("", encoding="utf-8")
+
+
+def _spec(content: str) -> str:
+    """A fixture Blueprint whose one criterion passes once the step implementing it has built.
+
+    Every story carries a criterion, so Build refuses a Blueprint without one.
+    """
+    marker = _marker(content)
+    return (
+        f"{content}\n\n"
+        "## Programmatic Acceptance\n\n"
+        f"=== AC {marker.split('.')[0]}-built ===\n"
+        "Intent: The step implementing this Blueprint built it.\n\n"
+        "from pathlib import Path\n\n"
+        f"assert Path({marker!r}).is_file()\n"
+        f"=== END AC {marker.split('.')[0]}-built ===\n"
+    )
 
 
 def _state(target_dir, block_id):
@@ -368,6 +397,10 @@ instructions: |
 state: pending
 """
     target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    for name in ("FEATURE-CATALOG", "SCREEN-CATALOG"):
+        (target_dir / "blueprint" / f"{name}.md").write_text(
+            _spec(f"{name} CONTENT"), encoding="utf-8"
+        )
     runner = make_runner()
 
     result = build_target(
@@ -713,7 +746,7 @@ def test_build_emits_step_progress_lines(tmp_path):
     assert any(line.startswith("  [call 1/7]  kind=initial  llm=") for line in log)
     assert "    result=ok  execution=exec-1" in log
     assert not any(line.startswith("  tokens:") for line in log)
-    assert any(line == "files: 1 changed — foundation.txt" for line in log)
+    assert any(line == "files: 2 changed — db.built, foundation.txt" for line in log)
     assert any(re.match(r"result: built · closed/verified · .+", line) for line in log)
     assert any(line == "evidence: evidence/foundation.md" for line in log)
 
@@ -772,7 +805,7 @@ state: pending
     blueprint = target_dir / "blueprint"
     (blueprint / "ARCHITECTURE.md").write_text("ARCH SPEC CONTENT\n", encoding="utf-8")
     (blueprint / "DATABASE.md").write_text("DB SPEC CONTENT\n", encoding="utf-8")
-    (blueprint / "FEATURE-Status.md").write_text("FEATURE SPEC CONTENT\n", encoding="utf-8")
+    (blueprint / "FEATURE-Status.md").write_text(_spec("FEATURE SPEC CONTENT"), encoding="utf-8")
 
     log: list[str] = []
     runner = make_runner()
@@ -1539,6 +1572,7 @@ def _regression_runner(tmp_path):
             # The repair pass is told about the regression and restores the deliverable.
             (work / "guard.txt").write_text("on\n", encoding="utf-8")
         (work / f"{step_id}.txt").write_text(f"built {step_id}\n", encoding="utf-8")
+        _write_markers(prompt, work)
         calls.append({"prompt": prompt, "wd": working_directory, **kwargs})
         return FakeResult(ok=True, text=_success_report(changed=(f"{step_id}.txt",)))
 
@@ -1763,7 +1797,7 @@ def test_failed_step_preserves_artifact_on_disk(tmp_path):
     result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
     assert result.steps[0].status == "failed"
-    assert result.steps[0].written_files == ("foundation.txt",)
+    assert result.steps[0].written_files == ("db.built", "foundation.txt")
     assert result.exit_code() == 1
     # The artifact survives on disk under the build directory.
     assert (build_dir / "foundation.txt").is_file()
@@ -1814,7 +1848,8 @@ def test_text_without_file_delta_marks_failed(tmp_path):
     )
 
     assert result.steps[0].status == "failed"
-    assert result.steps[0].error == "no build files written"
+    assert result.steps[0].written_files == ()
+    assert result.steps[0].error == "programmatic acceptance failed: db-built"
     assert _state(target_dir, "foundation") == "closed/failed"
     assert _state(target_dir, "service") == "pending"
 
@@ -1851,6 +1886,13 @@ def test_result_token_found_mid_line_is_not_a_failure(tmp_path):
 
 def test_explicit_failure_report_persists_finding(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
+    # A green criterion would outrank the agent's report and close the step built.
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "## Programmatic Acceptance\n\n=== AC vendored ===\nIntent: requests is vendored.\n\n"
+        "from pathlib import Path\n\nassert Path('vendor/requests').is_dir()\n"
+        "=== END AC vendored ===\n",
+        encoding="utf-8",
+    )
     result = build_target(
         "Demo",
         target_dir,
@@ -1866,7 +1908,10 @@ def test_explicit_failure_report_persists_finding(tmp_path):
 
     assert result.steps[0].status == "failed"
     assert _state(target_dir, "foundation") == "closed/failed"
-    assert _finding(target_dir, "foundation") == "agent-reported failure: could not resolve imports"
+    # Evidence outranks the agent's verdict; its report still reaches the evidence file.
+    assert _finding(target_dir, "foundation") == (
+        "programmatic acceptance failed: vendored: AssertionError"
+    )
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
     assert "## Failure" in evidence
     assert "could not resolve imports" in evidence
@@ -3799,192 +3844,6 @@ def test_no_file_delta_is_advisory_when_acceptance_passes(tmp_path):
     assert any("no files changed (advisory)" in message for message in messages)
 
 
-def test_no_file_delta_stays_terminal_without_acceptance_criteria(tmp_path):
-    # With nothing to measure, an agent that changed nothing has produced nothing.
-    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
-
-    result = build_target(
-        "Demo",
-        target_dir,
-        build_dir=build_dir,
-        runner=make_runner(write_files=False),
-    )
-
-    assert result.steps[0].status == "failed"
-    assert result.steps[0].error == "no build files written"
-
-
-def test_ac_broken_claim_parsing():
-    from drydock.build_run import _ac_broken_claim
-
-    class _Check:
-        def __init__(self, check_id):
-            self.check_id = check_id
-
-    failed = (_Check("numeric-boolean-conformance"), _Check("date-time-conformance"))
-    assert _ac_broken_claim("AC_BROKEN: date-time-conformance", failed) == (
-        "date-time-conformance",
-    )
-    # Spelling variants an agent may reasonably emit.
-    assert _ac_broken_claim("ac broken: date-time-conformance", failed) == (
-        "date-time-conformance",
-    )
-    assert _ac_broken_claim("AC-BROKEN: `date-time-conformance`", failed) == (
-        "date-time-conformance",
-    )
-    # No recognizable id: the agent has concluded no repair can succeed, so every failing
-    # check is claimed rather than none.
-    assert _ac_broken_claim("AC_BROKEN: the conformance assertions", failed) == (
-        "numeric-boolean-conformance",
-        "date-time-conformance",
-    )
-    # A check that passed cannot be condemned, and no token means no claim.
-    assert _ac_broken_claim("AC_BROKEN: something-else", ()) == ()
-    assert _ac_broken_claim("RESULT: FAILED\nnothing to see", failed) == ()
-
-
-def test_defective_claim_helpers_require_both_a_name_and_a_defect_word():
-    from drydock.build_run import _defective_acceptance_claim, _names_check, _normalize_words
-
-    class _Check:
-        def __init__(self, check_id):
-            self.check_id = check_id
-
-    failed = (_Check("verification-scoped-number"),)
-    # An agent names a criterion the way a reader would, not by its full identifier.
-    assert _names_check(
-        _normalize_words("scoped-number acceptance is malformed"), failed[0].check_id
-    )
-    assert not _names_check(_normalize_words("the number is wrong"), failed[0].check_id)
-    assert _defective_acceptance_claim(
-        ("Malformed scoped-number acceptance", "uses a broken invocation"), failed
-    ) == ("verification-scoped-number",)
-    # Naming the check without claiming it is defective is an ordinary failure report.
-    assert _defective_acceptance_claim(("scoped-number still fails", ""), failed) == ()
-    assert _defective_acceptance_claim(None, failed) == ()
-
-
-# A criterion whose invocation cannot launch the command under test grades a different process
-# than the one being built. It is unsatisfiable for the same reason a mis-authored expectation
-# is, so the build must refuse before it spends a pass on it.
-
-_MALFORMED_INVOCATION_SPEC = """# FEATURE: Scoped Verification
-
-## Programmatic Acceptance
-
-### scoped-number
-The supplied harness supports example selection.
-
-```python
-import subprocess
-
-result = subprocess.run(
-    ["PYTHONPATH=sources", "python3", "suite.py", "--number", "1"],
-    shell=True,
-    capture_output=True,
-    text=True,
-)
-print(result.stdout)
-assert "1 passed" in result.stdout
-```
-"""
-
-
-_STAGED_REQUIREMENT_SPEC = """# FEATURE: Scoped Verification
-
-## Programmatic Acceptance
-
-### scoped-conformance
-The supplied harness runs the parser.
-
-```python
-import subprocess
-
-result = subprocess.run(
-    ["sh", "sources/run_conformance.sh", "-run", "valid/key/*"],
-    capture_output=True,
-    text=True,
-)
-assert result.returncode == 0
-```
-"""
-
-
-_TALLY_ASSERTION_SPEC = """# FEATURE: Conformance
-
-## Programmatic Acceptance
-
-### suite-conformance
-The conformance sections pass completely.
-
-```python
-import subprocess
-
-result = subprocess.run(["sh", "run_suite.sh"], capture_output=True, text=True)
-print(result.stdout)
-assert result.returncode == 0
-assert "failed" not in result.stdout.lower()
-```
-"""
-
-
-def test_undeclared_test_package_fails_acceptance_without_a_question(tmp_path):
-    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(
-        """# DATABASE: Demo
-
-## Questions
-
-- None.
-
-## Programmatic Acceptance
-
-### health-route
-The health route returns OK.
-
-```python
-from target_app import health
-assert health() == "ok"
-```
-
-## User Acceptance
-
-- None.
-
-## Guardrails
-
-- None.
-""",
-        encoding="utf-8",
-    )
-    calls = []
-
-    def runner(prompt, working_directory, **kwargs):
-        calls.append(kwargs["parameters"]["attempt"])
-        work = Path(working_directory)
-        work.mkdir(parents=True, exist_ok=True)
-        (work / "target_app.py").write_text(
-            "import surprise_transport\n\ndef health():\n    return 'ok'\n",
-            encoding="utf-8",
-        )
-        return FakeResult(text=_success_report(changed=("target_app.py",)))
-
-    result = build_target(
-        "Demo",
-        target_dir,
-        build_dir=build_dir,
-        runner=runner,
-        repair_attempts=3,
-    )
-
-    assert calls == [0, 1, 2]
-    assert result.steps[0].status == "failed"
-    assert _state(target_dir, "foundation") == "closed/failed"
-    assert (build_dir / "target_app.py").is_file()
-    evidence = result.steps[0].evidence_path.read_text(encoding="utf-8")
-    assert "programmatic acceptance failed" in evidence
-
-
 def test_active_commander_guidance_is_injected_into_build_prompt(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
     write_decisions(
@@ -4014,6 +3873,7 @@ def test_active_commander_guidance_is_injected_into_build_prompt(tmp_path):
         work = Path(working_directory)
         work.mkdir(parents=True, exist_ok=True)
         (work / "notes.txt").write_text("done\n", encoding="utf-8")
+        _write_markers(prompt, work)
         return FakeResult(text=_success_report(changed=("notes.txt",)))
 
     build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
@@ -4788,7 +4648,15 @@ def test_persistence_exists_before_the_database_step_runs(tmp_path: Path, monkey
         "Input: FindTickets\n\n| Field | Type | Required |\n|---|---|---|\n| status | str | yes |\n\n"
         "Output: Ticket\n\n| Field | Type |\n|---|---|\n| id | int |\n\n"
         "## `tickets`\n\n| Field | Type | Notes |\n|---|---|---|\n"
-        "| id | INTEGER PK | |\n| status | TEXT NOT NULL | |\n",
+        "| id | INTEGER PK | |\n| status | TEXT NOT NULL | |\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### store-lists\n"
+        "The provisioned store lists tickets.\n\n"
+        "```python\n"
+        "from persistence.testing import db_session\n"
+        "with db_session() as db:\n"
+        "    assert db.tickets.list(status='open') == []\n"
+        "```\n",
         encoding="utf-8",
     )
     (target_dir / "blueprint" / "FEATURE-Service.md").write_text(
@@ -4832,7 +4700,8 @@ _TICKETS_DATABASE = (
     "```python\n"
     "from persistence.testing import db_session\n"
     "with db_session() as db:\n"
-    "    assert {assertion}\n"
+    "    rows = db.tickets.list(status='open')\n"
+    "    assert {assertion}, rows\n"
     "```\n"
 )
 
@@ -4894,10 +4763,10 @@ def test_a_database_only_step_fails_on_a_red_criterion_without_a_model_call(
     assert _state(target_dir, "foundation") == "closed/failed"
 
 
-def test_a_database_only_step_with_no_criteria_fails_instead_of_closing(
+def test_a_database_only_step_with_no_criteria_is_refused_before_any_call(
     tmp_path: Path, monkeypatch
 ):
-    """0/0 grades nothing, so a DATABASE-only step that ran no criterion is not implemented."""
+    """0/0 grades nothing, so Build refuses a story with no criterion before it spends a call."""
     target_dir, build_dir = _database_only_target(tmp_path, monkeypatch, "True")
     database = target_dir / "blueprint" / "DATABASE.md"
     text = database.read_text(encoding="utf-8")
@@ -4908,14 +4777,11 @@ def test_a_database_only_step_with_no_criteria_fails_instead_of_closing(
     )
     runner = make_runner()
 
-    result = build_target(
-        "Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation"
-    )
+    with pytest.raises(SpecificationError, match="story `foundation` implements DATABASE.md"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation")
 
     assert runner.calls == []
-    assert result.exit_code() == 1
-    assert _state(target_dir, "foundation") == "closed/failed"
-    assert "no acceptance criteria graded" in (_finding(target_dir, "foundation") or "")
+    assert _state(target_dir, "foundation") == "pending"
 
 
 def test_a_declaration_with_no_tables_writes_no_schema(tmp_path: Path):
@@ -4952,6 +4818,13 @@ def test_build_refuses_a_persistence_declaration_it_cannot_read(tmp_path):
 
 def test_build_lineage_records_deletion_only_execution(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n## Programmatic Acceptance\n\n"
+        "=== AC obsolete-removed ===\nIntent: The foundation removes the obsolete module.\n\n"
+        "from pathlib import Path\n\nassert not Path('obsolete.py').exists()\n"
+        "=== END AC obsolete-removed ===\n",
+        encoding="utf-8",
+    )
     build_dir.mkdir()
     (build_dir / "obsolete.py").write_text("obsolete\n")
 

@@ -55,7 +55,7 @@ from drydock.acceptance import (
 )
 from drydock.errors import SpecificationError
 from drydock.llm import failure_detail, run_prompt
-from drydock.plan_verify import CRITERIA_MISSING, Defect, verify
+from drydock.plan_verify import CRITERIA_MISSING, OPERATION_UNTESTED, Defect, verify
 from drydock.prompt_assembly import (
     PromptAssembly,
     PromptPart,
@@ -476,7 +476,7 @@ def repair(
                 )
             )
             continue
-        if defect.kind == CRITERIA_MISSING:
+        if defect.kind in (CRITERIA_MISSING, OPERATION_UNTESTED):
             # Not a criterion to rewrite: there is none. Authoring one needs the story's
             # behavior, which Plan's artifact repair holds and this prompt does not.
             items.append(

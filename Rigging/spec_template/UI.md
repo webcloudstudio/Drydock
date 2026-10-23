@@ -19,7 +19,9 @@
 
 ## Programmatic Acceptance
 
-- None.
+<!-- Required. Assert what the shared layout delivers: the base template renders and a page using
+it answers. Each criterion is a standalone script: act on the product, read the state back, assert
+it. A story implementing this file is refused without one. -->
 
 ## User Acceptance
 

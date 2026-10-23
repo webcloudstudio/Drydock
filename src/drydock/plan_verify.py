@@ -29,6 +29,7 @@ so the criterion cannot pass it. Only calls that pass a staged file are compared
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,6 +52,7 @@ from drydock.database_contract import (
     database_contract_defects,
     declared_owners,
     legal_owner,
+    parse_database_contract,
     sqlite_schema_tables,
     table_coverage_defects,
 )
@@ -121,7 +123,8 @@ class VerifyResult:
             )
         uncovered = sum(1 for defect in self.defects if defect.kind == CRITERIA_MISSING)
         persistence = sum(1 for defect in self.defects if defect.kind.startswith("database-"))
-        criteria = len(self.defects) - persistence - uncovered
+        untested = sum(1 for defect in self.defects if defect.kind == OPERATION_UNTESTED)
+        criteria = len(self.defects) - persistence - uncovered - untested
         parts = []
         if criteria:
             parts.append(
@@ -131,6 +134,11 @@ class VerifyResult:
             parts.append(
                 f"{uncovered} story {'Blueprint has' if uncovered == 1 else 'Blueprints have'} "
                 "no acceptance criteria"
+            )
+        if untested:
+            parts.append(
+                f"{untested} repository {'operation' if untested == 1 else 'operations'} "
+                "no DATABASE.md criterion calls"
             )
         if persistence:
             parts.append(
@@ -144,6 +152,45 @@ class VerifyResult:
 CRITERIA_MISSING = "criteria-missing"
 
 
+#: Defect kind for a declared repository operation no ``DATABASE.md`` criterion calls.
+OPERATION_UNTESTED = "operation-untested"
+
+
+def untested_operations(database_text: str, codes: Iterable[str]) -> tuple[str, ...]:
+    """Each declared ``<table>.<verb>`` that no ``DATABASE.md`` criterion calls, in order.
+
+    The generated package is the product ``DATABASE.md``'s criteria measure, so an operation none
+    of them calls ships untested. Python calls it ``db.<table>.<verb>(...)`` and Go
+    ``db.<Table>.<Verb>(ctx, ...)``; either spelling counts. A contract that does not parse is
+    reported by :func:`persistence_defects`.
+    """
+    from drydock.database_emit_go import _export
+
+    try:
+        contract = parse_database_contract(database_text)
+    except SpecificationError:
+        return ()
+    text = "\n".join(codes)
+    untested: list[str] = []
+    for pattern in contract.patterns:
+        for operation in pattern.operations:
+            table, verb = operation.split(".", 1)
+            calls = (rf"\.{table}\.{verb}\s*\(", rf"\.{_export(table)}\.{_export(verb)}\s*\(")
+            if operation not in untested and not any(re.search(call, text) for call in calls):
+                untested.append(operation)
+    return tuple(untested)
+
+
+def untested_operation_reason(operation: str) -> str:
+    """One sentence naming an operation no criterion calls and the criterion it needs."""
+    table, verb = operation.split(".", 1)
+    return (
+        f"repository operation `{operation}` is declared and no criterion calls it; give it a "
+        f"criterion that calls `db.{table}.{verb}(...)` inside `with db_session() as db:` and "
+        "asserts the declared Output"
+    )
+
+
 def stories_without_criteria(
     stories: Iterable[tuple[str, tuple[str, ...]]], criteria: Mapping[str, int | None]
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
@@ -151,19 +198,30 @@ def stories_without_criteria(
 
     Every story closes on its own evidence, so a story with nothing to run can only close on the
     builder's word. ``criteria`` maps a Blueprint name to its criterion count, or ``None`` when
-    the file is absent or unparseable; either is reported by its own check, so a story that
-    cites one is not reported here as well.
+    the file does not parse; that is reported by its own check, so a story citing one is not
+    reported here as well. A name ``criteria`` omits is not a file in ``blueprint/`` (a Rigging
+    file, a typo) and carries none, and a story naming no Blueprint carries none.
     """
     found = []
     for story_id, implements in stories:
-        counts = [criteria.get(name) for name in implements if name]
-        if counts and all(count == 0 for count in counts):
-            found.append((story_id, tuple(name for name in implements if name)))
+        names = tuple(name for name in implements if name)
+        if all(criteria.get(name, 0) == 0 for name in names):
+            found.append((story_id, names))
     return tuple(found)
 
 
-def criteria_missing_reason(story_id: str, filename: str) -> str:
+def criteria_missing_reason(story_id: str, filename: str, *, absent: bool = False) -> str:
     """One sentence naming a story with no criteria and what its Blueprint must carry."""
+    if not filename:
+        return (
+            f"story `{story_id}` implements no Blueprint, so it has no criterion to close on; "
+            "every story implements a Blueprint carrying at least one"
+        )
+    if absent:
+        return (
+            f"story `{story_id}` implements {filename}, which is not a file in blueprint/, so it "
+            "has no criterion to close on; every story implements a Blueprint carrying at least one"
+        )
     reason = (
         f"story `{story_id}` implements {filename}, which declares no Programmatic Acceptance "
         "criterion; every story carries at least one"
@@ -174,6 +232,24 @@ def criteria_missing_reason(story_id: str, filename: str) -> str:
             "`with db_session() as db:` from `persistence.testing`"
         )
     return reason
+
+
+def criteria_missing(
+    stories: Iterable[tuple[str, tuple[str, ...]]], criteria: Mapping[str, int | None]
+) -> tuple[tuple[str, str, str], ...]:
+    """Each ``(story id, file, reason)`` for a story with no criterion.
+
+    A story naming no Blueprint cites the Manifest.
+    """
+    return tuple(
+        (
+            story_id,
+            name or "MANIFEST.md",
+            criteria_missing_reason(story_id, name, absent=name not in criteria),
+        )
+        for story_id, implements in stories_without_criteria(stories, criteria)
+        for name in implements or ("",)
+    )
 
 
 def _story_criteria_defects(target_dir: Path, criteria: Mapping[str, int | None]) -> list[Defect]:
@@ -188,15 +264,26 @@ def _story_criteria_defects(target_dir: Path, criteria: Mapping[str, int | None]
     except SpecificationError:
         # An unreadable Manifest is reported by every command that executes it.
         return []
-    stories = (
+    stories = tuple(
         (block.block_id, implements_of(block))
         for block in plan.blocks
         if block.block_type == "story"
     )
+    # ``criteria`` counts the top-level Blueprints; a story may implement one beneath them, such
+    # as a Refit ticket under ``changes/``.
+    criteria = dict(criteria)
+    blueprint_dir = target_dir / "blueprint"
+    for _, implements in stories:
+        for name in implements:
+            path = blueprint_dir / name
+            if name and name not in criteria and path.is_file():
+                try:
+                    criteria[name] = len(parse_programmatic_acceptance(path))
+                except ValueError:
+                    criteria[name] = None
     return [
-        Defect(filename, "", CRITERIA_MISSING, criteria_missing_reason(story_id, filename))
-        for story_id, implements in stories_without_criteria(stories, criteria)
-        for filename in implements
+        Defect(filename, "", CRITERIA_MISSING, reason)
+        for _, filename, reason in criteria_missing(stories, criteria)
     ]
 
 
@@ -496,6 +583,14 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
 
     defects.extend(_story_criteria_defects(target_dir, criteria))
     defects.extend(persistence_defects(blueprint_dir))
+    database = blueprint_dir / "DATABASE.md"
+    if criteria.get("DATABASE.md"):
+        # A DATABASE.md with no criterion is reported once, as criteria-missing.
+        codes = [check.code for check in parse_programmatic_acceptance(database)]
+        defects.extend(
+            Defect("DATABASE.md", "", OPERATION_UNTESTED, untested_operation_reason(operation))
+            for operation in untested_operations(database.read_text(encoding="utf-8"), codes)
+        )
     defects.extend(_foundation_defects(target_dir))
     guidance = load_guidance(target_dir)
     return VerifyResult(

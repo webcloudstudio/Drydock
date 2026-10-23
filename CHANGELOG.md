@@ -84,6 +84,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-22: Every built story is guaranteed a criterion. `drydock build` now refuses, before any
+  model call, a story whose implemented Blueprints carry no Programmatic Acceptance
+  (`criteria-missing`) instead of leaving that refusal to `drydock plan` alone. A story naming no
+  Blueprint, or a file outside `blueprint/` such as a Rigging stack file, now counts as having
+  none, and a Refit ticket under `blueprint/changes/` is counted from the ticket itself.
+  `plan verify`, Plan's Stage 2 gate, and Build also refuse a `DATABASE.md` whose criteria never
+  call a declared repository operation (`operation-untested`; Python `db.<table>.<verb>(...)`, Go
+  `db.<Table>.<Verb>(ctx, ...)`). `plan_create` V45 requires one criterion per operation. The
+  buildable `Rigging/spec_template/` files (ARCHITECTURE, DATABASE, FEATURE, HOMEPAGE, SCREEN, UI,
+  UI-Component) seed a required-acceptance note in place of `- None.`.
+
 - 2026-10-22: `drydock build` grades a DATABASE-only step without a model call. When every story
   in the step implements only `DATABASE.md` and the persistence package was generated, the step's
   criteria run against the generated package and close it `closed/verified`,

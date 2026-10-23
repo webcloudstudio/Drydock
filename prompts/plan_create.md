@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261022 V44
+version: 20261022 V45
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -288,8 +288,10 @@ Rules:
 - `DATABASE.md` carries executable acceptance. Its `## Programmatic Acceptance` exercises every
   declared repository operation through the generated package, inside
   `from persistence.testing import db_session` and `with db_session() as db:`, and asserts the
-  declared Output. Do not create temporary SQLite databases or run migrations from criteria; the
-  DATABASE step owns provisioning.
+  declared Output. Give each operation its own criterion and call it as `db.<table>.<verb>(...)`
+  (Go: `db.<Table>.<Verb>(ctx, ...)`): three tables with create, get, update and delete carry
+  twelve criteria. Drydock refuses a declared operation no criterion calls. Do not create
+  temporary SQLite databases or run migrations from criteria; the DATABASE step owns provisioning.
 - Every `=== AC <id> ===` block is a standalone Python script. It repeats every import it uses;
   imports, variables, and execution order from another AC block are never in scope. Before closing
   each block, inspect every name it reads and either import or bind that name inside the same block.

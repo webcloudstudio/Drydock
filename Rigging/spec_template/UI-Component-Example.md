@@ -30,7 +30,9 @@ What this component does. One sentence.
 
 ## Programmatic Acceptance
 
-- None.
+<!-- Required. Assert what the component delivers: its template renders and the route that uses it
+answers. Each criterion is a standalone script: act on the product, read the state back, assert it.
+A story implementing this file is refused without one. -->
 
 ## User Acceptance
 

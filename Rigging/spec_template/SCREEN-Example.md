@@ -30,7 +30,9 @@
 
 ## Programmatic Acceptance
 
-- None.
+<!-- Required. Call every route this screen provides or consumes, and assert the response status
+and the state it shows. Each criterion is a standalone script: act on the product, read the state
+back, assert it. A story implementing this file is refused without one. -->
 
 ## User Acceptance
 

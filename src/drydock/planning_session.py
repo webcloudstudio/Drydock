@@ -2772,19 +2772,12 @@ def _criteria_missing_defects(
     ``DATABASE.md`` is not exempt: its generated code is the product its criteria measure.
     """
     from drydock.acceptance import parse_programmatic_acceptance_text
-    from drydock.plan_verify import (
-        criteria_missing_reason,
-        implements_of,
-        stories_without_criteria,
-    )
+    from drydock.plan_verify import criteria_missing, implements_of
 
     def count(name: str) -> int | None:
         text = blocks.get(name)
         if text is None:
-            path = blueprint_dir / name
-            if not path.is_file():
-                return None
-            text = path.read_text(encoding="utf-8")
+            text = (blueprint_dir / name).read_text(encoding="utf-8")
         try:
             return len(parse_programmatic_acceptance_text(text, source=name))
         except ValueError:
@@ -2795,15 +2788,44 @@ def _criteria_missing_defects(
         for block in plan.blocks
         if block.block_type == "story"
     )
-    criteria = {name: count(name) for _, implements in stories for name in implements}
+    # A name neither emitted nor on disk is absent, and ``criteria_missing`` counts it as none.
+    criteria = {
+        name: count(name)
+        for _, implements in stories
+        for name in implements
+        if name and (name in blocks or (blueprint_dir / name).is_file())
+    }
+    return tuple(
+        MalformedAcceptance(check_id=f"story {story_id}", source=name, reason=reason)
+        for story_id, name, reason in criteria_missing(stories, criteria)
+    )
+
+
+def _untested_operation_defects(blocks: dict[str, str]) -> tuple[MalformedAcceptance, ...]:
+    """Each repository operation the emitted ``DATABASE.md``'s criteria never call.
+
+    The same rule ``plan verify`` applies, raised while the database batch can still be
+    re-emitted. A ``DATABASE.md`` with no criterion is reported once, as criteria-missing.
+    """
+    from drydock.acceptance import parse_programmatic_acceptance_text
+    from drydock.plan_verify import untested_operation_reason, untested_operations
+
+    text = blocks.get(DATABASE_BLOCK)
+    if text is None:
+        return ()
+    try:
+        codes = [
+            check.code for check in parse_programmatic_acceptance_text(text, source=DATABASE_BLOCK)
+        ]
+    except ValueError:
+        return ()  # ``_malformed_acceptance_defects`` reports an unreadable container
+    if not codes:
+        return ()
     return tuple(
         MalformedAcceptance(
-            check_id=f"story {story_id}",
-            source=name,
-            reason=criteria_missing_reason(story_id, name),
+            check_id=operation, source=DATABASE_BLOCK, reason=untested_operation_reason(operation)
         )
-        for story_id, implements in stories_without_criteria(stories, criteria)
-        for name in implements
+        for operation in untested_operations(text, codes)
     )
 
 
@@ -4103,6 +4125,7 @@ def _validate_plan_output(
             ("criteria-missing", defect)
             for defect in _criteria_missing_defects(blocks, plan, blueprint_dir)
         )
+        + tuple(("operation-untested", defect) for defect in _untested_operation_defects(blocks))
         if enforce_criteria
         else ()
     )

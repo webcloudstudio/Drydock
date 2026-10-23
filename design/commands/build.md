@@ -74,9 +74,12 @@ to SQLite and never exercises PostgreSQL.
 `drydock refit`.
 
 `2026-09-19` · **Build refuses a plan it cannot execute.** The `plan verify` check runs first; an
-unrunnable criterion or unreadable `DATABASE.md` refuses the build. A story with no criterion is
-Plan's refusal, which leaves the Manifest `draft`; Build's gate omits `criteria-missing`. *Broken:* stories closed on
-criteria that tested nothing.
+unrunnable criterion or unreadable `DATABASE.md` refuses the build. `2026-10-22`: so does a story
+with no criterion (`criteria-missing`, including a story naming no Blueprint or a file outside
+`blueprint/`) and a declared repository operation no `DATABASE.md` criterion calls
+(`operation-untested`). Plan refuses both too; Build repeats the check because a Manifest can be
+approved past Plan's gate (Refit, a hand edit, an older plan). *Broken:* stories closed on
+criteria that tested nothing, or on none.
 
 `2026-07-22` · **Staged assets are read-only.** Copied to `<build_dir>/sources/`, digested, and
 restored before grading. *Broken:* a block graded against tests it rewrote.
@@ -192,11 +195,6 @@ reset preserves `.git`. *Broken:* specification versions severed from code.
 
 ## Open Actions
 
-- `2026-10-22` · Build's entry gate still omits `criteria-missing` (`build_run.py` `build_target`,
-  the `verify_plan` filter), so a Manifest approved past Plan's gate builds a story with no
-  criteria and closes it on the agent's word. Keeping the defect makes it fatal, but 139 build and
-  CLI tests fail because `_setup` in `tests/test_build_run.py` writes Blueprints with no criteria.
-  The fixtures need a criterion first.
 - `2026-10-20` · The acceptance-failure Recovery still says `drydock build <Target>` when the agent
   disputes the criterion in prose that neither `_defective_acceptance_claim` (`build_run.py`) nor
   `_BLUEPRINT_REPAIR_SIGNALS` (`cli.py`) recognizes. LayersTesting `20261020.161323` blocker: "The

@@ -161,3 +161,26 @@ class TestInitSpecification:
         for f in (target_dir / "blueprint").glob("*.md"):
             text = f.read_text(encoding="utf-8")
             assert isinstance(text, str)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ARCHITECTURE.md",
+        "DATABASE.md",
+        "FEATURE-Example.md",
+        "HOMEPAGE.md",
+        "SCREEN-Example.md",
+        "UI-Component-Example.md",
+        "UI.md",
+    ],
+)
+def test_a_template_a_story_implements_requires_criteria(name):
+    """Every story carries a criterion, so no buildable template seeds `- None.` acceptance."""
+    from drydock.paths import get_spec_template_dir
+
+    text = (get_spec_template_dir() / name).read_text(encoding="utf-8")
+    section = text.split("## Programmatic Acceptance", 1)[1].split("\n## ", 1)[0]
+
+    assert "- None." not in section
+    assert "Required." in section

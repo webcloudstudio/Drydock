@@ -998,11 +998,49 @@ def test_every_story_with_a_criterion_verifies_clean(tmp_path):
     assert verify("Demo", target).ok
 
 
-def test_a_story_citing_an_absent_blueprint_is_not_reported_as_criteria_missing(tmp_path):
+def test_a_story_citing_a_file_outside_the_blueprint_has_no_criterion(tmp_path):
+    """A story implementing a Rigging file such as python.md has nothing to grade."""
     target = _target(tmp_path, **{"FEATURE-Status": _RUNNABLE})
-    (target / "MANIFEST.md").write_text(_STORY_MANIFEST, encoding="utf-8")
+    (target / "MANIFEST.md").write_text(
+        _STORY_MANIFEST.replace("implements: DATABASE.md", "implements: python.md"),
+        encoding="utf-8",
+    )
 
-    assert verify("Demo", target).ok
+    (defect,) = verify("Demo", target).defects
+    assert defect.kind == "criteria-missing"
+    assert defect.filename == "python.md"
+    assert "not a file in blueprint/" in defect.detail
+
+
+def test_a_story_implementing_nothing_has_no_criterion(tmp_path):
+    target = _target(tmp_path, **{"FEATURE-Status": _RUNNABLE})
+    (target / "MANIFEST.md").write_text(
+        _STORY_MANIFEST.replace("implements: DATABASE.md\n", ""), encoding="utf-8"
+    )
+
+    (defect,) = verify("Demo", target).defects
+    assert defect.kind == "criteria-missing"
+    assert defect.filename == "MANIFEST.md"
+    assert "story `store` implements no Blueprint" in defect.detail
+
+
+def test_a_refit_ticket_beneath_the_blueprint_is_counted(tmp_path):
+    """ReadingList's `mark-read-*` stories implemented `changes/` tickets carrying no criterion."""
+    target = _target(tmp_path, **{"DATABASE": _RUNNABLE, "FEATURE-Status": _RUNNABLE})
+    changes = target / "blueprint" / "changes"
+    changes.mkdir()
+    (changes / "TICKET-001.md").write_text(_NO_CRITERIA, encoding="utf-8")
+    (changes / "TICKET-002.md").write_text(_RUNNABLE, encoding="utf-8")
+    manifest = _STORY_MANIFEST + (
+        "\n## story 3: Ticket one\nid: ticket-one\nimplements: changes/TICKET-001.md\n"
+        "state: pending\n\n## story 4: Ticket two\nid: ticket-two\n"
+        "implements: changes/TICKET-002.md\nstate: pending\n"
+    )
+    (target / "MANIFEST.md").write_text(manifest, encoding="utf-8")
+
+    (defect,) = verify("Demo", target).defects
+    assert defect.filename == "changes/TICKET-001.md"
+    assert "story `ticket-one`" in defect.detail
 
 
 def test_plan_repair_leaves_a_missing_criterion_to_plan(tmp_path):
@@ -1019,3 +1057,64 @@ def test_plan_repair_leaves_a_missing_criterion_to_plan(tmp_path):
     (item,) = result.items
     assert item.status == "unrepaired"
     assert "drydock plan Demo" in item.detail
+
+
+def _database(criteria: str) -> str:
+    from tests.test_database_emit import _DATABASE
+
+    return _DATABASE.replace(
+        "## `tickets`", f"## Programmatic Acceptance\n\n{criteria}\n## `tickets`", 1
+    )
+
+
+_CREATE_CRITERION = """=== AC ticket-create ===
+Intent: A created ticket comes back with its key.
+
+from persistence.testing import db_session
+
+with db_session() as db:
+    created = db.tickets.create(status="open", title="T")
+    assert created.id
+=== END AC ticket-create ===
+"""
+
+
+def test_a_declared_operation_no_criterion_calls_is_a_defect(tmp_path):
+    """One criterion per repository operation: `tickets.list` ships untested here."""
+    target = _target(
+        tmp_path,
+        **{"DATABASE": _database(_CREATE_CRITERION), "FEATURE-Ticket": _RUNNABLE},
+    )
+
+    result = verify("Demo", target)
+
+    (defect,) = result.defects
+    assert defect.kind == "operation-untested"
+    assert defect.filename == "DATABASE.md"
+    assert "`tickets.list`" in defect.detail
+    assert "db.tickets.list(" in defect.detail
+    assert "1 repository operation no DATABASE.md criterion calls" in result.summary
+
+
+def test_every_declared_operation_called_verifies_clean(tmp_path):
+    listed = _CREATE_CRITERION.replace("ticket-create", "ticket-list").replace(
+        "assert created.id", 'assert [row.id for row in db.tickets.list(status="open")]'
+    )
+    target = _target(
+        tmp_path,
+        **{
+            "DATABASE": _database(_CREATE_CRITERION + "\n" + listed),
+            "FEATURE-Ticket": _RUNNABLE,
+        },
+    )
+
+    assert verify("Demo", target).ok, verify("Demo", target).defects
+
+
+def test_a_go_criterion_calls_the_exported_operation():
+    from drydock.plan_verify import untested_operations
+    from tests.test_database_emit import _DATABASE
+
+    code = 'created, err := db.Tickets.Create(ctx, CreateTicket{Status: "open"})'
+
+    assert untested_operations(_DATABASE, [code]) == ("tickets.list",)

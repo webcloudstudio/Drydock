@@ -35,7 +35,9 @@ phone_e164:
 
 ## Programmatic Acceptance
 
-- None.
+<!-- Required. The home route answers and renders the content this file declares. Each criterion is
+a standalone script: act on the product, read the state back, assert it. A story implementing this
+file is refused without one. -->
 
 ## User Acceptance
 

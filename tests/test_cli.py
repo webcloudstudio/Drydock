@@ -1600,6 +1600,19 @@ class TestLlmOverrideFlags:
         assert "exec-456" in out
 
 
+def _built(text: str, built: str) -> str:
+    """A Blueprint whose one criterion passes once its step has written ``built``.
+
+    Build refuses a story whose Blueprint carries no criterion.
+    """
+    check = built.removesuffix(".txt") + "-built"
+    return (
+        f"{text}\n## Programmatic Acceptance\n\n=== AC {check} ===\n"
+        "Intent: The step wrote its output.\n\n"
+        f"from pathlib import Path\n\nassert Path({built!r}).is_file()\n=== END AC {check} ===\n"
+    )
+
+
 class TestPlanInspection:
     @pytest.fixture(autouse=True)
     def _guardrail_is_not_the_subject_of_plan_inspection(self, monkeypatch):
@@ -1713,7 +1726,9 @@ state: pending
             "instructions: |\n  Build it.\nstate: pending\n",
             encoding="utf-8",
         )
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         def _run(*a, **k):
@@ -1773,7 +1788,9 @@ state: pending
             "state: closed/failed\n",
             encoding="utf-8",
         )
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         rc, out, err = run_cli(
@@ -1804,7 +1821,9 @@ state: pending
             "instructions: |\n  Build it.\nstate: pending\n",
             encoding="utf-8",
         )
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         def _run(*a, **k):
@@ -1849,8 +1868,12 @@ state: pending
             "implements: SERVICE.md\ninstructions: |\n  Build it.\nstate: pending\n",
             encoding="utf-8",
         )
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
-        (target / "blueprint" / "SERVICE.md").write_text("Svc.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
+        (target / "blueprint" / "SERVICE.md").write_text(
+            _built("Svc.\n", "service.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         def _run(*a, **k):
@@ -1898,7 +1921,9 @@ state: pending
             "instructions: |\n  Build it.\nstate: pending\n",
             encoding="utf-8",
         )
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         def _build(*a, **k):
@@ -1950,7 +1975,9 @@ state: pending
         )
         (target / "MANIFEST.md").write_text(manifest, encoding="utf-8")
         (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         def _run(*a, **k):
@@ -2004,7 +2031,9 @@ state: pending
             encoding="utf-8",
         )
         (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         config_set("llm_provider", "codex")
         config_set("drydock_model", "gpt-5.4")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
@@ -2041,7 +2070,9 @@ state: pending
             encoding="utf-8",
         )
         (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         rc, out, err = run_cli(
@@ -2076,7 +2107,9 @@ state: pending
             "instructions: |\n  Build it.\nstate: closed/verified\n",
             encoding="utf-8",
         )
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         def _run(*a, **k):
@@ -2129,7 +2162,9 @@ state: pending
             encoding="utf-8",
         )
         (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         def _run(*a, **k):
@@ -2173,7 +2208,9 @@ state: pending
             "instructions: |\n  Build it.\nstate: pending\n",
             encoding="utf-8",
         )
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         rc, _out, err = run_cli(
@@ -2196,7 +2233,9 @@ state: pending
             "instructions: |\n  Build it.\nstate: pending\n",
             encoding="utf-8",
         )
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         rc, _out, err = run_cli("build", "ExampleTarget", "--continue", "--reset")
@@ -2220,7 +2259,9 @@ state: pending
             encoding="utf-8",
         )
         (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
-        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text(
+            _built("DB.\n", "foundation.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         def _run(*a, **k):
@@ -2264,8 +2305,12 @@ state: pending
             encoding="utf-8",
         )
         (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
-        (target / "blueprint" / "SCREEN-SETUP.md").write_text("Screen.\n", encoding="utf-8")
-        (target / "blueprint" / "FEATURE-CORE.md").write_text("Core.\n", encoding="utf-8")
+        (target / "blueprint" / "SCREEN-SETUP.md").write_text(
+            _built("Screen.\n", "screen.txt"), encoding="utf-8"
+        )
+        (target / "blueprint" / "FEATURE-CORE.md").write_text(
+            _built("Core.\n", "core.txt"), encoding="utf-8"
+        )
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
         calls = iter(("core", "screen"))
 

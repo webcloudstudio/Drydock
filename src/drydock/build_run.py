@@ -2404,18 +2404,13 @@ def build_target(
     # can turn it green; a DATABASE.md that cannot be read generates no persistence layer for the
     # stories after it. Both are refused before anything is spent. A criterion that merely might
     # fail is graded as usual — only a defect in the criterion's own text is refused here.
-    from drydock.plan_verify import CRITERIA_MISSING
     from drydock.plan_verify import render as render_verify
     from drydock.plan_verify import verify as verify_plan
 
+    # A story with no criterion, or a declared repository operation none calls, is refused here
+    # as well as by Plan: a Manifest approved past Plan's gate (Refit, a hand edit, an older plan)
+    # would otherwise close that story on the builder's word, and 0/0 grades nothing.
     buildability = verify_plan(target, target_dir) if blueprint_dir.is_dir() else None
-    if buildability is not None:
-        # A story with no criteria is refused by Plan's own terminal gate, which leaves the
-        # Manifest draft; Build refuses here only what cannot run.
-        buildability = replace(
-            buildability,
-            defects=tuple(d for d in buildability.defects if d.kind != CRITERIA_MISSING),
-        )
     if buildability is not None and not buildability.ok:
         raise SpecificationError(
             "Build refused: the plan cannot be built as written.\n" + render_verify(buildability)

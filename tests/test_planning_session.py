@@ -279,6 +279,40 @@ _SPEC_HEADER = (
 )
 
 
+def _select_sqlite(target_dir: Path) -> None:
+    """Approve Python with SQLite, so DATABASE.md criteria may import ``persistence``."""
+    from drydock.technology_stack import StackEntry, write
+
+    write(
+        target_dir,
+        [StackEntry("Python", "python.md"), StackEntry("SQLite", "sqlite.md")],
+        approved="2026-10-19",
+    )
+
+
+def _operation_criteria(text: str, *verbs: str) -> str:
+    """Replace a DATABASE.md fixture's criteria with one calling each ``settings`` operation."""
+    body = "".join(
+        f"### settings-{verb}\n"
+        f"The settings {verb} operation answers.\n\n"
+        "```python\n"
+        "from persistence.testing import db_session\n\n"
+        "with db_session() as db:\n"
+        f"    result = db.settings.{verb}(key='k')\n"
+        "    print(result)\n"
+        "```\n\n"
+        for verb in verbs
+    )
+    head, tail = text.split("## Programmatic Acceptance\n\n", 1)
+    return (
+        head
+        + "## Programmatic Acceptance\n\n"
+        + body
+        + "## User Acceptance"
+        + (tail.split("## User Acceptance", 1)[1])
+    )
+
+
 def _manifest(story_state: str = "pending", implements: str = "FEATURE-Status.md") -> str:
     return f"""# MANIFEST: Example
 updated: 2026-06-16
@@ -1305,6 +1339,7 @@ def test_replan_prunes_applied_spec_when_authoritative_spec_changes(tmp_path):
 
 def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
     target_dir = _make_target(tmp_path)
+    _select_sqlite(target_dir)
     # A persistence Blueprint declares its tables; an empty one fails the plan integrity check.
     db = _SPEC_HEADER.format(ftype="DATABASE", name="Example Data", ac="None.").replace(
         "## Programmatic Acceptance",
@@ -1313,6 +1348,7 @@ def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
         "## Programmatic Acceptance",
         1,
     )
+    db = _operation_criteria(db, "get")
     # The declaration names FEATURE-Status.md as the owner of FEATURE-X-001, so it cites it.
     status = _SPEC_HEADER.format(
         ftype="FEATURE", name="Status", ac="Status command exits successfully."
@@ -7277,6 +7313,7 @@ def test_complete_plan_preserves_seed_and_freezes_crud_contract(tmp_path, bad_fi
     from drydock.plan_verify import verify
 
     target = _make_target(tmp_path)
+    _select_sqlite(target)
     seed = "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n| value | TEXT | |\n\n- UNIQUE (key, value)\n"
     (target / "blueprint/sources/DATABASE.md").write_text(seed)
     declaration = """## story foundation
@@ -7331,6 +7368,7 @@ acceptance: yes
         + "## `settings`\n\n| Field | Type | Notes |\n|---|---|---|\n| key | TEXT PK | |\n\n"
         + "## Programmatic Acceptance",
     )
+    database = _operation_criteria(database, "get", "list", "create", "update", "delete")
     feature = _feature_block().replace(
         "## Programmatic Acceptance",
         "## Database Interface\n\n" + "\n".join(citations) + "\n\n## Programmatic Acceptance",
@@ -7362,3 +7400,16 @@ acceptance: yes
     assert "DATABASE_compact.md" in runner.calls[-1]
     if bad_first:
         assert "changes its seeded type or constraints" in runner.calls[2]
+
+
+def test_an_emitted_database_whose_criteria_skip_an_operation_is_refused():
+    """Plan's Stage 2 gate: every declared repository operation is called by a criterion."""
+    from drydock.planning_session import _untested_operation_defects
+    from tests.test_plan_verify import _CREATE_CRITERION, _database
+
+    (defect,) = _untested_operation_defects({"DATABASE.md": _database(_CREATE_CRITERION)})
+
+    assert defect.source == "DATABASE.md"
+    assert defect.check_id == "tickets.list"
+    assert "db.tickets.list(" in defect.reason
+    assert _untested_operation_defects({"FEATURE-Status.md": "# FEATURE: Status\n"}) == ()

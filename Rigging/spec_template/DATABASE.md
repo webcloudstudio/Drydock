@@ -142,8 +142,9 @@ only when its DATABASE build story completes. Alembic records deployment applica
 ## Programmatic Acceptance
 
 <!-- Required. One criterion per repository operation, run against the provisioned store:
-`from persistence.testing import db_session` then `with db_session() as db:`; assert the declared
-Output. Never apply schema or replace DATABASE_URL/DATABASE_PATH. -->
+`from persistence.testing import db_session` then `with db_session() as db:`, call the operation as
+`db.<table>.<verb>(...)`, and assert the declared Output. An operation no criterion calls is
+refused. Never apply schema or replace DATABASE_URL/DATABASE_PATH. -->
 
 ## User Acceptance
 
