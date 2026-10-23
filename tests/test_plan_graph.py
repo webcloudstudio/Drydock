@@ -50,7 +50,7 @@ def test_regrouping_preserves_started_blocks_and_chains_pending_work(state):
     assert [s.block for s in result.stories] == [7, 8, 8, 8]
 
 
-def test_regrouping_respects_acceptance_limits_and_does_not_cross_started_work():
+def test_regrouping_does_not_cross_started_work():
     declared = [
         story("original", block=1, state="closed/verified"),
         story("r1", block=2, depends=("original",)),
@@ -61,12 +61,10 @@ def test_regrouping_respects_acceptance_limits_and_does_not_cross_started_work()
         declared,
         preserve_existing=True,
         min_savings=1,
-        acceptance_limit=2,
-        acceptance_count_fn=lambda _: 1,
         block_size_fn=lambda members: 100 + 50 * len(members),
     )
     assert not result.fatal
-    assert [block.story_ids for block in result.blocks] == [("original",), ("r1", "r2"), ("r3",)]
+    assert [block.story_ids for block in result.blocks] == [("original",), ("r1", "r2", "r3")]
 
     # A fixed block between two pending stories is still an ordering barrier.
     declared[2] = story("r2", block=3, state="implemented", depends=("r1",))
@@ -385,46 +383,19 @@ def test_the_floor_never_splits_a_block_the_budgets_already_bound():
     assert [block.story_type for block in blocks] == ["foundational", "service"]
 
 
-# The CommonMark regression: two cheap, context-sharing stories merged into one block that
-# owed 8 acceptance criteria against a flat repair budget of 3. It reached 6 and stopped, third
-# of five, starving every block behind it. Token cost never saw it coming — the merge was cheap.
+def test_only_token_cost_splits_a_block():
+    """ReadingList 20261023.144538: stories owing 3-8 criteria each built one per block."""
+    ordered = tuple(story(f"s{i}", stack=("flask.md",)) for i in range(8))
 
+    def cost(stories):
+        return 5_000 + 1_000 * len(stories)
 
-def test_two_heavily_specified_stories_do_not_share_a_block():
-    ordered = (
-        story("leaf-blocks", acceptance_count=4),
-        story("containers-lists", acceptance_count=4),
-    )
+    _, blocks = group_blocks(ordered, target_tokens=10_000, block_size_fn=cost)
 
-    _, blocks = group_blocks(ordered)
-
-    assert [b.story_ids for b in blocks] == [("leaf-blocks",), ("containers-lists",)]
-
-
-def test_blocks_within_the_acceptance_ceiling_pack_exactly_as_before():
-    """The 08-10 shape, where no block exceeded five criteria, must be untouched."""
-    ordered = tuple(story(f"s{i}", acceptance_count=1) for i in range(5))
-
-    _, blocks = group_blocks(ordered, min_savings=0)
-
-    assert [b.story_ids for b in blocks] == [("s0", "s1", "s2", "s3", "s4")]
-
-
-def test_a_story_over_the_ceiling_alone_still_builds_as_its_own_block():
-    """Irreducible, exactly as an over-``limit_tokens`` seed is. A marker, never a refusal."""
-    ordered = (story("huge", acceptance_count=9), story("small", acceptance_count=1))
-
-    _, blocks = group_blocks(ordered)
-
-    assert [b.story_ids for b in blocks] == [("huge",), ("small",)]
-
-
-def test_the_acceptance_ceiling_can_be_disabled():
-    ordered = (story("a", acceptance_count=8), story("b", acceptance_count=8))
-
-    _, blocks = group_blocks(ordered, acceptance_limit=0, min_savings=0)
-
-    assert [b.story_ids for b in blocks] == [("a", "b")]
+    assert [b.story_ids for b in blocks] == [
+        ("s0", "s1", "s2", "s3", "s4"),
+        ("s5", "s6", "s7"),
+    ]
 
 
 def test_optimizer_never_mixes_screen_and_non_screen_work():

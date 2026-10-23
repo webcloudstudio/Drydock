@@ -99,11 +99,6 @@ class PlannedStory:
     #: an irreducible specification makes every story over target by construction, and those
     #: stories build.
     over_target: bool = False
-    #: Number of Programmatic Acceptance criteria the story must satisfy. Measured, never
-    #: authored. Blocks are packed against this as well as against token cost, because the two
-    #: are unrelated: a block can be cheap to assemble and still owe more proof than one repair
-    #: budget can drive green.
-    acceptance_count: int = 0
     #: Assigned by :func:`assign_stack_modes`; never authored by the model.
     stack_mode: str = ""
     #: Assigned by :func:`group_blocks`; ephemeral, Manifest-only, regenerated every run.
@@ -416,14 +411,6 @@ DEFAULT_BLOCK_TARGET_TOKENS = 70_000
 #: by overspending; it is a target.
 DEFAULT_BLOCK_BUDGET_TOKENS = DEFAULT_BLOCK_TARGET_TOKENS
 DEFAULT_BLOCK_LIMIT_TOKENS = 120_000
-#: Most acceptance criteria one build block may own. Repair budget is per block and flat, and the
-#: stories in a block share a single execution, so packing two heavily-specified stories together
-#: halves what each gets. The CommonMark regression is the shape: leaf blocks (4 criteria) and
-#: containers-and-lists (4) merged because they were cheap in tokens and shared context, and the
-#: resulting block owed 8 criteria against 3 repair passes. It reached 6 and stopped, third of
-#: five, starving every block behind it. Five leaves every previously observed block untouched.
-DEFAULT_BLOCK_ACCEPTANCE_LIMIT = 5
-
 #: Least shared context, in tokens, that justifies merging a story into a block. Ranking merges by
 #: savings alone makes any overlap above zero worth taking, so two stories sharing nothing but a
 #: compacted language file merge for a few hundred tokens — a saving nobody can spend, bought by
@@ -477,7 +464,6 @@ def group_blocks(
     *,
     target_tokens: int = DEFAULT_BLOCK_TARGET_TOKENS,
     limit_tokens: int = DEFAULT_BLOCK_LIMIT_TOKENS,
-    acceptance_limit: int = DEFAULT_BLOCK_ACCEPTANCE_LIMIT,
     min_savings: int = DEFAULT_BLOCK_MIN_SAVINGS,
     block_size_fn: Callable[[Sequence[PlannedStory]], int] | None = None,
     preserve_existing: bool = False,
@@ -492,10 +478,8 @@ def group_blocks(
     on its arithmetic, which is why ``min_savings`` exists: a merge saving less than that buys
     nothing and widens the context one model call must hold, so it is no merge at all.
 
-    Two independent budgets bound a block: assembled token cost, and the number of acceptance
-    criteria it owes. Cost is the wrong proxy for the second — the cheapest merge on offer is
-    often two stories that each carry a full conformance section, and the merged block then owes
-    both against one flat repair budget.
+    Assembled token cost is the only bound on a block. The number of acceptance criteria a block
+    owes is not a reason to split it.
 
     ``preserve_existing`` retains every block containing non-pending work as an indivisible
     dependency barrier. Only wholly pending blocks are regrouped; new numbers follow the
@@ -577,15 +561,7 @@ def group_blocks(
                 and all(dep in active_done or dep not in known for dep in known[sid].depends)
             ]
             ranked: list[tuple[int, int, int, PlannedStory, int]] = []
-            current_acceptance = sum(story.acceptance_count for story in current)
             for candidate in candidates:
-                # An irreducible seed above the ceiling still builds alone, exactly as one above
-                # ``limit_tokens`` does; what it may not do is absorb further proof obligations.
-                if (
-                    acceptance_limit
-                    and current_acceptance + candidate.acceptance_count > acceptance_limit
-                ):
-                    continue
                 combined = max(0, block_size_fn((*current, candidate)))
                 if limit_tokens and combined > limit_tokens:
                     continue
@@ -660,10 +636,8 @@ def compute_plan(
     *,
     target_tokens: int = DEFAULT_BLOCK_TARGET_TOKENS,
     limit_tokens: int = DEFAULT_BLOCK_LIMIT_TOKENS,
-    acceptance_limit: int = DEFAULT_BLOCK_ACCEPTANCE_LIMIT,
     min_savings: int = DEFAULT_BLOCK_MIN_SAVINGS,
     size_fn: Callable[[PlannedStory], int] | None = None,
-    acceptance_count_fn: Callable[[PlannedStory], int] | None = None,
     block_size_fn: Callable[[Sequence[PlannedStory]], int] | None = None,
     preserve_existing: bool = False,
 ) -> PlanComputation:
@@ -685,16 +659,11 @@ def compute_plan(
     size_defects: tuple[GraphDefect, ...] = ()
     if size_fn is not None:
         ordered, size_defects = measure_stories(ordered, size_fn, target_tokens=target_tokens)
-    if acceptance_count_fn is not None:
-        ordered = tuple(
-            replace(story, acceptance_count=max(0, acceptance_count_fn(story))) for story in ordered
-        )
     try:
         stamped, blocks = group_blocks(
             ordered,
             target_tokens=target_tokens,
             limit_tokens=limit_tokens,
-            acceptance_limit=acceptance_limit,
             min_savings=min_savings,
             block_size_fn=block_size_fn,
             preserve_existing=preserve_existing,

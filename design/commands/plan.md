@@ -161,6 +161,12 @@ three times the configured repair count. `2026-09-18` A defect between two files
 `2026-08-01` · **Drydock computes order; the model declares only `depends:`.** Blocks come from
 `group_blocks`; every story is in exactly one block; `Ungrouped` is fatal.
 
+`2026-10-23` · **Only assembled token cost bounds a block.** Within a partition (phase, type,
+screen/non-screen, language initialization), a ready story merges while the block stays under
+`prompt_target_tokens` and the merge saves at least `block_min_savings`. Acceptance criteria
+count is not a bound. Cost when broken: the 5-criteria cap built ReadingList `20261023.144538`
+as 14 single-story blocks of 3–11K tokens, one model call per story.
+
 `2026-08-02` · **A replan keeps built work whose build-relevant fingerprint is unchanged.**
 Renumbering and `Depends On` refactors do not dirty a story; `--overwrite` discards provenance.
 
@@ -360,12 +366,6 @@ A failing `plan verify` condemns the standing plan rung without voiding anything
    merely because any upstream specification byte or story changed. The likely discriminator is a
    changed consumed contract or compact projection. Until this is designed, replanning resets the
    changed story only and leaves previously verified dependents unchanged.
-6. **Block criteria cap forbids every merge** (`2026-10-23`) — `DEFAULT_BLOCK_ACCEPTANCE_LIMIT = 5`
-   is hardcoded (`compute_plan` is not passed a configured value). Since every story carries
-   criteria, ReadingList `20261023.144538` Blueprints owe 3–8 each, so no pair fits and the plan
-   is 14 single-story blocks of 3–11K tokens against a 70K-class target. The cap was sized when
-   repair attempts were 3 (now 6). Decide: raise it, make it configurable, or scale it with
-   `repair_attempts`.
 
 *Closed 2026-08-01:* `ac` as node or field (§Programmatic Acceptance is not a node); deterministic
 and model phase grouping (§Plan command workflow); TDD phase placement (§Content and acceptance are

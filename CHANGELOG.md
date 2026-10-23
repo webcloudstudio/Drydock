@@ -84,6 +84,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-23: `drydock plan` packs build blocks by assembled token cost alone. The per-block
+  cap of 5 Programmatic Acceptance criteria (`DEFAULT_BLOCK_ACCEPTANCE_LIMIT`) is removed. Once
+  every story carried criteria, typically 3–8 each, the cap forbade every merge: ReadingList
+  planned 14 single-story blocks of 3–11K tokens against a 70K target, with one model call per
+  story. Stories now merge while the block stays under `prompt_target_tokens` and the merge
+  saves at least `block_min_savings`.
+
 - 2026-10-22: Every built story is guaranteed a criterion. `drydock build` now refuses, before any
   model call, a story whose implemented Blueprints carry no Programmatic Acceptance
   (`criteria-missing`) instead of leaving that refusal to `drydock plan` alone. A story naming no

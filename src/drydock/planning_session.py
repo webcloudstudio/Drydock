@@ -3788,31 +3788,12 @@ def _compute_schedule(
         )
         return total
 
-    def acceptance_count_fn(story: PlannedStory) -> int:
-        """Count the criteria the story's Blueprint owes, from the text about to be written."""
-        from drydock.acceptance import parse_programmatic_acceptance_text
-
-        name = story.implements
-        text = emitted_files.get(name)
-        if text is None:
-            path = blueprint_dir / name
-            if not path.is_file():
-                return 0
-            text = path.read_text(encoding="utf-8")
-        try:
-            return len(parse_programmatic_acceptance_text(text, source=name))
-        except ValueError:
-            # A malformed criterion block is reported by the acceptance gate with a precise
-            # message. Sizing must not raise a second, less useful error on the way there.
-            return 0
-
     return compute_plan(
         declared,
         target_tokens=block_target_tokens(),
         limit_tokens=resolve_warning_tokens(),
         min_savings=block_min_savings(),
         size_fn=lambda story: block_size_fn((story,)),
-        acceptance_count_fn=acceptance_count_fn,
         block_size_fn=block_size_fn,
         preserve_existing=preserve_existing,
     )
