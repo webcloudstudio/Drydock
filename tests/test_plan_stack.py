@@ -6,6 +6,7 @@ from drydock import plan_stack
 from drydock.build import PROMPT_TARGET_TOKENS
 from drydock.plan_stack import (
     DEFAULT_STORY_BUDGET_TOKENS,
+    block_limit_tokens,
     exceeds_build_pass,
     resolve_stack_file,
     resolve_stack_set,
@@ -123,6 +124,21 @@ def test_unusable_setting_downgrades_rather_than_refusing_to_plan(set_model_fiel
 def test_explicit_budget_overrides_the_configured_ceiling(monkeypatch):
     monkeypatch.setattr(plan_stack, "resolve_target_tokens", lambda: 10)
     assert not exceeds_build_pass(50, budget=100)
+
+
+def test_block_limit_stays_under_the_escalation_limit(set_model_fields):
+    """Haiku escalates to Sonnet near 100K; no planned block may get there."""
+    set_model_fields(
+        prompt_warning_tokens=120_000,
+        prompt_limit_tokens=100_000,
+        overhead_tokens={"build": 7_437, "text": 2_813},
+    )
+    assert block_limit_tokens() == 90_000 - 7_437
+
+
+def test_block_limit_is_the_warning_threshold_without_a_model_limit(set_model_fields):
+    set_model_fields(prompt_warning_tokens=120_000, prompt_limit_tokens=None)
+    assert block_limit_tokens() == 120_000
 
 
 def test_target_stack_resolution_reads_the_declared_stack(tmp_path, monkeypatch):

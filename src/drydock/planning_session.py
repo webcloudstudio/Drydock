@@ -3691,10 +3691,14 @@ def _compute_schedule(
     specifications, context, stack, rules, and instructions. The preferred threshold guides
     grouping; the configured error threshold is an absolute gate.
     """
-    from drydock.build import resolve_warning_tokens
     from drydock.paths import get_language_dir
     from drydock.plan_graph import compute_plan
-    from drydock.plan_stack import block_min_savings, block_target_tokens, resolve_stack_set
+    from drydock.plan_stack import (
+        block_limit_tokens,
+        block_min_savings,
+        block_target_tokens,
+        resolve_stack_set,
+    )
 
     language = technology_stack.declared_language(blueprint_dir.parent)
     if language:
@@ -3788,10 +3792,11 @@ def _compute_schedule(
         )
         return total
 
+    limit_tokens = block_limit_tokens()
     return compute_plan(
         declared,
-        target_tokens=block_target_tokens(),
-        limit_tokens=resolve_warning_tokens(),
+        target_tokens=min(block_target_tokens(), limit_tokens),
+        limit_tokens=limit_tokens,
         min_savings=block_min_savings(),
         size_fn=lambda story: block_size_fn((story,)),
         block_size_fn=block_size_fn,

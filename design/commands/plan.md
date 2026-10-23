@@ -167,6 +167,13 @@ screen/non-screen, language initialization), a ready story merges while the bloc
 count is not a bound. Cost when broken: the 5-criteria cap built ReadingList `20261023.144538`
 as 14 single-story blocks of 3–11K tokens, one model call per story.
 
+`2026-10-23` · **No planned block reaches the model's escalation limit.** The absolute ceiling
+(`plan_stack.block_limit_tokens`) is `prompt_warning_tokens`, lowered to 90% of
+`prompt_limit_tokens` less the row's build overhead when the row sets a limit (Haiku: 82,563
+planned tokens, about a 90K request), and the target is clamped to it. A story over the ceiling
+fails planning. Cost when broken: a block planned between 98K and 120K builds on `escalate_model`
+(Sonnet) instead of the configured model.
+
 `2026-08-02` · **A replan keeps built work whose build-relevant fingerprint is unchanged.**
 Renumbering and `Depends On` refactors do not dirty a story; `--overwrite` discards provenance.
 

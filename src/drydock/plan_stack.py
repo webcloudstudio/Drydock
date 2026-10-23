@@ -26,8 +26,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock import technology_stack
-from drydock.build import PROMPT_TARGET_TOKENS, resolve_target_tokens
+from drydock import model_config, technology_stack
+from drydock.build import PROMPT_TARGET_TOKENS, PROMPT_WARNING_TOKENS, resolve_target_tokens
 from drydock.errors import ConfigurationError
 from drydock.paths import get_stack_dir, resolve_rigging_file
 from drydock.prompt_assembly import estimate_tokens
@@ -53,6 +53,34 @@ def block_target_tokens() -> int:
     marked and built.
     """
     return resolve_target_tokens()
+
+
+#: Share of a model's ``prompt_limit_tokens`` one planned block may reach. A block the planner
+#: sizes near the limit is escalated to the row's ``escalate_model`` at build time once the
+#: estimate drifts; the margin keeps every planned block on the configured model.
+BLOCK_LIMIT_FRACTION = 0.9
+
+
+def block_limit_tokens_for(profile: model_config.ModelProfile) -> int:
+    """Return the absolute ceiling on one block's planned cost for ``profile``.
+
+    The row's ``prompt_warning_tokens``, lowered to ``BLOCK_LIMIT_FRACTION`` of its
+    ``prompt_limit_tokens`` when it sets one. Plan sizing omits the CLI's fixed build payload that
+    escalation counts, so that overhead is subtracted to compare like with like.
+    """
+    ceiling = profile.prompt_warning_tokens
+    if profile.prompt_limit_tokens is not None:
+        allowed = int(BLOCK_LIMIT_FRACTION * profile.prompt_limit_tokens)
+        ceiling = min(ceiling, allowed - profile.overhead(allow_tools=True))
+    return ceiling
+
+
+def block_limit_tokens() -> int:
+    """Return the active model's absolute block ceiling, falling back to the built-in default."""
+    try:
+        return block_limit_tokens_for(model_config.active_profile())
+    except ConfigurationError:
+        return PROMPT_WARNING_TOKENS
 
 
 #: Prior spelling. Tokens measure a block, never a story.

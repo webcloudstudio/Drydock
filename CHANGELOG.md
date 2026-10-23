@@ -91,6 +91,13 @@ command surface and Typed Specification contract are unstable and may change bet
   story. Stories now merge while the block stays under `prompt_target_tokens` and the merge
   saves at least `block_min_savings`.
 
+- 2026-10-23: `drydock plan` keeps every block under the model's escalation limit. For a model
+  row that sets `prompt_limit_tokens`, the absolute block ceiling is 90% of that limit less the
+  row's build overhead, in place of `prompt_warning_tokens`. For Haiku that is 82,563 planned
+  tokens, about a 90K request, against the 98K point where a call escalates to Sonnet. The
+  multi-story target is clamped to the ceiling, and a single story over it fails planning instead
+  of building on `escalate_model`.
+
 - 2026-10-22: Every built story is guaranteed a criterion. `drydock build` now refuses, before any
   model call, a story whose implemented Blueprints carry no Programmatic Acceptance
   (`criteria-missing`) instead of leaving that refusal to `drydock plan` alone. A story naming no
