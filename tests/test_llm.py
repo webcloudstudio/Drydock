@@ -2216,6 +2216,41 @@ def test_output_cleanup_is_opt_in_and_preserves_evidence(tmp_path, monkeypatch, 
         assert "output_contract" not in result.record
 
 
+def test_json_cleanup_reads_the_final_turn_when_earlier_turns_streamed_narration(
+    tmp_path, monkeypatch
+):
+    """ReadingList UAT 20261023.022430: a tool-using grader streamed 789 characters of turn
+    narration ahead of a clean fenced JSON final turn, and the whole reply was rejected."""
+    narration = "I'll read the tree first. " * 30 + "The probe is the documented path."
+    final = '```json\n{"a": 1}\n```'
+    raw = _claude_stream(_text(narration), _text(final), {"type": "result", "result": final})
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda command, **kwargs: FakePopen(command, stdout_text=raw, **kwargs)
+    )
+
+    result = run_prompt("Work", tmp_path, llm="claude", output_format="json")
+
+    assert result.text == '{"a": 1}'
+    assert result.artifacts.output_file.read_text() == narration + final
+    assert result.record["output_contract"]["defect"] is None
+    assert result.record["output_contract"]["removed"] == ["earlier-turn text", "JSON code fence"]
+
+
+def test_artifact_cleanup_never_narrows_to_the_final_turn(tmp_path, monkeypatch):
+    """Artifacts may be written across turns; only a single JSON value narrows to the last."""
+    stream = "x" * 600 + "\n=== BEGIN ARTIFACT A.md ===\nbody\n=== END ARTIFACT ===\n"
+    final = "=== BEGIN ARTIFACT A.md ===\nbody\n=== END ARTIFACT ===\n"
+    raw = _claude_stream(_text(stream), {"type": "result", "result": final})
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda command, **kwargs: FakePopen(command, stdout_text=raw, **kwargs)
+    )
+
+    result = run_prompt("Work", tmp_path, llm="claude", output_format="artifacts")
+
+    assert result.text == stream
+    assert result.record["output_contract"]["defect"]
+
+
 def test_invalid_output_format_fails_before_provider_execution(tmp_path, monkeypatch):
     def unexpected(*args, **kwargs):
         pytest.fail("Provider must not run")

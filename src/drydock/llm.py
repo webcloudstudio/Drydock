@@ -42,7 +42,7 @@ from drydock.execution import (
 )
 from drydock.llm_usage import normalize_tokens
 from drydock.logging import close_execution_logger, create_execution_logger
-from drydock.output_format import OutputFormat, clean_output
+from drydock.output_format import CleanedOutput, OutputFormat, clean_output
 from drydock.prompt_assembly import PromptAssembly
 
 # A provider agent runs shell commands, and those grandchildren inherit the provider's
@@ -602,6 +602,25 @@ def _duration(seconds: float) -> str:
     if total < 60:
         return f"{total}s"
     return f"{total // 60}m{total % 60:02d}s"
+
+
+def _final_turn_json(llm: str, raw: str, text: str) -> CleanedOutput | None:
+    """Clean a JSON reply from the final turn alone, when the stream carried earlier turns.
+
+    A tool-using Claude run streams the narration of every turn ahead of its answer, and the
+    ``result`` event holds only the last turn. A JSON payload is one value, so the last turn is
+    the reply. Artifacts may span turns, so only JSON narrows this way.
+    """
+    if llm != "claude":
+        return None
+    final = next((event for event in reversed(_events(raw)) if event.get("type") == "result"), {})
+    reply = str(final.get("result") or "")
+    if not reply.strip() or reply == text:
+        return None
+    cleaned = clean_output(reply, "json")
+    if cleaned.defect:
+        return None
+    return CleanedOutput(cleaned.text, ("earlier-turn text", *cleaned.removed))
 
 
 def _stream_text(llm: str, events: list[dict[str, Any]]) -> str:
@@ -2173,6 +2192,8 @@ def run_prompt(
         cleanup = None
         if output_format is not None and returncode == 0 and failure is None:
             cleanup = clean_output(text, output_format)
+            if cleanup.defect and output_format == "json":
+                cleanup = _final_turn_json(selected, raw_output, text) or cleanup
             # Keep provider/output evidence unchanged; only the returned payload is normalized.
             text = cleanup.text
             if on_text is not None:

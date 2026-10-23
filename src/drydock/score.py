@@ -823,6 +823,52 @@ def _trial_verdict(raw: object, criterion_id: str) -> str:
     return verdict
 
 
+def _graded_trials(
+    text: str, trial_by_id: dict[str, SeaTrial], observations: tuple[TrialObservation, ...]
+) -> tuple[dict, dict[str, str], list[TrialFacts]]:
+    """Read the grader's judgement of every Sea Trial; raise when it cannot be read."""
+    payload = _parse_json(text)
+    model_criteria: dict[str, dict] = {}
+    for item in payload.get("criteria", []):
+        if not isinstance(item, dict) or item.get("id") not in trial_by_id:
+            raise SpecificationError("score release output contains an unknown criterion ID")
+        criterion_id = str(item["id"])
+        if criterion_id in model_criteria:
+            raise SpecificationError(f"score release output duplicates criterion {criterion_id}")
+        model_criteria[criterion_id] = item
+    if set(model_criteria) != set(trial_by_id):
+        raise SpecificationError("score release output must judge every Sea Trial exactly once")
+
+    pinned = {item.criterion_id: item for item in observations if item.pinned}
+    rationales: dict[str, str] = {}
+    trial_facts: list[TrialFacts] = []
+    for criterion_id, trial in trial_by_id.items():
+        item = model_criteria[criterion_id]
+        graded = _trial_verdict(item.get("verdict"), criterion_id)
+        rationales[criterion_id] = str(item.get("rationale", "")).strip()
+        raw_evidence = item.get("evidence", [])
+        citations = (
+            tuple(str(value) for value in raw_evidence) if isinstance(raw_evidence, list) else ()
+        )
+        observed = pinned.get(criterion_id)
+        if observed is not None:
+            citations = (observed.detail,) + citations
+        trial_facts.append(
+            TrialFacts(
+                criterion_id=criterion_id,
+                graded=graded,
+                citations=citations,
+                demonstrated_failure=(
+                    observed.detail if observed is not None and observed.pinned == NOT_MET else ""
+                ),
+                governed_pass=observed is not None and observed.pinned == MET,
+                guardrail=trial.trial_type == "guardrail",
+                criterion=trial.criterion,
+            )
+        )
+    return payload, rationales, trial_facts
+
+
 def score_release(
     target: str,
     target_dir: Path,
@@ -939,47 +985,14 @@ def score_release(
         shutil.rmtree(probe_root, ignore_errors=True)
     if not result.ok or not result.text.strip():
         raise SpecificationError("score release LLM execution failed or returned no output")
-    payload = _parse_json(result.text)
-
     trial_by_id = {trial.criterion_id: trial for trial in document.trials}
-    model_criteria: dict[str, dict] = {}
-    for item in payload.get("criteria", []):
-        if not isinstance(item, dict) or item.get("id") not in trial_by_id:
-            raise SpecificationError("score release output contains an unknown criterion ID")
-        criterion_id = str(item["id"])
-        if criterion_id in model_criteria:
-            raise SpecificationError(f"score release output duplicates criterion {criterion_id}")
-        model_criteria[criterion_id] = item
-    if set(model_criteria) != set(trial_by_id):
-        raise SpecificationError("score release output must judge every Sea Trial exactly once")
-
-    pinned = {item.criterion_id: item for item in observations if item.pinned}
-    rationales: dict[str, str] = {}
-    trial_facts: list[TrialFacts] = []
-    for criterion_id, trial in trial_by_id.items():
-        item = model_criteria[criterion_id]
-        graded = _trial_verdict(item.get("verdict"), criterion_id)
-        rationales[criterion_id] = str(item.get("rationale", "")).strip()
-        raw_evidence = item.get("evidence", [])
-        citations = (
-            tuple(str(value) for value in raw_evidence) if isinstance(raw_evidence, list) else ()
-        )
-        observed = pinned.get(criterion_id)
-        if observed is not None:
-            citations = (observed.detail,) + citations
-        trial_facts.append(
-            TrialFacts(
-                criterion_id=criterion_id,
-                graded=graded,
-                citations=citations,
-                demonstrated_failure=(
-                    observed.detail if observed is not None and observed.pinned == NOT_MET else ""
-                ),
-                governed_pass=observed is not None and observed.pinned == MET,
-                guardrail=trial.trial_type == "guardrail",
-                criterion=trial.criterion,
-            )
-        )
+    try:
+        payload, rationales, trial_facts = _graded_trials(result.text, trial_by_id, observations)
+    except SpecificationError as exc:
+        # A judgement Drydock cannot read means Drydock could not judge. That is ERROR, recorded
+        # like any verdict, so UAT and the Scorecard never fall back to reading the exit code.
+        kit_faults.append(f"Grader output could not be read: {exc}")
+        payload, rationales, trial_facts = {}, {}, []
 
     outcome = fold(
         RunFacts(

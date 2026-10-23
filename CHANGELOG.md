@@ -160,6 +160,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-23: `drydock score release` reads a tool-using grader's JSON from its final turn when
+  the narration streamed from earlier turns fails JSON cleanup, and records `earlier-turn text` as
+  removed. Unreadable grader output (invalid JSON, an unknown, duplicate, or missing Sea Trial, or
+  an invalid trial verdict) is now an `ERROR` verdict written to `evidence/score-release.json`, not
+  an exception. Previously, UAT inferred an acceptance `FAIL` from the exit code.
+
 - 2026-10-22: Build progress reports each story's persisted state, including implemented-only
   stories, and Blueprint naming validation accepts the standard `VERIFICATION.md` release gate.
 

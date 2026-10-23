@@ -412,6 +412,34 @@ def test_the_probe_directory_is_removed_even_when_the_grader_returns_nothing(tmp
     assert not (build_dir / PROBE_DIR).exists()
 
 
+def test_unreadable_grader_output_is_a_recorded_error_not_an_exception(tmp_path):
+    """ReadingList UAT 20261023.022430: an unparseable judgement raised before any verdict was
+    written, so UAT read the exit code and charged the product with an acceptance FAIL."""
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+
+    result = score_release("Demo", target_dir, runner=lambda *a, **k: FakeRun("Looks fine."))
+
+    assert result.verdict == ERROR
+    assert result.exit_code() == 1
+    assert result.criteria == ()
+    assert "Grader output could not be read" in result.statement
+    record = json.loads(
+        (target_dir / "evidence" / "score-release.json").read_text(encoding="utf-8")
+    )
+    assert record["verdict"] == ERROR
+    assert record["kit_faults"][0].startswith("Grader output could not be read")
+
+
+def test_a_grader_that_skips_a_trial_is_a_recorded_error(tmp_path):
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+
+    empty = json.dumps({"criteria": [], "improvements": []})
+    result = score_release("Demo", target_dir, runner=lambda *a, **k: FakeRun(empty))
+
+    assert result.verdict == ERROR
+    assert "every Sea Trial exactly once" in result.statement
+
+
 def test_no_record_the_build_left_behind_reaches_the_verdict(tmp_path):
     """A failing story assertion, a failed Manifest block, and a stale proof tag are all history.
     The release verdict is about the tree as it stands now."""

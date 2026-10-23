@@ -52,6 +52,18 @@ reject duplicate keys, non-JSON numeric constants, and content-shaped surroundin
 cleanup does not replace the command's schema or semantic checks. *Broken:* wrapper narration
 pollutes an artifact, or broad substring extraction silently hides malformed output.
 
+`2026-10-23` · **A JSON reply is the final turn when the stream fails cleanup.** For a Claude run,
+JSON cleanup that finds a defect in the streamed text retries on the `result` event's final-turn
+text and records `earlier-turn text` as removed. Artifact output never narrows to the final turn.
+*Broken:* a tool-using grader's valid JSON is rejected behind its turn narration (ReadingList
+`20261023.022430`).
+
+`2026-10-23` · **Unreadable grader output is `ERROR`, recorded.** Invalid JSON, an unknown,
+duplicate, or missing trial, or an invalid trial verdict becomes a kit fault, and `score release`
+writes `ERROR` to `evidence/score-release.json` and exits `1`. A failed or empty provider execution
+still raises. *Broken:* no verdict is written and UAT charges the product an acceptance FAIL from
+the exit code.
+
 `2026-10-19` · **`score ac` and `score release` require `postgres_dsn` for a `postgres.md`
 stack** and export it as `DATABASE_URL`, as build does. Cost when broken: scoring observes a
 SQLite store the stack did not select.
