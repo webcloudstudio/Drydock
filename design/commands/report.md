@@ -99,7 +99,7 @@ passes, or a summary changes the evidence it describes.
 
 ### Spec divergence
 
-- The specification does not document `drydock report`.
+- —
 
 ## Decisions
 

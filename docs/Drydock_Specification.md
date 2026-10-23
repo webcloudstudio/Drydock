@@ -591,6 +591,25 @@ The report contains Root Cause, Details, Commander Feedback Requested, and a Rep
 
 `--apply` applies the diffs and records decisions in `DECISIONS.json`.
 
+### Drydock Reporting
+
+```text
+drydock report help
+
+ReportName | Command | Description
+--- | --- | ---
+status      | drydock report status <Target>   | Target phase, plan, frontier, and next step
+manifest    | drydock report manifest <Target> | Manifest groups, step states, and buildable frontier
+run         | drydock report run <Target>      | Recorded lifecycle state and attempts
+build       | drydock report build <Target>    | Recorded build evidence, repairs, and usage
+history     | drydock report history <Target>  | Target command execution history
+llm         | drydock report llm <Target>      | Lifecycle LLM usage by command and model
+token       | drydock report token <Target>    | Prompt size, model, and run time of each LLM call
+scores      | drydock report scores <Target>   | Last score runs and artifact locations
+uat_summary | drydock report uat_summary       | 30-day UAT summary: passed kits by Claude and Codex
+uat_report  | drydock report uat_report        | Passed UAT runs: LLM calls, tokens, tool calls, time
+```
+
 ## SAIL Phase 4 — Loop: The Refit
 
 A **Refit** updates the **Manifest** from **Blueprint** changes and change tickets, creating new nodes for a normal build.
