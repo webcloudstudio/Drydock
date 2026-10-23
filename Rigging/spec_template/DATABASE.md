@@ -87,6 +87,8 @@ Output: Item
 <!-- cannot read is a constraint the built database would not have. Postgres enforces -->
 <!-- VARCHAR(<n>) and SQLite accepts the same declaration and ignores it, so one spelling serves -->
 <!-- both engines. A foreign key names a table and column this same file declares. -->
+<!-- Every table declares exactly one PK column, such as `id | INTEGER PK`; every get, update, -->
+<!-- and delete addresses a row by it. A natural key over several columns is a UNIQUE bullet. -->
 <!-- A constraint spanning several columns is a bullet under that table's field table, one per -->
 <!-- line: `- UNIQUE (a, b)` or `- INDEX (a, b)`, each over two or more declared columns. A -->
 <!-- single-column UNIQUE states UNIQUE in its own type cell instead. -->

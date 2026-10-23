@@ -99,6 +99,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-23: Every `DATABASE.md` table declares exactly one `PK` column. `drydock plan`
+  refuses a table with no `PK` or with two, naming `id | INTEGER PK` as the fix and a
+  `- UNIQUE (a, b)` bullet for a natural key over several columns. The generated persistence
+  package reads, updates, and deletes a row by that key, so a keyless table previously planned
+  cleanly and then failed every update at the DATABASE build step. `BLUEPRINTS_CONTRACT.md` V28
+  and the `DATABASE.md` template state the rule.
+
 - 2026-10-23: `model_config.jsonl` model rows accept an optional `effort` that applies when no
   effort is requested by `--effort`, `drydock_effort`, or prompt frontmatter. The seed gives
   `opus` and `sol` rows `effort: low`. Opus is split from the `fable|claude` row. `sol` selects

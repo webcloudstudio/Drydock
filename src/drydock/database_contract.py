@@ -299,6 +299,14 @@ def sqlite_schema_tables(text: str, *, source: str = "DATABASE.md") -> tuple[SQL
                 raise SpecificationError(f"{source}: {name} declares {field.name!r} more than once")
             seen.add(field.name)
             columns.append(_parse_column(field, table=name, source=source))
+        keys = [column.name for column in columns if column.primary_key]
+        if len(keys) != 1:
+            raise SpecificationError(
+                f"{source}: {name} declares {len(keys)} PK columns ({', '.join(keys) or 'none'}). "
+                "Every table declares exactly one PK column, such as `id | INTEGER PK`, so each "
+                "row is read, updated, and deleted by that key; a natural key spanning several "
+                "columns is a `- UNIQUE (a, b)` bullet beside it."
+            )
         stop = sections[index + 1].start() if index + 1 < len(sections) else len(text)
         tables.append(
             SQLiteTable(
@@ -832,12 +840,12 @@ def _derived_dtos(
 ) -> dict[str, tuple[str, tuple[tuple[str, str, bool], ...]]]:
     """The Input and Output a ``<table>.<verb>`` operation carries, read from the table alone.
 
-    Keyed operations (``get``, ``update``, ``delete``) take the primary key, or every column when
-    the table declares none. ``create`` takes the non-key columns, required where the schema
-    says ``NOT NULL`` with no default. Every verb but ``delete`` returns the row.
+    Keyed operations (``get``, ``update``, ``delete``) take the primary key every table declares.
+    ``create`` takes the non-key columns, required where the schema says ``NOT NULL`` with no
+    default. Every verb but ``delete`` returns the row.
     """
     columns = table.columns
-    keys = tuple(column for column in columns if column.primary_key) or columns
+    keys = tuple(column for column in columns if column.primary_key)
     row = tuple((column.name, column.sql_type, False) for column in columns)
     key = tuple((column.name, column.sql_type, True) for column in keys)
     base = _dto_name(table.name)

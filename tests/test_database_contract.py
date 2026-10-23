@@ -541,6 +541,24 @@ def test_a_single_column_composite_constraint_is_refused():
         sqlite_schema_tables(single)
 
 
+def test_a_table_without_a_pk_column_is_refused():
+    keyless = _COLUMN_GRAMMAR.replace(
+        "| id | INTEGER PK | |\n| name |", "| id | INTEGER | |\n| name |"
+    )
+
+    with pytest.raises(SpecificationError, match="projects declares 0 PK columns"):
+        sqlite_schema_tables(keyless)
+
+
+def test_a_table_with_two_pk_columns_is_refused():
+    composite = _COLUMN_GRAMMAR.replace(
+        "| name | VARCHAR(80) NOT NULL UNIQUE |", "| name | VARCHAR(80) PK NOT NULL |"
+    )
+
+    with pytest.raises(SpecificationError, match=r"projects declares 2 PK columns \(id, name\)"):
+        sqlite_schema_tables(composite)
+
+
 def test_one_access_pattern_declares_one_repository_operation():
     paired = _DATABASE.replace("| `orders.create` |", "| `orders.create`, `orders.update` |")
 

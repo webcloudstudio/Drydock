@@ -268,6 +268,13 @@ accepted form.
 `- UNIQUE (a, b)` / `- INDEX (a, b)`. Anything else is refused by name; the closed `DEFAULT` set
 also prevents DDL injection. Foreign keys order `CREATE TABLE`.
 
+`2026-10-23` · **Every table declares exactly one `PK` column.** `sqlite_schema_tables` refuses a
+table with none or with two, and the defect names the fix (`id | INTEGER PK`, natural key as a
+`- UNIQUE (a, b)` bullet). The persistence runtime addresses `get`, `update`, and `delete` by one
+key column, so a keyless table builds an update that can never run. *Broken:* FxRates
+`20261023.224908` declared `rates` with only `UNIQUE (date, currency)`, and `database-update`
+raised "updates rates without supplying a key".
+
 `2026-09-17` · **A spelling outside the vocabulary is normalized, never guessed**, and the rewrite
 is reported.
 

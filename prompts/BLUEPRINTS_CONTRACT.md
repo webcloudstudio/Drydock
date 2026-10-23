@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261022 V27
+version: 20261023 V28
 ---
 
 ## Overview
@@ -899,6 +899,11 @@ Brackets mark optional entries and are not written: `TEXT NOT NULL UNIQUE`, neve
 read is a constraint the built database would not have. Declare a length where one matters —
 PostgreSQL enforces `VARCHAR(<n>)` and SQLite accepts the same declaration and ignores it, so one
 spelling serves both. A foreign key names a table and column this same file declares.
+
+Every table declares exactly one `PK` column, such as `| id | INTEGER PK | |`. Every `get`,
+`update`, and `delete` addresses one row by that key. A natural key spanning several columns, such
+as `(date, currency)`, is a `- UNIQUE (date, currency)` bullet beside the `PK`, never a second
+`PK`. A table with no `PK` column, or with two, fails the plan.
 
 A constraint spanning more than one column cannot live in a per-column row, so it is declared as a
 bullet directly under that table's field table, one per line:
