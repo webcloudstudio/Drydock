@@ -166,6 +166,16 @@ Renumbering and `Depends On` refactors do not dirty a story; `--overwrite` disca
 
 **Persistence (`DATABASE.md`)**
 
+`2026-10-22` · **Every story carries a criterion, `DATABASE.md` included.** Stage 2 refuses a
+response in which a story's implemented Blueprints declare no Programmatic Acceptance criterion
+(`criteria-missing`, routed to artifact repair), and `plan verify` reports the same defect at the
+terminal gate, leaving the Manifest `draft`. `- None.` is no exemption. Presence is the gate, not
+a count. `DATABASE.md` criteria exercise each repository operation through `db_session()`; the
+normalizer that replaced them with a `- None.` invariant statement is deleted, and a criterion
+opening `sqlite3.connect(":memory:")` is an `acceptance-store` defect. `plan repair` leaves
+`criteria-missing` unrepaired for `drydock plan`. *Broken:* ReadingList `20261022.231143` planned
+`persistence-store` with no criteria; Build could only fail it on seven calls.
+
 `2026-10-22` · **Database authoring preserves the source schema.** Before accepting the
 database batch, Plan restores missing seeded tables, columns, and composite `UNIQUE`/`INDEX`
 constraints. A changed seeded column type or constraint rejects the batch with the column named

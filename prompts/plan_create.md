@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261022 V43
+version: 20261022 V44
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -72,8 +72,8 @@ authoring of executable acceptance as heavily as the decomposition itself. Every
 carries several concrete Python assertions in the `## Programmatic Acceptance` sections of the
 specs it implements, so that `drydock build` has a failing test to satisfy for each behavior before
 the code exists. A plan that decomposes cleanly but ships specs with empty acceptance has failed
-this step. Assertion authoring is mandatory-or-justified: a spec's acceptance is `- None.` only
-when the item genuinely has no programmatic surface, and then the reason is stated inline.
+this step. Assertion authoring is mandatory: every story carries at least one criterion in a
+spec it implements, `DATABASE.md` included, and Drydock refuses a story whose specs carry none.
 
 This step must produce **decomposed specifications with solid header relationships**:
 
@@ -285,10 +285,11 @@ Rules:
   batch from the template and the imported source specification; every seeded table is kept. It
   declares every table and every repository operation the topology's stories need, and at least
   one table. Later batches cite it from `DATABASE_compact.md`.
-- `DATABASE.md` does not contain model-authored executable acceptance. Its `## Programmatic
-  Acceptance` section is the inline `- None.` statement that Drydock owns SQLite schema
-  construction and connectivity invariants deterministically. Do not create temporary SQLite
-  databases or run migrations from criteria; the DATABASE step owns provisioning.
+- `DATABASE.md` carries executable acceptance. Its `## Programmatic Acceptance` exercises every
+  declared repository operation through the generated package, inside
+  `from persistence.testing import db_session` and `with db_session() as db:`, and asserts the
+  declared Output. Do not create temporary SQLite databases or run migrations from criteria; the
+  DATABASE step owns provisioning.
 - Every `=== AC <id> ===` block is a standalone Python script. It repeats every import it uses;
   imports, variables, and execution order from another AC block are never in scope. Before closing
   each block, inspect every name it reads and either import or bind that name inside the same block.
@@ -351,10 +352,9 @@ Rules:
   `<h1>h</h1>` — do not hand-write the expectation. Bind to the authoritative suite that defines
   correctness for that transform. Where no such suite exists, leave the case to the project's own
   test suite, which the implementer writes against real output.
-- Write `- None.` only when the item genuinely has no programmatic surface (pure visual/manual
-  UI, or a Commander-observed check). State the reason on the same line, e.g.
-  `- None. Visual-only screen; behavior covered by its backing FEATURE spec.` Bare `- None.` on a
-  spec that declares any `Provides` entry is a defect.
+- Never write `- None.` under `## Programmatic Acceptance` in a spec a story implements; Drydock
+  refuses a story with no criterion. A spec with no behavior of its own, such as a shared layout,
+  asserts what it does deliver: a template renders, a module imports, a route answers.
 
 **6. Declare relationships.**
 - *Consumes:* the authored spec set as a whole.
@@ -511,8 +511,8 @@ Use `- None.` when no human-owned unknown remains. Otherwise use the exact recor
 
 ```
 
-Use `- None.` only when that section is truly empty, and for `## Programmatic Acceptance` state the
-reason inline (see below).
+Use `- None.` only when that section is truly empty. `## Programmatic Acceptance` is never empty in
+a spec a story implements (see below).
 
 Additional body guidance:
 
@@ -533,8 +533,8 @@ Additional body guidance:
   (any `Provides` entry, route, interface, read, or write) carries **several** concrete executable
   assertions covering its distinct behaviors, invariants, and error modes — including the basic
   reachability/existence checks. This is the test-driven contract the build must satisfy. Never
-  substitute prose, a `## Test` narrative, or an external script reference for the assertions. Emit
-  `- None.` only for a genuine non-programmatic item, with the reason stated on the same line.
+  substitute prose, a `## Test` narrative, or an external script reference for the assertions. Never
+  emit `- None.` in a spec a story implements.
 - Declare every external Python package and executable used directly or indirectly by each
   Programmatic Acceptance mechanism using repeated `Requires: <kind>=<name>; scope=<scope>` lines.
   Include framework test-client dependencies such as `httpx`. Never install or silently assume an
@@ -850,8 +850,8 @@ Required action:
 - `Phase` is never a Blueprint header field; declare it in `TOPOLOGY.md` only.
 - Never emit `block:` or `stack_mode:`; both are computed by Drydock.
 - Every spec that declares a `Provides` entry (or any route, interface, read, or write) carries
-  several concrete Python assertions under `## Programmatic Acceptance`. `- None.` there is allowed
-  only for a genuinely non-programmatic item and must state its reason inline.
+  several concrete Python assertions under `## Programmatic Acceptance`. Every spec a story
+  implements, `DATABASE.md` included, carries at least one; `- None.` there is refused.
 - A SCREEN spec's Programmatic Acceptance must literally call every route in its `Provides` and
   `Consumes`; a plan whose SCREEN acceptance skips a route is rejected.
 - Do not invent interfaces, routes, datasets, commands, or capabilities that the sources and

@@ -23,7 +23,8 @@ and measured something; everything else is reported, not charged.
 
 `2026-10-22` · **Acceptance uses the provisioned application store.** The DATABASE step emits
 runtime catalog/count probes, applies schema, verifies declared columns, keys, constraints and
-indexes, and records `evidence/persistence-verification.json`. Later acceptance runs verify without
+indexes, and records `evidence/persistence-verification.json`. Every story, the persistence
+story included, carries at least one criterion; the probes do not stand in for one. Later acceptance runs verify without
 applying DDL and refuse a missing or incompatible store. Python `db_session()` and Go
 `OpenSession(ctx, dsn)` use one explicit rollback transaction on the configured store; ordinary
 application operations retain autocommit. Same-connection feature code receives the yielded

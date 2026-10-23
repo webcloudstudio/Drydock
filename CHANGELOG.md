@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-22: Every story must carry at least one Programmatic Acceptance criterion, `DATABASE.md`
+  included. `drydock plan` refuses a Stage 2 response whose story Blueprints declare none
+  (`criteria-missing`, sent to artifact repair). `drydock plan verify` reports the same defect,
+  so a plan that still lacks criteria ends `unbuildable` with a `draft` Manifest. `- None.` is no
+  longer an exemption. `DATABASE.md` criteria exercise each repository operation through
+  `persistence.testing.db_session()` and are no longer replaced by an invariant statement. A
+  criterion opening `sqlite3.connect(":memory:")` is an `acceptance-store` defect.
+  `plan_create.md` V44, `BLUEPRINTS_CONTRACT.md` V27, and the `DATABASE.md` template state the
+  rule.
+
 - 2026-10-22: Fatal provider failures halt the Target through `STOP_NOW.md`. A rate or usage
   limit, expired login, timeout, outage, or unrunnable provider CLI ends the command's provider
   work: later calls in the same process are not sent, the standoff diagnosis is skipped, and the
@@ -73,6 +83,15 @@ command surface and Typed Specification contract are unstable and may change bet
   Manifest `draft`/`unbuildable` and exits `1`.
 
 ### Changed
+
+- 2026-10-22: `drydock build` grades a DATABASE-only step without a model call. When every story
+  in the step implements only `DATABASE.md` and the persistence package was generated, the step's
+  criteria run against the generated package and close it `closed/verified`,
+  `closed/implemented`, or `closed/failed`. Persistence is now generated after the criteria
+  baseline, so those criteria are red before the step and can verify it. The runtime probes in
+  `evidence/persistence-verification.json` no longer verify the persistence story on their own.
+  Previously the agent had nothing to write, reported `RESULT: FAILED`, and spent every repair
+  on the same report.
 
 - 2026-10-22: `/ddk-uat` records every failed run it diagnoses. `uat_diagnostic.md` V5 appends a
   `design/uat_diagnoses.md` row even when no cause is established (`undetermined:` plus the missing

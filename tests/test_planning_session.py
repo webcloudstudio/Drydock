@@ -95,39 +95,18 @@ def test_default_feedback_heading_is_plan_compass(tmp_path):
     assert ensure_feedback_file(tmp_path) == "# Plan Compass\n"
 
 
-def test_database_acceptance_is_replaced_by_drydock_invariants():
-    blocks = {
-        "DATABASE.md": """# DATABASE: Example
+def test_a_private_in_memory_database_criterion_is_a_store_defect():
+    """The defect the deleted DATABASE.md normalizer guarded against is now refused directly."""
+    from drydock.acceptance_store import store_setup_defects
 
-## `settings`
+    code = (
+        "import sqlite3\n"
+        'conn = sqlite3.connect(":memory:")\n'
+        'assert conn.execute("SELECT name FROM sqlite_master").fetchall()\n'
+    )
 
-| Field | Type |
-|---|---|
-| key | TEXT PK |
-
-## Programmatic Acceptance
-
-=== AC impossible-fresh-db ===
-import sqlite3
-conn = sqlite3.connect(\":memory:\")
-assert conn.execute(\"SELECT name FROM sqlite_master\").fetchall()
-=== END AC impossible-fresh-db ===
-
-## User Acceptance
-
-- None.
-
-## Guardrails
-
-- None.
-"""
-    }
-
-    ps._normalize_database_acceptance(blocks)
-
-    assert "impossible-fresh-db" not in blocks["DATABASE.md"]
-    assert "Drydock validates declared SQLite schema construction" in blocks["DATABASE.md"]
-    assert "## User Acceptance" in blocks["DATABASE.md"]
+    assert any("in-memory database" in reason for reason in store_setup_defects(code))
+    assert store_setup_defects("import sqlite3\nsqlite3.connect('data/app.db')\n") == ()
 
 
 def test_plan_prompt_declares_strict_artifact_contract():
@@ -1090,17 +1069,15 @@ def test_conform_still_nonconformant_response_warns_and_preserves(tmp_path):
     )
     block = f"=== FEATURE-Status.md ===\n{still_empty}\n=== END FEATURE-Status.md ===\n"
 
-    # A spec that carries no criteria after a failed conform pass no longer stops the plan.
-    # Counting criteria measured the wrong artifact: a story pushed to reach a count authors
-    # criteria it has no oracle for, and each one is a fresh chance to predict an expected value
-    # wrongly. Coverage is graded through the project's suite, not counted here.
+    # A story whose spec still carries no criterion after a failed conform pass fails the plan.
     del target_dir
-    create_plan(
-        "Example",
-        "Example",
-        tmp_path,
-        runner=_conform_runner(block),
-    )
+    with pytest.raises(RecordedError, match="plan output validation failed"):
+        create_plan(
+            "Example",
+            "Example",
+            tmp_path,
+            runner=_conform_runner(block),
+        )
 
     # Original imported content is left intact when conform fails to author acceptance.
     assert "Verify status prints the build state." in feature.read_text(encoding="utf-8")
@@ -1110,16 +1087,17 @@ def test_no_conform_flag_skips_conform_pass(tmp_path):
     target_dir, feature = _seed_conform_target(tmp_path, feature_text=_FEATURE_EMPTY_ACCEPTANCE)
     seen: list[str] = []
 
-    # Conform is suppressed, so the surface-declaring spec keeps its bare `- None.` acceptance.
-    # The plan still completes: no gate counts criteria.
+    # Conform is suppressed, so the surface-declaring spec keeps its bare `- None.` acceptance,
+    # and the story it implements has no criterion: the plan fails.
     del target_dir
-    create_plan(
-        "Example",
-        "Example",
-        tmp_path,
-        conform=False,
-        runner=_conform_runner("unused", seen=seen),
-    )
+    with pytest.raises(RecordedError, match="plan output validation failed"):
+        create_plan(
+            "Example",
+            "Example",
+            tmp_path,
+            conform=False,
+            runner=_conform_runner("unused", seen=seen),
+        )
 
     assert seen == []  # conform pass suppressed
     # No conform pass ran, so no assertions were authored into the spec.
@@ -2527,19 +2505,18 @@ def test_story_without_manifest_acceptance_uses_blueprint_acceptance(tmp_path):
     assert not [block for block in result.plan.blocks if block.block_type == "ac"]
 
 
-def test_missing_programmatic_acceptance_is_not_fatal(tmp_path):
-    """A programmatic-surface spec with bare `- None.` acceptance writes the plan anyway.
+@pytest.mark.parametrize(
+    "none_line",
+    ["- None.", "- None. Visual-only surface; behavior covered by its backing feature."],
+)
+def test_a_story_whose_blueprint_carries_no_criterion_is_refused(tmp_path, none_line):
+    """Every story closes on its own evidence, so a story with no criterion fails the plan.
 
-    This was a hard emission gate: a story declaring a surface had to carry at least two
-    criteria. It is deleted because quantity is not a gate. Forcing a story to reach a count
-    makes the model author criteria it has no oracle for, and each invented criterion is a fresh
-    chance to predict an expected value wrongly — which is where the observed acceptance
-    failures came from, not from stories that carried too few. Coverage is graded through the
-    project's own test suite at the Sea Trials level.
+    Quantity is still not a gate; presence is. A justified ``- None.`` is no exemption.
     """
     _make_target(tmp_path)
-    bare = _SPEC_HEADER.replace(_SPEC_HEADER_PA_BODY, "- None.")
-    arch = bare.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    bare = _SPEC_HEADER.replace(_SPEC_HEADER_PA_BODY, none_line)
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
     feature = bare.format(ftype="FEATURE", name="Status", ac="Status command exits successfully.")
     out = (
         f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
@@ -2547,31 +2524,12 @@ def test_missing_programmatic_acceptance_is_not_fatal(tmp_path):
         f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
     )
 
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    with pytest.raises(RecordedError) as raised:
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
-    assert (tmp_path / "Example" / "blueprint" / "FEATURE-Status.md").is_file()
-    assert not any("Programmatic Acceptance criteria" in issue for issue in result.warnings)
-
-
-def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
-    _make_target(tmp_path)
-    justified = _SPEC_HEADER.replace(
-        _SPEC_HEADER_PA_BODY,
-        "- None. Visual-only surface; behavior covered by its backing feature.",
+    assert "story `story-status` implements FEATURE-Status.md, which declares no" in (
+        raised.value.record.detail
     )
-    arch = justified.format(ftype="ARCHITECTURE", name="Example", ac="None.")
-    feature = justified.format(
-        ftype="FEATURE", name="Status", ac="Status command exits successfully."
-    )
-    out = (
-        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
-        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
-        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
-    )
-
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
-
-    assert not any("Programmatic Acceptance criteria" in w for w in result.warnings)
 
 
 def test_single_suite_driving_check_satisfies_surface_gate(tmp_path):

@@ -55,7 +55,7 @@ from drydock.acceptance import (
 )
 from drydock.errors import SpecificationError
 from drydock.llm import failure_detail, run_prompt
-from drydock.plan_verify import Defect, verify
+from drydock.plan_verify import CRITERIA_MISSING, Defect, verify
 from drydock.prompt_assembly import (
     PromptAssembly,
     PromptPart,
@@ -473,6 +473,19 @@ def repair(
                     "unrepaired",
                     "",
                     f"{defect.detail} — persistence is repaired by `drydock plan {target}`",
+                )
+            )
+            continue
+        if defect.kind == CRITERIA_MISSING:
+            # Not a criterion to rewrite: there is none. Authoring one needs the story's
+            # behavior, which Plan's artifact repair holds and this prompt does not.
+            items.append(
+                RepairItem(
+                    defect.filename,
+                    "",
+                    "unrepaired",
+                    "",
+                    f"{defect.detail} — criteria are authored by `drydock plan {target}`",
                 )
             )
             continue

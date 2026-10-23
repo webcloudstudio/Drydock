@@ -2339,7 +2339,10 @@ class TestPlanningSession:
         "# FEATURE: Status\n\n"
         "| Field | Value |\n|---|---|\n| Version | 20260616 V1 |\n"
         "| Description | Status command. |\n| Phase | 1 |\n\n"
-        "## Programmatic Acceptance\n\n- None.\n\n## User Acceptance\n\n"
+        "## Programmatic Acceptance\n\n=== AC status-runs ===\n"
+        "Intent: The status payload serializes.\n\nimport json\n\n"
+        'assert json.loads(json.dumps({"state": "ok"}))["state"]\n'
+        "=== END AC status-runs ===\n\n## User Acceptance\n\n"
         "- Status command exits successfully.\n\n"
         "## Guardrails\n\n- None.\n\n## Questions\n\n- None.\n"
         "=== END FEATURE-Status.md ===\n"

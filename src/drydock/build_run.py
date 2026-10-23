@@ -2306,6 +2306,14 @@ def _outstanding_blocks(manifest_path: Path) -> tuple[str, ...]:
     )
 
 
+def _generated_only(unit: object) -> bool:
+    """True when every story in ``unit`` implements only DATABASE.md, whose code is generated."""
+    from drydock.plan_verify import implements_of
+
+    steps = getattr(unit, "steps", ())
+    return bool(steps) and all(implements_of(block) == ("DATABASE.md",) for block in steps)
+
+
 def _write_persistence(
     blueprint_dir: Path, build_dir: Path, target_dir: Path, on_text: object
 ) -> tuple[Path, ...]:
@@ -2396,10 +2404,18 @@ def build_target(
     # can turn it green; a DATABASE.md that cannot be read generates no persistence layer for the
     # stories after it. Both are refused before anything is spent. A criterion that merely might
     # fail is graded as usual — only a defect in the criterion's own text is refused here.
+    from drydock.plan_verify import CRITERIA_MISSING
     from drydock.plan_verify import render as render_verify
     from drydock.plan_verify import verify as verify_plan
 
     buildability = verify_plan(target, target_dir) if blueprint_dir.is_dir() else None
+    if buildability is not None:
+        # A story with no criteria is refused by Plan's own terminal gate, which leaves the
+        # Manifest draft; Build refuses here only what cannot run.
+        buildability = replace(
+            buildability,
+            defects=tuple(d for d in buildability.defects if d.kind != CRITERIA_MISSING),
+        )
     if buildability is not None and not buildability.ok:
         raise SpecificationError(
             "Build refused: the plan cannot be built as written.\n" + render_verify(buildability)
@@ -2855,15 +2871,6 @@ def build_target(
                 "authorized acceptance prerequisites pending Target provisioning: "
                 + ", ".join(f"{r.kind}={r.name}" for _, r, _ in authorized_missing),
             )
-        if any("DATABASE.md" in step.fields.get("implements", ()) for step in unit.steps):
-            # Plan writes DATABASE.md and the builder writes no persistence code, so the package
-            # is generated before the step runs. A story in the same step that consumes
-            # ``open_database`` is accepted against it; nothing orders stories within a step.
-            for written in _write_persistence(
-                blueprint_dir, resolved_build_dir, target_dir, on_text
-            ):
-                _emit(on_text, f"persistence: wrote {_rel(written, target_dir)}")
-        lineage.begin(unit.block_id, unit.name, unit.steps, assemblies)
         runtime_schema = None
         pre_acceptance = (
             tuple(
@@ -2974,6 +2981,19 @@ def build_target(
             remaining_weak = [check for check in weak_checks if check not in vacuous_checks]
             if remaining_weak:
                 _emit(on_text, "prepassed: " + ", ".join(remaining_weak))
+        persistence_written: tuple[Path, ...] = ()
+        if any("DATABASE.md" in step.fields.get("implements", ()) for step in unit.steps):
+            # Plan writes DATABASE.md and the builder writes no persistence code, so the package
+            # is generated before the step runs. A story in the same step that consumes
+            # ``open_database`` is accepted against it; nothing orders stories within a step.
+            # Generated after the baseline, so DATABASE.md's own criteria are red before the
+            # step that delivers them and can verify it.
+            persistence_written = _write_persistence(
+                blueprint_dir, resolved_build_dir, target_dir, on_text
+            )
+            for written in persistence_written:
+                _emit(on_text, f"persistence: wrote {_rel(written, target_dir)}")
+        lineage.begin(unit.block_id, unit.name, unit.steps, assemblies)
         # Snapshot once before the first attempt so ``changed_files`` reflects everything
         # the block wrote across all passes.
         before_files = _snapshot_files(resolved_build_dir)
@@ -3008,7 +3028,43 @@ def build_target(
         feedback_checks: tuple[AcceptanceRunResult, ...] = ()
         seed_feedback: str | None = None
         dependency_overrides: tuple[str, ...] = ()
-        if unit.resume:
+        # A step whose every story implements only DATABASE.md has no code for an agent to
+        # write: the package was generated above. Its criteria are graded directly. A model
+        # call here could only report that it wrote nothing (ReadingList 20261022.231143).
+        generated_only = bool(persistence_written) and _generated_only(unit)
+        if generated_only:
+            acceptance = _run_valid_criteria(
+                checks,
+                excluded,
+                lambda selected: _settle_empty_selections(
+                    run_programmatic_acceptance(
+                        selected,
+                        build_dir=resolved_build_dir,
+                        target_dir=target_dir,
+                        blueprint_dir=blueprint_dir,
+                        strict_target=True,
+                    )
+                ),
+            )
+            failed_checks = tuple(
+                check for check in acceptance if _drives_repair(check) and not check.skipped
+            )
+            if failed_checks:
+                state, status = "closed/failed", "failed"
+                error = "programmatic acceptance failed: " + ", ".join(
+                    check.check_id for check in failed_checks
+                )
+                failure_detail = _render_ac_failure_chain(unit, failed_checks, story_by_check)
+            elif not acceptance or _unverified_finding(acceptance, prepassed_ids) is not None:
+                state, status, error, failure_detail = "closed/implemented", "built", None, ""
+            else:
+                state, status, error, failure_detail = "closed/verified", "built", None, ""
+            _emit(
+                on_text,
+                f"generated: {unit.block_id} has no agent work — "
+                f"{len(acceptance) - len(failed_checks)}/{len(acceptance)} criteria pass",
+            )
+        elif unit.resume:
             # A resumed step keeps its prior partial work in the build directory. Re-run its
             # acceptance live so the first pass is seeded with the real, current failure — the
             # same feedback repair passes use — rather than a clean prompt that must rediscover
@@ -3052,8 +3108,9 @@ def build_target(
                 )
         attempt = 0
         while True:
-            if unit.resume and seed_feedback is None:
-                # Resume found the step already green; skip the build and grade what exists.
+            if generated_only or (unit.resume and seed_feedback is None):
+                # Resume found the step already green, or the step is generated: skip the build
+                # and grade what exists.
                 break
             if attempt == 0:
                 active_assembly = (
@@ -4092,14 +4149,6 @@ def build_target(
             elif status in {"failed", "blocked"}:
                 block_state = state
                 block_finding = finding
-            elif (
-                "DATABASE.md" in block.fields.get("implements", ())
-                and gate is None
-                and runtime_schema is not None
-                and runtime_schema.applied
-            ):
-                block_state = "closed/verified"
-                block_finding = "Persistence verified: evidence/persistence-verification.json"
             elif gate is not None and gate.passed:
                 block_state = "closed/verified"
                 block_finding = None

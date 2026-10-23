@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261022 V26
+version: 20261022 V27
 ---
 
 ## Overview
@@ -36,7 +36,8 @@ project is, what it must do, and how it is built.
 | `changes/TICKET-NNN-{Name}.md` | Post-baseline change, defect, or spike request | As needed |
 
 Every authored Specification file ends with `## Programmatic Acceptance`, `## User Acceptance`,
-and `## Guardrails`. Use `- None.` when no entries apply. Planning disclosures and Commander
+and `## Guardrails`. Use `- None.` when no entries apply, except that a spec a story implements
+carries at least one Programmatic Acceptance criterion. Planning disclosures and Commander
 responses are records in the target's `DECISIONS.json`.
 
 `ARCHITECTURE_compact.md` is a compact derivative of `ARCHITECTURE.md` produced by

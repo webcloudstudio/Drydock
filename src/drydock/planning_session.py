@@ -2029,34 +2029,6 @@ def _acceptance_status(text: str) -> tuple[int, bool]:
     return count, justified_none
 
 
-_DATABASE_INVARIANT_ACCEPTANCE = (
-    "## Programmatic Acceptance\n\n"
-    "- None. Drydock validates declared SQLite schema construction and connectivity invariants "
-    "deterministically.\n"
-)
-
-
-def _normalize_database_acceptance(blocks: dict[str, str]) -> None:
-    """Reserve ``DATABASE.md`` acceptance for deterministic persistence invariants.
-
-    A database declaration can be rendered and exercised by Drydock without an LLM.  Model-made
-    snippets that open an unrelated temporary database are not application acceptance: they are
-    guaranteed to observe an empty store and can never be repaired by generated code.  Keep the
-    standard terminal section, but make its ownership and scope explicit.
-    """
-    text = blocks.get("DATABASE.md")
-    if text is None:
-        return
-    section = _extract_terminal_section(text, "Programmatic Acceptance")
-    if section is None:
-        return
-    blocks["DATABASE.md"] = _TERMINAL_SECTION_RE.sub(
-        _DATABASE_INVARIANT_ACCEPTANCE,
-        text,
-        count=1,
-    )
-
-
 # Story acceptance carried a minimum-assertion gate: a story declaring a programmatic surface
 # had to author at least two ``=== AC ===`` criteria or be exempted for driving an imported
 # suite. It is deleted, and nothing replaces it. Quantity is not a gate — counting criteria
@@ -2066,7 +2038,8 @@ def _normalize_database_acceptance(blocks: dict[str, str]) -> None:
 # is exact: fifteen suite-bound criteria all passed, and ten hand-authored ones covering nothing
 # the conformance suite did not already cover supplied every failure. Coverage is measured by an
 # authoritative suite or by the project's own test suite, graded at the Sea Trials level; it is
-# never measured by counting gates.
+# never measured by counting gates. Presence is a gate: a story with no criterion at all closes
+# on the builder's word alone, so ``_criteria_missing_defects`` refuses it.
 
 
 def _spec_is_conformant(text: str) -> bool:
@@ -2787,6 +2760,51 @@ class DatabaseDefect(SpecificationError):
 #: invoke the authoritative runner in one of these and in no other way: listing proves the
 #: corpus parses and the harness starts while requiring nothing of the code under test.
 _RUNNER_LIST_MODES = ("--list", "--collect-only", "--dry-run", "--list-tests", "--co")
+
+
+def _criteria_missing_defects(
+    blocks: dict[str, str], plan: BuildPlan, blueprint_dir: Path
+) -> tuple[MalformedAcceptance, ...]:
+    """Return each story Blueprint carrying no criterion when its story has none elsewhere.
+
+    The same rule ``plan verify`` applies at the end of planning, raised here so the artifact
+    repair loop authors the criteria while the batch that owns them can still be re-emitted.
+    ``DATABASE.md`` is not exempt: its generated code is the product its criteria measure.
+    """
+    from drydock.acceptance import parse_programmatic_acceptance_text
+    from drydock.plan_verify import (
+        criteria_missing_reason,
+        implements_of,
+        stories_without_criteria,
+    )
+
+    def count(name: str) -> int | None:
+        text = blocks.get(name)
+        if text is None:
+            path = blueprint_dir / name
+            if not path.is_file():
+                return None
+            text = path.read_text(encoding="utf-8")
+        try:
+            return len(parse_programmatic_acceptance_text(text, source=name))
+        except ValueError:
+            return None  # ``_malformed_acceptance_defects`` reports an unreadable container
+
+    stories = tuple(
+        (block.block_id, implements_of(block))
+        for block in plan.blocks
+        if block.block_type == "story"
+    )
+    criteria = {name: count(name) for _, implements in stories for name in implements}
+    return tuple(
+        MalformedAcceptance(
+            check_id=f"story {story_id}",
+            source=name,
+            reason=criteria_missing_reason(story_id, name),
+        )
+        for story_id, implements in stories_without_criteria(stories, criteria)
+        for name in implements
+    )
 
 
 def _runner_invocation_defects(
@@ -3854,7 +3872,6 @@ def _validate_plan_output(
     which Drydock verifies, orders, blocks, and serializes into ``MANIFEST.md`` here, and a
     ``MANIFEST.md`` the model wrote directly, which the reuse and Spec Kit prompts still emit.
     """
-    _normalize_database_acceptance(blocks)
     # Branch on which plan artifact the response carries, before anything else reads it.
     carrier = TOPOLOGY_BLOCK if TOPOLOGY_BLOCK in blocks else "MANIFEST.md"
     mode_blocks = {carrier, "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"} & set(blocks)
@@ -4081,6 +4098,10 @@ def _validate_plan_output(
         + tuple(
             ("runner-invocation", defect)
             for defect in _runner_invocation_defects(blocks, plan, blueprint_dir)
+        )
+        + tuple(
+            ("criteria-missing", defect)
+            for defect in _criteria_missing_defects(blocks, plan, blueprint_dir)
         )
         if enforce_criteria
         else ()

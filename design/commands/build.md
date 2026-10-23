@@ -39,7 +39,7 @@ acceptance-only failures as `UNVERIFIED` before continuing.
 
 `2026-10-22` · **Acceptance uses the provisioned application store.** The DATABASE step emits
 runtime catalog/count probes, applies schema, verifies declared columns, keys, constraints and
-indexes, and records `evidence/persistence-verification.json`; these independent probes gate the persistence story even when it has no model-authored criteria. Later acceptance runs verify without
+indexes, and records `evidence/persistence-verification.json`; these probes are a precondition, and the persistence story verifies only on `DATABASE.md`'s own criteria. Later acceptance runs verify without
 applying DDL and refuse a missing or incompatible store. Verification starts once the DATABASE
 step has emitted `schema.sql` or `schema-verification.json`; a `persistence/` package alone, stood
 up by an earlier step, is not checked. Python `db_session()` and Go
@@ -51,6 +51,14 @@ criteria use committed, owned records with idempotent setup and checked cleanup.
 recognized DSN mutations and schema calls. Cost when broken: criteria test an unprovisioned store,
 leave shared residue, or claim durability they never tested.
 
+
+`2026-10-22` · **A DATABASE-only step is graded, not built.** When every story in a step
+implements only `DATABASE.md` and the persistence package was generated, no model is called. The
+step's criteria run against the generated package and decide the close: `closed/verified`,
+`closed/implemented` when unexamined, `closed/failed` on a red criterion. Persistence is generated
+after the criteria baseline, so those criteria are red before the step. Cost when broken: the agent
+can only report that it wrote nothing, and every repair fails the same way (ReadingList
+`20261022.231143`).
 
 `2026-10-19` · **A `postgres.md` stack requires `postgres_dsn`.** Build refuses before any
 mutation or model call when it is unset, and otherwise exports it as `DATABASE_URL` to schema
@@ -65,7 +73,8 @@ to SQLite and never exercises PostgreSQL.
 `drydock refit`.
 
 `2026-09-19` · **Build refuses a plan it cannot execute.** The `plan verify` check runs first; an
-unrunnable criterion or unreadable `DATABASE.md` refuses the build. *Broken:* stories closed on
+unrunnable criterion or unreadable `DATABASE.md` refuses the build. A story with no criterion is
+Plan's refusal, which leaves the Manifest `draft`; Build's gate omits `criteria-missing`. *Broken:* stories closed on
 criteria that tested nothing.
 
 `2026-07-22` · **Staged assets are read-only.** Copied to `<build_dir>/sources/`, digested, and

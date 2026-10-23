@@ -952,3 +952,70 @@ def test_a_pinned_go_tool_and_the_go_cli_runner_verify_clean(tmp_path):
     result = verify("Demo", _target(tmp_path, FEATURE_Cli=_go_criterion(code)))
 
     assert result.ok, result.defects
+
+
+_STORY_MANIFEST = """# MANIFEST: Demo
+state: draft
+
+## story 1: Store
+id: store
+implements: DATABASE.md
+instructions: |
+  Provision the store.
+state: pending
+
+## story 2: Status
+id: status
+implements: FEATURE-Status.md
+depends: store
+instructions: |
+  Build the status command.
+state: pending
+"""
+
+_NO_CRITERIA = "# DATABASE: Demo\n\n## Programmatic Acceptance\n\n- None.\n"
+
+
+def test_a_story_whose_blueprint_carries_no_criterion_is_a_defect(tmp_path):
+    """ReadingList 20261022.231143: `persistence-store` had no criteria and could only fail."""
+    target = _target(tmp_path, **{"DATABASE": _NO_CRITERIA, "FEATURE-Status": _RUNNABLE})
+    (target / "MANIFEST.md").write_text(_STORY_MANIFEST, encoding="utf-8")
+
+    result = verify("Demo", target)
+
+    (defect,) = result.defects
+    assert defect.kind == "criteria-missing"
+    assert defect.filename == "DATABASE.md"
+    assert "story `store`" in defect.detail
+    assert "db_session" in defect.detail
+    assert "1 story Blueprint has no acceptance criteria" in result.summary
+
+
+def test_every_story_with_a_criterion_verifies_clean(tmp_path):
+    target = _target(tmp_path, **{"DATABASE": _RUNNABLE, "FEATURE-Status": _RUNNABLE})
+    (target / "MANIFEST.md").write_text(_STORY_MANIFEST, encoding="utf-8")
+
+    assert verify("Demo", target).ok
+
+
+def test_a_story_citing_an_absent_blueprint_is_not_reported_as_criteria_missing(tmp_path):
+    target = _target(tmp_path, **{"FEATURE-Status": _RUNNABLE})
+    (target / "MANIFEST.md").write_text(_STORY_MANIFEST, encoding="utf-8")
+
+    assert verify("Demo", target).ok
+
+
+def test_plan_repair_leaves_a_missing_criterion_to_plan(tmp_path):
+    from drydock.plan_repair import repair
+
+    target = _target(tmp_path, **{"DATABASE": _NO_CRITERIA, "FEATURE-Status": _RUNNABLE})
+    (target / "MANIFEST.md").write_text(_STORY_MANIFEST, encoding="utf-8")
+
+    def runner(*args, **kwargs):
+        raise AssertionError("no repair call is made for a missing criterion")
+
+    result = repair("Demo", target, runner=runner)
+
+    (item,) = result.items
+    assert item.status == "unrepaired"
+    assert "drydock plan Demo" in item.detail

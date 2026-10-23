@@ -66,6 +66,16 @@ def store_setup_defects(code: str) -> tuple[str, ...]:
                     found.add(
                         "criterion changes the configured database; use the provisioned store"
                     )
+            if (
+                called == "sqlite3.connect"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value in {":memory:", ""}
+            ):
+                found.add(
+                    "criterion opens a private in-memory database that holds no schema; use "
+                    "`with db_session() as db:` on the provisioned store"
+                )
             if called.rsplit(".", 1)[-1] in {"execute_script", "executescript", "ApplySchema"}:
                 found.add("criterion applies schema; only the DATABASE step provisions persistence")
             if called in {

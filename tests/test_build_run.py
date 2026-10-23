@@ -4815,6 +4815,85 @@ def test_persistence_exists_before_the_database_step_runs(tmp_path: Path, monkey
     assert _state(target_dir, "foundation") != "closed/failed"
 
 
+_TICKETS_DATABASE = (
+    "# DATABASE: Demo\n\n"
+    "## Access Patterns\n\n"
+    "### FEATURE-SVC-001 — Find tickets\n\n"
+    "| Field | Value |\n|---|---|\n"
+    "| Owner | DATABASE.md |\n| Access | read |\n"
+    "| Repository operation | `tickets.list` |\n| Compatibility | unchanged |\n\n"
+    "Input: FindTickets\n\n| Field | Type | Required |\n|---|---|---|\n| status | str | yes |\n\n"
+    "Output: Ticket\n\n| Field | Type |\n|---|---|\n| id | int |\n\n"
+    "## `tickets`\n\n| Field | Type | Notes |\n|---|---|---|\n"
+    "| id | INTEGER PK | |\n| status | TEXT NOT NULL | |\n\n"
+    "## Programmatic Acceptance\n\n"
+    "### store-opens\n"
+    "The provisioned store exposes the declared repository.\n\n"
+    "```python\n"
+    "from persistence.testing import db_session\n"
+    "with db_session() as db:\n"
+    "    assert {assertion}\n"
+    "```\n"
+)
+
+
+def _database_only_target(tmp_path: Path, monkeypatch, assertion: str):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    target_dir, build_dir = _setup(tmp_path)
+    from drydock.technology_stack import StackEntry, write
+
+    write(
+        target_dir,
+        [StackEntry("Python", "python.md"), StackEntry("SQLite", "sqlite.md")],
+        approved="2026-10-19",
+    )
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _TICKETS_DATABASE.format(assertion=assertion), encoding="utf-8"
+    )
+    return target_dir, build_dir
+
+
+def test_a_database_only_step_is_graded_on_its_criteria_without_a_model_call(
+    tmp_path: Path, monkeypatch
+):
+    """ReadingList 20261022.231143: the DATABASE story had nothing to write, so the agent could
+    only report FAILED, seven times. Its generated package is graded on its own criteria, which
+    were red before the step generated it."""
+    target_dir, build_dir = _database_only_target(tmp_path, monkeypatch, "db.tickets is not None")
+    runner = make_runner()
+    messages: list[str] = []
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        on_text=messages.append,
+    )
+
+    assert runner.calls == []
+    assert result.exit_code() == 0
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert "generated: foundation has no agent work — 1/1 criteria pass" in messages
+
+
+def test_a_database_only_step_fails_on_a_red_criterion_without_a_model_call(
+    tmp_path: Path, monkeypatch
+):
+    target_dir, build_dir = _database_only_target(tmp_path, monkeypatch, "db.tickets is None")
+    runner = make_runner()
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation"
+    )
+
+    assert runner.calls == []
+    assert result.exit_code() == 1
+    assert _state(target_dir, "foundation") == "closed/failed"
+
+
 def test_a_declaration_with_no_tables_writes_no_schema(tmp_path: Path):
     from drydock.build_run import _write_persistence
 

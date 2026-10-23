@@ -29,6 +29,7 @@ so the criterion cannot pass it. Only calls that pass a staged file are compared
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -118,12 +119,18 @@ class VerifyResult:
                 f"{self.checked_files} {'file' if self.checked_files == 1 else 'files'}: "
                 "every one can run"
             )
-        criteria = sum(1 for defect in self.defects if not defect.kind.startswith("database-"))
-        persistence = len(self.defects) - criteria
+        uncovered = sum(1 for defect in self.defects if defect.kind == CRITERIA_MISSING)
+        persistence = sum(1 for defect in self.defects if defect.kind.startswith("database-"))
+        criteria = len(self.defects) - persistence - uncovered
         parts = []
         if criteria:
             parts.append(
                 f"{criteria} {'criterion' if criteria == 1 else 'criteria'} cannot run as written"
+            )
+        if uncovered:
+            parts.append(
+                f"{uncovered} story {'Blueprint has' if uncovered == 1 else 'Blueprints have'} "
+                "no acceptance criteria"
             )
         if persistence:
             parts.append(
@@ -131,6 +138,74 @@ class VerifyResult:
                 f"{'defect' if persistence == 1 else 'defects'}: Build cannot read DATABASE.md"
             )
         return "; ".join(parts)
+
+
+#: Defect kind for a story whose implemented Blueprints carry no Programmatic Acceptance.
+CRITERIA_MISSING = "criteria-missing"
+
+
+def stories_without_criteria(
+    stories: Iterable[tuple[str, tuple[str, ...]]], criteria: Mapping[str, int | None]
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Return each ``(story id, implements)`` whose implemented Blueprints declare no criterion.
+
+    Every story closes on its own evidence, so a story with nothing to run can only close on the
+    builder's word. ``criteria`` maps a Blueprint name to its criterion count, or ``None`` when
+    the file is absent or unparseable; either is reported by its own check, so a story that
+    cites one is not reported here as well.
+    """
+    found = []
+    for story_id, implements in stories:
+        counts = [criteria.get(name) for name in implements if name]
+        if counts and all(count == 0 for count in counts):
+            found.append((story_id, tuple(name for name in implements if name)))
+    return tuple(found)
+
+
+def criteria_missing_reason(story_id: str, filename: str) -> str:
+    """One sentence naming a story with no criteria and what its Blueprint must carry."""
+    reason = (
+        f"story `{story_id}` implements {filename}, which declares no Programmatic Acceptance "
+        "criterion; every story carries at least one"
+    )
+    if filename == "DATABASE.md":
+        reason += (
+            ", and DATABASE.md's criteria exercise each declared repository operation through "
+            "`with db_session() as db:` from `persistence.testing`"
+        )
+    return reason
+
+
+def _story_criteria_defects(target_dir: Path, criteria: Mapping[str, int | None]) -> list[Defect]:
+    """Refuse a Manifest story whose implemented Blueprints carry no Programmatic Acceptance."""
+    from drydock.build_plan import parse_build_plan
+
+    manifest = target_dir / "MANIFEST.md"
+    if not manifest.is_file():
+        return []
+    try:
+        plan = parse_build_plan(manifest)
+    except SpecificationError:
+        # An unreadable Manifest is reported by every command that executes it.
+        return []
+    stories = (
+        (block.block_id, implements_of(block))
+        for block in plan.blocks
+        if block.block_type == "story"
+    )
+    return [
+        Defect(filename, "", CRITERIA_MISSING, criteria_missing_reason(story_id, filename))
+        for story_id, implements in stories_without_criteria(stories, criteria)
+        for filename in implements
+    ]
+
+
+def implements_of(block: object) -> tuple[str, ...]:
+    """The Blueprint names a Manifest node implements, whether stored as a string or a tuple."""
+    value = getattr(block, "fields", {}).get("implements", ())
+    if isinstance(value, str):
+        return (value,) if value else ()
+    return tuple(str(name) for name in value or () if name)
 
 
 def _blueprint_files(blueprint_dir: Path) -> list[Path]:
@@ -244,6 +319,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
     files = _blueprint_files(blueprint_dir)
     harness = load_harness(blueprint_dir / "sources")
 
+    criteria: dict[str, int | None] = {}
     for path in files:
         try:
             checks = parse_programmatic_acceptance(path)
@@ -251,7 +327,9 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
             # The container is malformed, so no criterion in this file is readable. Reported
             # against the file rather than a criterion, because there is no criterion to name.
             defects.append(Defect(path.name, "", "bad-container", str(exc)))
+            criteria[path.name] = None
             continue
+        criteria[path.name] = len(checks)
         for check in checks:
             checked_criteria += 1
             for reason in store_setup_defects(check.code):
@@ -416,6 +494,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                     "rather than derived from the input or read back from the system"
                 )
 
+    defects.extend(_story_criteria_defects(target_dir, criteria))
     defects.extend(persistence_defects(blueprint_dir))
     defects.extend(_foundation_defects(target_dir))
     guidance = load_guidance(target_dir)
