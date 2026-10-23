@@ -242,6 +242,19 @@ as `(none)` or `—` declares no field. *Broken:* ReadingList `20261022.180908` 
 `books.delete` with Input `book_id` against `books(id)`. SQLite read `"book_id" = ?` as a string
 comparison, every delete removed nothing, and block-2 spent six repairs on a protected file.
 
+`2026-10-23` · **Every `Output:` field is a field the verb returns.** `get` and `create` return
+one row and `list` returns a list of rows, so each of their Output fields is a column of the table.
+A `delete` Output is built from its key, so each field is one of its Input fields.
+`output_column_defects` refuses the rest, and the stack guidance carries the per-verb return table.
+*Broken:* ReadingList `20261023.200606` declared `books.list` Output `BookList { books: list[Book] }`
+and `books.delete` Output `DeletedBook { id }`. Every list raised on an empty row and every
+delete returned a count.
+
+`2026-10-23` · **The story that implements `DATABASE.md` carries no `covers:` or `accepts:`.**
+`parse_topology` drops both fields. The Feature that reaches the data owns the analyzed story and
+its Sea Trials, and an analyzed story left uncovered fails the coverage gate. *Broken:* ReadingList
+`20261023.200606` attached `READING-002` and `st-002` to the store as well as to Add Book.
+
 `2026-09-19` · **One pattern is one `<table>.<verb>` operation**, verb ∈ `get`, `list`, `create`,
 `update`, `delete`. A Blueprint's `## Database Interface` entry is one checked line
 (`id — access, supplies:, returns:`) or `- None — <why>.`; a parse failure quotes the line and the

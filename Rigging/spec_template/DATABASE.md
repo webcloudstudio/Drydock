@@ -44,6 +44,9 @@
 <!-- declares one operation, because it carries one Input and one Output; give each operation its -->
 <!-- own `### <FEATURE-DOMAIN-NNN>` section. It is the only place the declaration says which -->
 <!-- table a pattern reaches, so the form is checked, not advisory. -->
+<!-- Output declares the row the verb returns, never a wrapper: `get` and `create` return one -->
+<!-- row, `list` returns a list of rows, so every Output field of those three is a column of the -->
+<!-- table. A `delete` Output names only its Input key fields; `update` returns a count. -->
 <!-- Every table in `## Schema` is reached by at least one pattern, and every pattern names a -->
 <!-- table `## Schema` declares. A table nothing reaches is storage no story can use; an -->
 <!-- operation on a table that is not declared builds a repository against nothing. Both fail -->

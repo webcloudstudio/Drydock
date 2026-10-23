@@ -121,6 +121,20 @@ def _parse_phase(raw: str) -> int | None:
         return None
 
 
+def _withheld(values: dict[str, str]) -> frozenset[str]:
+    """Fields a story may not declare, dropped rather than refused.
+
+    The story that implements ``DATABASE.md`` builds the store every Feature reaches and delivers
+    no behavior of its own, so it owns no analyzed story and no Sea Trial. A ``covers:`` there
+    duplicates the Feature that owns the behavior, and its ``accepts:`` gates a foundation on a
+    product trial (ReadingList ``20261023.200606``). An analyzed story left uncovered by the drop
+    is reported by :func:`coverage_defects`.
+    """
+    if values.get("implements", "").strip() == "DATABASE.md":
+        return frozenset({"covers", "accepts"})
+    return frozenset()
+
+
 def parse_topology(text: str) -> tuple[tuple[PlannedStory, ...], tuple[TopologyDefect, ...]]:
     """Parse a topology declaration into declared stories.
 
@@ -175,7 +189,9 @@ def parse_topology(text: str) -> tuple[tuple[PlannedStory, ...], tuple[TopologyD
                 consumes=_split_interfaces(values.get("consumes", "")),
                 stack=_split_list(values.get("stack", "")),
                 fields={
-                    key: values[key] for key in _PASSTHROUGH_FIELDS if values.get(key, "").strip()
+                    key: values[key]
+                    for key in _PASSTHROUGH_FIELDS
+                    if values.get(key, "").strip() and key not in _withheld(values)
                 },
             )
         )

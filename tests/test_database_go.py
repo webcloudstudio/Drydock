@@ -75,11 +75,11 @@ Input: DeleteTicket
 |---|---|---|
 | id | int | yes |
 
-Output: Count
+Output: DeletedTicket
 
 | Field | Type |
 |---|---|
-| count | int |
+| id | int |
 
 """
 
@@ -161,8 +161,10 @@ func TestDeclaredOperations(t *testing.T) {
  if err!=nil || count!=1 {t.Fatalf("update: %v %v",count,err)}
  row,err:=db.Tickets.Get(ctx,persistence.TicketsGetInput{Id:id})
  if err!=nil || row==nil || row.Status!="closed" {t.Fatalf("get: %v %v",row,err)}
- count,err=db.Tickets.Delete(ctx,persistence.TicketsDeleteInput{Id:id})
- if err!=nil || count!=1 {t.Fatalf("delete: %v %v",count,err)}
+ deleted,err:=db.Tickets.Delete(ctx,persistence.TicketsDeleteInput{Id:id})
+ if err!=nil || deleted==nil || deleted.Id!=id {t.Fatalf("delete: %v %v",deleted,err)}
+ gone,err:=db.Tickets.Delete(ctx,persistence.TicketsDeleteInput{Id:id})
+ if err!=nil || gone!=nil {t.Fatalf("second delete: %v %v",gone,err)}
  row,err=db.Tickets.Get(ctx,persistence.TicketsGetInput{Id:id})
  if err!=nil || row!=nil {t.Fatalf("deleted row: %v %v",row,err)}
  if _,err=db.Run(ctx,"tickets","drop",nil);err==nil {t.Fatal("undeclared operation accepted")}

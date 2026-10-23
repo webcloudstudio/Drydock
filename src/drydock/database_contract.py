@@ -981,6 +981,7 @@ def database_contract_defects(text: str, *, source: str = "DATABASE.md") -> tupl
         defects.append(f"{source}: duplicate access-pattern identifier(s): {', '.join(duplicates)}")
     if not defects:
         defects.extend(input_column_defects(text, source=source))
+        defects.extend(output_column_defects(text, source=source))
     return tuple(defects)
 
 
@@ -1014,6 +1015,55 @@ def input_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str
                         f"column of `{table}` ({', '.join(columns)}). Each Input field is bound "
                         f"as the column of the same name; name the column it means."
                     )
+    return tuple(defects)
+
+
+def output_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
+    """Name every ``Output:`` field the generated repository cannot return.
+
+    A ``get``, ``list``, or ``create`` returns its Output row built from the table's columns, and
+    a ``list`` returns one such row per record, so a collection field such as
+    ``books: list[Book]`` names no column and builds an empty row (ReadingList
+    ``20261023.200606``). A ``delete`` returns its Output built from the key it was given, so
+    every field must be one of its Input fields. ``update`` returns the affected-row count and
+    its Output is not checked here.
+    """
+    try:
+        tables = sqlite_schema_tables(text, source=source)
+        contract = parse_database_contract(text, source=source)
+    except SpecificationError:
+        return ()
+    columns_of = {table.name: tuple(column.name for column in table.columns) for table in tables}
+    defects: list[str] = []
+    for pattern in contract.patterns:
+        for operation in pattern.operations:
+            table, _, verb = operation.partition(".")
+            columns = columns_of.get(table)
+            if columns is None:
+                continue
+            if verb in ("get", "list", "create"):
+                shape = (
+                    "one Output row per record, so the Output names the row's columns, never a "
+                    "collection of rows"
+                    if verb == "list"
+                    else "its Output row read from the table"
+                )
+                for field in pattern.outputs:
+                    if field.name not in columns:
+                        defects.append(
+                            f"{source}: {pattern.identifier} Output field `{field.name}` is not a "
+                            f"column of `{table}` ({', '.join(columns)}). `{operation}` returns "
+                            f"{shape}."
+                        )
+            elif verb == "delete":
+                inputs = tuple(field.name for field in pattern.inputs)
+                for field in pattern.outputs:
+                    if field.name not in inputs:
+                        defects.append(
+                            f"{source}: {pattern.identifier} Output field `{field.name}` is not "
+                            f"an Input field ({', '.join(inputs) or 'none'}). `{operation}` "
+                            "returns its Output built from the key it was given."
+                        )
     return tuple(defects)
 
 

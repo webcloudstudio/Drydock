@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261022 V45
+version: 20261023 V46
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -251,8 +251,11 @@ Rules:
   covers several IDs is the declared collapse case and must satisfy the collapse rule above.
 - When one analysis story expands into several stories, exactly one of them carries its ID in
   `covers:` — the story that delivers the analyzed behavior, whatever its `type:`. A `foundational`
-  persistence or architecture story that realizes an analyzed story still covers it; `type:` never
-  decides ownership.
+  architecture story that realizes an analyzed story still covers it; `type:` never decides
+  ownership.
+- The story that implements `DATABASE.md` carries neither `covers:` nor `accepts:`. It builds the
+  store every Feature reaches and delivers no behavior of its own, so the Feature whose access
+  pattern stores, reads, or removes the data owns that analyzed story and its Sea Trials.
 - A plan-introduced story with no analyzed counterpart — an architecture boundary, a scaffold, a
   test-harness story — omits `covers:` entirely. Never duplicate an ID that another story owns, and
   never fill the field to make it look complete: two stories claiming one analyzed story destroys

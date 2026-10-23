@@ -66,7 +66,7 @@ class Operation:
 
     ``inputs`` are the parameters the caller supplies; for ``get``, ``list``, and ``delete`` they
     are the predicate, and for ``create`` and ``update`` they are the values written. ``row`` is
-    the dataclass a read or a create returns, and ``columns`` are the columns it selects.
+    the dataclass a read, a create, or a delete returns, and ``columns`` are its fields.
     """
 
     identifier: str
@@ -345,7 +345,10 @@ class Database:
             return cursor.rowcount
         if verb == "delete":
             cursor.execute(self._driver.delete(table, names), values)
-            return cursor.rowcount
+            if operation.row is None:
+                return cursor.rowcount
+            # The declared Output, built from the key it was given; None when nothing matched.
+            return self._build(operation, names, values) if cursor.rowcount else None
         raise UnknownOperation(f"{operation.identifier} names unsupported verb {verb!r}")
 
     def _columns(self, table: str) -> tuple[str, ...]:

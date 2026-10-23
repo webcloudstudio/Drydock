@@ -57,6 +57,33 @@ def test_declaration_parses_into_stories():
     assert catalog.acceptance_contract is False
 
 
+def test_the_database_story_claims_no_analyzed_story_or_sea_trial():
+    # ReadingList 20261023.200606: the story implementing DATABASE.md declared `covers: READING-002`
+    # and `accepts: st-002`, both owned by the Add Book Feature.
+    declaration = """
+## story database
+summary:    Provision the book store.
+type:       foundational
+kind:       migration
+implements: DATABASE.md
+covers:     READING-002
+accepts:    st-002
+
+## story add-book
+summary:    Add a book.
+implements: FEATURE-Add-Book.md
+covers:     READING-002
+accepts:    st-002
+depends:    database
+"""
+    (database, add_book), defects = parse_topology(declaration)
+
+    assert defects == ()
+    assert "covers" not in database.fields and "accepts" not in database.fields
+    assert add_book.fields["covers"] == "READING-002"
+    assert add_book.fields["accepts"] == "st-002"
+
+
 def test_declaration_order_carries_no_schedule_meaning():
     """Parsing reads the declaration only; nothing is sorted, grouped, or repositioned."""
     stories, _ = parse_topology(DECLARATION)

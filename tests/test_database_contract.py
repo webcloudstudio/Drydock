@@ -786,7 +786,7 @@ Output: Removal
 
 | Field | Type | Notes |
 |---|---|---|
-| removed | INTEGER | |
+| book_id | INTEGER | |
 
 ## `books`
 
@@ -808,6 +808,35 @@ def test_an_input_field_that_is_not_a_column_of_its_table_is_a_defect():
         in (defects[0])
     )
     assert database_contract_defects(_READING_LIST.replace("| book_id |", "| id |")) == ()
+
+
+def test_a_list_output_that_wraps_its_rows_is_a_defect():
+    # ReadingList 20261023.200606: `books.list` declared Output `BookList { books: list[Book] }`;
+    # the repository built one BookList per record from columns it does not have.
+    wrapped = _READING_LIST.replace("| book_id |", "| id |").replace(
+        "Output: Book\n\n| Field | Type | Notes |\n|---|---|---|\n| id | INTEGER | |\n"
+        "| title | TEXT | |\n",
+        "Output: BookList\n\n| Field | Type | Notes |\n|---|---|---|\n| books | list[Book] | |\n",
+    )
+    defects = database_contract_defects(wrapped)
+
+    assert len(defects) == 1
+    assert (
+        "FEATURE-BOOK-001 Output field `books` is not a column of `books` (id, title)"
+        in (defects[0])
+    )
+    assert "never a collection of rows" in defects[0]
+
+
+def test_a_delete_output_names_only_its_input_key():
+    # ReadingList 20261023.200606: `books.delete` returned the affected-row count, so a criterion
+    # reading `deleted.id` failed on an int. A delete Output is built from the key it was given.
+    renamed = _READING_LIST.replace("| book_id |", "| id |", 1)
+    defects = database_contract_defects(renamed.replace("| book_id |", "| removed |"))
+
+    assert len(defects) == 1
+    assert "FEATURE-BOOK-002 Output field `removed` is not an Input field (id)" in defects[0]
+    assert database_contract_defects(renamed.replace("| book_id |", "| id |")) == ()
 
 
 def test_a_placeholder_input_row_declares_no_field():

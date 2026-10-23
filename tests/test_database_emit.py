@@ -199,6 +199,60 @@ print("ROUNDTRIP OK")
     assert "ROUNDTRIP OK" in result.stdout
 
 
+_DELETE_PATTERN = """### FEATURE-TICKET-003 — Delete ticket
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-Ticket.md |
+| Access | write |
+| Repository operation | `tickets.delete` |
+| Compatibility | rebuild |
+
+Input: TicketDelete
+
+| Field | Type | Required |
+|---|---|---|
+| id | int | yes |
+
+Output: DeletedTicket
+
+| Field | Type |
+|---|---|
+| id | int |
+
+"""
+
+
+def test_a_delete_returns_its_declared_output_built_from_the_key(tmp_path: Path):
+    # ReadingList 20261023.200606: the delete returned the affected-row count, so a criterion
+    # written against the declared Output failed on `deleted.id`.
+    declared = _DATABASE.replace("## `tickets`", _DELETE_PATTERN + "## `tickets`")
+    module = render_schema_module(declared)
+    assert "class DeletedTicket:\n    id: int\n" in module
+    assert "verb='delete',\n        inputs=('id',),\n        row=DeletedTicket," in module
+
+    blueprint_dir = tmp_path / "blueprint"
+    build_dir = tmp_path / "build"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text(declared, encoding="utf-8")
+    write_persistence_package(blueprint_dir, build_dir)
+    script = f"""
+from {PACKAGE} import open_database
+db = open_database("app.db")
+db.execute_script(open("schema.sql").read())
+created = db.tickets.create(status="open", title="Plan discovery")
+deleted = db.tickets.delete(id=created.id)
+assert deleted.id == created.id, deleted
+assert db.tickets.list(status="open") == []
+assert db.tickets.delete(id=created.id) is None
+print("DELETE OK")
+"""
+    result = _run_in_build(build_dir, script)
+
+    assert result.returncode == 0, result.stderr
+    assert "DELETE OK" in result.stdout
+
+
 def _emitted_build(tmp_path: Path) -> Path:
     blueprint_dir = tmp_path / "blueprint"
     build_dir = tmp_path / "build"

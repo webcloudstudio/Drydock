@@ -144,6 +144,11 @@ key (the supplied key, else the engine's generated one); a create with no Output
 with no key, returns the key. *Broken:* criteria written against `DATABASE.md` fail on a SQLite
 rowid (LayersTesting `20261020.132808`).
 
+`2026-10-23` · **A delete returns its declared Output, built from the key.** Python and Go return
+the Output row from the supplied key when a row was removed, and `None`/`nil` when none was. A
+delete with no Output returns the count. *Broken:* criteria written against `DATABASE.md` fail on
+an int (ReadingList `20261023.200606`).
+
 `2026-10-20` · **Persistence autocommits by default.** Python connections open in
 autocommit mode and Go executes every statement, schema included, outside a transaction. Explicit acceptance rollback scopes suspend autocommit on their owned connection. A rejected command changes nothing by
 validating before its first write. *Broken:* builds hand-roll driver wrappers to fake a scope.
@@ -200,6 +205,10 @@ reset preserves `.git`. *Broken:* specification versions severed from code.
 
 ## Open Actions
 
+- `2026-10-23` · `update` still disagrees with its contract. `_derived_dtos` derives a row Output
+  for `update`, but the Python and Go runtimes return the affected-row count, and
+  `output_column_defects` does not check `update`. Align the runtimes or the derivation, as
+  `delete` now is.
 - `2026-10-20` · The acceptance-failure Recovery still says `drydock build <Target>` when the agent
   disputes the criterion in prose that neither `_defective_acceptance_claim` (`build_run.py`) nor
   `_BLUEPRINT_REPAIR_SIGNALS` (`cli.py`) recognizes. LayersTesting `20261020.161323` blocker: "The

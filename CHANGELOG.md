@@ -190,6 +190,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-23: Generated persistence now returns what `DATABASE.md` declares. `drydock plan`
+  refuses an `Output:` field that the operation cannot return. `get`, `list`, and `create`
+  Output fields must be table columns, so a `list` Output declares the row, never a wrapper
+  such as `books: list[Book]`. Each `delete` Output field must be an Input field. A `delete`
+  with an Output returns that row built from the key, or `None`/`nil` when nothing matched, in
+  both the Python and Go repositories. A `delete` with no Output still returns the count. The
+  SQLite and PostgreSQL stack guidance and the `DATABASE.md` template state each verb's return
+  shape for the planner.
+- 2026-10-23: The story that implements `DATABASE.md` no longer claims `covers:` or `accepts:`.
+  `drydock plan` drops both fields, and the Feature that reaches the data owns the analyzed story
+  and its Sea Trials.
+
 - 2026-10-23: `drydock score release` reads a tool-using grader's JSON from its final turn when
   the narration streamed from earlier turns fails JSON cleanup, and records `earlier-turn text` as
   removed. Unreadable grader output (invalid JSON, an unknown, duplicate, or missing Sea Trial, or

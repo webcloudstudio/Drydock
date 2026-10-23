@@ -97,7 +97,7 @@ def render_go_schema(text: str) -> str:
             # A keyed create returns its declared Output row, read back by key, as a get does.
             keyed = any(column.primary_key for column in declared.columns)
             returns_row = verb in ("get", "list") or (
-                verb == "create" and keyed and bool(pattern.outputs)
+                verb in ("create", "delete") and keyed and bool(pattern.outputs)
             )
             for field in (*pattern.inputs, *(pattern.outputs if returns_row else ())):
                 if field.name not in column_names:
@@ -139,7 +139,10 @@ def render_go_schema(text: str) -> str:
                     ],
                 )
                 native = "[]" + row if verb == "list" else "*" + row
-                if verb != "list":
+                if verb == "delete":
+                    # The declared Output, built from the key it was given; nil when nothing matched.
+                    finish = f"if result.Count==0 {{return nil,nil}}; row,err:=Decode[{row}](args); return &row,err"
+                elif verb != "list":
                     finish = f"if len(result.Rows)==0 {{return nil,nil}}; row,err:=Decode[{row}](result.Rows[0]); return &row,err"
                 else:
                     finish = f"return Decode[[]{row}](result.Rows)"
