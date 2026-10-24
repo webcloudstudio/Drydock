@@ -152,17 +152,45 @@ def test_an_interactive_command_offers_to_clear_the_stop(
     assert (read_stop(target_dir) is None) is proceeds
 
 
-def test_deterministic_commands_ignore_the_stop(tmp_target_root, isolated_config, monkeypatch):
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["build", "status", "TestTarget"],
+        ["plan", "verify", "TestTarget"],
+        ["plan", "repair", "TestTarget"],
+        ["run", "quarterdeck", "TestTarget"],
+    ],
+)
+def test_every_target_command_refuses_while_stopped(
+    tmp_target_root, isolated_config, monkeypatch, argv
+):
     target_dir = _target(tmp_target_root, monkeypatch)
-    write_stop(target_dir, "build", "provider outage: provider error 503")
+    write_stop(target_dir, "plan-repair", "acceptance criteria still cannot run")
 
-    for argv in (["build", "status", "TestTarget"], ["plan", "verify", "TestTarget"]):
-        assert _process_stop_gate(_build_parser().parse_args(argv))
+    assert not _process_stop_gate(_build_parser().parse_args(argv))
 
 
-def test_plan_repair_is_gated_and_plan_verify_is_not(tmp_target_root, isolated_config, monkeypatch):
+@pytest.mark.parametrize(
+    "argv", [["status", "TestTarget"], ["status", "TestTarget", "--ready"], ["uat", "TestTarget"]]
+)
+def test_status_and_uat_ignore_the_stop(tmp_target_root, isolated_config, monkeypatch, argv):
     target_dir = _target(tmp_target_root, monkeypatch)
-    write_stop(target_dir, "build", "provider outage: provider error 503")
+    write_stop(target_dir, "plan-repair", "acceptance criteria still cannot run")
 
-    assert not _process_stop_gate(_build_parser().parse_args(["plan", "repair", "TestTarget"]))
-    assert _process_stop_gate(_build_parser().parse_args(["plan", "verify", "TestTarget"]))
+    assert _process_stop_gate(_build_parser().parse_args(argv))
+
+
+def test_a_refusal_shows_the_file_and_how_to_remove_it(
+    tmp_target_root, isolated_config, monkeypatch
+):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    path = write_stop(target_dir, "plan-repair", "acceptance criteria still cannot run")
+
+    rc, _, err = run_cli("plan", "verify", "TestTarget")
+
+    assert rc == 1
+    assert "drydock plan refused: TestTarget is stopped." in err
+    assert f"Contents of {path}:" in err
+    assert "  - stage: plan-repair" in err
+    assert f"rm '{path}'" in err
+    assert path.is_file()

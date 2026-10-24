@@ -4,8 +4,9 @@
 # Usage: scripts/uat_repair_loop.sh [<Target>] [<model>] [<max-iterations>]
 #   defaults: LayersTesting gpt-5.6-luna 5
 #
-# Stops when the UAT exits 0, when an iteration's repair session commits nothing, or after
-# <max-iterations> runs. Each iteration's console output is kept under logs/uat_loop/<stamp>/.
+# Stops when the UAT exits 0, when the run declared a STOP_NOW.md halt, when an iteration's repair
+# session commits nothing, or after <max-iterations> runs. Each iteration's console output is kept
+# under logs/uat_loop/<stamp>/.
 set -uo pipefail
 
 target="${1:-LayersTesting}"
@@ -36,6 +37,28 @@ for iteration in $(seq 1 "$max_iterations"); do
     if [ "$uat_exit" -eq 2 ]; then
         echo "STOPPED: drydock uat usage error"
         exit 2
+    fi
+    # A run that declared a halt ends the loop: its STOP_NOW.md names a cause a repair session is
+    # not asked to judge. The file sits in the run's sealed workspace and never gates a new run.
+    if grep -q ": stopped at " "$log_dir/$iteration-uat.log"; then
+        build_target="$(sed -n 's/^- Build target: `\(.*\)`$/\1/p' "$log_dir/$iteration-uat.log" | tail -1)"
+        stop_file="$build_target/STOP_NOW.md"
+        echo
+        echo "========================================================================"
+        echo "LOOP ABORTED: drydock uat $target declared a halt on iteration $iteration"
+        echo "========================================================================"
+        grep -m1 "^- Failure: " "$log_dir/$iteration-uat.log"
+        if [ -n "$build_target" ] && [ -f "$stop_file" ]; then
+            echo
+            echo "Contents of $stop_file:"
+            echo
+            sed 's/^/  /' "$stop_file"
+        fi
+        echo
+        echo "No repair session was started. The halt is part of that run's sealed evidence;"
+        echo "do not delete it. Fix the cause, then start a new loop, which begins a fresh run:"
+        echo "  scripts/uat_repair_loop.sh $target $model $max_iterations"
+        exit 1
     fi
 
     head_before="$(git -C "$repo" rev-parse HEAD)"

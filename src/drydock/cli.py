@@ -5184,24 +5184,20 @@ def _render_plan_deferred(result, *, target: str) -> str:
     return "\n".join(lines)
 
 
-#: LLM-assisted commands the stop gate leaves alone. ``uat`` manages its own run workspace's
-#: halts, and ``run`` starts the QuarterDeck, which shows a halt rather than obeying it.
-_STOP_GATE_EXEMPT = frozenset({"uat", "run"})
+# ``status`` is how a stop is read, and ``status --ready`` already exits 1 on one. ``uat`` drives
+# fresh run workspaces; a stop inside a sealed run is that run's evidence, never a gate.
+_STOP_GATE_EXEMPT = frozenset({"uat", "status"})
 
 
 def _stop_target_dir(args: argparse.Namespace) -> Path | None:
     command = getattr(args, "command", None) or ""
     if command in _STOP_GATE_EXEMPT:
         return None
-    if not (_invocation_uses_llm(args) or command == "diagnose"):
-        return None
     if command == "plan":
-        # ``plan`` carries sub-verbs in its operand slot; ``plan verify`` is deterministic.
+        # ``plan`` carries sub-verbs in its operand slot.
         try:
-            sub_verb, target = _parse_plan_args(args)
+            _sub_verb, target = _parse_plan_args(args)
         except UsageError:
-            return None
-        if sub_verb == "verify":
             return None
     else:
         target = _log_target(args)
@@ -5216,19 +5212,18 @@ def _stop_target_dir(args: argparse.Namespace) -> Path | None:
 def _process_stop_gate(args: argparse.Namespace) -> bool:
     """Whether this invocation may run, given the Target's ``STOP_NOW.md``.
 
-    A command that would call a model refuses while a halt is recorded. At a terminal the
-    operator is shown the halt and may clear it; a script or a UAT child is refused, so an
-    unattended loop stops instead of spending against a provider that already failed.
+    Every Target command except ``status`` and ``uat`` refuses while a halt is recorded. At a
+    terminal the operator is shown the halt and may clear it; a script or a UAT child is refused,
+    so an unattended loop stops instead of running past a declared halt.
     """
     target_dir = _stop_target_dir(args)
     if target_dir is None:
         return True
-    from drydock.stop_condition import clear_stop, read_stop, render_stop
+    from drydock.stop_condition import clear_stop, read_stop, render_refusal
 
-    stop = read_stop(target_dir)
-    if stop is None:
+    if read_stop(target_dir) is None:
         return True
-    banner = render_stop(stop, target_dir.name)
+    banner = render_refusal(target_dir, f"drydock {args.command}")
     if sys.stdin.isatty() and sys.__stdout__ is not None and sys.__stdout__.isatty():
         print(banner)
         try:

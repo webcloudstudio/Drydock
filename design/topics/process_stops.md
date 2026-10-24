@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-22 V1 |
+| Version | 2026-10-24 V2 |
 | Route | process_stops |
-| Modules | `stop_condition.py`, `llm.py`, `cli.py`, `uat.py` |
+| Modules | `stop_condition.py`, `llm.py`, `cli.py`, `uat.py`, `scripts/uat_repair_loop.sh` |
 | Prompts | — |
 | Tests | `tests/test_process_stop.py`, `tests/test_stop_condition.py` |
 | Governs | [build](../commands/build.md), [status](../commands/status.md), [uat](../commands/uat.md), [diagnose](../commands/diagnose.md), [plan](../commands/plan.md), [analyze](../commands/analyze.md) |
@@ -53,13 +53,21 @@ declaration wins, so `drydock uat` reports the provider cause rather than its ow
 `build` prints `BUILD STOPPED — <kind>` in place of `BUILD STALLED`. Cost when broken: the cause
 is buried mid-transcript and the last line an operator reads is wrong.
 
-`2026-10-22` · **Every LLM-assisted command checks `STOP_NOW.md` before it runs.** Commands that
-reach a model (`_invocation_uses_llm`) and `diagnose` refuse while it exists; `uat` and `run` are
-exempt, and deterministic sub-verbs (`build status`, `plan verify`) are not gated. With a
-terminal on stdin and stdout the command prints the stop and asks `Clear this stop and continue?
-[y/N]`; `y` deletes the file and proceeds. Otherwise it prints the stop to stderr and exits `1`.
-Cost when broken: an unattended driver spends past a halt, or an operator cannot continue without
-finding the file.
+`2026-10-24` · **Every Target command checks `STOP_NOW.md` before it runs.** Every command
+naming a Target refuses while the file exists, deterministic sub-verbs (`build status`, `plan
+verify`) and `run` included; `status` (which reports the stop) and `uat` (whose runs use fresh
+workspaces, and whose sealed run stops are evidence) are exempt. The refusal prints `drydock
+<command> refused: <Target> is stopped.`, the stop banner, the file's path and verbatim contents,
+and `rm '<path>'`. With a terminal on stdin and stdout the command then asks `Clear this stop and
+continue? [y/N]`; `y` deletes the file and proceeds. Otherwise it prints to stderr and exits `1`.
+Supersedes the `2026-10-22` LLM-only gate. Cost when broken: an unattended driver runs past a
+halt, or an operator cannot find the file to clear.
+
+`2026-10-24` · **`scripts/uat_repair_loop.sh` ends on a declared halt.** When the UAT log holds
+`: stopped at `, the loop prints `LOOP ABORTED`, the failure line, the run's `STOP_NOW.md`
+contents, and the command to start a fresh loop, then exits `1` without a repair session. The
+sealed run's file is never deleted. *Broken:* FxRates `20261024.183153` stopped at `plan-repair`
+and the loop launched a repair session past the halt.
 
 `2026-10-22` · **`status --ready` reports a stop and exits `1`.** It prints `STOPPED: <Target>
 (<stage>: <reason>; see STOP_NOW.md)` ahead of any buildable work, so `while drydock status <T>
@@ -70,7 +78,8 @@ Cost when broken: drivers keep looping into a stopped Target.
 
 1. `llm.run_prompt` classifies each failed call and latches the first `FatalStop`.
 2. `cli.main` calls `_process_stop_gate` before dispatch and `_declare_process_stop` after it.
-3. `stop_condition.write_stop` / `read_stop` / `render_stop` own the file and its banner.
+3. `stop_condition.write_stop` / `read_stop` / `render_stop` / `render_refusal` own the file, its
+   banner, and the gate's refusal.
 
 ### Spec divergence
 

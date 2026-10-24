@@ -15,8 +15,8 @@ and it names the stage, the reason, when the halt was declared, and how to recov
 
 Two writers declare a halt. ``drydock uat`` declares one when a stage it drives cannot go on, and
 every command declares one when its provider fails in a way another call cannot fix: a rate or
-usage limit, an expired login, a timeout, or an outage (``llm.fatal_stop``). Every LLM-assisted
-command checks for it before it spends anything (``cli._process_stop_gate``).
+usage limit, an expired login, a timeout, or an outage (``llm.fatal_stop``). Every Target command
+except ``status`` and ``uat`` checks for it before it runs (``cli._process_stop_gate``).
 """
 
 from __future__ import annotations
@@ -66,8 +66,9 @@ def write_stop(target_dir: Path, stage: str, reason: str, recovery: str = "") ->
         + (f"## Recovery\n\n{recovery.strip()}\n\n" if recovery.strip() else "")
         + "## Clearing\n\n"
         "Fix the cause, then delete this file, or answer `y` when an interactive Drydock command\n"
-        "offers to clear it. Every LLM-assisted command refuses to run while it exists, so a run\n"
-        "that continues past a halt cannot be produced by accident.\n",
+        "offers to clear it. Every Drydock command on this Target except `status` and `uat`\n"
+        "refuses to run while it exists, so a run that continues past a halt cannot be produced\n"
+        "by accident.\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -120,6 +121,29 @@ def render_stop(stop: StopCondition, target: str = "") -> str:
     if stop.recovery:
         lines += ["", "  Recovery", *(f"    {line.strip()}" for line in stop.recovery.splitlines())]
     lines += ["", f"  Clear: delete {STOP_FILENAME}, or answer y when a command offers to.", border]
+    return "\n".join(lines)
+
+
+def render_refusal(target_dir: Path, command: str) -> str:
+    """Why ``command`` will not run: the halt, the file verbatim, and how to remove it."""
+    path = stop_path(target_dir)
+    stop = read_stop(target_dir)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        text = f"(unreadable: {exc})"
+    lines = [
+        f"{command} refused: {target_dir.name} is stopped.",
+        "",
+        render_stop(stop, target_dir.name) if stop is not None else "",
+        "",
+        f"Contents of {path}:",
+        "",
+        *(f"  {line}".rstrip() for line in text.splitlines()),
+        "",
+        "To continue, fix the cause above, then remove the stop:",
+        f"  rm '{path}'",
+    ]
     return "\n".join(lines)
 
 
