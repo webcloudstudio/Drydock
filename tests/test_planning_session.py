@@ -4534,6 +4534,72 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
     assert result.blocks["DATABASE.md"] == _DATABASE.strip()
 
 
+def test_a_rejected_declaration_is_returned_to_the_retry_for_correction():
+    """FxRates ``20261024.140521``: each retry got only the defect text, re-authored DATABASE.md
+    from scratch, and traded one contract fault for another until the attempts ran out."""
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (
+        PlannedStory(story_id="database", implements="DATABASE.md"),
+        PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
+    )
+    rejected = (
+        "# DATABASE: X\n\n## Access Patterns\n\n"
+        "### FEATURE-X-001 — Read a setting\n\n| Field | Value |\n|---|---|\n"
+        "| Owner | FEATURE-1.md |\n| Access | read |\n"
+        "| Repository operation | `settings.get` |\n| Compatibility | unchanged |\n\n"
+        "## Schemas\n\n## `settings`\n\n| Field | Type |\n|---|---|\n"
+        "| key | TEXT PK |\n| sentinel_column | TEXT |\n"
+    )
+    prompts: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        emitted = (
+            {"DATABASE.md": rejected}
+            if len(prompts) == 1
+            else {"DATABASE.md": _DATABASE}
+            if len(prompts) == 2
+            else {"FEATURE-1.md": _OWNER}
+        )
+        response = "".join(
+            f"=== BEGIN ARTIFACT {name} ===\n{body}\n=== END ARTIFACT ===\n"
+            for name, body in emitted.items()
+        )
+        return FakeRun(text=response, execution_id=f"exec-{len(prompts)}")
+
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Two frozen stories."},
+        blocks_text="=== TOPOLOGY.md ===\nTwo frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="codex",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=None,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    assert len(prompts) == 3
+    assert "sentinel_column" not in prompts[0]
+    assert "sentinel_column" in prompts[1]
+    assert "your rejected draft" in prompts[1]
+    assert "Your rejected DATABASE.md is attached" in prompts[1].split("## Ledger")[-1]
+    assert "sentinel_column" not in prompts[2]
+    assert result.score.is_complete
+
+
+def test_a_stall_detail_names_its_rejection_before_what_is_missing():
+    assert ps._rejection_lines(
+        "DATABASE.md does not parse: DATABASE.md: a; b — keep; DATABASE.md: c"
+    ) == ("DATABASE.md does not parse: DATABASE.md: a; b — keep", "DATABASE.md: c")
+    assert ps._rejection_lines("") == ()
+
+
 def test_a_refused_seeded_declaration_is_retried_alone_and_holds_back_its_features():
     """LayersTesting ``20261021.213934``: batch 4 wrote access patterns without their heading or
     any table, and the ledger dropped the defect because the seed was never in a tranche. The
@@ -5054,6 +5120,8 @@ def test_a_standing_missing_input_block_is_named_in_the_stall_record(tmp_path):
     assert excinfo.value.record.classification == "plan generation stalled"
     assert "last rejection: the response blocked 1 Current batch Blueprint(s)" in detail
     assert "- FEATURE-Status.md · missing-input · cited sources/GRADER.md" in detail
+    # FxRates 20261024.140521: the capped detail cut the rejection after the missing list.
+    assert detail.index("last rejection:") < detail.index("blocked:") < detail.index("topology:")
     assert not (target_dir / "MANIFEST.md").is_file()
 
 

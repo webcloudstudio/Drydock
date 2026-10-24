@@ -264,6 +264,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock plan` Stage 2 returns a rejected `DATABASE.md` to the retry. The next
+  batch receives its own merged draft in place of the seed and is told to correct each listed
+  contract defect in it and change nothing else, instead of re-authoring the declaration from
+  the defect text. The `plan generation stalled` detail now prints each rejection defect on its
+  own line ahead of the blocked reports and the missing-Blueprint list, so the 800-character cap
+  no longer drops the cause from stderr. Closes FxRates `20261024.140521`.
+
 - 2026-10-24: `drydock build` starts persistence verification only at `.drydock-persistence.json`,
   the provenance record Drydock writes when it emits persistence from `DATABASE.md`. A story built
   before the DATABASE step that writes `schema.sql` itself no longer has every criterion failed

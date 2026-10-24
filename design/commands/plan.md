@@ -252,7 +252,16 @@ batch is kept, the refusal prints on the always-shown score channel, and the nex
 `20261021.034029` accepted a one-table `## Access Patterns` in batch 1, found it only after batch
 7, and three repairs from the bare defect text failed. LayersTesting `20261021.213934` dropped the
 defect because the seeded declaration is never in a tranche, accepted Features citing undeclared
-operations, and stalled when later batches saw the bare template.
+operations, and stalled when later batches saw the bare template. `2026-10-24`: the retry also
+receives the rejected merged draft as `DATABASE.md` in place of the seed, and the ledger tells
+it to correct each listed defect in that draft and change nothing else. *Broken:* FxRates
+`20261024.140521` re-authored the declaration from the defect text alone three times, trading a
+duplicate `rates.list` for a composite PK for missing DTO tables, and stalled.
+
+`2026-10-24` · **A plan stall states its cause first.** The `plan generation stalled` detail
+prints each `last rejection` defect on its own line, then `blocked:`, then the score and missing
+list, then execution ids. The detail is capped at 800 characters on line boundaries. *Broken:*
+FxRates `20261024.140521` stderr listed 14 missing Blueprints and truncated the rejection away.
 
 `2026-09-19` · **Only a Feature owns an access pattern; `DATABASE.md` owns shared ones.** A Screen is
 never an `| Owner |`; an illegal owner is rewritten to `DATABASE.md` deterministically. Ownership is

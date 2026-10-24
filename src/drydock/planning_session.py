@@ -5180,6 +5180,11 @@ def _render_ledger(
         lines.append("")
         lines.append(f"Defective ({len(invalid)}) — emit these again, in full, corrected:")
         lines.extend(f"  {item.rendered()}" for item in invalid)
+        if any(item.filename == DATABASE_BLOCK for item in rejected):
+            lines.append(
+                f"  Your rejected {DATABASE_BLOCK} is attached. Correct each defect above in that "
+                "draft and emit it in full; change nothing the defects do not name."
+            )
     if previous or prior_type:
         lines.append("")
         if previous:
@@ -5197,6 +5202,16 @@ def _render_ledger(
     return "\n".join(lines)
 
 
+def _rejection_lines(rejection: str) -> tuple[str, ...]:
+    """Split a joined rejection into one line per defect, each starting at its file name.
+
+    A detail is capped on line boundaries, so one joined line longer than the cap is dropped whole.
+    """
+    return tuple(
+        part for part in re.split(r"; (?=[\w.-]+\.(?:md|json|txt): )", rejection.strip()) if part
+    )
+
+
 def _response_excerpt(text: str, limit: int = 240) -> str:
     """One line from the start of a response, for a refusal the console would otherwise hide."""
     flat = " ".join(text.split())
@@ -5211,12 +5226,15 @@ def _continuation_assembly(
     ledger: str,
     database: str | None = None,
     database_seed: str | None = None,
+    database_draft: str | None = None,
 ) -> PromptAssembly:
     """Give one Stage 2 batch the frozen plan and its current bounded work queue.
 
     The original prefix stays byte-identical for provider caching. Previous batch responses are
-    excluded. Once ``DATABASE.md`` is accepted, later batches cite it from its compact form;
-    the batch that authors it gets the seed instead.
+    excluded, except a rejected ``DATABASE.md``. Once ``DATABASE.md`` is accepted, later batches
+    cite it from its compact form; the batch that authors it gets the seed, and a retry gets its
+    rejected draft, which already holds the seed, so it corrects the named defects instead of
+    re-authoring and trading one contract fault for another (FxRates ``20261024.140521``).
     """
     body = load_prompt("plan_continue").body.strip()
     frozen = lines_part(
@@ -5248,6 +5266,13 @@ def _continuation_assembly(
             compact_declaration(database),
             filename=DATABASE_COMPACT_BLOCK,
             role="frozen persistence declaration; cite its access patterns",
+        )
+    elif database_draft and database_draft.strip():
+        database_parts = contextual_markdown_parts(
+            DATABASE_BLOCK,
+            database_draft,
+            filename=DATABASE_BLOCK,
+            role="your rejected draft; correct each Defective entry and keep the rest",
         )
     elif database_seed and database_seed.strip():
         database_parts = contextual_markdown_parts(
@@ -5373,6 +5398,7 @@ def _continue_short_plan(
     last_blocked: tuple[BlockedBlueprint, ...] = ()
     batch_size = _PLAN_BLUEPRINT_BATCH_SIZE
     database_rejected: tuple[ArtifactDefect, ...] = ()
+    database_draft = ""
 
     # One successful artifact per call is the slowest legitimate forward motion.  The additional
     # retry allowance bounds malformed/no-progress calls without capping a large valid topology at
@@ -5398,6 +5424,7 @@ def _continue_short_plan(
             ledger=ledger,
             database=accumulated.get(DATABASE_BLOCK),
             database_seed=database_seed if DATABASE_BLOCK in tranche else None,
+            database_draft=database_draft if DATABASE_BLOCK in tranche else None,
         )
         runner_kwargs: dict[str, object] = {
             "llm": llm_provider,
@@ -5583,13 +5610,16 @@ def _continue_short_plan(
                 continue
             if name == DATABASE_BLOCK:
                 # Preserve source schema contracts before freezing the database.
+                draft = body
                 try:
                     merged = merge_seeded_schema(body, database_seed)
+                    draft = merged
                     database_defects = database_contract_defects(merged)
                 except SpecificationError as exc:
                     database_defects = (str(exc),)
                 if database_defects:
                     rejection = f"{name} does not parse: " + "; ".join(database_defects)
+                    database_draft = draft
                     break
                 candidate[name] = merged
                 continue
@@ -5620,6 +5650,7 @@ def _continue_short_plan(
         accumulated = candidate
         if DATABASE_BLOCK in pass_blocks and DATABASE_BLOCK not in pass_damaged:
             database_rejected = ()
+            database_draft = ""
 
         advanced = score_plan(current, accumulated)
         if not advanced.improved_on(score):
@@ -6598,16 +6629,18 @@ def create_plan(
                         raise _record_plan_error(
                             target_dir,
                             classification="plan generation stalled",
+                            # Why it stopped precedes what is missing: the detail is capped,
+                            # and a long missing list cut the rejection from stderr (FxRates
+                            # ``20261024.140521``).
                             detail=(
                                 "Blueprint generation stalled after TOPOLOGY.md was accepted "
                                 f"and frozen, after {continuation.passes} Stage 2 pass(es).\n"
-                                f"{continuation.score.render()}\n"
-                                + (
-                                    f"  last rejection: {continuation.last_rejection}\n"
-                                    if continuation.last_rejection
-                                    else ""
+                                + "".join(
+                                    f"  last rejection: {line}\n"
+                                    for line in _rejection_lines(continuation.last_rejection)
                                 )
                                 + (f"  blocked:\n{blocked_lines}" if blocked_lines else "")
+                                + f"{continuation.score.render()}\n"
                                 + "  execution ids: "
                                 + ", ".join(continuation.execution_ids)
                                 + "\n  No Blueprint or Manifest artifacts were written."
