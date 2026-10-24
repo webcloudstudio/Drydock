@@ -627,6 +627,12 @@ exist.
 
 ## Actions
 
+- `2026-10-24` · `5e9962e` implements Ed's final-draft update policy and exact parser-defect
+  feedback for CsvStat `20261024.221659`; the matching ledger rows are `unverified` pending a
+  later live run. Local proof: the 788-test regression run includes complete duplicates,
+  invalid-first/corrected-last content, truncated final updates, and named retry feedback.
+  Closes when Ed's later planning evidence uses final updates without losing unrelated files.
+
 
 - `2026-10-24` · `1fd07d0` and `e4a2aad` are `unverified` in `design/skills/ddk-uat.md`. The next
   DupFind run must show no `unchecked-call` on SizeFilter or UnreadableFiles and no fenced

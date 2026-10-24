@@ -182,6 +182,11 @@ authoring contract, and (b) a warning that may cost marks, never a hard gate.
 
 ## Actions
 
+- `2026-10-24` · `5e9962e` corrects the CsvStat `20261024.221659` report defects; both ledger
+  rows are `unverified` pending later report evidence. Local proof: all 71 report tests pass,
+  including failed/blocked plan states and configured/unexecuted conformance. Closes when Ed's
+  later generated report preserves these distinctions; published runs remain untouched.
+
 - `2026-10-24` · DupFind `20261024.140514` passed and is not yet diagnosed. It has no ledger rows.
 
 ## Working Notes
