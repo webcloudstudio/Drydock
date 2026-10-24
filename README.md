@@ -58,6 +58,16 @@ Drydock imports your source material, defines stories using agile best practices
 
 ## Drydock UAT Examples
 
+Read-only listing: `bash helpers/list_failed_uat_runs.sh` prints failed-run paths, one per line.
+Use `--uat-root <path>` for another kit root. Counts and unreadable-receipt warnings go to stderr.
+It uses the same exact `status: "failed"` selection as the cleanup helper below.
+
+Operator cleanup: `bash helpers/delete_failed_uat_runs.sh` previews runs whose `result.json`
+records `status: "failed"`; add `--delete` to remove them, or `--uat-root <path>` to select
+another kit root. Requires Python 3. Stop UAT before deleting. Passed, degraded, incomplete,
+and unreadable runs are retained. Kit indexes, checksums, latest-run pointers, and Git histories
+are not updated by cleanup and require operator reconciliation.
+
 The following are 4 WORKING applications built as part of the Drydock Uat Cycle - **BUILD EVIDENCE STORED IN SEPARATE REPOS**
 
 | Project | Description | Web URL | Git URL |

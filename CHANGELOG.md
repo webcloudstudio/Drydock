@@ -10,6 +10,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-24: `helpers/list_failed_uat_runs.sh` lists runs with exact `result.json` status
+  `failed` without changing evidence. It accepts `--uat-root`, prints sorted paths to stdout,
+  and sends the count and unreadable-receipt warnings to stderr.
+
+- 2026-10-24: Operator helper `helpers/delete_failed_uat_runs.sh` previews failed-run cleanup
+  from `uat/*/runs/*/result.json`; `--delete` removes only explicit `failed` runs.
+  `--uat-root` selects another kit root. Passed, degraded, incomplete, and unreadable runs
+  are retained. Kit indexes, checksums, pointers, and Git histories require operator reconciliation.
+
 - 2026-10-24: `DATABASE.md` access patterns express ranges and list order. A `| Match |` term
   `<column> <op> <field>` (`=`, `<`, `<=`, `>`, `>=`) compares an Input field that is not a column
   with that column, as `date >= start_date`, on a `list`, `update`, or `delete`. A `list` declares

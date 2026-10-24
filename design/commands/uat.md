@@ -30,6 +30,21 @@ Three properties define done (UAT gate model, 2026-08-14):
 
 ## Details
 
+`2026-10-24` · Read-only companion `helpers/list_failed_uat_runs.sh` uses the cleanup helper's
+exact `status: "failed"` selection and symlink exclusions. It prints sorted absolute paths,
+one per line, to stdout; counts and unreadable-receipt warnings go to stderr. `--uat-root`
+overrides the repository-relative default. Requires Python 3; exit codes are 0 success,
+1 filesystem failure, 2 usage error. No deletion flag or writes. Tests use temporary kit trees.
+
+`2026-10-24` · Operator helper `helpers/delete_failed_uat_runs.sh` previews cleanup of
+`uat/*/runs/*` using only `result.json` with exact `status: "failed"`; `--delete` removes
+those directories. `--uat-root <path>` overrides the repository-relative default. Passed,
+degraded, missing, malformed, and unknown receipts are retained; symlinked kit, runs, run,
+and receipt paths are skipped. Python 3 is required. Exit codes: 0 success, 1 filesystem
+failure, 2 usage error. Run only while UAT is stopped. The helper does not update kit indexes,
+checksums, latest-run pointers, or Git histories; the operator reconciles published evidence.
+Development verification uses temporary fixtures and never executes against published `uat/`.
+
 `2026-10-24` · Run reports show `BLOCKED: <summary>` when the recorded Target holds blockers,
 or `<state> — FAILED` for a failed workflow-state attempt; successful release remains
 `PROJECT COMPLETE`. Failure and blocker stamps use the failure style. Markdown and HTML
