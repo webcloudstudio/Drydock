@@ -1726,6 +1726,69 @@ class MalformedAcceptance:
         return f"{self.source} [{self.check_id}]: {self.reason}"
 
 
+def fenced_acceptance_defect(text: str) -> str | None:
+    """Return why a Blueprint's criteria are not in the authored container, or ``None``.
+
+    The fence form is read for Blueprints not yet migrated; a plan never authors it. Its
+    boundaries are inferred, so ``plan repair`` cannot address its criteria, and a fenced pytest
+    module passes without running. DupFind ``20261024.183232``.
+    """
+    try:
+        if parse_delimited_acceptance(text, source=""):
+            return None
+    except ValueError:
+        return None
+    if not PYTHON_FENCE_RE.search(_sections(text).get("programmatic acceptance", "")):
+        return None
+    return (
+        "states Programmatic Acceptance as Markdown ```python fences; write each criterion as "
+        "`=== AC <id> ===`, an `Intent:` line, top-level Python with no fence, and "
+        "`=== END AC <id> ===`"
+    )
+
+
+def uncalled_function_defect(code: str) -> str | None:
+    """Return why ``code`` defines functions it never calls, or ``None``.
+
+    A criterion runs as a script, so a ``def`` nothing reaches from top-level code never runs,
+    and its assertions pass without touching the product. DupFind ``20261024.183232`` defined
+    only ``def test_*`` functions.
+    """
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return None
+    defs = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    if not defs:
+        return None
+
+    def names(nodes: Iterable[ast.AST]) -> set[str]:
+        return {
+            node.id
+            for root in nodes
+            for node in ast.walk(root)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        }
+
+    reached: set[str] = set()
+    frontier = names(node for node in tree.body if node not in defs.values()) & defs.keys()
+    while frontier:
+        reached |= frontier
+        frontier = names(defs[name] for name in frontier) & defs.keys() - reached
+    uncalled = sorted(defs.keys() - reached)
+    if not uncalled:
+        return None
+    rendered = ", ".join(f"`{name}`" for name in uncalled)
+    return (
+        f"defines {rendered} but never calls it; a criterion runs as a script, so write its "
+        "steps at top level or call each function"
+    )
+
+
 def syntax_defect(code: str) -> str | None:
     """Return why ``code`` is not Python at all, or ``None`` when it compiles.
 

@@ -448,6 +448,14 @@ failed silently, then tested an account that did not exist.
 `2026-10-24` · A `def` or `class` body is judged as its own scope, so a call inside a function
 with its own `assert` is checked. *Broken:* DupFind `20261024.183232` rejected four asserted calls.
 
+`2026-10-24` · **A criterion's code runs.** `plan verify` and Plan's criterion gate report an
+`uncalled-function` defect for a criterion that defines a top-level function no top-level
+statement reaches. Plan's gate also reports `fenced-criteria` for an emitted Blueprint whose
+Programmatic Acceptance uses Markdown ```` ```python ```` fences instead of `=== AC <id> ===`
+blocks, and returns both to artifact repair. `plan verify` and Build still read the fenced form.
+*Broken:* DupFind `20261024.183232` repair wrote fenced `def test_*` modules that
+`runpy.run_path` never calls, and `plan repair` could not address them.
+
 `2026-10-24` · **Exit assertions may follow collection into a dictionary.** `plan verify`
 recognizes an empty result dictionary filled by one `cli_runner` assignment per key of a
 literal dictionary, followed immediately by a loop over every result's `.items()` that
@@ -592,7 +600,6 @@ exist.
 
 ## Open Actions
 
-- `2026-10-24` · Plan verify and the in-plan gate must reject fenced (non-`=== AC`) criteria and criteria that define functions they never call (DupFind `20261024.183232`; `acceptance.py:1575`, `runner.py:317`).
 
 - `2026-10-24` · Format the existing replacement chain in
   `tests/test_database_contract.py:851`; it is the remaining repository-wide

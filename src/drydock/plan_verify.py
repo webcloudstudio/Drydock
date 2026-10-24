@@ -45,6 +45,7 @@ from drydock.acceptance import (
     selection_probe_reason,
     staged_regex_defects,
     syntax_defect,
+    uncalled_function_defect,
     unresolved_globals,
 )
 from drydock.acceptance_store import store_setup_defects
@@ -162,6 +163,9 @@ OPERATION_UNDECLARED = "operation-undeclared"
 
 #: Defect kind for a criterion importing ``persistence`` on a story built before DATABASE.
 PERSISTENCE_ORDER = "persistence-order"
+
+#: Defect kind for a criterion whose assertions sit in a function nothing calls.
+UNCALLED_FUNCTION = "uncalled-function"
 
 
 def untested_operations(database_text: str, codes: Iterable[str]) -> tuple[str, ...]:
@@ -551,6 +555,9 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
             # reporting both would name the same fault twice and give repair two things to fix.
             if (reason := syntax_defect(check.code)) is not None:
                 defects.append(Defect(path.name, check.check_id, "syntax", reason))
+                continue
+            if (reason := uncalled_function_defect(check.code)) is not None:
+                defects.append(Defect(path.name, check.check_id, UNCALLED_FUNCTION, reason))
                 continue
             if reasons := blueprint_read_defects(check.code, blueprint_dir):
                 # Raised before the content checks: a criterion reading its own specification

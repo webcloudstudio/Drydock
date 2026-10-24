@@ -1292,3 +1292,52 @@ def test_go_package_directory_launch_is_not_runnable(tmp_path):
     result = verify("Demo", target)
     assert [d.kind for d in result.defects] == ["go-package-launch"]
     assert result.exit_code() == 1
+
+
+# DupFind 20261024.183232: a fenced pytest module whose test functions never run.
+_FENCED_FUNCTIONS = """# FEATURE: Size Filter
+
+## Programmatic Acceptance
+
+```python
+def test_zero_byte_file_is_excluded():
+    assert True
+```
+
+## User Acceptance
+
+- None.
+"""
+
+_CALLED_HELPER = """# FEATURE: Helper
+
+## Programmatic Acceptance
+
+=== AC helper-called ===
+Intent: A helper reached from top level runs.
+
+def double(value):
+    return value * 2
+
+
+def check():
+    assert double(2) == 4
+
+
+check()
+=== END AC helper-called ===
+"""
+
+
+def test_a_criterion_whose_functions_never_run_is_a_defect(tmp_path):
+    result = verify("Demo", _target(tmp_path, FEATURE_SizeFilter=_FENCED_FUNCTIONS))
+
+    (defect,) = result.defects
+    assert (defect.check_id, defect.kind) == ("feature-sizefilter-1", "uncalled-function")
+    assert "`test_zero_byte_file_is_excluded`" in defect.detail
+
+
+def test_a_function_reached_from_top_level_is_not_a_defect(tmp_path):
+    result = verify("Demo", _target(tmp_path, FEATURE_Helper=_CALLED_HELPER))
+
+    assert result.defects == ()

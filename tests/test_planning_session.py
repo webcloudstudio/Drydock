@@ -49,18 +49,21 @@ from drydock.planning_session import (
 def _pa(*intents: str) -> str:
     """Render a canonical Programmatic Acceptance body.
 
-    Each intent becomes one ``### check-N`` heading plus a fenced ``python``
-    assertion block — the format the build engine executes and the plan gate
-    counts. One intent yields one counted check.
+    Each intent becomes one ``=== AC check-N ===`` block — the authored format
+    the build engine executes and the plan gate counts. One intent yields one
+    counted check.
     """
     blocks = []
     for index, intent in enumerate(intents, start=1):
-        blocks.append(f"### check-{index}\n{intent}\n\n```python\nassert True\n```")
+        blocks.append(
+            f"=== AC check-{index} ===\nIntent: {intent}\n\nassert True\n"
+            f"=== END AC check-{index} ==="
+        )
     return "\n\n".join(blocks)
 
 
 def _pa_code(*snippets: str) -> str:
-    """Like ``_pa`` but each fenced block holds a caller-supplied assertion line,
+    """Like ``_pa`` but each block holds a caller-supplied assertion line,
     so route paths appear inside the section for test-driven route coverage.
 
     The binding line matters: every check runs as its own script, so a snippet that read an
@@ -70,7 +73,10 @@ def _pa_code(*snippets: str) -> str:
     blocks = []
     for index, code in enumerate(snippets, start=1):
         body = f"from app import client\n{code}"
-        blocks.append(f"### check-{index}\nRoute acceptance {index}.\n\n```python\n{body}\n```")
+        blocks.append(
+            f"=== AC check-{index} ===\nIntent: Route acceptance {index}.\n\n{body}\n"
+            f"=== END AC check-{index} ==="
+        )
     return "\n\n".join(blocks)
 
 
@@ -240,15 +246,17 @@ Project type: `cli`
 """
 
 # The canonical Programmatic Acceptance body for the shared spec fixture: two
-# ``### check-N`` + fenced ``python`` blocks — the format the build engine runs
-# and the plan gate counts. Named so tests can swap it for `- None.` variants.
+# ``=== AC check-N ===`` blocks — the authored format the build engine runs and
+# the plan gate counts. Named so tests can swap it for `- None.` variants.
 _SPEC_HEADER_PA_BODY = (
-    "### check-1\n"
-    "The {name} route responds with HTTP 200.\n\n"
-    "```python\nassert True\n```\n\n"
-    "### check-2\n"
-    "The {name} handler returns the documented payload keys.\n\n"
-    "```python\nassert True\n```"
+    "=== AC check-1 ===\n"
+    "Intent: The {name} route responds with HTTP 200.\n\n"
+    "assert True\n"
+    "=== END AC check-1 ===\n\n"
+    "=== AC check-2 ===\n"
+    "Intent: The {name} handler returns the documented payload keys.\n\n"
+    "assert True\n"
+    "=== END AC check-2 ==="
 )
 
 _SPEC_HEADER = (
@@ -293,14 +301,13 @@ def _select_sqlite(target_dir: Path) -> None:
 def _operation_criteria(text: str, *verbs: str) -> str:
     """Replace a DATABASE.md fixture's criteria with one calling each ``settings`` operation."""
     body = "".join(
-        f"### settings-{verb}\n"
-        f"The settings {verb} operation answers.\n\n"
-        "```python\n"
+        f"=== AC settings-{verb} ===\n"
+        f"Intent: The settings {verb} operation answers.\n\n"
         "from persistence.testing import db_session\n\n"
         "with db_session() as db:\n"
         f"    result = db.settings.{verb}(key='k')\n"
         "    print(result)\n"
-        "```\n\n"
+        f"=== END AC settings-{verb} ===\n\n"
         for verb in verbs
     )
     head, tail = text.split("## Programmatic Acceptance\n\n", 1)
@@ -2571,13 +2578,12 @@ def test_a_story_whose_blueprint_carries_no_criterion_is_refused(tmp_path, none_
 def test_single_suite_driving_check_satisfies_surface_gate(tmp_path):
     # A conformance test suite supplied to the Blueprint is verified by one check that
     # shells out to the staged harness — the strongest test-driven acceptance a story can
-    # carry. That single fenced check must clear the several-assertions minimum instead of
+    # carry. That single check must clear the several-assertions minimum instead of
     # tripping it; requiring a second fabricated assertion is the bug this guards against.
     _make_target(tmp_path)
     suite_check = (
-        "### harness-smoke\n"
-        "The staged conformance harness runs one selected example.\n\n"
-        "```python\n"
+        "=== AC harness-smoke ===\n"
+        "Intent: The staged conformance harness runs one selected example.\n\n"
         "import subprocess, sys\n"
         "result = subprocess.run(\n"
         '    [sys.executable, "sources/spec_tests.py", "--number", "1"],\n'
@@ -2585,7 +2591,7 @@ def test_single_suite_driving_check_satisfies_surface_gate(tmp_path):
         "    text=True,\n"
         ")\n"
         "assert result.returncode == 0\n"
-        "```"
+        "=== END AC harness-smoke ==="
     )
     spec = _SPEC_HEADER.replace(_SPEC_HEADER_PA_BODY, suite_check)
     arch = spec.format(ftype="ARCHITECTURE", name="Example", ac="None.")
@@ -2602,15 +2608,39 @@ def test_single_suite_driving_check_satisfies_surface_gate(tmp_path):
     assert not any("Programmatic Acceptance criteria" in w for w in result.warnings)
 
 
-def test_fenced_python_acceptance_counts_toward_surface_gate(tmp_path):
-    # Regression: the plan gate must count canonical ``### check-id`` + fenced
-    # ``python`` blocks — the format the build engine executes and the model
-    # emits — not legacy ``- assert`` bullets. Two fenced checks clear the gate.
+def test_delimited_acceptance_counts_toward_surface_gate(tmp_path):
+    # Regression: the plan gate must count ``=== AC <id> ===`` blocks — the format
+    # the build engine executes and the model emits — not legacy ``- assert``
+    # bullets. Two delimited checks clear the gate.
     target_dir = _make_target(tmp_path)
     result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
     assert not any("Programmatic Acceptance criteria" in w for w in result.warnings)
     arch_text = (target_dir / "blueprint" / "ARCHITECTURE.md").read_text(encoding="utf-8")
-    assert "```python" in arch_text
+    assert "=== AC check-1 ===" in arch_text
+
+
+def test_fenced_or_uncalled_criteria_are_returned_for_artifact_repair(tmp_path):
+    # DupFind 20261024.183232: repair wrote a fenced pytest module whose functions never ran.
+    from drydock.planning_session import CriteriaDefect, _validate_plan_output
+
+    fenced = (
+        "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
+        "```python\ndef test_status():\n    assert True\n```\n\n"
+        "## User Acceptance\n\n- None.\n"
+    )
+    manifest = _manifest()
+    blocks = {
+        "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
+        "FEATURE-Status.md": fenced,
+        "MANIFEST.md": manifest,
+    }
+
+    with pytest.raises(CriteriaDefect) as raised:
+        _validate_plan_output(dict(blocks), tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    kinds = [(kind, item.source) for kind, item in raised.value.defects]
+    assert ("fenced-criteria", "FEATURE-Status.md") in kinds
+    assert ("uncalled-function", "FEATURE-Status.md") in kinds
 
 
 def test_acceptance_status_counts_criteria_in_both_grammars_but_never_bullets():
@@ -7317,7 +7347,8 @@ def test_a_plan_build_cannot_execute_is_written_as_draft_and_reported(tmp_path):
     target_dir = _make_target(tmp_path)
     (target_dir / "METADATA.md").write_text("name: Example\nbuild_sub_state: \n", encoding="utf-8")
     broken = _llm_output().replace(
-        "### check-1\nThe Status route responds with HTTP 200.\n\n```python\nassert True\n```",
+        "=== AC check-1 ===\nIntent: The Status route responds with HTTP 200.\n\nassert True\n"
+        "=== END AC check-1 ===",
         '=== AC status-open ===\nIntent: Never closed.\n\nsample = """\n',
         1,
     )

@@ -38,8 +38,10 @@ from drydock.acceptance import (
     acceptance_checks_from_text,
     body_is_a_complete_cut,
     escape_defects,
+    fenced_acceptance_defect,
     parse_programmatic_acceptance_text,
     split_fused_acceptance_boundary,
+    uncalled_function_defect,
     unresolved_globals,
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
@@ -427,14 +429,25 @@ def _repair_missing_leading_delimiter(text: str) -> str | None:
     if not text or text.lstrip().startswith("==="):
         return None
 
-    first_end = _END_BLOCK_LINE_RE.search(text)
+    # ``=== END AC <id> ===`` closes a criterion inside the body, never the artifact.
+    first_end = next(
+        (
+            match
+            for match in _END_BLOCK_LINE_RE.finditer(text)
+            if not AC_END_RE.fullmatch(match.group(0).strip())
+        ),
+        None,
+    )
     if first_end is None:
         return None
 
     leading = text[: first_end.start()]
     if not leading.strip():
         return None
-    if "===" in leading:
+    if any(
+        "===" in line and not (AC_OPEN_RE.fullmatch(line) or AC_END_RE.fullmatch(line))
+        for line in leading.splitlines()
+    ):
         return None
 
     recovered_name = first_end.group("name").strip()
@@ -4125,6 +4138,19 @@ def _validate_plan_output(
             for defect in _criteria_missing_defects(blocks, plan, blueprint_dir)
         )
         + tuple(("operation-untested", defect) for defect in _untested_operation_defects(blocks))
+        + tuple(
+            ("fenced-criteria", MalformedAcceptance(check_id="", source=name, reason=reason))
+            for name in sorted(blocks)
+            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+            if (reason := fenced_acceptance_defect(blocks[name])) is not None
+        )
+        + tuple(
+            ("uncalled-function", MalformedAcceptance(check.check_id, name, reason))
+            for name in sorted(blocks)
+            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+            for check in _acceptance_checks(blocks[name], source=name)
+            if (reason := uncalled_function_defect(check.code)) is not None
+        )
         + tuple(
             ("operation-undeclared", defect) for defect in _undeclared_operation_defects(blocks)
         )
