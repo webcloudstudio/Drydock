@@ -295,6 +295,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock plan` and `plan verify` accept a `cli_runner` call inside a function when
+  that function asserts its exit status. Each `def` or `class` body is now judged as its own
+  scope; before, every such call was reported `unchecked-call`, which stopped DupFind
+  `20261024.183232` at plan verify. `drydock plan` and `plan verify` also refuse a criterion that
+  defines a top-level function nothing calls (`uncalled-function`): a criterion runs as a script,
+  so a `def test_*` module passed without exercising the product. `drydock plan` refuses newly
+  emitted Blueprints whose Programmatic Acceptance uses Markdown ```` ```python ```` fences instead
+  of `=== AC <id> ===` blocks (`fenced-criteria`), which `plan repair` cannot address, and returns
+  both defects to artifact repair. `plan verify` and Build still read existing fenced Blueprints.
+  Recovery of a missing first artifact delimiter no longer mistakes `=== END AC <id> ===` for an
+  artifact close.
 - 2026-10-24: `drydock build` keeps a build out of any enclosing uv workspace. A Python Target's
   build receives a standalone `pyproject.toml` before the first agent call, and every tool-using
   agent call that registers its working directory as a workspace member of an enclosing project
