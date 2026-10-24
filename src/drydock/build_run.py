@@ -116,7 +116,7 @@ from drydock.config import (
     get_sandbox_mem_limit_mb,
     max_consecutive_stalls,
 )
-from drydock.database_apply import apply_schema
+from drydock.database_apply import apply_schema, premature_artifacts
 from drydock.database_contract import (
     database_operation_fingerprints,
     derived_indexes,
@@ -3748,6 +3748,13 @@ def build_target(
                     if gate.blocks
                 )
             runtime_schema = apply_schema(resolved_build_dir, verify_only=True)
+            if early := premature_artifacts(resolved_build_dir):
+                _emit(
+                    on_text,
+                    "persistence: "
+                    + ", ".join(early)
+                    + " written by the agent before the DATABASE step; that step regenerates it",
+                )
             if runtime_schema is not None:
                 if not runtime_schema.applied:
                     state, status = "closed/failed", "failed"

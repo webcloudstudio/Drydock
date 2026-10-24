@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -13,6 +14,10 @@ from drydock.paths import get_language_dir
 from drydock.target_environment import resolve_target_environment
 
 SCHEMA_FILENAME = "schema.sql"
+VERIFICATION_FILENAME = "schema-verification.json"
+#: Written by Drydock when it emits persistence from ``DATABASE.md``. No agent prompt names it, so
+#: it, not the presence of files an agent can also write, says the DATABASE step has run.
+PROVENANCE_FILENAME = ".drydock-persistence.json"
 #: The store the application opens when nothing overrides it; ``Rigging/stack/persistence.md``.
 DEFAULT_DSN = "data/app.db"
 APPLY_TIMEOUT_SECONDS = 120
@@ -31,21 +36,38 @@ def apply_schema(
 ) -> SchemaApplication | None:
     """Apply and verify the schema, or only verify it when ``verify_only`` is true.
 
-    ``None`` means the DATABASE step has not emitted ``schema.sql`` or its verification manifest:
-    either the build declares no schema or that step has not run yet. A ``persistence/`` package
-    alone does not count, because a step ordered before DATABASE may stand one up for the
-    application factory to import. Verification never provisions a store.
+    ``None`` means there is nothing to apply or verify: the build declares no schema, or, for
+    verification, Drydock has not emitted persistence yet. Verification starts at Drydock's
+    provenance record, not at ``schema.sql``: a step ordered before DATABASE may write the
+    DATABASE-owned files itself, and the DATABASE step regenerates them. Verification never
+    provisions a store.
 
     Runs from ``build_dir``, as the application and its criteria do, so a relative SQLite path
     resolves to the same file they open.
     """
     schema = build_dir / SCHEMA_FILENAME
     package = build_dir / "persistence"
-    manifest = build_dir / "schema-verification.json"
+    manifest = build_dir / VERIFICATION_FILENAME
+    if verify_only and not (build_dir / PROVENANCE_FILENAME).is_file():
+        return None
     if not schema.exists() and not manifest.exists():
         return None
-    if not schema.is_file() or not package.is_dir() or not manifest.is_file():
-        return SchemaApplication(False, "persistence artifacts missing; rebuild the DATABASE step")
+    missing = [
+        name
+        for name, present in (
+            (SCHEMA_FILENAME, schema.is_file()),
+            ("persistence/", package.is_dir()),
+            (VERIFICATION_FILENAME, manifest.is_file()),
+        )
+        if not present
+    ]
+    if missing:
+        return SchemaApplication(
+            False,
+            "persistence artifacts missing after the DATABASE step: "
+            + ", ".join(missing)
+            + "; rebuild the DATABASE step",
+        )
     child_env = {**(os.environ if env is None else env)}
     child_env["DRYDOCK_SCHEMA_VERIFY_ONLY"] = "1" if verify_only else "0"
     if (build_dir / "persistence" / "go.mod").is_file():
@@ -86,7 +108,37 @@ def apply_schema(
     return SchemaApplication(True, completed.stdout.strip())
 
 
-__all__ = ["DEFAULT_DSN", "SchemaApplication", "apply_schema"]
+def record_provenance(build_dir: Path, written: tuple[Path, ...]) -> Path:
+    """Record that Drydock emitted ``written`` from ``DATABASE.md`` into ``build_dir``."""
+    path = build_dir / PROVENANCE_FILENAME
+    files = sorted(item.relative_to(build_dir).as_posix() for item in written)
+    path.write_text(
+        json.dumps({"source": "DATABASE.md", "files": files}, indent=2) + "\n", encoding="utf-8"
+    )
+    return path
+
+
+def premature_artifacts(build_dir: Path) -> tuple[str, ...]:
+    """Name DATABASE-owned files present before Drydock has emitted persistence.
+
+    A ``persistence/`` package alone is not named: a step ordered before DATABASE may stand one
+    up for the application factory to import.
+    """
+    if (build_dir / PROVENANCE_FILENAME).is_file():
+        return ()
+    return tuple(
+        name for name in (SCHEMA_FILENAME, VERIFICATION_FILENAME) if (build_dir / name).exists()
+    )
+
+
+__all__ = [
+    "DEFAULT_DSN",
+    "PROVENANCE_FILENAME",
+    "SchemaApplication",
+    "apply_schema",
+    "premature_artifacts",
+    "record_provenance",
+]
 
 
 def _apply_go_schema(build_dir: Path, *, env: dict[str, str] | None) -> SchemaApplication:

@@ -42,9 +42,13 @@ acceptance-only failures as `UNVERIFIED` before continuing.
 `2026-10-22` · **Acceptance uses the provisioned application store.** The DATABASE step emits
 runtime catalog/count probes, applies schema, verifies declared columns, keys, constraints and
 indexes, and records `evidence/persistence-verification.json`; these probes are a precondition, and the persistence story verifies only on `DATABASE.md`'s own criteria. Later acceptance runs verify without
-applying DDL and refuse a missing or incompatible store. Verification starts once the DATABASE
-step has emitted `schema.sql` or `schema-verification.json`; a `persistence/` package alone, stood
-up by an earlier step, is not checked. Criterion isolation is one harness-owned rollback
+applying DDL and refuse a missing or incompatible store. Verification starts only at the
+provenance record `.drydock-persistence.json` that Drydock writes when it emits persistence
+(`2026-10-24`); `schema.sql`, `schema-verification.json`, or a `persistence/` package written by an
+earlier step is not checked, and step close prints `persistence: <files> written by the agent
+before the DATABASE step; that step regenerates it`. A missing artifact after that step names the
+missing files. Provisioning (`score`, the DATABASE step) still starts at `schema.sql` or
+`schema-verification.json`. Criterion isolation is one harness-owned rollback
 transaction per Python criterion (`2026-10-24`); see
 [acceptance_criteria](../topics/acceptance_criteria.md). Cost when broken: criteria test an
 unprovisioned store or leave shared residue.

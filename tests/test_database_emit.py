@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from drydock.database_apply import DEFAULT_DSN, apply_schema
+from drydock.database_apply import DEFAULT_DSN, apply_schema, premature_artifacts
 from drydock.database_emit import PACKAGE, render_schema_module, write_persistence_package
 from drydock.errors import SpecificationError
 from drydock.paths import get_language_dir
@@ -443,14 +443,34 @@ def test_apply_schema_is_skipped_for_a_persistence_package_before_the_database_s
     assert apply_schema(tmp_path, verify_only=True) is None
 
 
-def test_apply_schema_reports_a_partial_database_step(tmp_path: Path):
+def test_apply_schema_skips_agent_written_ddl_before_the_database_step(tmp_path: Path):
+    # FxRates 20261024.073528: foundation copied the shipped engines and hand-wrote schema.sql
+    # before the DATABASE step, and verification failed the block unexecuted as missing
+    # DATABASE artifacts.
     (tmp_path / "persistence").mkdir()
-    (tmp_path / "schema.sql").write_text("", encoding="utf-8")
+    (tmp_path / "persistence" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "schema.sql").write_text("CREATE TABLE IF NOT EXISTS rates (x TEXT);\n", "utf-8")
 
-    application = apply_schema(tmp_path, verify_only=True)
+    assert apply_schema(tmp_path, verify_only=True) is None
+    assert premature_artifacts(tmp_path) == ("schema.sql",)
+
+
+def test_apply_schema_names_artifacts_missing_after_the_database_step(tmp_path: Path):
+    blueprint_dir = tmp_path / "blueprint"
+    build_dir = tmp_path / "build"
+    blueprint_dir.mkdir()
+    (blueprint_dir / "DATABASE.md").write_text(_DATABASE, encoding="utf-8")
+    write_persistence_package(blueprint_dir, build_dir)
+    assert premature_artifacts(build_dir) == ()
+    (build_dir / "schema-verification.json").unlink()
+
+    application = apply_schema(build_dir, verify_only=True)
 
     assert application is not None and not application.applied
-    assert "persistence artifacts missing" in application.detail
+    assert application.detail == (
+        "persistence artifacts missing after the DATABASE step: schema-verification.json; "
+        "rebuild the DATABASE step"
+    )
 
 
 def test_a_declaration_with_no_tables_emits_no_package(tmp_path: Path):
