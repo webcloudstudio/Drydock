@@ -237,6 +237,119 @@ def _asserted_exit(test: ast.expr, name: str | None, call: ast.Call | None) -> i
     return None
 
 
+def _dictionary_result_checks(tree: ast.Module, statements: list[ast.stmt]) -> dict[ast.Call, int]:
+    """Recognize an empty result map filled over dictionary keys, then checked in full.
+
+    Keep this proof bounded: unique keys prevent overwritten results, adjacent loops prevent
+    intervening mutations, and only prints may precede the exit assertion.
+    """
+    checked: dict[ast.Call, int] = {}
+    for index, producer in enumerate(statements):
+        if not (
+            index > 0
+            and isinstance(producer, ast.For)
+            and isinstance(producer.target, ast.Name)
+            and isinstance(producer.iter, ast.Name)
+            and len(producer.body) == 1
+            and not producer.orelse
+        ):
+            continue
+        initial = statements[index - 1]
+        assignment = producer.body[0]
+        if not (
+            isinstance(initial, ast.Assign)
+            and len(initial.targets) == 1
+            and isinstance(initial.targets[0], ast.Name)
+            and isinstance(initial.value, ast.Dict)
+            and not initial.value.keys
+            and isinstance(assignment, ast.Assign)
+            and len(assignment.targets) == 1
+            and isinstance(assignment.targets[0], ast.Subscript)
+            and _is_runner(assignment.value)
+        ):
+            continue
+        mapping = initial.targets[0].id
+        target = assignment.targets[0]
+        if not (
+            isinstance(target.value, ast.Name)
+            and target.value.id == mapping
+            and isinstance(target.slice, ast.Name)
+            and target.slice.id == producer.target.id
+        ):
+            continue
+        # A dictionary's iteration keys are unique; an arbitrary sequence may overwrite a
+        # failing result. Require a literal dictionary binding with no intervening uses.
+        source = producer.iter.id
+        binding = next(
+            (
+                node
+                for node in reversed(statements[: index - 1])
+                if producer not in ast.walk(node)
+                if any(isinstance(n, ast.Name) and n.id == source for n in ast.walk(node))
+            ),
+            None,
+        )
+        if not (
+            isinstance(binding, ast.Assign)
+            and len(binding.targets) == 1
+            and isinstance(binding.targets[0], ast.Name)
+            and binding.targets[0].id == source
+            and isinstance(binding.value, ast.Dict)
+            and source != mapping
+        ):
+            continue
+        consumer_index = index + 2  # The flattened producer body is exactly one assignment.
+        if consumer_index >= len(statements):
+            continue
+        consumer = statements[consumer_index]
+        if not (
+            isinstance(consumer, ast.For)
+            and isinstance(consumer.iter, ast.Call)
+            and isinstance(consumer.iter.func, ast.Attribute)
+            and isinstance(consumer.iter.func.value, ast.Name)
+            and consumer.iter.func.value.id == mapping
+            and consumer.iter.func.attr == "items"
+            and not consumer.iter.args
+            and not consumer.iter.keywords
+            and isinstance(consumer.target, ast.Tuple)
+            and len(consumer.target.elts) == 2
+            and isinstance(consumer.target.elts[0], ast.Name)
+            and consumer.target.elts[0].id != mapping
+            and isinstance(consumer.target.elts[1], ast.Tuple)
+            and len(consumer.target.elts[1].elts) == 3
+            and all(isinstance(n, ast.Name) for n in consumer.target.elts[1].elts)
+        ):
+            continue
+        # Flattening must not move the assertion outside an enclosing loop or branch:
+        # otherwise only the final batch, or only one conditional path, may be checked.
+        if any(
+            (producer in ast.walk(scope)) != (consumer in ast.walk(scope))
+            for scope in ast.walk(tree)
+            if isinstance(scope, (ast.For, ast.While, ast.If, ast.Try))
+            and scope not in (producer, consumer)
+        ):
+            continue
+        names = [n.id for n in consumer.target.elts[1].elts]
+        if len(set(names)) != 3 or mapping in names or names[0] == consumer.target.elts[0].id:
+            continue
+        for node in consumer.body:
+            if isinstance(node, ast.Assert):
+                expected = _asserted_exit(node.test, names[0], None)
+                if expected is not None:
+                    checked[assignment.value] = expected
+                break
+            elif not (
+                isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "print"
+                and sum(isinstance(n, ast.Call) for n in ast.walk(node)) == 1
+                and not any(isinstance(n, ast.NamedExpr) for n in ast.walk(node))
+            ):
+                break
+    return checked
+
+
 def _checked_calls(tree: ast.Module) -> list[_CheckedCall]:
     """Every ``cli_runner`` call in source order, with whether an ``assert`` reads its exit.
 
@@ -245,7 +358,9 @@ def _checked_calls(tree: ast.Module) -> list[_CheckedCall]:
     """
     results: list[_CheckedCall] = []
     pending: dict[str, ast.Call] = {}
-    for node in _statements(tree.body):
+    statements = _statements(tree.body)
+    dictionary_checks = _dictionary_result_checks(tree, statements)
+    for node in statements:
         if isinstance(node, ast.Assert):
             read = {name.id for name in ast.walk(node.test) if isinstance(name, ast.Name)}
             for name in sorted(read & pending.keys()):
@@ -263,6 +378,10 @@ def _checked_calls(tree: ast.Module) -> list[_CheckedCall]:
         else:
             calls = list(ast.walk(node))
         calls = [call for call in calls if _is_runner(call)]
+        for call in calls:
+            if call in dictionary_checks:
+                results.append(_CheckedCall(call, True, dictionary_checks[call]))
+        calls = [call for call in calls if call not in dictionary_checks]
         if not calls:
             continue
         name = None

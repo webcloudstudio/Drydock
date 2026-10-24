@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import sys
+
 import pytest
 
 from drydock.harness_exits import (
@@ -205,6 +208,96 @@ assert code == 0
 text = cli_runner("report")[1]
 """
     assert unchecked_calls(code) == [3, 4, 7]
+
+
+# DrydockStats 20261024.143257 REM-007: collect inside a context, assert outside it.
+_DICTIONARY_RESULTS = """COLUMNS = {"summary": 11, "commands": 7}
+with context():
+    path = "empty.jsonl"
+    results = {}
+    for report in COLUMNS:
+        results[report] = cli_runner(report, path)
+for report, (code, out, err) in results.items():
+    print(report, code)
+    print(out)
+    print(err, file=sys.stderr)
+    assert code == 0, (report, code, out, err)
+"""
+
+
+def test_dictionary_results_assert_every_exit():
+    assert unchecked_calls(_DICTIONARY_RESULTS) == []
+
+
+@pytest.mark.parametrize("failed_report", [None, "summary", "commands"])
+def test_dictionary_result_assertions_fail_on_each_nonzero_exit(failed_report, capsys):
+    namespace = {
+        "context": contextlib.nullcontext,
+        "sys": sys,
+        "cli_runner": lambda report, path: (9 if report == failed_report else 0, "", ""),
+    }
+    if failed_report is None:
+        exec(_DICTIONARY_RESULTS, namespace)
+    else:
+        with pytest.raises(AssertionError):
+            exec(_DICTIONARY_RESULTS, namespace)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("assert code == 0", "assert out == ''"),
+        ("    assert code == 0", "    code = 0\n    assert code == 0"),
+        ("    print(report, code)", "    print(code := 0)"),
+        ("    assert code == 0", "    if report == 'summary':\n        assert code == 0"),
+        ("    assert code == 0", "    break\n    assert code == 0"),
+        ("results.items()", "other.items()"),
+        ("results.items()", "results.items() if False else []"),
+        ("results[report]", "results['same-key']"),
+        ("for report in COLUMNS", "for report in ['summary', 'summary']"),
+        ("    results = {}", "    results = {}\n    COLUMNS = ['summary', 'summary']"),
+        ("for report, (code", "results.clear()\nfor report, (code"),
+        ("for report, (code", "results = {}\nfor report, (code"),
+        ("for report, (code", "for report, (out"),
+        ("for report, (code", "for code, (code"),
+    ],
+)
+def test_dictionary_results_do_not_hide_unchecked_calls(old, new):
+    assert unchecked_calls(_DICTIONARY_RESULTS.replace(old, new))
+
+
+def test_dictionary_results_preserve_other_unchecked_calls():
+    code = _DICTIONARY_RESULTS + 'cli_runner("unchecked")\n'
+    assert unchecked_calls(code) == [12]
+
+
+def test_dictionary_results_cannot_skip_earlier_batches():
+    producer, consumer = _DICTIONARY_RESULTS.split("for report, (code")
+    code = (
+        "for batch in (1, 2):\n"
+        + "".join("    " + line + "\n" for line in producer.splitlines())
+        + "for report, (code"
+        + consumer
+    )
+    assert unchecked_calls(code)
+
+
+def test_plan_verify_accepts_asserted_dictionary_results(tmp_path):
+    target = tmp_path / "Demo"
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+    # The context is inert; this integration checks the static gate without launching Go.
+    code = (
+        "import contextlib\nimport sys\nfrom drydock_go import cli_runner\n"
+        + _DICTIONARY_RESULTS.replace("context()", "contextlib.nullcontext()")
+    )
+    (blueprint / "FEATURE-Reports.md").write_text(
+        "# FEATURE: Reports\n\n## Programmatic Acceptance\n\n"
+        f"=== AC empty ===\nIntent: Every report exits zero.\n\n{code}=== END AC empty ===\n",
+        encoding="utf-8",
+    )
+    result = verify("Demo", target)
+    assert result.exit_code() == 0, result.defects
 
 
 def test_a_refusal_about_an_unloaded_staged_key_is_reported(tmp_path):
