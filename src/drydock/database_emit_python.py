@@ -106,15 +106,8 @@ def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, st
     emitted: dict[str, str] = {}
     by_pattern: dict[str, tuple[str, str]] = {}
     for pattern in patterns:
-        verbs = {operation.partition(".")[2] for operation in pattern.operations}
-        if not pattern.outputs or not verbs & {
-            "get",
-            "list",
-            "create",
-            "update",
-            "upsert",
-            "delete",
-        }:
+        # Every Kind returns its Output row when one is declared; a count or key otherwise.
+        if not pattern.outputs:
             continue
         name = _identifier(pattern.output_name or f"{pattern.identifier}Row")
         annotations = "\n".join(
@@ -144,14 +137,15 @@ def render_schema_module(text: str, *, source: str = "DATABASE.md") -> str:
     operations: list[str] = []
     for pattern in contract.patterns:
         for operation in pattern.operations:
-            table, _, verb = operation.partition(".")
+            table, _, name = operation.partition(".")
+            verb = pattern.kind
             declared = tuple(column.name for column in columns_of.get(table, ()))
             inputs = tuple(field.name for field in pattern.inputs)
             row_name = rows.get(pattern.identifier, (None, ""))[0]
             selected: tuple[str, ...] = ()
             match: tuple[str, ...] = ()
             if table in tables_by_name:
-                match = resolve_operation(pattern, tables_by_name[table], verb).match
+                match = resolve_operation(pattern, tables_by_name[table]).match
             if row_name is not None:
                 # Validation holds every Output field to a column, so nothing falls back to
                 # the whole table and a wrapper Output cannot build an empty row.
@@ -165,6 +159,7 @@ def render_schema_module(text: str, *, source: str = "DATABASE.md") -> str:
                 f"        row={row_name or None},\n"
                 f"        columns={selected!r},\n"
                 f"        match={match!r},\n"
+                f"        name={name!r},\n"
                 f"    ),"
             )
 

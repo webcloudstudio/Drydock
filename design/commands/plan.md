@@ -258,6 +258,21 @@ An analyzed story left uncovered fails the coverage gate, whose repair message s
 *Broken:* ReadingList `20261023.200606` attached `READING-002` and `st-002` to the store as well
 as to Add Book.
 
+`2026-10-23` · **An operation is a name with a Kind.** `Repository operation` is `<table>.<name>`;
+the name is the method (`db.<table>.<name>`) and the caller contract. `| Kind |` (`get`, `list`,
+`create`, `update`, `upsert`, `delete`) is how it runs; a name that is a Kind needs no Kind row,
+and any other name without one, or a verb name with a different Kind, is refused. A table holds
+several operations of one Kind under different names. Each name is declared once, and a second
+name with the same Kind, Match, Sets, and Output is a refused synonym. Both runtimes look up
+operations by name and dispatch on Kind. *Broken:* one method per verb meant a table could not
+both update by `PK` and reprice by currency.
+
+`2026-10-23` · **The generated surface is the operation contract.** `operation_surface` renders,
+per operation: call, Kind, Rows, Match, Sets, Input and Output JSON in caller types, the SQL the
+runtime executes (`operation_sql`, held byte-identical to the shipped `Driver` by test), and the
+contract fingerprint. It closes `DATABASE_compact.md` from Plan and is spliced into
+`drydock rigging compact`'s output. *Broken:* a builder inferred cardinality and return shape.
+
 `2026-10-23` · **Every operation declares the rows it reaches.** An optional `| Match |` row names
 the Input fields that select rows: equality, AND, every field required. `resolve_operation` makes
 each choice explicit — `get` matches a unique key and its Input is the Match; `list` filters on
@@ -402,9 +417,6 @@ A failing `plan verify` condemns the standing plan rung without voiding anything
   pattern (`| Join | rates |`) with Output fields from both tables; (b) builders compose `get` by
   foreign key. (a) keeps SQL inside the package and is the recommendation; it needs an Output
   naming rule for colliding column names.
-- `2026-10-23` · **One verb per table.** `db.<table>.<verb>` grants each verb once, so a table
-  cannot have both a by-`PK` update and a many-row update. Named operations
-  (`rates.update_by_currency`) would lift it at the cost of an open method set.
 
 1. **Compact scope** — does the applied registry and compact substitution rule cover only `stack:`
    files, or also `rules:` and `context:` files?

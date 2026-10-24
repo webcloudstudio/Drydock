@@ -39,11 +39,14 @@
 <!-- name for a surface that has no Feature. -->
 <!-- Plan appends new patterns as it authors Blueprints; it never rewrites held ones. -->
 
-<!-- Repository operation names one declared table and one verb as `<table>.<verb>`, lowercase: -->
-<!-- `settings.get`. The verb is get, list, create, update, upsert, or delete, and no other. One -->
-<!-- pattern declares one operation, because it carries one Input and one Output; give each -->
-<!-- operation its own `### <FEATURE-DOMAIN-NNN>` section. A table grants each verb once. It is -->
-<!-- the only place the declaration says which table a pattern reaches, so the form is checked. -->
+<!-- Repository operation names one declared table and one operation as `<table>.<name>`, -->
+<!-- lowercase snake_case: `rates.get` or `rates.replace_rate`. The name is the method callers -->
+<!-- use and the contract they depend on. `| Kind |` says how it runs: get, list, create, -->
+<!-- update, upsert, or delete. A name that is one of those words is its own Kind and needs no -->
+<!-- Kind row; any other name declares one. Each name is declared once; two names with the same -->
+<!-- Kind, Match, Sets, and Output are synonyms and fail the plan. One pattern declares one -->
+<!-- operation, because it carries one Input and one Output; give each operation its own -->
+<!-- `### <FEATURE-DOMAIN-NNN>` section. The form is checked, not advisory. -->
 <!-- An optional `| Match | `a`, `b` |` row names the Input fields that select the rows: equality, -->
 <!-- joined with AND, every field required. A Match covering the PK or a declared UNIQUE reaches -->
 <!-- one row; any other reaches many. get: a unique key, Input = Match. list: no Match; each -->

@@ -94,7 +94,8 @@ def render_go_schema(text: str) -> str:
 
     for pattern in patterns:
         for operation in pattern.operations:
-            table, verb = operation.split(".")
+            table, name = operation.split(".")
+            verb = pattern.kind
             if table not in table_map:
                 raise SpecificationError(f"Go operation {operation} refers to an undeclared table")
             declared = table_map[table]
@@ -111,7 +112,7 @@ def render_go_schema(text: str) -> str:
                         f"Go operation {operation} refers to undeclared column {field.name}"
                     )
             repo = _export(table) + "Repository"
-            input_type = _export(table) + _export(verb) + "Input"
+            input_type = _export(table) + _export(name) + "Input"
             members, args = [], []
             used = set()
             for field in pattern.inputs:
@@ -163,20 +164,20 @@ def render_go_schema(text: str) -> str:
             else:
                 native, zero, finish = "int64", "0", "return result.Count,nil"
             body = (
-                f"func (repo {repo}) {_export(verb)}(ctx context.Context, input {input_type}) ({native},error) {{\n"
+                f"func (repo {repo}) {_export(name)}(ctx context.Context, input {input_type}) ({native},error) {{\n"
                 "args:=map[string]any{}\n" + "\n".join(args) + "\n"
-                f"result,err:=repo.db.Run(ctx,{json.dumps(table)},{json.dumps(verb)},args)\n"
+                f"result,err:=repo.db.Run(ctx,{json.dumps(table)},{json.dumps(name)},args)\n"
                 f"if err!=nil {{return {zero},err}}\n{finish}\n}}"
             )
-            if (table, verb) in methods:
-                if methods[table, verb] != body:
+            if (table, name) in methods:
+                if methods[table, name] != body:
                     raise SpecificationError(f"Conflicting Go operation declaration {operation}")
                 continue
-            methods[table, verb] = body
-            match = resolve_operation(pattern, declared, verb).match
+            methods[table, name] = body
+            match = resolve_operation(pattern, declared).match
             operations.append(
                 "{"
-                + f"ID:{json.dumps(pattern.identifier)}, Table:{json.dumps(table)}, Verb:{json.dumps(verb)}, Inputs:{_strings(f.name for f in pattern.inputs)}, Columns:{_strings(columns)}, Match:{_strings(match)}"
+                + f"ID:{json.dumps(pattern.identifier)}, Table:{json.dumps(table)}, Verb:{json.dumps(verb)}, Name:{json.dumps(name)}, Inputs:{_strings(f.name for f in pattern.inputs)}, Columns:{_strings(columns)}, Match:{_strings(match)}"
                 + "},"
             )
     fields, initializers, repositories, entries = [], [], [], []

@@ -10,6 +10,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-23: `DATABASE.md` operations are named methods with a Kind. `Repository operation` is
+  `<table>.<name>`, called as `db.<table>.<name>(...)`; a `| Kind |` row (`get`, `list`,
+  `create`, `update`, `upsert`, `delete`) says how it runs, and a name that is itself a Kind needs
+  none. A table may hold several operations of one Kind, such as `rates.update` by `PK` and
+  `rates.reprice_currency` by currency; a synonym (same Kind, Match, Sets, and Output) fails the
+  plan. The generated `## Operation Surface` now gives each operation's full contract: call,
+  Kind, Rows, Match, Sets, Input and Output JSON in caller types, the exact SQL the runtime
+  executes, and a contract fingerprint.
+
 - 2026-10-23: `DATABASE.md` access patterns declare the rows each operation reaches. An optional
   `| Match |` row names the Input fields that select rows (equality, AND, all required), and
   the new `upsert` verb inserts the row a declared unique key identifies or replaces its other
@@ -116,6 +125,13 @@ command surface and Typed Specification contract are unstable and may change bet
   Manifest `draft`/`unbuildable` and exits `1`.
 
 ### Changed
+
+- 2026-10-23: The `DATABASE.md` operation fingerprint recorded in the Manifest hashes only what a
+  caller depends on: name, Kind, Match, rows, return shape, and each field's name and caller
+  type. A column length, nullability, `Required`, `DEFAULT`, or index change no longer makes Refit
+  rebuild the Features citing the operation. Manifests recorded with the earlier fingerprint read
+  an unchanged declaration as unchanged. The Go runtime's `get` no longer appends `LIMIT 1`; a
+  `get` matches a unique key, and both runtimes now build identical statements.
 
 - 2026-10-23: Package version advances to `0.8.0`; the project remains beta. The version
   prepares the next announcement and does not mark the unreleased changes as shipped.

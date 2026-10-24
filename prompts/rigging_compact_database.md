@@ -1,7 +1,7 @@
 ---
 name: rigging_compact_database
 description: Extract the builder-facing persistence contract of a database file into compact prompt-injection form.
-version: 3
+version: 4
 intent: Produce a compact database API contract that preserves stores, reads, writes, schemas, interfaces, and persistence guardrails needed by downstream build steps.
 command: drydock rigging compact
 output: <stem>_compact.md
@@ -21,8 +21,8 @@ Preserve the following when present:
 - Read and write operations
 - Accepted inputs, returned data shapes, and schemas
 - Every column's type cell verbatim, including `PK`, `NOT NULL`, `UNIQUE`, `DEFAULT <literal>`, and `REFERENCES <table>(<column>)`, and every composite `- UNIQUE (...)` or `- INDEX (...)` bullet. Drydock renders executable DDL from these, so a dropped constraint is a schema the built database does not have.
-- Every access pattern's `Repository operation` and `| Match |` cells verbatim, and every Input
-  field with its Required cell. These decide which rows each call reaches.
+- Every access pattern's `Repository operation`, `| Kind |`, and `| Match |` cells verbatim, and
+  every Input field with its Required cell. These decide the method name and which rows it reaches.
 - Mutation rules, identity rules, and concurrency assumptions
 - Persistence-layer interfaces used by other modules
 - Guardrails on who may access storage and how
@@ -45,9 +45,9 @@ persistence unit. Include input tables and returned data shapes where present.
 ## Generated surface
 
 Drydock generates a `## Operation Surface` from the source and places it in the output ahead of
-your text. It lists, per table, every call with its Match, the columns it sets, the rows it
-reaches (one or many), and what it returns. Do not emit an `## Operation Surface` section, and do
-not restate or contradict any call, match, row count, or return it states.
+your text. It gives, per table, every operation's contract: call, Kind, Match, Sets, rows (one or
+many), Input and Output JSON, SQL, and contract fingerprint. Do not emit an `## Operation Surface`
+section, and do not restate or contradict anything it states.
 
 ## Hard rules
 

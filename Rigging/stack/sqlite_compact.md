@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/sqlite.md sha256=70ec9f6e39b355b963c6c1b98f296d480f40a0f363c0af0b6f29b3942ba5e72c on 2026-10-23 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/sqlite.md sha256=6dc83be535be1333bb5ddc58dfeddfef1c42a0c5d43886b2c2cc55138ab9a238 on 2026-10-23 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -54,14 +54,14 @@ edits, or replaces any file listed below.
    acceptance run, so a criterion that drives the application through its own client finds the
    declared tables.
 
-Every later story writes callers only: `route → service → db.<table>.<verb>(...)`. The package
+Every later story writes callers only: `route → service → db.<table>.<name>(...)`. The package
 exposes one attribute per declared table and one method per declared operation. Changing the
 store means changing `DATABASE.md` and rebuilding.
 
-Each verb returns one fixed shape, so a pattern's Output declares the row, never a wrapper
+Each Kind returns one fixed shape, so a pattern's Output declares the row, never a wrapper
 around it:
 
-| Verb | Returns |
+| Kind | Returns |
 |---|---|
 | `get` | the Output row, or `None` (Go `nil`) when nothing matches |
 | `list` | a list of Output rows, one per record; the Output names the row's columns |
@@ -112,34 +112,32 @@ supported interfaces; never reset the database or delete unrelated records.
 
 # SQLite — Contract Surface
 
-## SQLite integration
-
 ### config_key
-SQLite is selected at runtime through a plain filesystem path or a `sqlite://` DSN.
 
-Constraints: The same build must support SQLite for development and testing and PostgreSQL for production through runtime DSN selection.
+SQLite opens from a plain filesystem path or a `sqlite://` DSN; the runtime DSN selects SQLite or PostgreSQL without rebuilding.
 
-### Rule: supported-language-adapter
-Targets declaring `DATABASE.md` require a supported persistence adapter.
+Constraints: SQLite is the development and test engine; PostgreSQL is the production relational engine.
 
-Constraints: Python uses `db.<table>.<verb>(...)` callers with the shipped SQLite adapter; Go uses generated typed callers, declarations, and fixtures; other languages fail before planning.
+### Rule: supported-schema-enforcement
 
-### Rule: enforced-constraints
-SQLite enforces `PRIMARY KEY`, `NOT NULL`, `UNIQUE`, `DEFAULT`, and `REFERENCES`.
+The database enforces `PRIMARY KEY`, `NOT NULL`, `UNIQUE`, `DEFAULT`, and `REFERENCES`.
 
-Constraints: Foreign-key enforcement is required.
+Constraints: Foreign-key enforcement requires `PRAGMA foreign_keys=ON`.
 
-### Rule: cross-engine-validation
-SQLite does not enforce column lengths or strict column types.
+### Rule: sqlite-limitations
 
-Constraints: Production declarations must specify lengths and tests must not treat successful SQLite validation as proof that lengths or types satisfy PostgreSQL.
+SQLite does not enforce declared column lengths or strict column types.
+
+Constraints: Production declarations must include lengths and tests must not treat SQLite success as proof that production lengths or types are valid.
 
 ### Rule: schema-migration
-SQLite schema changes are limited to `ADD COLUMN` and `RENAME`.
 
-Constraints: Do not rely on `DROP COLUMN` before SQLite 3.35, type changes, or `ADD CONSTRAINT`; the schema is built from `schema.sql`.
+SQLite supports only `ADD COLUMN` and `RENAME` through `ALTER TABLE`.
 
-### Rule: persistence-boundary
-Application code must use the generated persistence package for database access.
+Constraints: The schema is built once from `schema.sql`; `DROP COLUMN` before SQLite 3.35, type changes, and `ADD CONSTRAINT` are unsupported.
 
-Constraints: Do not import `sqlite3` outside `persistence/`, retain connections on application objects, or create or alter schema at application startup.
+### Rule: persistence-access
+
+Generated callers access persistence through `db.<table>.<verb>(...)`.
+
+Constraints: Application code must not import `sqlite3`, retain a `sqlite3.Connection`, or create or alter schema at startup.

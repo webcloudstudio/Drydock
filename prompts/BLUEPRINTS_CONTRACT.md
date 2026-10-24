@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261023 V29
+version: 20261023 V30
 ---
 
 ## Overview
@@ -870,22 +870,34 @@ declared here and no Feature claims it. Any Blueprint may cite a shared pattern,
 required to, and `DATABASE.md` cites nothing itself. Never invent a Blueprint file name for a
 surface that has no Feature; name `DATABASE.md` instead.
 
-`Repository operation` names one declared table and one verb as `<table>.<verb>`, lowercase:
-`` `settings.get` ``. The verb is one of `get`, `list`, `create`, `update`, `upsert`, or
-`delete`, and no other. One access pattern declares exactly one operation, because it carries
-exactly one `Input:` and one `Output:` table — a cell naming two operations leaves which fields
-belong to which undeclared. Give each operation its own `### <FEATURE-DOMAIN-NNN>` section with
-its own DTO tables. A table grants each verb at most once: the generated method is
-`db.<table>.<verb>(...)`, so a second `rates.update` would replace the first. Merge the two into
-one pattern whose Input carries every field either needs.
+`Repository operation` names one declared table and one operation as `<table>.<name>`,
+lowercase snake_case: `` `settings.get` `` or `` `rates.replace_rate` ``. The name is the method
+callers use, `db.<table>.<name>(...)`, and it is the contract they depend on. Its `| Kind |` row
+says how it runs: `get`, `list`, `create`, `update`, `upsert`, or `delete`, and no other. A name
+that is itself one of those words is its own Kind and needs no Kind row, so a simple table
+declares `rates.get` and `rates.update`. Any other name declares its Kind:
+
+```markdown
+| Repository operation | `rates.reprice_currency` |
+| Kind | update |
+| Match | `currency` |
+```
+
+One access pattern declares exactly one operation, because it carries exactly one `Input:` and
+one `Output:` table — a cell naming two operations leaves which fields belong to which
+undeclared. Give each operation its own `### <FEATURE-DOMAIN-NNN>` section with its own DTO
+tables. A table may hold several operations of one Kind under different names, such as
+`rates.update` by `PK` and `rates.reprice_currency` by currency. Each name is declared once, and
+two names that run the same Kind, Match, Sets, and Output are synonyms: declare one and cite it
+everywhere.
 
 An optional `| Match | `a`, `b` |` row names the Input fields that select the rows an operation
 reaches. Every Match field is an Input field, required at call time, and the fields are compared
 by equality and joined with AND. No other operator, no OR, no join, and no SQL exist. A Match
 that covers the `PK` or a declared `UNIQUE` reaches at most one row; any other Match reaches many.
-Each verb uses Match exactly as follows:
+Each Kind uses Match exactly as follows:
 
-| Verb | Match | Input fields | Rows | Returns |
+| Kind | Match | Input fields | Rows | Returns |
 |---|---|---|---|---|
 | `get` | a unique key; defaults to every Input field | exactly the Match | 0..1 | the Output row, or none |
 | `list` | not declared; every Input field is an optional equality filter | the filters | 0..n | a list of Output rows |
@@ -907,10 +919,18 @@ source rule such as "a stored (date, currency) is replaced". A `get` on a non-un
 |-------|-------|
 | Owner | FEATURE-RateStorage.md |
 | Access | write |
-| Repository operation | `rates.upsert` |
+| Repository operation | `rates.replace_rate` |
+| Kind | upsert |
 | Match | `date`, `currency` |
 | Compatibility | unchanged |
-``` It is the only place the declaration says which table a pattern reaches, so the form is
+```
+
+Drydock derives each operation's contract from the declaration: its call, Kind, Match, Sets,
+rows, Input and Output as JSON with caller types (`str`, `int`, `float`, `bool`, `bytes`), the
+SQL the runtime executes, and a contract fingerprint. Only a change a caller can see moves the
+fingerprint: the name, Kind, Match, rows, return shape, or a field's name or caller type. A
+column's length, nullability, `DEFAULT`, an index, or the SQL never does, so changing them
+rebuilds nothing beyond `DATABASE.md`. It is the only place the declaration says which table a pattern reaches, so the form is
 checked rather than advisory, and free text there fails the plan. Every table in `## Schema` is reached by at least one access
 pattern, and every operation names a table `## Schema` declares. A table nothing reaches is
 storage no story can use; an operation on a table that is not declared builds a repository against
@@ -923,8 +943,8 @@ every other Blueprint. That batch starts from a seed of the Rigging template and
 imported source specification already declared; keep every seeded table. Declare every table and
 one access pattern for each repository operation any story in the frozen topology needs. Later
 batches receive the frozen declaration as `DATABASE_compact.md` and cite its access patterns. Its
-generated `## Operation Surface` lists, per table, each call with its Match, the columns it sets,
-the rows it reaches, and what it returns; author criteria and callers against it.
+generated `## Operation Surface` gives, per table, each operation's contract: call, Kind, Match,
+Sets, rows, Input and Output JSON, and SQL. Author criteria and callers against it.
 
 Each table is a top-level `` ## `table_name` `` section — lowercase snake_case in backticks — over
 a `| Field | Type | Notes |` table. A type cell is

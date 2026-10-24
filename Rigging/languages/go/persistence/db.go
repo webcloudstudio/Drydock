@@ -23,10 +23,11 @@ type Table struct {
 	Key     string
 }
 
-// Operation describes one declared repository method. Match is the required equality
-// predicate of a get, update, upsert, or delete; an operation without Columns returns a count.
+// Operation describes one declared repository method. Name is the method callers use and Verb
+// is its Kind, how it runs. Match is the required equality predicate of a get, update, upsert,
+// or delete; an operation without Columns returns a count.
 type Operation struct {
-	ID, Table, Verb        string
+	ID, Table, Verb, Name  string
 	Inputs, Columns, Match []string
 }
 
@@ -191,14 +192,14 @@ func (db *Database) predicates(names []string, offset int) string {
 	return " WHERE " + strings.Join(parts, " AND ")
 }
 
-// Run invokes a declared operation; values are always bound parameters.
-func (db *Database) Run(ctx context.Context, table, verb string, arguments map[string]any) (Result, error) {
+// Run invokes a declared operation by table and name; values are always bound parameters.
+func (db *Database) Run(ctx context.Context, table, name string, arguments map[string]any) (Result, error) {
 	if db.transaction != nil {
 		if _, err := db.transaction.ExecContext(ctx, "SAVEPOINT drydock_operation"); err != nil {
 			return Result{}, err
 		}
 	}
-	result, err := db.run(ctx, table, verb, arguments)
+	result, err := db.run(ctx, table, name, arguments)
 	if db.transaction != nil {
 		if err != nil {
 			if _, resetErr := db.transaction.ExecContext(ctx, "ROLLBACK TO SAVEPOINT drydock_operation"); resetErr != nil {
@@ -210,16 +211,20 @@ func (db *Database) Run(ctx context.Context, table, verb string, arguments map[s
 		}
 	}
 	if err != nil {
-		return result, fmt.Errorf("%s.%s: %w", table, verb, err)
+		return result, fmt.Errorf("%s.%s: %w", table, name, err)
 	}
 	return result, nil
 }
-func (db *Database) run(ctx context.Context, table, verb string, arguments map[string]any) (Result, error) {
+func (db *Database) run(ctx context.Context, table, name string, arguments map[string]any) (Result, error) {
 	var op *Operation
 	var declared Table
 	for i := range db.schema.Operations {
 		candidate := &db.schema.Operations[i]
-		if candidate.Table == table && candidate.Verb == verb {
+		called := candidate.Name
+		if called == "" {
+			called = candidate.Verb
+		}
+		if candidate.Table == table && called == name {
 			op = candidate
 			break
 		}
@@ -227,6 +232,7 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 	if op == nil {
 		return Result{}, ErrUnknownOperation
 	}
+	verb := op.Verb
 	for _, candidate := range db.schema.Tables {
 		if candidate.Name == table {
 			declared = candidate
@@ -277,10 +283,9 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 		if len(columns) == 0 {
 			columns = declared.Columns
 		}
+		// A get matches a unique key, so it reads at most one row without a LIMIT; the statement
+		// is the one the Python runtime builds.
 		query := "SELECT " + quoted(columns) + " FROM " + quote(table) + db.predicates(names, 0)
-		if verb == "get" {
-			query += " LIMIT 1"
-		}
 		rows, err := db.selectRows(ctx, query, columns, values)
 		return Result{Rows: rows}, err
 	case "create":

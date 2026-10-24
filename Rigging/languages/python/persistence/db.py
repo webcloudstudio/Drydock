@@ -64,10 +64,11 @@ class Table:
 class Operation:
     """One declared access pattern, reduced to what executing it requires.
 
-    ``inputs`` are the parameters the caller supplies. ``match`` is the equality predicate of a
-    ``get``, ``update``, ``upsert``, or ``delete``, every field of it required; a ``list`` filters
-    on whichever inputs are supplied, and the inputs of a ``create``, ``update``, or ``upsert``
-    outside ``match`` are the values written. ``row`` is the dataclass the operation returns, and
+    ``name`` is the method callers use and ``verb`` is its Kind, how it runs; a name that is a
+    verb runs as that verb. ``inputs`` are the parameters the caller supplies. ``match`` is the
+    equality predicate of a ``get``, ``update``, ``upsert``, or ``delete``, every field of it
+    required; a ``list`` filters on whichever inputs are supplied, and the inputs of a
+    ``create``, ``update``, or ``upsert`` outside ``match`` are the values written. ``row`` is the dataclass the operation returns, and
     ``columns`` are its fields; an operation with no ``row`` returns a count.
     """
 
@@ -78,6 +79,7 @@ class Operation:
     row: type | None = None
     columns: tuple[str, ...] = ()
     match: tuple[str, ...] = ()
+    name: str = ""
 
 
 @dataclass(frozen=True)
@@ -189,18 +191,18 @@ class TableAccess:
     def __init__(self, table: Table, operations: Iterable[Operation], database: Database) -> None:
         self._table = table
         self._database = database
-        self._operations = {operation.verb: operation for operation in operations}
+        self._operations = {operation.name or operation.verb: operation for operation in operations}
 
     def __repr__(self) -> str:
         granted = ", ".join(sorted(self._operations))
         return f"<TableAccess {self._table.name}: {granted or 'no declared operation'}>"
 
-    def __getattr__(self, verb: str) -> Callable[..., Any]:
-        operation = self._operations.get(verb)
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        operation = self._operations.get(name)
         if operation is None:
             granted = ", ".join(sorted(self._operations)) or "none"
             raise UnknownOperation(
-                f"{self._table.name} declares no {verb!r} operation. Declared: {granted}. "
+                f"{self._table.name} declares no {name!r} operation. Declared: {granted}. "
                 "Add an access pattern to DATABASE.md rather than reaching around this class."
             )
         return lambda **arguments: self._database.run(operation, arguments)

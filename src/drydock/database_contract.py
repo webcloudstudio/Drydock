@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 import subprocess
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -73,9 +73,10 @@ _MIGRATION_STATES = frozenset({"planned", "built", "applied"})
 #: from ``list`` and ``update`` moves a read-modify-write out of the layer that owns writes
 #: (FxRates ``20261023.234755``).
 _REPOSITORY_VERBS = ("get", "list", "create", "update", "upsert", "delete")
-_REPOSITORY_OPERATION_RE = re.compile(
-    r"^[a-z][a-z0-9_]*\.(?:" + "|".join(_REPOSITORY_VERBS) + r")$"
-)
+#: ``<table>.<name>``. The name is the method callers use and the contract they depend on; its
+#: ``| Kind |`` is how it runs. A name that is a verb implies its own Kind, so a simple table
+#: needs no Kind row and calls ``db.<table>.get(...)``.
+_REPOSITORY_OPERATION_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,7 @@ class AccessPattern:
     outputs: tuple[Field, ...]
     operations: tuple[str, ...] = ()
     match: tuple[str, ...] = ()
+    kind: str = ""
 
     @property
     def tables(self) -> frozenset[str]:
@@ -547,9 +549,26 @@ def database_operation_fingerprints(text: str) -> str:
     """Serialize the public persistence contract for the applied-spec registry.
 
     The serialized value is deliberately token-safe because it lives inside the
-    Manifest's compact ``applied_specs`` registry.  It excludes every private
-    DATABASE section, so a repository/schema/migration edit cannot invalidate a
-    Feature merely by changing DATABASE.md's file digest.
+    Manifest's compact ``applied_specs`` registry. Each fingerprint hashes only what a
+    caller depends on (``_contract_payload``), so a schema, migration, length, or
+    nullability edit cannot invalidate a Feature merely by changing DATABASE.md.
+    """
+    contract = parse_database_contract(text)
+    try:
+        tables = {table.name: table for table in sqlite_schema_tables(text)}
+    except SpecificationError:
+        tables = {}
+    entries: list[str] = []
+    for pattern in contract.patterns:
+        payload = _contract_payload(pattern, tables.get(pattern.operations[0].partition(".")[0]))
+        entries.append(f"{pattern.identifier}:{sha256(payload.encode()).hexdigest()}")
+    return ";".join(entries)
+
+
+def _legacy_operation_fingerprints(text: str) -> str:
+    """The fingerprint Manifests recorded before it hashed caller types only.
+
+    Kept so an unchanged ``DATABASE.md`` under an older Manifest still reads as unchanged.
     """
     contract = parse_database_contract(text)
     entries: list[str] = []
@@ -564,11 +583,25 @@ def database_operation_fingerprints(text: str) -> str:
             *(f"{field.name}:{field.type}:{int(field.required)}" for field in pattern.inputs),
             pattern.output_name,
             *(f"{field.name}:{field.type}" for field in pattern.outputs),
-            # Absent from a pattern that declares none, so existing fingerprints are unchanged.
             *((f"match:{','.join(pattern.match)}",) if pattern.match else ()),
         ))
         entries.append(f"{pattern.identifier}:{sha256(payload.encode()).hexdigest()}")
     return ";".join(entries)
+
+
+def changed_operation_contracts(prior: Mapping[str, str], text: str) -> set[str]:
+    """Access-pattern ids whose caller contract differs from the recorded fingerprints.
+
+    A recorded value equal to either the current or the legacy fingerprint is unchanged, so a
+    Manifest written before the caller-type fingerprint does not mark every operation changed.
+    """
+    current = parse_database_operation_fingerprints(database_operation_fingerprints(text))
+    legacy = parse_database_operation_fingerprints(_legacy_operation_fingerprints(text))
+    return {
+        identifier
+        for identifier in set(prior) | set(current)
+        if prior.get(identifier) not in {current.get(identifier), legacy.get(identifier)}
+    }
 
 
 def parse_database_operation_fingerprints(value: str) -> dict[str, str]:
@@ -679,10 +712,35 @@ def _repository_operations(value: str, *, identifier: str, source: str) -> tuple
     if invalid:
         raise SpecificationError(
             f"{source}: {identifier} has invalid repository operation "
-            f"{invalid[0]!r}: it names one declared table and one verb as `<table>.<verb>`, "
-            f"lowercase, where the verb is one of {', '.join(_REPOSITORY_VERBS)}"
+            f"{invalid[0]!r}: it names one declared table and one operation as "
+            "`<table>.<name>`, lowercase snake_case, such as `rates.get` or `rates.replace_rate`"
         )
     return operations
+
+
+def _operation_kind(operation: str, declared: str, *, identifier: str, source: str) -> str:
+    """The Kind an operation runs as: its ``| Kind |`` cell, or its name when that is a verb."""
+    name = operation.partition(".")[2]
+    kind = declared.strip().strip("`").strip().casefold()
+    verbs = ", ".join(_REPOSITORY_VERBS)
+    if kind and kind not in _REPOSITORY_VERBS:
+        raise SpecificationError(
+            f"{source}: {identifier} has invalid Kind {kind!r}; the Kind is one of {verbs}"
+        )
+    if name in _REPOSITORY_VERBS:
+        if kind and kind != name:
+            raise SpecificationError(
+                f"{source}: {identifier} names operation `{operation}` with Kind `{kind}`. A "
+                f"verb name is its own Kind; name the operation for what it does, such as "
+                f"`{operation.partition('.')[0]}.<name>`, or drop the Kind row."
+            )
+        return name
+    if not kind:
+        raise SpecificationError(
+            f"{source}: {identifier} names operation `{operation}`, which is not a verb, so it "
+            f"declares `| Kind | <kind> |`, one of {verbs}"
+        )
+    return kind
 
 
 def table_coverage_defects(
@@ -781,15 +839,19 @@ def _parse_access_pattern(match: re.Match[str], block: str, source: str) -> Acce
         )
         if item and not _no_field(item)
     )
+    operations = _repository_operations(
+        metadata["repository operation"], identifier=match.group(1), source=source
+    )
     return AccessPattern(
         identifier=match.group(1),
         match=declared_match,
+        kind=_operation_kind(
+            operations[0], metadata.get("kind", ""), identifier=match.group(1), source=source
+        ),
         owner=metadata["owner"].strip(),
         access=access,
         repository_operation=metadata["repository operation"].strip("`"),
-        operations=_repository_operations(
-            metadata["repository operation"], identifier=match.group(1), source=source
-        ),
+        operations=operations,
         compatibility=compatibility,
         input_name=values["input"][0],
         inputs=values["input"][1],
@@ -929,16 +991,18 @@ def derive_missing_dtos(text: str, *, source: str = "DATABASE.md") -> tuple[str,
         end = matches[index + 1].start() if index + 1 < len(matches) else len(section)
         block = section[match.start() : end]
         present = {found.group(1) for found in _INPUT_OUTPUT_RE.finditer(block)}
-        operation = (
-            {key.casefold(): value for key, value in _rows(block)}
-            .get("repository operation", "")
-            .strip()
-            .strip("`")
-            .strip()
-        )
-        table_name, _, verb = operation.partition(".")
+        metadata = {key.casefold(): value for key, value in _rows(block)}
+        operation = metadata.get("repository operation", "").strip().strip("`").strip()
+        table_name = operation.partition(".")[0]
+        try:
+            verb = _operation_kind(
+                operation, metadata.get("kind", ""), identifier=match.group(1), source=source
+            )
+        except SpecificationError:
+            verb = ""
         if (
             {"Input", "Output"} <= present
+            or not verb
             or not _REPOSITORY_OPERATION_RE.fullmatch(operation)
             or table_name not in tables
         ):
@@ -1070,7 +1134,7 @@ def output_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[st
     defects: list[str] = []
     for pattern in contract.patterns:
         for operation in pattern.operations:
-            table, _, verb = operation.partition(".")
+            table, verb = operation.partition(".")[0], pattern.kind
             columns = columns_of.get(table)
             if columns is None:
                 continue
@@ -1104,10 +1168,11 @@ def output_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[st
 class ResolvedOperation:
     """One declared operation with every implicit choice made explicit.
 
-    ``match`` is the equality ``WHERE`` of a ``get``, ``update``, ``upsert``, or ``delete``;
-    ``filters`` are the optional equality filters of a ``list``; ``sets`` are the columns a
-    ``create``, ``update``, or ``upsert`` writes. ``many`` is decided from the schema, never
-    declared: a match covering the primary key or a declared ``UNIQUE`` reaches at most one row.
+    ``name`` is the method callers use; ``verb`` is its Kind, how it runs. ``match`` is the
+    equality ``WHERE`` of a ``get``, ``update``, ``upsert``, or ``delete``; ``filters`` are the
+    optional equality filters of a ``list``; ``sets`` are the columns a ``create``, ``update``,
+    or ``upsert`` writes. ``many`` is decided from the schema, never declared: a match covering
+    the primary key or a declared ``UNIQUE`` reaches at most one row.
     """
 
     identifier: str
@@ -1120,6 +1185,11 @@ class ResolvedOperation:
     many: bool
     output_name: str
     outputs: tuple[str, ...]
+    name: str = ""
+
+    @property
+    def operation(self) -> str:
+        return f"{self.table}.{self.name or self.verb}"
 
     @property
     def returns_row(self) -> bool:
@@ -1145,13 +1215,14 @@ def _keys_text(table: SQLiteTable) -> str:
     )
 
 
-def resolve_operation(pattern: AccessPattern, table: SQLiteTable, verb: str) -> ResolvedOperation:
+def resolve_operation(pattern: AccessPattern, table: SQLiteTable) -> ResolvedOperation:
     """Make one pattern's match, filters, sets, and cardinality explicit.
 
     Without a ``| Match |`` row an ``update`` matches the primary key and a ``get`` or ``delete``
     matches every Input field, which is what the runtime did before ``Match`` existed. ``list``
     filters on its Input fields and ``create`` matches nothing.
     """
+    verb = pattern.kind
     inputs = tuple(field.name for field in pattern.inputs)
     primary = next(column.name for column in table.columns if column.primary_key)
     if verb in ("list", "create"):
@@ -1184,6 +1255,7 @@ def resolve_operation(pattern: AccessPattern, table: SQLiteTable, verb: str) -> 
         many=many,
         output_name=pattern.output_name,
         outputs=tuple(field.name for field in pattern.outputs),
+        name=pattern.operations[0].partition(".")[2],
     )
 
 
@@ -1194,21 +1266,20 @@ def resolved_operations(text: str, *, source: str = "DATABASE.md") -> tuple[Reso
         contract = parse_database_contract(text, source=source)
     except SpecificationError:
         return ()
-    resolved: list[ResolvedOperation] = []
-    for pattern in contract.patterns:
-        for operation in pattern.operations:
-            name, _, verb = operation.partition(".")
-            if name in tables:
-                resolved.append(resolve_operation(pattern, tables[name], verb))
-    return tuple(resolved)
+    return tuple(
+        resolve_operation(pattern, tables[name])
+        for pattern in contract.patterns
+        if (name := pattern.operations[0].partition(".")[0]) in tables
+    )
 
 
 def operation_shape_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
     """Name every operation whose match, writes, or return the runtime cannot honor exactly.
 
     Each rule removes a guess a builder would otherwise make: which rows a write reaches, whether
-    one row or many come back, and what a call returns. The runtime grants each verb once per
-    table, so a second declaration of the same verb would silently replace the first.
+    one row or many come back, and what a call returns. An operation name is a method, so a
+    table grants each name once, and two names that run the same statement are synonyms whose
+    callers would drift apart.
     """
     try:
         tables = {table.name: table for table in sqlite_schema_tables(text, source=source)}
@@ -1217,172 +1288,319 @@ def operation_shape_defects(text: str, *, source: str = "DATABASE.md") -> tuple[
         return ()
     defects: list[str] = []
     seen: dict[str, str] = {}
+    shapes: dict[tuple[object, ...], str] = {}
     for pattern in contract.patterns:
-        for operation in pattern.operations:
-            name, _, verb = operation.partition(".")
-            table = tables.get(name)
-            if table is None:
-                continue
-            ident = pattern.identifier
-            if operation in seen:
+        operation = pattern.operations[0]
+        name = operation.partition(".")[0]
+        verb = pattern.kind
+        table = tables.get(name)
+        if table is None:
+            continue
+        ident = pattern.identifier
+        if operation in seen:
+            defects.append(
+                f"{source}: {ident} declares `{operation}`, which {seen[operation]} already "
+                f"declares. An operation name is one method, `db.{operation}(...)`; give this "
+                "one its own name and `| Kind |`, or merge the two patterns."
+            )
+            continue
+        seen[operation] = ident
+        resolved = resolve_operation(pattern, table)
+        shape = (name, verb, resolved.match, resolved.filters, resolved.sets, resolved.outputs)
+        if shape in shapes:
+            defects.append(
+                f"{source}: {ident} `{operation}` runs exactly what {shapes[shape]} runs: the "
+                "same Kind, Match, Sets, and Output. One operation serves every caller; cite "
+                f"{shapes[shape]} instead."
+            )
+            continue
+        shapes[shape] = ident
+        inputs = set(resolved.inputs)
+        stray = [item for item in pattern.match if item not in inputs]
+        if stray:
+            defects.append(
+                f"{source}: {ident} Match names {', '.join(f'`{item}`' for item in stray)}, "
+                f"which {'is' if len(stray) == 1 else 'are'} not Input fields. Every Match "
+                "field is an Input field the caller supplies."
+            )
+            continue
+        if verb in ("create", "list") and pattern.match:
+            role = "inserts one row" if verb == "create" else "filters on its Input fields"
+            defects.append(
+                f"{source}: {ident} `{operation}` {role} and declares no Match; remove the "
+                "Match row."
+            )
+        elif verb == "get":
+            if set(resolved.match) != inputs:
                 defects.append(
-                    f"{source}: {ident} declares `{operation}`, which {seen[operation]} already "
-                    f"declares. A table grants each verb once, as `db.{name}.{verb}(...)`; merge "
-                    "the two patterns into one whose Input carries every field either needs."
+                    f"{source}: {ident} `{operation}` reads one row by its Match, so its "
+                    "Input fields are exactly its Match fields."
                 )
-                continue
-            seen[operation] = ident
-            resolved = resolve_operation(pattern, table, verb)
-            inputs = set(resolved.inputs)
-            stray = [item for item in pattern.match if item not in inputs]
-            if stray:
+            elif not _identifies_one(table, resolved.match):
                 defects.append(
-                    f"{source}: {ident} Match names {', '.join(f'`{item}`' for item in stray)}, "
-                    f"which {'is' if len(stray) == 1 else 'are'} not Input fields. Every Match "
-                    "field is an Input field the caller supplies."
+                    f"{source}: {ident} `{operation}` matches "
+                    f"({', '.join(resolved.match)}), which identifies no single row of "
+                    f"`{name}`. A get matches a unique key: {_keys_text(table)}. Reading "
+                    "rows by a non-unique field is a `list`."
                 )
-                continue
-            if verb in ("create", "list") and pattern.match:
-                role = "inserts one row" if verb == "create" else "filters on its Input fields"
+        elif verb in ("update", "upsert"):
+            if verb == "update" and not pattern.match and resolved.match[0] not in inputs:
                 defects.append(
-                    f"{source}: {ident} `{operation}` {role} and declares no Match; remove the "
-                    "Match row."
+                    f"{source}: {ident} `{operation}` matches the primary key "
+                    f"`{resolved.match[0]}` by default, which is not an Input field. Add it "
+                    "to the Input, or declare `| Match | <columns> |`."
                 )
-            elif verb == "get":
-                if set(resolved.match) != inputs:
-                    defects.append(
-                        f"{source}: {ident} `{operation}` reads one row by its Match, so its "
-                        "Input fields are exactly its Match fields."
-                    )
-                elif not _identifies_one(table, resolved.match):
-                    defects.append(
-                        f"{source}: {ident} `{operation}` matches "
-                        f"({', '.join(resolved.match)}), which identifies no single row of "
-                        f"`{name}`. A get matches a unique key: {_keys_text(table)}. Reading "
-                        "rows by a non-unique field is a `list`."
-                    )
-            elif verb in ("update", "upsert"):
-                if verb == "update" and not pattern.match and resolved.match[0] not in inputs:
-                    defects.append(
-                        f"{source}: {ident} `{operation}` matches the primary key "
-                        f"`{resolved.match[0]}` by default, which is not an Input field. Add it "
-                        "to the Input, or declare `| Match | <columns> |`."
-                    )
-                elif verb == "upsert" and not any(
-                    set(key) == set(resolved.match) for key in unique_keys(table)
-                ):
-                    defects.append(
-                        f"{source}: {ident} `{operation}` inserts or replaces the row its Match "
-                        f"identifies, so `| Match |` names exactly one unique key of `{name}`: "
-                        f"{_keys_text(table)}."
-                    )
-                elif verb == "update" and not resolved.sets:
-                    defects.append(
-                        f"{source}: {ident} `{operation}` sets nothing: every Input field is a "
-                        "Match field. Add the columns it writes to the Input."
-                    )
-                if verb == "upsert":
-                    absent = [
-                        column.name
-                        for column in table.columns
-                        if column.not_null
-                        and column.default is None
-                        and not column.primary_key
-                        and column.name not in inputs
-                    ]
-                    if absent:
-                        defects.append(
-                            f"{source}: {ident} `{operation}` may insert, so its Input carries "
-                            f"every NOT NULL column without a DEFAULT: missing "
-                            f"{', '.join(f'`{item}`' for item in absent)}."
-                        )
-            elif verb == "delete" and set(resolved.match) != inputs:
+            elif verb == "upsert" and not any(
+                set(key) == set(resolved.match) for key in unique_keys(table)
+            ):
                 defects.append(
-                    f"{source}: {ident} `{operation}` removes the rows its Match identifies, so "
-                    "its Input fields are exactly its Match fields."
+                    f"{source}: {ident} `{operation}` inserts or replaces the row its Match "
+                    f"identifies, so `| Match |` names exactly one unique key of `{name}`: "
+                    f"{_keys_text(table)}."
                 )
-            if resolved.many and verb in ("update", "delete") and resolved.outputs:
+            elif verb == "update" and not resolved.sets:
                 defects.append(
-                    f"{source}: {ident} `{operation}` matches ({', '.join(resolved.match)}), "
-                    f"which is no unique key of `{name}` ({_keys_text(table)}), so it reaches "
-                    "many rows and returns their count. Declare its Output with no fields, or "
-                    "match a unique key."
+                    f"{source}: {ident} `{operation}` sets nothing: every Input field is a "
+                    "Match field. Add the columns it writes to the Input."
                 )
+            if verb == "upsert":
+                absent = [
+                    column.name
+                    for column in table.columns
+                    if column.not_null
+                    and column.default is None
+                    and not column.primary_key
+                    and column.name not in inputs
+                ]
+                if absent:
+                    defects.append(
+                        f"{source}: {ident} `{operation}` may insert, so its Input carries "
+                        f"every NOT NULL column without a DEFAULT: missing "
+                        f"{', '.join(f'`{item}`' for item in absent)}."
+                    )
+        elif verb == "delete" and set(resolved.match) != inputs:
+            defects.append(
+                f"{source}: {ident} `{operation}` removes the rows its Match identifies, so "
+                "its Input fields are exactly its Match fields."
+            )
+        if resolved.many and verb in ("update", "delete") and resolved.outputs:
+            defects.append(
+                f"{source}: {ident} `{operation}` matches ({', '.join(resolved.match)}), "
+                f"which is no unique key of `{name}` ({_keys_text(table)}), so it reaches "
+                "many rows and returns their count. Declare its Output with no fields, or "
+                "match a unique key."
+            )
     return tuple(defects)
 
 
-def _call(operation: ResolvedOperation, optional: Collection[str] = ()) -> str:
-    fields = ", ".join(f"{name}?" if name in optional else name for name in operation.inputs)
-    return f"`db.{operation.table}.{operation.verb}({fields})`"
+#: Declared field types as the type a caller holds. Length and nullability are storage facts, so
+#: ``VARCHAR(12)``, ``VARCHAR(40)``, and ``TEXT | None`` are all ``str`` to a caller.
+CALLER_TYPES = {
+    "int": "int",
+    "integer": "int",
+    "int64": "int",
+    "bigint": "int",
+    "smallint": "int",
+    "str": "str",
+    "string": "str",
+    "text": "str",
+    "varchar": "str",
+    "char": "str",
+    "character varying": "str",
+    "date": "str",
+    "timestamp": "str",
+    "uuid": "str",
+    "bool": "bool",
+    "boolean": "bool",
+    "float": "float",
+    "float64": "float",
+    "number": "float",
+    "real": "float",
+    "double precision": "float",
+    "numeric": "float",
+    "decimal": "float",
+    "bytes": "bytes",
+    "any": "object",
+    "object": "object",
+}
 
 
-def _cells(values: Iterable[str], suffix: str = "") -> str:
-    rendered = ", ".join(f"`{value}`{suffix}" for value in values)
-    return rendered or "—"
+def caller_type(declared: str) -> str:
+    """The type a caller sees for a declared field: no length, no nullability, no modifiers."""
+    value = declared.strip().casefold()
+    for suffix in (" | none", "| none"):
+        value = value.removesuffix(suffix).strip()
+    base = re.sub(r"\s*\(.*\)$", "", value.split()[0] if value else "")
+    if value.startswith(("double precision", "character varying")):
+        base = " ".join(value.split()[:2])
+    return CALLER_TYPES.get(base, base or "object")
 
 
-def _returns(operation: ResolvedOperation) -> str:
-    row = f"`{operation.output_name}`"
+def _field_types(fields: Iterable[Field]) -> dict[str, str]:
+    return {field.name: caller_type(field.type) for field in fields}
+
+
+def _quote(name: str) -> str:
+    return f'"{name}"'
+
+
+def _where(names: Sequence[str]) -> str:
+    return (" WHERE " + " AND ".join(f"{_quote(name)} = ?" for name in names)) if names else ""
+
+
+def operation_sql(operation: ResolvedOperation, table: SQLiteTable) -> tuple[str, ...]:
+    """The statements the runtime executes for one operation, in SQLite placeholder form.
+
+    Spelled exactly as the shipped ``Driver`` builds them, so the contract shows what runs; a
+    test holds the two byte-identical. PostgreSQL binds the same positions with its own marker.
+    """
+    columns = [name for name in operation.outputs if name in {c.name for c in table.columns}]
+    selected = ", ".join(_quote(name) for name in (columns or [c.name for c in table.columns]))
+    target = _quote(table.name)
+
+    def select(predicate: Sequence[str]) -> str:
+        return f"SELECT {selected} FROM {target}{_where(predicate)}"
+
+    def insert(names: Sequence[str]) -> str:
+        marks = ", ".join("?" for _ in names)
+        return f"INSERT INTO {target} ({', '.join(_quote(n) for n in names)}) VALUES ({marks})"
+
+    verb = operation.verb
+    if verb == "get":
+        return (select(operation.match),)
+    if verb == "list":
+        return (select(operation.filters),)
+    if verb == "create":
+        primary = next(column.name for column in table.columns if column.primary_key)
+        return (insert(operation.inputs),) + ((select((primary,)),) if operation.outputs else ())
+    if verb == "update":
+        assignments = ", ".join(f"{_quote(name)} = ?" for name in operation.sets)
+        statement = f"UPDATE {target} SET {assignments}{_where(operation.match)}"
+        return (statement,) + ((select(operation.match),) if operation.returns_row else ())
+    if verb == "upsert":
+        conflict = ", ".join(_quote(name) for name in operation.match)
+        action = (
+            "DO UPDATE SET "
+            + ", ".join(f"{_quote(n)} = excluded.{_quote(n)}" for n in operation.sets)
+            if operation.sets
+            else "DO NOTHING"
+        )
+        statement = f"{insert(operation.inputs)} ON CONFLICT ({conflict}) {action}"
+        return (statement,) + ((select(operation.match),) if operation.outputs else ())
+    return (f"DELETE FROM {target}{_where(operation.match)}",)
+
+
+def _json(fields: Mapping[str, str], optional: Collection[str] = ()) -> str:
+    return (
+        "{"
+        + ", ".join(
+            f'"{name}": "{kind}{"?" if name in optional else ""}"' for name, kind in fields.items()
+        )
+        + "}"
+    )
+
+
+def _output_json(operation: ResolvedOperation, pattern: AccessPattern, table: SQLiteTable) -> str:
+    row = _json(_field_types(pattern.outputs))
     if operation.verb == "list":
-        return f"list of {row}"
-    if not operation.returns_row:
-        return "count" if operation.verb != "create" else "key"
-    if operation.verb in ("get", "update"):
-        return f"{row} or None"
-    if operation.verb == "delete":
-        return f"{row} (from the Match) or None"
-    return row
+        return f"[{row}]"
+    if operation.returns_row:
+        return row if operation.verb in ("create", "upsert") else f"{row} | null"
+    if operation.verb == "create":
+        primary = next(column for column in table.columns if column.primary_key)
+        return f'"{caller_type(primary.sql_type)}" (the new key)'
+    return '"int" (rows changed)'
+
+
+def _contract_payload(pattern: AccessPattern, table: SQLiteTable | None) -> str:
+    """What callers depend on, and nothing a storage change can move.
+
+    Name, Kind, Match, cardinality, return shape, and each field's name and caller type. Length,
+    nullability, Required, defaults, indexes, and the SQL are excluded, so widening a column or
+    relaxing NOT NULL rebuilds nothing.
+    """
+    resolved = resolve_operation(pattern, table) if table is not None else None
+    return "\x1f".join((
+        pattern.operations[0],
+        pattern.kind,
+        "match:" + ",".join(resolved.match if resolved else pattern.match),
+        "rows:" + ("" if resolved is None else "many" if resolved.many else "one"),
+        "returns:" + ("" if resolved is None else "row" if resolved.returns_row else "count"),
+        *(f"in:{name}:{kind}" for name, kind in _field_types(pattern.inputs).items()),
+        f"out:{pattern.output_name}",
+        *(f"out:{name}:{kind}" for name, kind in _field_types(pattern.outputs).items()),
+    ))
+
+
+def _cells(values: Iterable[str]) -> str:
+    rendered = ", ".join(f"`{value}`" for value in values)
+    return rendered or "—"
 
 
 _SURFACE_RULES = (
     "Generated by Drydock from this declaration; it is the complete persistence surface. Each "
-    "operation is a method `db.<table>.<verb>(field=value, ...)` (Go: "
-    "`db.<Table>.<Verb>(ctx, <Table><Verb>Input{...})`) taking exactly its listed fields. "
-    "Match fields are required and joined with AND as column equality; a `list` field marked `?` "
-    "is an optional equality filter, and an omitted filter does not constrain. No operator other "
-    "than equality, no OR, no join, and no SQL exists. An operation reaches one row when its "
-    "Match covers a unique key, and many rows otherwise. `upsert` inserts the row its Match "
-    "identifies, or replaces that row's Set columns when it exists, in one atomic statement. A "
-    "verb not listed for a table raises `UnknownOperation`; to reach the store differently, "
-    "declare a pattern in `DATABASE.md`."
+    "operation is a method `db.<table>.<name>(field=value, ...)` (Go: "
+    "`db.<Table>.<Name>(ctx, <Table><Name>Input{...})`) taking exactly its Input fields. Match "
+    "fields are required and compared by equality, joined with AND. A field marked `?` may be "
+    "omitted: an omitted `list` filter does not constrain, and an `update` sets only the fields "
+    "supplied. No operator other than equality, no OR, no join, and no SQL exists. An operation "
+    "reaches one row when its Match covers a unique key, and many rows otherwise. `upsert` "
+    "inserts the row its Match identifies, or replaces that row's Set columns when it exists, in "
+    "one atomic statement. The SQL is what runs, in SQLite form. An operation not listed raises "
+    "`UnknownOperation`; to reach the store differently, declare a pattern in `DATABASE.md`. "
+    "Contract is the operation's fingerprint: it changes only when the call, its Kind, Match, "
+    "rows, or a field's name or caller type changes, never for a length or nullability change."
 )
 
 
 def operation_surface(text: str, *, source: str = "DATABASE.md") -> str:
-    """Render the per-table CRUD surface a builder calls, or ``""`` when none is declared.
+    """Render the per-operation contract a builder calls, or ``""`` when none is declared.
 
-    Deterministic, so the compact derivative a builder reads states exactly which rows each call
-    reaches and what it returns rather than leaving a model to summarize it.
+    Deterministic, so the compact derivative a builder reads states exactly the call, the JSON
+    it takes and returns, which rows it reaches, and the SQL that runs, rather than leaving a
+    model to summarize it.
     """
     try:
         tables = sqlite_schema_tables(text, source=source)
+        contract = parse_database_contract(text, source=source)
     except SpecificationError:
         return ""
-    operations = resolved_operations(text, source=source)
-    if not tables or not operations:
+    fingerprints = parse_database_operation_fingerprints(database_operation_fingerprints(text))
+    by_table = {table.name: table for table in tables}
+    patterns = [p for p in contract.patterns if p.operations[0].partition(".")[0] in by_table]
+    if not tables or not patterns:
         return ""
     lines = ["## Operation Surface", "", _SURFACE_RULES]
     for table in tables:
-        mine = [item for item in operations if item.table == table.name]
-        lines += ["", f"### `{table.name}`", "", f"Unique keys: {_keys_text(table)}", ""]
+        mine = [p for p in patterns if p.operations[0].partition(".")[0] == table.name]
+        lines += ["", f"### `{table.name}`", "", f"Unique keys: {_keys_text(table)}"]
         if not mine:
-            lines.append("- No declared operation.")
+            lines += ["", "- No declared operation."]
             continue
-        lines += [
-            "| Pattern | Call | Match | Sets | Rows | Returns |",
-            "|---|---|---|---|---|---|",
-        ]
-        for item in mine:
+        for pattern in mine:
+            item = resolve_operation(pattern, table)
             if item.verb == "list":
-                match = _cells(item.filters, "?")
-                rows = "0..n"
+                rows, optional = "0..n", item.filters
             else:
-                match = _cells(item.match)
                 rows = "1" if item.verb in ("create", "upsert") else "0..n" if item.many else "0..1"
-            lines.append(
-                f"| {item.identifier} | {_call(item, item.filters)} | {match} | "
-                f"{_cells(item.sets)} | {rows} | {_returns(item)} |"
-            )
+                optional = item.sets if item.verb == "update" else ()
+            sql = "\n".join(f"{statement};" for statement in operation_sql(item, table))
+            lines += [
+                "",
+                f"#### `db.{item.operation}` — {item.identifier}",
+                "",
+                "| Kind | Rows | Match | Sets | Contract |",
+                "|---|---|---|---|---|",
+                f"| {item.verb} | {rows} | {_cells(item.match or item.filters)} | "
+                f"{_cells(item.sets)} | `{fingerprints.get(item.identifier, '')[:12]}` |",
+                "",
+                f"- Input: `{_json(_field_types(pattern.inputs), optional)}`",
+                f"- Output: `{_output_json(item, pattern, table)}`",
+                "",
+                "```sql",
+                sql,
+                "```",
+            ]
     return "\n".join(lines) + "\n"
 
 

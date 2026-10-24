@@ -1,7 +1,7 @@
 # Persistence & Service Encapsulation
 
 **Type:** guidance
-**Version:** 20261023 V4
+**Version:** 20261023 V5
 **Category:** Persistence
 **Description:** The single boundary rule for all persistent stores and external services — typed access classes, no raw access in application code
 
@@ -41,7 +41,7 @@ declaration, and a hand-written second path is storage access no Blueprint cites
 The build writes **callers**.
 
 ```text
-route → service → db.<table>.<verb>(...) → generated package → database
+route → service → db.<table>.<name>(...) → generated package → database
 ```
 
 Language bindings are shipped in `languages/<language>/persistence/`; generation templates live
@@ -68,36 +68,82 @@ ticket = db.tickets.get(id=ticket_id)                 # a frozen dataclass, or N
 open_tickets = db.tickets.list(status="open")         # a list of them
 ticket = db.tickets.create(status="open", title=title)  # the declared Output row
 db.tickets.update(id=ticket_id, status="closed")      # the row, or None
-rate = db.rates.upsert(date=day, currency="USD", rate="1.0393")  # inserted or replaced row
+rate = db.rates.replace_rate(date=day, currency="USD", rate="1.0393")  # upsert: the row
+changed = db.rates.reprice_currency(currency="USD", rate="1.0400")     # many-row update: a count
 db.tickets.delete(id=ticket_id)                       # the Output built from the Match, or None
 ```
 
-One attribute per declared table, one method per declared verb. The method name is the verb of
-that pattern's `Repository operation` cell, and its keyword arguments are that pattern's `Input:`
-fields — nothing else is accepted. A verb the table does not declare raises `UnknownOperation`
-naming what it does grant.
+One attribute per declared table, one method per declared operation. The method name is the
+`<name>` of the pattern's `Repository operation` cell, `<table>.<name>`, and its keyword arguments
+are that pattern's `Input:` fields — nothing else is accepted. An operation the table does not
+declare raises `UnknownOperation` naming what it does grant.
 
-**Which rows a call reaches is declared, never inferred.** A pattern's `| Match |` row names the
-Input fields that select rows: equality on each, joined with AND, every field required. A Match
+### Operations: a name and a Kind
+
+An operation's **name** is the contract callers depend on. Its **Kind** is how the package runs
+it, one of six: `get`, `list`, `create`, `update`, `upsert`, `delete`.
+
+- **Simple:** the name is the Kind. `rates.get`, `rates.update` — no Kind row is written.
+- **Named:** any other name declares its Kind: `rates.reprice_currency` with `| Kind | update |`.
+  A table may hold several operations of one Kind, each under its own name. Two names with the
+  same Kind, Match, Sets, and Output are synonyms, and the plan refuses the second.
+
+**Which rows an operation reaches is declared, never inferred.** A pattern's `| Match |` row names
+the Input fields that select rows: equality on each, joined with AND, every field required. A Match
 covering the table's `PK` or a declared `UNIQUE` reaches at most one row; any other Match reaches
 many. Every write is one statement inside the package, so a caller never composes a
 read-then-write.
 
-| Verb | Selects rows by | Writes | Rows | Returns |
+| Kind | Selects rows by | Writes | Rows | Returns |
 |---|---|---|---|---|
 | `get` | Match: a unique key | — | 0..1 | the row, or `None` |
 | `list` | each supplied Input field (optional equality filters) | — | 0..n | a list of rows |
 | `create` | — | every Input field | 1 | the row |
-| `update` | Match (default: the `PK`) | the other Input fields | 0..1 on a unique key, else 0..n | the row or `None`; the count when it reaches many |
+| `update` | Match (default: the `PK`) | the other Input fields supplied | 0..1 on a unique key, else 0..n | the row or `None`; the count when it reaches many |
 | `upsert` | Match: exactly one unique key | inserts the row, or replaces its other Input fields | 1 | the row |
 | `delete` | Match: every Input field | — | 0..1 on a unique key, else 0..n | the Output built from the Match or `None`; the count when it reaches many |
 
-`DATABASE_compact.md` carries a generated `## Operation Surface` stating this per table and per
-call. Build against it: it is the persistence surface, and nothing beyond it exists — no other
-operator, no OR, no join, no SQL.
+No other operator, no OR, no join, and no SQL exists outside the package.
+
+### The operation contract
+
+`DATABASE_compact.md` ends with a generated `## Operation Surface`: per table, one block per
+operation, rendered from the declaration by Drydock, never by a model. Build against it.
+
+````markdown
+#### `db.rates.replace_rate` — FEATURE-RATE-004
+
+| Kind | Rows | Match | Sets | Contract |
+|---|---|---|---|---|
+| upsert | 1 | `date`, `currency` | `rate` | `3f9a1c04be72` |
+
+- Input: `{"date": "str", "currency": "str", "rate": "str"}`
+- Output: `{"id": "int", "date": "str", "currency": "str", "rate": "str"}`
+
+```sql
+INSERT INTO "rates" ("date", "currency", "rate") VALUES (?, ?, ?) ON CONFLICT ("date", "currency") DO UPDATE SET "rate" = excluded."rate";
+SELECT "id", "date", "currency", "rate" FROM "rates" WHERE "date" = ? AND "currency" = ?;
+```
+````
+
+- **Call:** `db.<table>.<name>(...)`; Go `db.<Table>.<Name>(ctx, <Table><Name>Input{...})`.
+- **Input / Output:** JSON field names with caller types `str`, `int`, `float`, `bool`, `bytes`.
+  `?` marks a field the caller may omit: a `list` filter, or a column an `update` sets only when
+  supplied. Output is `{...}`, `{...} | null`, `[{...}]`, or `"int" (rows changed)`.
+- **SQL:** the statements the runtime executes, in SQLite placeholder form; PostgreSQL binds the
+  same positions. A test holds it byte-identical to the shipped driver.
+- **Contract:** the operation's fingerprint, the first 12 hex digits of a SHA-256.
+
+### What forces a rebuild
+
+Only a contract change. The fingerprint hashes the name, Kind, Match, rows, return shape, and each
+Input and Output field's name and caller type. It excludes everything a caller cannot see: column
+length (`VARCHAR(12)` and `VARCHAR(40)` are both `str`), nullability, `Required`, `DEFAULT`,
+indexes, and the SQL. Refit rebuilds the callers of an operation only when its fingerprint moves;
+any other `DATABASE.md` edit rebuilds the generated package alone.
 
 **The declaration fixes the surface.** `DATABASE.md` names every operation in the
-`Repository operation` cell of each access pattern, as `<table>.<verb>`. That is the persistence
+`Repository operation` cell of each access pattern, as `<table>.<name>`. That is the persistence
 surface, not a suggestion for one. To reach the store differently, change the declaration and
 rebuild; there is no second door.
 
@@ -264,3 +310,4 @@ is the seam. Swapping the transport, or stubbing it in tests, changes one class.
 - [ ] One typed `Config`, ENV-driven, no Dev/Prod/Test subclasses
 - [ ] Service wrappers extend the `ServiceClient` base class
 - [ ] Downstream specs depend on the declared operations, not the schema
+- [ ] Callers built against the Operation Surface contract: name, Input/Output JSON, rows

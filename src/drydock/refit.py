@@ -31,9 +31,9 @@ from drydock.build_plan import (
 )
 from drydock.change_ticket import parse_ticket_header
 from drydock.database_contract import (
+    changed_operation_contracts,
     changed_operation_ids_since,
     create_ticket_migration_records,
-    database_operation_fingerprints,
     parse_database_contract,
     parse_database_interface,
     parse_database_operation_fingerprints,
@@ -321,14 +321,7 @@ def _normalize_blueprint_drift(
             prior = (
                 parse_database_operation_fingerprints(record.database_operations) if record else {}
             )
-            current = parse_database_operation_fingerprints(
-                database_operation_fingerprints(source_text)
-            )
-            changed = sorted(
-                identifier
-                for identifier in set(prior) | set(current)
-                if prior.get(identifier) != current.get(identifier)
-            )
+            changed = sorted(changed_operation_contracts(prior, source_text))
             if changed:
                 contract = parse_database_contract(source_text).by_id()
                 for identifier in changed:
@@ -619,16 +612,11 @@ def _database_reset_ids(plan, blueprint_dir: Path) -> tuple[str, ...] | None:
         )
     record = plan.applied_specs.get("DATABASE.md")
     prior = parse_database_operation_fingerprints(record.database_operations) if record else {}
-    current = parse_database_operation_fingerprints(database_operation_fingerprints(text))
     # A Manifest snapshot, rather than Git history, determines the public contract
     # delta.  Old targets with no snapshot use their planned migration records and
     # otherwise contain the database-owner change only.
     if prior:
-        changed = {
-            identifier
-            for identifier in set(prior) | set(current)
-            if prior.get(identifier) != current.get(identifier)
-        }
+        changed = changed_operation_contracts(prior, text)
     else:
         # Targets built before the public snapshot existed may still have the
         # applied file commit.  Git is a one-time migration aid, never the

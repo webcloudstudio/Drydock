@@ -29,6 +29,14 @@ drydock refit <Target> --add <Blueprint> <File|->
 
 ### Rules
 
+`2026-10-23` · **Only a contract change rebuilds a `DATABASE.md` caller.** An operation's
+fingerprint (`database_operation_fingerprints`) hashes its name, Kind, Match, rows, return shape,
+and each Input and Output field's name and caller type (`caller_type`: `str`, `int`, `float`,
+`bool`, `bytes`). Length, nullability, `Required`, `DEFAULT`, indexes, and SQL are excluded.
+`changed_operation_contracts` also accepts the legacy fingerprint, so a Manifest recorded before
+this rule reads an unchanged declaration as unchanged. *Broken:* widening `VARCHAR(12)` marked
+every citing Feature changed.
+
 `2026-09-22` · **A change is a REFIT ticket; its filename is its identity.**
 `blueprint/<Blueprint>_refit_<NNN>.md` names the one Blueprint it amends; the number fixes order and
 parent, so a later ticket overrules an earlier one. Ticket bodies are acceptance criteria in the

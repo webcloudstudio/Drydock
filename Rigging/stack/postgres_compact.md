@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/postgres.md sha256=79812099ff2cc938710b4c13f6937d940b4d561158a384871494a92d41778aaf on 2026-10-23 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/postgres.md sha256=29bbf61df5b3f37de7cd64b1946fd480de23f13d8f6d9abc542d3606e8f603a6 on 2026-10-23 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -56,14 +56,14 @@ edits, or replaces any file listed below.
    acceptance run, so a criterion that drives the application through its own client finds the
    declared tables.
 
-Every later story writes callers only: `route → service → db.<table>.<verb>(...)`. The package
+Every later story writes callers only: `route → service → db.<table>.<name>(...)`. The package
 exposes one attribute per declared table and one method per declared operation. Changing the
 store means changing `DATABASE.md` and rebuilding.
 
-Each verb returns one fixed shape, so a pattern's Output declares the row, never a wrapper
+Each Kind returns one fixed shape, so a pattern's Output declares the row, never a wrapper
 around it:
 
-| Verb | Returns |
+| Kind | Returns |
 |---|---|
 | `get` | the Output row, or `None` (Go `nil`) when nothing matches |
 | `list` | a list of Output rows, one per record; the Output names the row's columns |
@@ -114,44 +114,48 @@ supported interfaces; never reset the database or delete unrelated records.
 
 # PostgreSQL — Contract Surface
 
-### config_key `DATABASE_URL`
+## Runtime configuration
 
-Selects PostgreSQL at runtime when set to a `postgresql://` DSN.
+### config_key
+PostgreSQL production connections use a `postgresql://` DSN selected at runtime.
 
-Constraints: Supply the DSN through the environment via the typed `Config` class; never store credentials in the repository.
+Constraints: The DSN must come from the environment through the typed `Config` class; credentials must not be stored in the repository.
 
-### config_key `psycopg[binary]`
+### config_key
+Projects using PostgreSQL in production must declare `psycopg[binary]` as a dependency.
 
-Provides the production PostgreSQL DB-API driver dependency.
+Constraints: The Python engine accepts either `psycopg` or `psycopg2`.
 
-Constraints: Add `psycopg[binary]` to project dependencies when using a PostgreSQL production DSN; `psycopg` or `psycopg2` may be accepted.
+## Persistence contract
 
-### Rule: persistence-access
+### Rule: generated-access-layer
+Callers use the generated persistence package rather than writing database access code.
 
-Callers use the generated persistence interface rather than writing an access layer.
+Constraints: Python callers use `db.<table>.<verb>(...)`; Go callers use generated typed declarations and fixtures. Targets in other languages that declare `DATABASE.md` fail before planning.
 
-Constraints: Python callers use `db.<table>.<verb>(...)`; never import PostgreSQL drivers outside the generated `persistence/` package.
+### Rule: database-authority
+PostgreSQL enforces declared column lengths and types.
 
-### Rule: database-compatibility
+Constraints: Values exceeding `VARCHAR(n)` are rejected, and values must match the declared column type.
 
-The application supports SQLite for development and testing and PostgreSQL for production.
-
-Constraints: PostgreSQL is authoritative for declared types and `VARCHAR(n)` length validation.
-
-### Rule: schema-order
-
+### Rule: dependency-order
 Referenced tables must be created before tables that cite them.
 
-Constraints: Emit `CREATE TABLE` statements in dependency order and reject foreign-key cycles.
+Constraints: Schema generation must emit tables in dependency order and reject foreign-key cycles.
 
 ### Rule: schema-lifecycle
+The schema is built once at the DATABASE build step and is not migrated within a release.
 
-The schema is built once during the DATABASE build step and is not migrated within a release.
+### Rule: schema-change
+Across releases, supported PostgreSQL changes include widening `varchar(n)` columns and dropping or setting `NOT NULL`.
 
-Constraints: Never create or alter schema at application startup.
+## Guardrails
+
+### Rule: persistence-boundary
+Database drivers may be imported only inside the generated `persistence/` package.
 
 ### Rule: parameter-binding
+SQL values must be passed as bound parameters rather than formatted into SQL strings.
 
-SQL values are passed as bound parameters.
-
-Constraints: Never construct SQL by formatting values into strings.
+### Rule: startup-schema
+Applications must not create or alter schema at startup.

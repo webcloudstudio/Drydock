@@ -1,7 +1,7 @@
 # SQLite
 
 **Type:** database
-**Version:** 20261023 V2
+**Version:** 20261023 V3
 **Tier:** platform
 **Category:** Persistence
 **Foundation:** database
@@ -67,14 +67,14 @@ edits, or replaces any file listed below.
    acceptance run, so a criterion that drives the application through its own client finds the
    declared tables.
 
-Every later story writes callers only: `route → service → db.<table>.<verb>(...)`. The package
+Every later story writes callers only: `route → service → db.<table>.<name>(...)`. The package
 exposes one attribute per declared table and one method per declared operation. Changing the
 store means changing `DATABASE.md` and rebuilding.
 
-Each verb returns one fixed shape, so a pattern's Output declares the row, never a wrapper
+Each Kind returns one fixed shape, so a pattern's Output declares the row, never a wrapper
 around it:
 
-| Verb | Returns |
+| Kind | Returns |
 |---|---|
 | `get` | the Output row, or `None` (Go `nil`) when nothing matches |
 | `list` | a list of Output rows, one per record; the Output names the row's columns |
