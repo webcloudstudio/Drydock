@@ -285,6 +285,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: Programmatic Acceptance binding detection no longer demotes an assembled
+  expectation of plain text. An f-string, concatenation, `%` template, or `.format` call binds
+  unless its typed text is escapable (backslash, carriage return, non-ASCII, `!r`/`!a`), the
+  same rule a whole literal follows. A derived expectation such as `f"{mean:.6f}"` now gates
+  its story instead of settling `DISPUTED` behind an analyze warning.
 - 2026-10-24: `drydock plan verify` accepts a criterion that cites several source ranges, one
   `Cite:` line each; every range must resolve, and literal derivation searches their combined
   text. `drydock plan repair` treats the run of consecutive `Cite:` lines as one declaration, so

@@ -21,6 +21,14 @@ and measured something; everything else is reported, not charged.
 
 ### Rules
 
+`2026-10-24` · **An assembled expectation binds unless its typed text is escapable.** The text
+typed into an f-string, a `+` concatenation, a `%` template, or a `.format` receiver follows the
+literal rule: plain text binds, and a backslash other than `\"`, a carriage return, non-ASCII
+text, or a `!r`/`!a` conversion marks it re-typed. A reconstructed `/` path is still re-typed.
+This revises the 2026-10-12 Binding rule for assembled strings. Cost when broken: FxRates
+`20261024.164835` demoted `body["mean"] == f"{mean:.6f}"`, a source-mandated mean computed from
+the seeded rates, to non-binding, so a wrong mean could never fail the build.
+
 `2026-10-24` · **A string calculation compared with a literal is not an assembled expectation.**
 For either operand order of `==` or `!=`, the literal supplies the expected bytes and retains
 the existing escaping and citation checks; the computed string is not flagged as a second

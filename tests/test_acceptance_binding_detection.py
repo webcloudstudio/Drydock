@@ -1,4 +1,4 @@
-"""Binding detection: assembled expectations are not derived; a cited source literal is."""
+"""Binding detection: escapable assembled expectations are not derived; a cited literal is."""
 
 import pytest
 
@@ -15,17 +15,43 @@ from drydock.plan_verify import verify
 # --- T13a: assembled expectations ------------------------------------------------------------
 
 
-def test_an_f_string_expectation_is_not_derived():
-    assert retyped_expectations('assert out == f"total: {n}"\n')
+@pytest.mark.parametrize(
+    "expression",
+    ['f"total: {n}"', '"total: " + str(n)', '"total: %d" % n', '"total: {}".format(n)'],
+)
+def test_an_assembled_expectation_of_plain_text_binds(expression):
+    # 2026-10-24: typed pieces follow the literal rule; plain text is a deterministic answer.
+    assert retyped_expectations(f"assert out == {expression}\n") == ()
 
 
-def test_a_concatenated_expectation_is_not_derived():
-    assert retyped_expectations('assert out == "total: " + str(n)\n')
+@pytest.mark.parametrize(
+    "expression",
+    [
+        'f"C:\\\\{n}"',
+        '"caf\\u00e9 " + str(n)',
+        '"%d\\r\\n" % n',
+        '"{}\\\\x".format(n)',
+        'f"{n!r}"',
+        'f"{n!a}"',
+    ],
+)
+def test_an_assembled_expectation_of_escapable_text_is_not_derived(expression):
+    assert retyped_expectations(f"assert out == {expression}\n")
 
 
-def test_percent_and_format_expectations_are_not_derived():
-    assert retyped_expectations('assert out == "total: %d" % n\n')
-    assert retyped_expectations('assert out == "total: {}".format(n)\n')
+def test_a_formatted_statistic_derived_from_the_seed_binds():
+    # FxRates 20261024.164835: a source-mandated six-decimal mean computed from the seeded rates
+    # was demoted to non-binding, so a wrong mean could never fail the build.
+    code = (
+        "from decimal import Decimal, ROUND_HALF_EVEN\n"
+        'seed = [("2099-01-02", "1.1"), ("2099-01-03", "1.2")]\n'
+        "body = fetch(seed)\n"
+        "values = [Decimal(rate) for _, rate in seed]\n"
+        'mean = (sum(values) / len(values)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_EVEN)\n'
+        'assert body["mean"] == f"{mean:.6f}"\n'
+    )
+    assert retyped_expectations(code) == ()
+    assert ProgrammaticAcceptance("mean", "FEATURE-API-History.md", "Mean.", code).binding
 
 
 def test_numeric_arithmetic_is_not_an_assembled_string():
@@ -56,8 +82,8 @@ def test_a_calculation_still_reports_an_escapable_literal_expectation(reverse):
 
 
 def test_each_chained_comparison_uses_its_adjacent_operands():
-    code = 'assert f"{usd:.4f}" == "5.5245" == out == f"total: {n}"\n'
-    assert retyped_expectations(code) == ("f'total: {n}'",)
+    code = 'assert f"{usd:.4f}" == "5.5245" == out == f"total: {n!r}"\n'
+    assert retyped_expectations(code) == ("f'total: {n!r}'",)
 
 
 def test_formatting_self_test_remains_prepassed_after_the_warning_is_removed(tmp_path):

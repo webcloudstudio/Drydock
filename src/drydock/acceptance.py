@@ -1431,6 +1431,24 @@ def _is_assembled_string(node: ast.AST) -> bool:
     )
 
 
+def _types_escaped_text(node: ast.AST) -> bool:
+    """True when an assembled expectation types text that needs an escaping decision.
+
+    The text an author types into an f-string, a concatenation, or a format template is held to
+    the rule for a whole literal: plain text binds, and only escapable text is a second spelling
+    that can disagree with the product. ``f"{mean:.6f}"`` over a mean computed from the seeded
+    input types nothing escapable and binds. A ``!r`` or ``!a`` conversion makes repr's quoting
+    and escaping decision implicitly, so it is re-typed in the same way.
+    """
+    for inner in ast.walk(node):
+        if isinstance(inner, ast.Constant) and isinstance(inner.value, str):
+            if _is_escapable(inner.value):
+                return True
+        elif isinstance(inner, ast.FormattedValue) and inner.conversion in (ord("r"), ord("a")):
+            return True
+    return False
+
+
 def _is_computed_attribute(node: ast.AST) -> bool:
     """True for ``name.attr`` (or a chain of them) — a value read off an object, not typed here."""
     return isinstance(node, ast.Attribute)
@@ -1510,7 +1528,9 @@ def retyped_expectations(code: str) -> tuple[str, ...]:
         if isinstance(node, ast.Constant):
             if _is_escapable(node.value) and node.value not in supplied:
                 offending.append(node.value)
-        elif ast.dump(node) not in supplied_expressions:
+        elif ast.dump(node) not in supplied_expressions and (
+            _is_reconstructed_path(node) or _types_escaped_text(node)
+        ):
             offending.append(ast.unparse(node))
     return tuple(dict.fromkeys(offending))
 
