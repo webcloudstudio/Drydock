@@ -242,4 +242,10 @@ unchanged.
 
 ## Actions
 
+- `2026-10-24` · `b1b3ee9` fixes the CsvStat `20261024.221659` provider-stop reporting
+  defect and the earlier jq recurrence; both ledger rows remain `unverified` pending live
+  evidence. Local proof: 530 affected-module tests, 18 recovery tests, and four targeted
+  Stage 2 stop scenarios pass; Ruff and shell syntax pass. Closes when Ed observes a provider
+  halt ending with the blocker error and no subsequent child, kit, or diagnosis call.
+
 ## Working Notes
