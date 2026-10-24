@@ -4518,3 +4518,23 @@ def test_failure_renderer_uses_block_checks_and_retained_dispute():
     assert "claim is unverified" in rendered
     assert "Run: drydock build Demo" not in rendered
     assert "rerun unchanged" not in rendered
+
+
+def test_failure_exception_names_a_class_not_ending_in_error():
+    """FxRates 20261024.145257 printed `(exception not captured)` over an UnknownOperation."""
+    from types import SimpleNamespace
+
+    from drydock.cli import _failure_exception
+
+    stderr = (
+        "Traceback (most recent call last):\n"
+        '  File "rates-upsert.py", line 9, in <module>\n'
+        "    first = db.rates.get(date=date, currency=currency)\n"
+        "persistence.db.UnknownOperation: rates declares no 'get' operation. Declared: upsert.\n"
+    )
+
+    assert _failure_exception(SimpleNamespace(stderr=stderr)) == (
+        "persistence.db.UnknownOperation: rates declares no 'get' operation. Declared: upsert."
+    )
+    assert _failure_exception(SimpleNamespace(stderr="ValueError: bad\n")) == "ValueError: bad"
+    assert _failure_exception(SimpleNamespace(stderr="")) == "(exception not captured)"

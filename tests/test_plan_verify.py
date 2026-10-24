@@ -1223,6 +1223,44 @@ def test_a_go_criterion_calls_the_exported_operation():
     assert untested_operations(_DATABASE, [code]) == ("tickets.list",)
 
 
+def test_a_criterion_calling_an_undeclared_operation_is_a_defect(tmp_path):
+    """FxRates 20261024.145257: `db.rates.get` with no `get` declared raised UnknownOperation."""
+    listed = _CREATE_CRITERION.replace("ticket-create", "ticket-list").replace(
+        "assert created.id",
+        'assert db.tickets.get(id=created.id).status == "open"\n'
+        '    assert [row.id for row in db.tickets.list(status="open")]',
+    )
+    target = _target(
+        tmp_path,
+        **{
+            "DATABASE": _database(_CREATE_CRITERION + "\n" + listed),
+            "FEATURE-Ticket": _RUNNABLE,
+        },
+    )
+
+    result = verify("Demo", target)
+
+    (defect,) = result.defects
+    assert defect.kind == "operation-undeclared"
+    assert (defect.filename, defect.check_id) == ("DATABASE.md", "ticket-list")
+    assert "`tickets.get(...)`" in defect.detail
+    assert "tickets declares create, list" in defect.detail
+
+
+def test_undeclared_operation_calls_reads_both_spellings_and_ignores_other_receivers():
+    from drydock.plan_verify import undeclared_operation_calls
+    from tests.test_database_emit import _DATABASE
+
+    assert undeclared_operation_calls(_DATABASE, 'db.tickets.list(status="open")') == ()
+    assert undeclared_operation_calls(_DATABASE, "row = db.Tickets.Create(ctx, x)") == ()
+    assert undeclared_operation_calls(_DATABASE, "os.path.join('a', 'b')") == ()
+    (reason,) = undeclared_operation_calls(
+        _DATABASE, "db.Tickets.Get(ctx, id)\ndb.Tickets.Get(ctx, 2)"
+    )
+    assert "`Tickets.Get(...)`" in reason
+    assert undeclared_operation_calls("not a contract", "db.tickets.get(id=1)") == ()
+
+
 @pytest.mark.parametrize("args", ["[]", '["--summary", "."]', '("--summary", ".")'])
 def test_go_cli_runner_rejects_a_sequence_as_one_argument(tmp_path, args):
     code = (

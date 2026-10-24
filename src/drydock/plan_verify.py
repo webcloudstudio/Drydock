@@ -156,6 +156,10 @@ CRITERIA_MISSING = "criteria-missing"
 OPERATION_UNTESTED = "operation-untested"
 
 
+#: Defect kind for a criterion calling a repository operation ``DATABASE.md`` does not declare.
+OPERATION_UNDECLARED = "operation-undeclared"
+
+
 #: Defect kind for a criterion importing ``persistence`` on a story built before DATABASE.
 PERSISTENCE_ORDER = "persistence-order"
 
@@ -193,6 +197,48 @@ def untested_operation_reason(operation: str) -> str:
         f"criterion that calls `db.{table}.{verb}(...)` inside `with db_session() as db:` and "
         "asserts the declared Output"
     )
+
+
+#: ``.<table>.<verb>(`` — a repository call in either spelling, matched against declared tables.
+_REPOSITORY_CALL_RE = re.compile(r"\.([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(")
+
+
+def undeclared_operation_calls(database_text: str, code: str) -> tuple[str, ...]:
+    """Each reason a criterion calls a ``<table>.<verb>`` that ``DATABASE.md`` does not declare.
+
+    The generated package grants exactly the declared operations and raises
+    ``UnknownOperation`` for any other name, so such a call fails on every run whatever the
+    implementation does (FxRates ``20261024.145257``: ``db.rates.get`` with no ``get`` declared).
+    Only receivers naming a declared table are judged, in the Python or Go spelling. A contract
+    that does not parse is reported by :func:`persistence_defects`.
+    """
+    from drydock.database_emit_go import _export
+
+    try:
+        contract = parse_database_contract(database_text)
+    except SpecificationError:
+        return ()
+    granted: dict[str, set[str]] = {}
+    spelled: dict[tuple[str, str], str] = {}
+    for pattern in contract.patterns:
+        for operation in pattern.operations:
+            table, verb = operation.split(".", 1)
+            granted.setdefault(table, set()).add(verb)
+            spelled[(table, verb)] = spelled[(_export(table), _export(verb))] = operation
+    tables = {name: table for table in granted for name in (table, _export(table))}
+    reasons: list[str] = []
+    for receiver, verb in _REPOSITORY_CALL_RE.findall(code):
+        table = tables.get(receiver)
+        if table is None or (receiver, verb) in spelled:
+            continue
+        reason = (
+            f"calls `{receiver}.{verb}(...)`, which DATABASE.md does not declare; {table} "
+            f"declares {', '.join(sorted(granted[table]))} — call a declared operation or "
+            "declare the access pattern in DATABASE.md"
+        )
+        if reason not in reasons:
+            reasons.append(reason)
+    return tuple(reasons)
 
 
 def stories_without_criteria(
@@ -471,6 +517,8 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
     checked_criteria = 0
     files = _blueprint_files(blueprint_dir)
     harness = load_harness(blueprint_dir / "sources")
+    database = blueprint_dir / "DATABASE.md"
+    database_text = database.read_text(encoding="utf-8") if database.is_file() else ""
 
     criteria: dict[str, int | None] = {}
     for path in files:
@@ -571,6 +619,11 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                     )
                 )
                 continue
+            if database_text and (reasons := undeclared_operation_calls(database_text, check.code)):
+                defects.append(
+                    Defect(path.name, check.check_id, OPERATION_UNDECLARED, "; ".join(reasons))
+                )
+                continue
             if defect := go_cli_defect(
                 check.code, go=any(Path(name).name == "go.md" for name in selected)
             ):
@@ -642,7 +695,6 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
     defects.extend(_story_criteria_defects(target_dir, criteria))
     defects.extend(_persistence_order_defects(target_dir))
     defects.extend(persistence_defects(blueprint_dir))
-    database = blueprint_dir / "DATABASE.md"
     if criteria.get("DATABASE.md"):
         # A DATABASE.md with no criterion is reported once, as criteria-missing.
         codes = [check.code for check in parse_programmatic_acceptance(database)]

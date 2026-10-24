@@ -225,6 +225,13 @@ leaves `operation-untested` for `drydock plan`. The buildable `Rigging/spec_temp
 a `Required.` acceptance note, never `- None.`. *Broken:* a declared operation ships untested
 and a template teaches the refused `- None.`.
 
+`2026-10-24` · **A criterion calls only declared repository operations.** `plan verify` and
+Stage 2 refuse a criterion in any Blueprint that calls `<table>.<verb>(` on a table
+`DATABASE.md` declares when that operation is not declared (`operation-undeclared`), in the
+Python or Go spelling; the defect lists the table's declared operations, and Stage 2 routes it to
+artifact repair. *Broken:* FxRates `20261024.145257` read back through an undeclared
+`db.rates.get`, so the deterministic DATABASE step failed on `UnknownOperation`.
+
 `2026-10-22` · **Database authoring preserves the source schema.** Before accepting the
 database batch, Plan restores missing seeded tables, columns, and composite `UNIQUE`/`INDEX`
 constraints. A changed seeded column type or constraint rejects the batch with the column named

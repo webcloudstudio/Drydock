@@ -2829,6 +2829,26 @@ def _untested_operation_defects(blocks: dict[str, str]) -> tuple[MalformedAccept
     )
 
 
+def _undeclared_operation_defects(blocks: dict[str, str]) -> tuple[MalformedAcceptance, ...]:
+    """Each emitted criterion calling a repository operation ``DATABASE.md`` does not declare.
+
+    The same rule ``plan verify`` applies, raised while the criterion's Blueprint can still be
+    re-emitted: the generated package raises ``UnknownOperation`` for the call on every run.
+    """
+    from drydock.plan_verify import undeclared_operation_calls
+
+    database = blocks.get(DATABASE_BLOCK)
+    if database is None:
+        return ()
+    return tuple(
+        MalformedAcceptance(check_id=check.check_id, source=name, reason="; ".join(reasons))
+        for name in sorted(blocks)
+        if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+        for check in _acceptance_checks(blocks[name], source=name)
+        if (reasons := undeclared_operation_calls(database, check.code))
+    )
+
+
 def _runner_invocation_defects(
     blocks: dict[str, str], plan: BuildPlan, blueprint_dir: Path
 ) -> tuple[MalformedAcceptance, ...]:
@@ -4105,6 +4125,9 @@ def _validate_plan_output(
             for defect in _criteria_missing_defects(blocks, plan, blueprint_dir)
         )
         + tuple(("operation-untested", defect) for defect in _untested_operation_defects(blocks))
+        + tuple(
+            ("operation-undeclared", defect) for defect in _undeclared_operation_defects(blocks)
+        )
         + tuple(
             (kind, MalformedAcceptance(check_id=check.check_id, source=name, reason=reason))
             for name in sorted(blocks)

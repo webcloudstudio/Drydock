@@ -4823,13 +4823,18 @@ def _failure_assertion(check) -> str:
 
 
 def _failure_exception(check) -> str:
-    """Return the final exception line captured from a failed acceptance run."""
-    lines = [line.strip() for line in (check.stderr or "").splitlines() if line.strip()]
+    """Return the final exception line captured from a failed acceptance run.
+
+    A class need not end in ``Error`` or ``Exception``: a traceback's last line is unindented
+    ``<dotted.Class>: message``, as in ``persistence.db.UnknownOperation: ...``.
+    """
+    lines = [line for line in (check.stderr or "").splitlines() if line.strip()]
     return next(
         (
-            line
+            line.strip()
             for line in reversed(lines)
-            if re.match(r"^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception)\b", line)
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception)\b", line.strip())
+            or re.match(r"^(?:[A-Za-z_]\w*\.)*[A-Z]\w*: ", line)
         ),
         "(exception not captured)",
     )

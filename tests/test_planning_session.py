@@ -7545,6 +7545,23 @@ def test_an_emitted_database_whose_criteria_skip_an_operation_is_refused():
     assert _untested_operation_defects({"FEATURE-Status.md": "# FEATURE: Status\n"}) == ()
 
 
+def test_an_emitted_criterion_calling_an_undeclared_operation_is_refused():
+    """Plan's Stage 2 gate: a criterion calls only operations DATABASE.md declares."""
+    from drydock.planning_session import _undeclared_operation_defects
+    from tests.test_plan_verify import _CREATE_CRITERION, _database
+
+    feature = "# FEATURE: Status\n\n## Programmatic Acceptance\n\n" + _CREATE_CRITERION.replace(
+        "assert created.id", "assert db.tickets.get(id=created.id)"
+    )
+    blocks = {"DATABASE.md": _database(_CREATE_CRITERION), "FEATURE-Status.md": feature}
+
+    (defect,) = _undeclared_operation_defects(blocks)
+
+    assert (defect.source, defect.check_id) == ("FEATURE-Status.md", "ticket-create")
+    assert "`tickets.get(...)`" in defect.reason
+    assert _undeclared_operation_defects({"FEATURE-Status.md": feature}) == ()
+
+
 @pytest.mark.parametrize("partial_progress", [False, True])
 def test_damaged_continuation_names_the_artifact_in_progress_and_retry(partial_progress):
     from drydock.prompt_assembly import PromptAssembly

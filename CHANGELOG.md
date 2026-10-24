@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-24: `drydock plan` and `plan verify` refuse a criterion that calls a repository
+  operation `DATABASE.md` does not declare (`operation-undeclared`): Python
+  `db.<table>.<verb>(`, Go `db.<Table>.<Verb>(`, judged only on declared tables. The generated
+  package raises `UnknownOperation` for such a call on every run, so the criterion could never
+  pass; Stage 2 now routes it to artifact repair and the defect names the table's declared
+  operations. Build failure blocks also print exception lines whose class does not end in
+  `Error` or `Exception`, such as `persistence.db.UnknownOperation`. This closes FxRates
+  `20261024.145257`, whose `rates-upsert` criterion read back through an undeclared
+  `db.rates.get`.
+
 - 2026-10-23: `DATABASE.md` operations are named methods with a Kind. `Repository operation` is
   `<table>.<name>`, called as `db.<table>.<name>(...)`; a `| Kind |` row (`get`, `list`,
   `create`, `update`, `upsert`, `delete`) says how it runs, and a name that is itself a Kind needs
