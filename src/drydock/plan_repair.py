@@ -71,6 +71,7 @@ from drydock.prompt_assembly import (
     system_preamble_part,
 )
 from drydock.prompts import load_prompt
+from drydock.rigging_contract import selected_contract_sections
 
 PROMPT_NAME = "plan_repair"
 
@@ -300,13 +301,30 @@ def _citation_sources(jobs: list[tuple[Defect, str]], blueprint_dir: Path) -> li
     return parts
 
 
+def _contract_parts(jobs: list[tuple[Defect, str]], contracts: list[str]) -> list[PromptPart]:
+    """Give an ``acceptance-store`` repair the in-process fixtures the selected foundations publish.
+
+    Without them the model cannot name ``cli_runner``'s import and answers ``REPAIR_IMPOSSIBLE``
+    (FxRates ``20261024.183153``). Other defect kinds never need them.
+    """
+    if not contracts or not any(defect.kind == "acceptance-store" for defect, _ in jobs):
+        return []
+    text = "## Selected foundation contracts\n\n" + "\n\n".join(c.strip() for c in contracts)
+    return [part("Selected foundation contracts", text + "\n\n", kind="contract")]
+
+
 def _assemble(
-    body: str, *, jobs: list[tuple[Defect, str]], blueprint_dir: Path | None = None
+    body: str,
+    *,
+    jobs: list[tuple[Defect, str]],
+    blueprint_dir: Path | None = None,
+    contracts: list[str] | None = None,
 ) -> PromptAssembly:
     """Build one repair prompt for every defective criterion across every file, in one call.
 
     Deterministic, so it is unit-testable without a process. Each job carries only its own
-    criterion's AC-block body; citation defects additionally receive their numbered source files.
+    criterion's AC-block body; citation defects additionally receive their numbered source files,
+    and store-isolation defects the selected foundation contracts.
     """
     parts: list[PromptPart] = [
         system_preamble_part(),
@@ -326,6 +344,7 @@ def _assemble(
     parts.extend(_defect_part(defect, block_body) for defect, block_body in jobs)
     if blueprint_dir is not None:
         parts.extend(_citation_sources(jobs, blueprint_dir))
+    parts.extend(_contract_parts(jobs, contracts or []))
     parts.append(section_heading_part("# Agent Task"))
     parts.append(part("Prompt body", body + "\n\n", kind="prompt-body"))
     return PromptAssembly(parts=tuple(parts))
@@ -685,7 +704,12 @@ def repair(
             + ", ".join(sorted(by_file))
             + f" · {len(jobs)} {'criterion' if len(jobs) == 1 else 'criteria'} · 1 of 1 attempt"
         )
-        assembly = _assemble(prompt.body, jobs=jobs, blueprint_dir=blueprint_dir)
+        assembly = _assemble(
+            prompt.body,
+            jobs=jobs,
+            blueprint_dir=blueprint_dir,
+            contracts=selected_contract_sections(technology_stack.stack_files(target_dir)),
+        )
         result = run(
             assembly.rendered_text,
             blueprint_dir,

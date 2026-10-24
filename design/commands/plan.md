@@ -486,6 +486,15 @@ still name the package as an argument. `plan repair` uses `drydock_go.cli_runner
 arguments and assertions. Cost when broken: DupFind `20261024.073506` reaches build with five
 criteria that execute a directory and raise `PermissionError`.
 
+`2026-10-24` · **A store-isolation repair receives the selected fixtures.** When a batch holds an
+`acceptance-store` defect, `plan repair` adds the `## Foundation Contract` section of each Rigging
+file the Technology Stack selects, and `plan_repair.md` V17 replaces the process launch with that
+contract's in-process fixture (`cli_runner` from its `fixture_source`, or `web_client()`) on the
+same arguments, keeping every store read and expected value. Other defect kinds receive no
+contracts. *Broken:* FxRates `20261024.183153` `load-rejected-file-is-atomic` ran `./fxrates load`
+beside `db_session()` reads; repair, never told `from cli.testing import cli_runner`, answered
+`REPAIR_IMPOSSIBLE` and the Manifest stayed `draft`.
+
 `2026-10-24` · **Declared structured CLI output is observable state.** Planning parses CSV/JSON
 stdout with the format's standard parser and compares columns, rows, values, ordering, filtering,
 and empty results against declared contracts and fixture inputs. Printing output and asserting

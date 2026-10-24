@@ -961,3 +961,52 @@ def test_missing_citation_source_can_report_impossible_without_writing(tmp_path)
     assert result.items[0].status == "impossible"
     assert path.read_text() == original
     assert "numbered source for citation repair" not in runner.calls[0]["prompt"]
+
+
+_STORE_LAUNCH = """# FEATURE: Load
+
+## Programmatic Acceptance
+
+=== AC load-rejected ===
+Intent: A rejected file leaves stored rates unchanged.
+
+import subprocess
+from persistence.testing import db_session
+
+with db_session() as db:
+    before = db.rates.list_all()
+result = subprocess.run(["./fxrates", "load", "bad.csv"], capture_output=True, text=True)
+assert result.returncode == 3
+with db_session() as db:
+    after = db.rates.list_all()
+assert len(after) == len(before)
+=== END AC load-rejected ===
+"""
+
+
+def test_a_store_launch_repair_receives_the_selected_cli_fixture_contract(tmp_path):
+    """FxRates 20261024.183153: without `cli_runner`'s import the repair answered impossible."""
+    from drydock.technology_stack import StackEntry, write
+
+    target = _target(tmp_path, FEATURE_Load=_STORE_LAUNCH)
+    write(target, [StackEntry("Python", "python.md"), StackEntry("CLI", "cli.md")])
+    runner = _runner(_FIXED_BLOCK)
+
+    repair("Demo", target, runner=runner)
+
+    prompt = runner.calls[0]["prompt"]
+    assert 'kind="acceptance-store"' in prompt
+    assert "## Selected foundation contracts" in prompt
+    assert "fixture_source: cli/testing.py" in prompt
+
+
+def test_other_defects_carry_no_foundation_contracts(tmp_path):
+    from drydock.technology_stack import StackEntry, write
+
+    target = _target(tmp_path, FEATURE_Path=_BROKEN)
+    write(target, [StackEntry("Python", "python.md"), StackEntry("CLI", "cli.md")])
+    runner = _runner(_FIXED_BLOCK)
+
+    repair("Demo", target, runner=runner)
+
+    assert "## Selected foundation contracts" not in runner.calls[0]["prompt"]
