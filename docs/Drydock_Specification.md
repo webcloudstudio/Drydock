@@ -642,6 +642,12 @@ flowchart LR
 `drydock refit <Target>` maps changes into new **Manifest** stories. Changes are tickets (Jira or
 plain English), direct **Blueprint** edits, and Feature-ticket **Blueprint** comments.
 
+## External Database Connectivity
+
+See Documentation in main directory - HOW_TO_SETUP_POSTGRES.md
+
+Databases are rigging files and can be easily added by copying the existing examples. Database access is fully encapsulated to lower the impact of changes. Drydock minimizes for rebuilding by detecting contract changes and by fully encapsulating all database access using language native libraries.
+
 ## Directory Layout
 
 Each **Target** has a workspace at `$DRYDOCK_WORKSPACE/targets/<Target>` and builds to
