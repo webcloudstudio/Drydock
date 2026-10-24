@@ -7123,6 +7123,7 @@ def test_a_plan_build_cannot_execute_is_written_as_draft_and_reported(tmp_path):
     ``20261024.015228`` halted on the failure before its own repair stage)."""
     from drydock.build_plan import parse_build_plan
     from drydock.metadata import get_sub_state
+
     target_dir = _make_target(tmp_path)
     (target_dir / "METADATA.md").write_text("name: Example\nbuild_sub_state: \n", encoding="utf-8")
     broken = _llm_output().replace(
