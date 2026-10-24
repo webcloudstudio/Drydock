@@ -4470,3 +4470,51 @@ class TestConfigCalibrate:
         rc, out, _err = run_cli("config", "calibrate")
         assert rc == 0
         assert "No measured value differs" in out
+
+
+def test_failure_renderer_uses_block_checks_and_retained_dispute():
+    from dataclasses import replace
+
+    owned = AcceptanceRunResult(
+        check_id="command-options",
+        source="FEATURE-Command.md",
+        intent="Options work.",
+        passed=True,
+        return_code=0,
+        stdout="",
+        stderr="",
+    )
+    failed = replace(
+        owned,
+        check_id="summary-empty",
+        source="FEATURE-Summary.md",
+        passed=False,
+        return_code=1,
+        stderr="PermissionError: package directory\n",
+    )
+    baseline = replace(owned, passed=False, return_code=1)
+    step = BuildStepResult(
+        block_id="command",
+        name="Command",
+        block_type="story",
+        status="failed",
+        state="closed/failed",
+        story_points=1,
+        container_block_id="service",
+        container_name="Service",
+        error="programmatic acceptance failed: summary-empty",
+        acceptance=(owned, failed),
+        owned_acceptance=(owned,),
+        pre_acceptance=(baseline, failed),
+        owned_pre_acceptance=(baseline,),
+        reported_defective_acceptance=("summary-empty",),
+    )
+    rendered = _render_build_failures("Demo", [step], hint="rerun unchanged")
+    assert "acceptance: 1/2 passing · baseline 0/2 · improved" in rendered
+    assert "acceptance: 1/1" not in rendered
+    assert "Acceptance: summary-empty" in rendered
+    assert "Run: drydock plan verify Demo" in rendered
+    assert "Run: drydock plan repair Demo" in rendered
+    assert "claim is unverified" in rendered
+    assert "Run: drydock build Demo" not in rendered
+    assert "rerun unchanged" not in rendered

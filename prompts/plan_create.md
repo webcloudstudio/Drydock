@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261024 V48
+version: 20261024 V49
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -332,8 +332,14 @@ Rules:
   a return value, parsed JSON, a status code, a stored row, file contents read back, an exit
   status. It never reads a substring of captured stdout or stderr, a test-runner tally, or a log
   line. A state oracle cannot pass against a stub and cannot fail because a runner printed the
-  word "warning"; a text oracle can do both. Print captured output for diagnosis, never assert on
-  it.
+  word "warning"; a text oracle can do both. Print diagnostic output rather than asserting on it.
+  When structured command output is the declared product interface (CSV, JSON, or another
+  specified data format), parse stdout with the format's standard library parser and assert the
+  resulting state. Assert the declared columns, rows, values, ordering, filtering, and empty
+  result behavior from the contract and the fixture inputs. Exit zero alone proves only that
+  the command ran; it does not prove the output behavior named by the criterion's Intent.
+  For CSV paths containing commas, quotes, or newlines, compare parsed field values with the
+  fixture paths. Never replace those comparisons with print statements or diagnostic substrings.
 - Write the check in the project's own language, using that language's libraries. An in-language
   HTTP client yields a status code and a parsed body, which is state; `curl` yields stdout, which
   is text to scrape. Reaching for an external executable is the exception and belongs in Rigging.

@@ -740,10 +740,14 @@ def test_go_repair_preserves_exit_and_output_assertions(tmp_path, monkeypatch, f
     [
         "from drydock_go import cli_runner\ncode, out, err = cli_runner([])\nassert code == 2",
         "import subprocess\nr = subprocess.run(['go', 'run', './cmd/dupfind'])\nassert r.returncode == 2",
+        "import subprocess\nr = subprocess.run(['./cmd/dupfind'])\nassert r.returncode == 2",
     ],
 )
 def test_go_repair_still_using_an_invalid_launcher_is_reverted(tmp_path, proof):
+    from drydock.technology_stack import StackEntry, write
+
     target = _target(tmp_path, FEATURE_Cli=_GO_BROKEN)
+    write(target, [StackEntry("Go", "go.md")])
     response = _fixed_block("FEATURE_Cli.md", "usage", "Intent: Usage.\n" + proof)
     result = repair("Demo", target, runner=_runner(response))
     assert not result.ok
@@ -764,3 +768,44 @@ def test_repair_keeps_embedded_fences_and_rejects_text_outside_a_fence():
         _response_blocks(_fixed_block("FEATURE_Cli.md", "usage", bad))[("FEATURE_Cli.md", "usage")]
         == bad + "\n"
     )
+
+
+@pytest.mark.parametrize("byte_streams", [False, True])
+def test_package_launch_repair_keeps_arguments_and_assertions(tmp_path, monkeypatch, byte_streams):
+    import sys
+    from types import SimpleNamespace
+
+    from drydock.acceptance import parse_programmatic_acceptance
+
+    broken = _GO_BROKEN.replace('["go", "run", "./cmd/dupfind"]', '["./cmd/dupfind"]')
+    if byte_streams:
+        broken = broken.replace(
+            "assert result.stdout == ''",
+            "print(result.stdout.decode())\nassert result.stdout == b''",
+        ).replace(", text=True", "")
+    from drydock.technology_stack import StackEntry, write
+
+    target = _target(tmp_path, FEATURE_Cli=broken)
+    write(target, [StackEntry("Go", "go.md")])
+    output_assertion = (
+        "print(out)\nassert out.encode() == b''" if byte_streams else "assert out == ''"
+    )
+    proof = (
+        "Intent: Missing arguments exit 2 with empty stdout.\n"
+        "from drydock_go import cli_runner\ncode, out, err = cli_runner()\n"
+        "assert code == 2\n" + output_assertion
+    )
+    runner = _runner(_fixed_block("FEATURE_Cli.md", "usage", proof))
+    result = repair("Demo", target, runner=runner)
+    assert result.ok, result.items
+    assert "go-package-launch" in runner.calls[0]["prompt"]
+    calls = []
+
+    def cli_runner(*args):
+        calls.append(args)
+        return 2, "", "usage"
+
+    monkeypatch.setitem(sys.modules, "drydock_go", SimpleNamespace(cli_runner=cli_runner))
+    (check,) = parse_programmatic_acceptance(target / "blueprint/FEATURE_Cli.md")
+    exec(compile(check.code, "<criterion>", "exec"), {})
+    assert calls == [()]

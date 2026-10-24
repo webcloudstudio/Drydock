@@ -43,6 +43,7 @@ from datetime import date
 from pathlib import Path
 from typing import Protocol
 
+from drydock import technology_stack
 from drydock.acceptance import (
     ProgrammaticAcceptance,
     parse_programmatic_acceptance,
@@ -151,7 +152,12 @@ def _still_broken(check: ProgrammaticAcceptance, *, source_root: Path) -> str | 
     code = check.code
     if (reason := syntax_defect(code)) is not None:
         return reason
-    if defect := go_cli_defect(code):
+    if defect := go_cli_defect(
+        code,
+        go=any(
+            Path(name).name == "go.md" for name in technology_stack.stack_files(source_root.parent)
+        ),
+    ):
         return defect[1]
     if reasons := regex_defects(code):
         return "; ".join(reasons)

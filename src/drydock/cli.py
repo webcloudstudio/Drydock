@@ -4858,12 +4858,12 @@ def _failure_stop_lines(step) -> list[str]:
 
 def _failure_progress_lines(step) -> list[str]:
     """Show measured acceptance movement, including suite-level tallies when available."""
-    checks = step.owned_acceptance or step.acceptance
+    checks = step.acceptance or step.owned_acceptance
     quarantined = getattr(step, "quarantined_acceptance", ())
     if not checks:
         return _quarantine_lines(quarantined)
     baseline = {
-        check.check_id: check for check in (step.owned_pre_acceptance or step.pre_acceptance)
+        check.check_id: check for check in (step.pre_acceptance or step.owned_pre_acceptance)
     }
     final_passed = sum(1 for check in checks if check.passed)
     baseline_passed = sum(
@@ -4917,7 +4917,9 @@ _BLUEPRINT_REPAIR_SIGNALS = (
 
 
 def _requests_blueprint_repair(step) -> bool:
-    """True when the agent reported that the specification, not the product, is at fault."""
+    """True when the agent disputes failing criteria; this is not an independent verdict."""
+    if getattr(step, "reported_defective_acceptance", ()):
+        return True
     text = f"{getattr(step, 'agent_blockers', '') or ''} {getattr(step, 'agent_summary', '') or ''}"
     return any(signal in text.lower() for signal in _BLUEPRINT_REPAIR_SIGNALS)
 
@@ -4930,21 +4932,19 @@ def _acceptance_recovery_lines(
     A story that fails acceptance is left ``closed/failed``, which is selectable: a plain
     ``drydock build <Target>`` continues the build and resumes that story in place.
 
-    When the agent reported that the criterion is at fault, rebuilding is the wrong move and
-    costs a full pass to learn nothing — the agent already refused to change correct code. The
-    repair route is offered first in that case, because it is the only one with write authority
-    over ``blueprint/``.
+    A retained criterion dispute calls for inspection before another build. The claim is
+    advisory: plan verification confirms mechanical defects, and plan repair may correct those
+    defects without granting the builder write authority over ``blueprint/``.
     """
-    lines: list[str] = []
     if blueprint_repair:
-        lines += [
-            f"{indent}The agent reports the acceptance criteria are at fault, not the code.",
+        return [
+            f"{indent}The agent disputes failing acceptance criteria; the claim is unverified.",
             f"{indent}Run: drydock plan verify {target}",
-            f"{indent}  to confirm which criteria cannot run, then:",
+            f"{indent}  Inspect the criteria and evidence before rebuilding.",
             f"{indent}Run: drydock plan repair {target}",
-            f"{indent}  to repair them in one pass. Rebuilding first repeats the same failure.",
+            f"{indent}  Repair confirmed mechanical defects, then verify before rebuilding.",
         ]
-    return lines + [
+    return [
         f"{indent}Run: drydock build {target}",
         f"{indent}  to continue the build. This story resumes where it left off and is",
         f"{indent}  retried against the checks it failed.",
@@ -4987,7 +4987,7 @@ def _render_build_failures(
         lines.extend(_failure_stop_lines(step))
         lines.extend(_failure_progress_lines(step))
         failed_checks = tuple(
-            check for check in (step.owned_acceptance or step.acceptance) if not check.passed
+            check for check in (step.acceptance or step.owned_acceptance) if not check.passed
         )
         if failed_checks:
             lines.append("    Assertion")
@@ -5036,7 +5036,7 @@ def _render_build_failures(
         if step.evidence_path is not None:
             lines.append(f"    evidence: {step.evidence_path}")
     acceptance_failed = any(
-        any(not check.passed for check in (step.owned_acceptance or step.acceptance))
+        any(not check.passed for check in (step.acceptance or step.owned_acceptance))
         for step in steps
     )
     lines += ["", "  Next"]

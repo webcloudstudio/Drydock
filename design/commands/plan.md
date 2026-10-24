@@ -393,6 +393,20 @@ compiles; embedded fences and text outside that wrapper remain unchanged. Every 
 preserved by fence normalization. *Broken:* DupFind `20261024.065948` emitted four `go run`
 criteria, then four fenced repairs containing eight invalid list arguments.
 
+`2026-10-24` · **A Go package path is never a subprocess executable.** The shared
+`go_cli_defect` gate, for a Target selecting `go.md`, rejects direct `cmd/<name>` and `./cmd/<name>` launches as
+`go-package-launch` during artifact repair, plan verification, and repair retention, including
+literal argv bindings, subprocess aliases, and shell command strings. Build/test commands may
+still name the package as an argument. `plan repair` uses `drydock_go.cli_runner` while preserving
+arguments and assertions. Cost when broken: DupFind `20261024.073506` reaches build with five
+criteria that execute a directory and raise `PermissionError`.
+
+`2026-10-24` · **Declared structured CLI output is observable state.** Planning parses CSV/JSON
+stdout with the format's standard parser and compares columns, rows, values, ordering, filtering,
+and empty results against declared contracts and fixture inputs. Printing output and asserting
+only exit zero does not verify output behavior. Diagnostic text and runner tallies remain outside
+the oracle. Cost when broken: output criteria accept any successful command with arbitrary CSV.
+
 ### Mechanism
 
 0. **Preflight** — refuse on blockers or missing persistence Rigging; capture questionnaire

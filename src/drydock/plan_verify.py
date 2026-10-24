@@ -505,7 +505,9 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                     )
                 )
                 continue
-            if defect := go_cli_defect(check.code):
+            if defect := go_cli_defect(
+                check.code, go=any(Path(name).name == "go.md" for name in selected)
+            ):
                 kind, reason = defect
                 defects.append(Defect(path.name, check.check_id, kind, reason))
                 continue

@@ -1175,3 +1175,18 @@ def test_go_cli_runner_accepts_unpacked_arguments(tmp_path):
         "code, out, err = cli_runner(*args)\nassert code == 0"
     )
     assert verify("Demo", _target(tmp_path, FEATURE_Cli=_go_criterion(code))).ok
+
+
+def test_go_package_directory_launch_is_not_runnable(tmp_path):
+    code = (
+        "import subprocess\n"
+        'r = subprocess.run(["./cmd/dupfind", "--summary", "."], capture_output=True)\n'
+        "print(r.stdout, r.stderr)\nassert r.returncode == 0"
+    )
+    from drydock.technology_stack import StackEntry, write
+
+    target = _target(tmp_path, FEATURE_Cli=_go_criterion(code))
+    write(target, [StackEntry("Go", "go.md")])
+    result = verify("Demo", target)
+    assert [d.kind for d in result.defects] == ["go-package-launch"]
+    assert result.exit_code() == 1

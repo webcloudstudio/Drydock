@@ -265,3 +265,11 @@ def test_uat_diagnosis_ledger_defines_every_outcome_it_uses():
         cells = [cell.strip() for cell in row.strip("|").split("|")]
         assert len(cells) == 10, row
         assert f"`{cells[-1]}`" in header, row
+
+
+def test_planning_checks_structured_cli_output_as_state():
+    body = " ".join(load_prompt("plan_create").body.split())
+    assert "parse stdout with the format's standard library parser" in body
+    assert "Exit zero alone proves only that the command ran" in body
+    assert "compare parsed field values with the fixture paths" in body
+    assert "Print captured output for diagnosis, never assert on it" not in body

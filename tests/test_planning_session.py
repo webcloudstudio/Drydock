@@ -7473,11 +7473,18 @@ def test_damaged_continuation_names_the_artifact_in_progress_and_retry(partial_p
             "from drydock_go import cli_runner\ncode, out, err = cli_runner([])\nassert code == 2",
             "go-cli-args",
         ),
+        (
+            "import subprocess\nr = subprocess.run(['./cmd/dupfind'])\nassert r.returncode == 0",
+            "go-package-launch",
+        ),
     ],
 )
 def test_go_cli_defects_enter_the_artifact_repair_gate(tmp_path, code, kind):
     from drydock.planning_session import CriteriaDefect, _validate_plan_output
 
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("Go", "go.md")])
+    blueprint_dir = tmp_path / "blueprint"
+    blueprint_dir.mkdir()
     manifest = _manifest()
     blocks = {
         "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
@@ -7488,12 +7495,12 @@ def test_go_cli_defects_enter_the_artifact_repair_gate(tmp_path, code, kind):
         "MANIFEST.md": manifest,
     }
     with pytest.raises(CriteriaDefect) as raised:
-        _validate_plan_output(dict(blocks), tmp_path, FakeRun(text=_llm_output(manifest)))
+        _validate_plan_output(dict(blocks), blueprint_dir, FakeRun(text=_llm_output(manifest)))
     assert [(k, d.source, d.check_id) for k, d in raised.value.defects] == [
         (kind, "FEATURE-Status.md", "usage")
     ]
     # Exhausted repairs still preserve paid-for artifacts for the final buildability gate.
     plan, _ = _validate_plan_output(
-        dict(blocks), tmp_path, FakeRun(text=_llm_output(manifest)), enforce_criteria=False
+        dict(blocks), blueprint_dir, FakeRun(text=_llm_output(manifest)), enforce_criteria=False
     )
     assert plan.blocks

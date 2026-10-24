@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from drydock.harness_exits import (
     contradictions,
     criterion_calls,
+    go_cli_defect,
     load_harness,
     unchecked_calls,
     unloaded_staged_values,
@@ -267,3 +270,39 @@ def test_plan_repair_may_assert_setup_and_create_staged_state():
 
     assert "for an `unchecked-call` fault" in body
     assert "for a `staged-value` fault" in body
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        'import subprocess\nr = subprocess.run(["./cmd/dupfind", "--summary", "."])',
+        'import subprocess as sp\nr = sp.Popen(args=("cmd/dupfind", "."))',
+        'from subprocess import check_output as launch\nr = launch("./cmd/dupfind .", shell=True)',
+        'import subprocess\nargv = ["./cmd/dupfind", "."]\nr = subprocess.run(argv)',
+        'import subprocess\nr = subprocess.check_call(["./cmd/other-tool", "."])',
+    ],
+)
+def test_package_directory_cannot_be_the_subprocess_executable(code):
+    kind, detail = go_cli_defect(code, go=True)
+    assert kind == "go-package-launch"
+    assert "temporary executable" in detail
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        'import subprocess\nr = subprocess.run(["go", "build", "./cmd/dupfind"])',
+        'import subprocess\nr = subprocess.run(["go", "test", "./cmd/dupfind"])',
+        'import subprocess\nr = subprocess.run(["./dupfind", "."])',
+        'import subprocess\nr = subprocess.run(["./bin/dupfind", "."])',
+        'from drydock_go import cli_runner\ncode, out, err = cli_runner(".", package="./cmd/dupfind")',
+        'fixture = ["./cmd/dupfind", "."]\nassert fixture',
+    ],
+)
+def test_go_package_arguments_and_built_binaries_remain_valid(code):
+    assert go_cli_defect(code, go=True) is None
+
+
+def test_package_launch_rule_does_not_invent_a_go_layout_for_other_languages():
+    code = 'import subprocess\nr = subprocess.run(["./cmd/tool", "."])'
+    assert go_cli_defect(code) is None

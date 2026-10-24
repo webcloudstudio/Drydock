@@ -264,19 +264,26 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: Build failure reports use the complete block acceptance set and retain criterion
+  disputes across attempts; disputed failures direct verification and mechanical repair before
+  rebuilding, while claims remain advisory and repair budgets remain unchanged.
+
+- 2026-10-24: `drydock plan` routes Go CLI `go-run`, `go-cli-args`, and `go-package-launch`
+  defects into its existing artifact repair loop. `plan verify` rejects direct launches of
+  `./cmd/<name>` source-package directories and literal list/tuple arguments passed to imported
+  `drydock_go.cli_runner`; the client builds a separate executable and accepts separate strings
+  or an unpacked sequence. `plan repair` includes the client contract, preserves arguments and
+  assertions, removes one enclosing Python fence from an otherwise valid returned criterion,
+  and rejects repairs that retain these defects. Structured CLI output guidance permits parsing
+  CSV/JSON stdout and requires data assertions instead of exit-only checks. This extends the Go
+  CLI correction introduced on 2026-10-22.
+
 - 2026-10-24: `DATABASE.md` access patterns must name their DTO on the `Input:` and `Output:`
   line. A bare label previously took the next line's `| Field | Type |` header as its name, so
   every such pattern shared one generated row class, `FieldType`, and a `delete` whose Output
   is its key raised during the deterministic DATABASE build step. The bare label is now a
   contract defect that `drydock plan` refuses and repairs. The Python `schema.py` emitter
   refuses one DTO name declared with two field sets, as the Go emitter already did.
-
-- 2026-10-24: `drydock plan` routes Go CLI `go-run` and `go-cli-args` defects into its
-  existing artifact repair loop. `plan verify` rejects literal list/tuple arguments passed to
-  imported `drydock_go.cli_runner`; the client accepts separate strings or an unpacked sequence.
-  `plan repair` includes the variadic client contract, removes one enclosing Python fence from
-  an otherwise valid returned criterion without changing assertions, and rejects repairs that
-  retain either Go CLI defect. This extends the Go CLI correction introduced on 2026-10-22.
 
 - 2026-10-24: Artifact-format LLM calls repair an exact final `=== END ARTIFACT` missing its
   trailing ` ===` when the envelope sequence is unambiguous, preserving bodies and original

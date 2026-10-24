@@ -321,8 +321,85 @@ def go_run_calls(code: str) -> list[int]:
     return sorted(lines)
 
 
-def go_cli_defect(code: str) -> tuple[str, str] | None:
-    """Shared Go CLI checks for planning, verification, and repair retention."""
+def _package_launches(tree: ast.Module) -> list[int]:
+    """Literal subprocess launches of a ./cmd/<name> package, never a Go binary.
+
+    Inspect command positions only: the same string is valid as a go build/test argument
+    or as cli_runner(package=...). Resolve unambiguous local argv bindings and import aliases.
+    No filesystem access is needed before the application exists.
+    """
+    functions = {
+        "run",
+        "Popen",
+        "call",
+        "check_call",
+        "check_output",
+        "getoutput",
+        "getstatusoutput",
+    }
+    modules = {"subprocess"}
+    imported: set[str] = set()
+    bindings: dict[str, list[ast.expr]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(
+                alias.asname or alias.name for alias in node.names if alias.name == "subprocess"
+            )
+        elif isinstance(node, ast.ImportFrom) and node.module == "subprocess":
+            imported.update(
+                alias.asname or alias.name for alias in node.names if alias.name in functions
+            )
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    bindings.setdefault(target.id, []).append(node.value)
+
+    def command(expr: ast.expr, seen: frozenset[str] = frozenset()) -> str | None:
+        if isinstance(expr, ast.Name) and expr.id not in seen:
+            values = bindings.get(expr.id, [])
+            return command(values[0], seen | {expr.id}) if len(values) == 1 else None
+        if isinstance(expr, (ast.List, ast.Tuple)) and expr.elts:
+            first = expr.elts[0]
+            return (
+                first.value
+                if isinstance(first, ast.Constant) and isinstance(first.value, str)
+                else None
+            )
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            try:
+                words = shlex.split(expr.value)
+            except ValueError:
+                return None
+            return words[0] if words else None
+        return None
+
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (
+            isinstance(func, ast.Name)
+            and func.id in imported
+            or isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Name)
+            and func.value.id in modules
+            and func.attr in functions
+        ):
+            continue
+        argv = (
+            node.args[0]
+            if node.args
+            else next((kw.value for kw in node.keywords if kw.arg == "args"), None)
+        )
+        executable = command(argv) if argv is not None else None
+        if executable and re.fullmatch(r"(?:\./)?cmd/[\w-]+/?", executable):
+            lines.add(node.lineno)
+    return sorted(lines)
+
+
+def go_cli_defect(code: str, *, go: bool = False) -> tuple[str, str] | None:
+    """Shared CLI checks; package-directory inference requires a selected Go stack."""
     if lines := go_run_calls(code):
         return (
             "go-run",
@@ -336,6 +413,15 @@ def go_cli_defect(code: str) -> tuple[str, str] | None:
         tree = ast.parse(code)
     except SyntaxError:
         return None
+    if go and (lines := _package_launches(tree)):
+        return (
+            "go-package-launch",
+            "executes a Go package directory at line(s) "
+            + ", ".join(str(line) for line in lines)
+            + "; use `from drydock_go import cli_runner` and "
+            "`code, out, err = cli_runner(<args>)`, which builds the package into a separate "
+            "temporary executable; ./cmd/<name> is the source package, not the binary",
+        )
     runners = {
         alias.asname or alias.name
         for node in ast.walk(tree)

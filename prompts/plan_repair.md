@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261024 V14
+version: 20261024 V15
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -81,11 +81,15 @@ Permitted:
   under an identifier no staged file holds, with the same commands the other criteria in the
   Blueprint use to create it, each followed by `assert code == 0`, and use that identifier in place
   of the staged one throughout the criterion. Keep every expected exit status and output.
-- for a `go-run` fault, replace each named `go run <package> <args...>` invocation with
+- for a `go-run` or `go-package-launch` fault, replace each named `go run <package> <args...>`
+  or direct `./cmd/<name> <args...>` invocation with
   `code, out, err = cli_runner(<args...>)` after `from drydock_go import cli_runner`, passing the
   same arguments, `input=` for the same standard input, and `package="<package>"` only when the
   package is not the sole `./cmd/<name>`. Read the exit status, standard output, and standard
-  error from `code`, `out`, and `err` in place of the subprocess result. Keep every expected value.
+  error from `code`, `out`, and `err` in place of the subprocess result. The helper returns
+  text; replace byte-stream `.decode(...)` calls with the returned text. Keep every expected
+  value, including bytes comparisons by encoding the returned text when necessary.
+  `./cmd/<name>` is the Go source package directory; never chmod it or execute it directly.
 
 Go CLI client contract:
 
@@ -104,9 +108,9 @@ Forbidden:
 
 - changing any `assert` — its operands, its comparison, or its expected value — except as
   permitted above for a `harness-exit` fault, or renaming its operands to `code`, `out`, and
-  `err` for a `go-run` fault;
+  `err` for a `go-run` or `go-package-launch` fault;
 - changing the input payload, the program under test, or the command invoked, except as
-  permitted above for an `unchecked-call`, `staged-value`, or `go-run` fault;
+  permitted above for an `unchecked-call`, `staged-value`, `go-run`, or `go-package-launch` fault;
 - adding `try`, `except`, `pytest.skip`, or any construct that lets the criterion pass without
   testing what it claims to test;
 - deleting a criterion, renaming its id, or altering its `Intent:` line;

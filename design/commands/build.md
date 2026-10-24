@@ -161,6 +161,18 @@ reset preserves `.git`. *Broken:* specification versions severed from code.
 
 `2026-10-22` · Build progress reports the persisted per-story state rather than the aggregate step verdict; grouped summaries omit a single state and list each member story. Cost when broken: the console claims verification the Manifest does not record.
 
+`2026-10-24` · **A failed block reports its complete acceptance set.** Failure summaries,
+assertion details, baseline movement, and recovery selection use the block's checks; story-owned
+checks remain available for attribution. Cost when broken: a block failing five criteria reports
+4/4 passing from its first story (DupFind `20261024.073506`).
+
+`2026-10-24` · **Criterion disputes survive subsequent repair calls.** Build retains the IDs
+reported defective during any attempt and filters them to still-failing criteria at completion.
+The claim remains advisory and does not change repair budgets or verdicts. Terminal and recorded
+error recovery direct inspection through `plan verify`, with `plan repair` for confirmed mechanical
+defects, before rebuilding. Cost when broken: a later report omits `AC_BROKEN` and recovery advises
+an unchanged rebuild against the same immutable criterion.
+
 ### Mechanism
 
 1. **Guard** — Manifest present, specs current, plan verifiable.

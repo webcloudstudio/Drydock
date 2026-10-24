@@ -3702,6 +3702,13 @@ def test_a_defect_claim_is_recorded_and_does_not_stop_the_loop(tmp_path):
         "deterministic acceptance score did not improve on 2 consecutive calls"
     )
     assert any("recorded, not accepted" in message for message in messages)
+    assert step.reported_defective_acceptance == ("foundation-file",)
+    from drydock.errors import read_error_record
+
+    record = read_error_record(target_dir)
+    assert "drydock plan verify Demo" in record.recovery
+    assert "drydock plan repair Demo" in record.recovery
+    assert "Run: drydock build" not in record.recovery
 
 
 def test_an_unnamed_defect_claim_still_spends_the_repair_budget(tmp_path):
@@ -4923,3 +4930,35 @@ def test_grouped_story_results_match_their_individual_governed_states(tmp_path):
     states = {step.block_id: step.state for step in result.steps}
     assert states == {"foundation": "closed/verified", "service": "closed/implemented"}
     assert all(state == _state(target, name) for name, state in states.items())
+
+
+@pytest.mark.parametrize("healed", [False, True])
+def test_dispute_from_an_earlier_attempt_only_survives_while_check_fails(tmp_path, healed):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs["parameters"]["attempt"])
+        Path(working_directory).mkdir(parents=True, exist_ok=True)
+        (Path(working_directory) / "foundation.txt").write_text(
+            "ok\n" if healed and len(calls) > 1 else "bad\n", encoding="utf-8"
+        )
+        return FakeResult(
+            text=(
+                "RESULT: SUCCESS\nFILES CHANGED:\n- foundation.txt\n\nSUMMARY:\nDone.\n"
+                + ("AC_BROKEN: foundation-file\n" if len(calls) == 1 else "")
+            )
+        )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+    step = result.steps[0]
+    assert step.reported_defective_acceptance == (() if healed else ("foundation-file",))
+    assert (step.status == "failed") is not healed

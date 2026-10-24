@@ -4110,7 +4110,12 @@ def _validate_plan_output(
             for name in sorted(blocks)
             if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
             for check in _acceptance_checks(blocks[name], source=name)
-            if (defect := go_cli_defect(check.code)) is not None
+            if (
+                defect := go_cli_defect(
+                    check.code, go=any(Path(name).name == "go.md" for name in selected_rigging)
+                )
+            )
+            is not None
             for kind, reason in (defect,)
         )
         if enforce_criteria

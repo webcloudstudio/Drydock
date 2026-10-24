@@ -447,6 +447,7 @@ class BuildStepResult:
     owned_acceptance: tuple[AcceptanceRunResult, ...] = ()
     agent_summary: str = ""
     agent_blockers: str = ""
+    reported_defective_acceptance: tuple[str, ...] = ()
     prompt: str | None = None
     # Why the repair loop stopped short of its budget, and what it spent. Without these the
     # failure report shows a run that ended at call 2 of 4 and no reason for the shortfall.
@@ -1464,10 +1465,8 @@ def _is_repairable(error: str | None) -> bool:
     ))
 
 
-# The objective escape hatch. An agent that has run a criterion and concluded the criterion
-# itself cannot pass emits this line; Drydock stops the repair loop on it without interpreting
-# prose. Prose inference (``_DEFECT_CLAIM_TERMS`` below) remains as a fallback for agents that
-# describe the defect without using the token, but the token is the contract.
+# Structured criterion dispute. The claim is retained for recovery, without changing the
+# verdict or repair budget. Prose inference remains a fallback for agents that omit the token.
 _AC_BROKEN_RE = re.compile(r"^\s*AC[_ -]?BROKEN:\s*(?P<ids>.*)$", re.IGNORECASE | re.MULTILINE)
 
 
@@ -1479,8 +1478,7 @@ def _ac_broken_claim(
 
     The token carries a comma-separated id list. Ids that are not currently failing are
     ignored: an agent cannot condemn a criterion that passed. A token with no recognizable id
-    claims every failing check, because an agent that emits it has already concluded no repair
-    pass can succeed — and the claim only ever reaches the existing terminal outcome sooner.
+    claims every failing check. The claim remains advisory and never changes the repair budget.
     """
     if not failed_checks:
         return ()
@@ -1552,12 +1550,8 @@ def _defective_acceptance_claim(
 
     A repair pass cannot rewrite a criterion: staged acceptance assets are restored before
     grading, so a genuinely broken assertion consumes the whole budget and fails identically
-    every time. When the agent both names a failing check and claims it is broken, stop
-    immediately and point the operator at the Blueprint.
-
-    The self-report stays advisory. This path never marks a block verified and never hides an
-    acceptance failure — it only reaches the same terminal outcome sooner and with the right
-    diagnosis. An agent that lies here buys itself an earlier failure, not a pass.
+    every time. A claim that names a failing check is retained for recovery instructions.
+    The self-report stays advisory: it never changes the verdict or repair budget.
     """
     if agent_report is None or not failed_checks:
         return ()
@@ -3001,6 +2995,7 @@ def build_target(
         )
         max_attempt = max(0, repair_attempts)
         attempt_records: list[AttemptRecord] = []
+        reported_defective_ids: set[str] = set()
         gate_results: dict[str, GateResult] = {}
         # Consecutive flat passes. Reset by any pass that moves the deterministic acceptance
         # score, so progress/flat/progress/flat never accumulates into a stop.
@@ -3794,7 +3789,7 @@ def build_target(
                 # The ``AC_BROKEN:`` token is read straight from the agent's response and does
                 # not depend on ``RESULT: FAILED``. An agent that runs a criterion, sees the
                 # tool succeed, and concludes the assertion itself is wrong may well report
-                # SUCCESS — the token still has to stop the loop.
+                # SUCCESS — the token still has to be retained for recovery.
                 defective_ids = _ac_broken_claim(summary, unmet)
                 if not defective_ids:
                     # Fallback for an agent that describes the defect without the token. The
@@ -3809,6 +3804,7 @@ def build_target(
             # tool, exhausted memory or time — no further pass can move any of them, and the ids
             # name exactly what a human has to fix instead.
             if defective_ids:
+                reported_defective_ids.update(defective_ids)
                 sources = sorted({
                     check.source
                     for check in checks
@@ -4051,6 +4047,17 @@ def build_target(
                 and (error or "").startswith("programmatic acceptance failed")
                 else None
             )
+            if acceptance_recovery and any(
+                not check.passed and check.check_id in reported_defective_ids
+                for check in acceptance
+            ):
+                acceptance_recovery = (
+                    "The agent disputes failing acceptance criteria; the claim is unverified.\n"
+                    f"Run: drydock plan verify {target}\n"
+                    "  Inspect the criteria and evidence before rebuilding.\n"
+                    f"Run: drydock plan repair {target}\n"
+                    "  Repair confirmed mechanical defects, then verify before rebuilding."
+                )
             write_error_record(
                 target_dir,
                 command="build",
@@ -4344,6 +4351,11 @@ def build_target(
                 owned_acceptance=owned_acceptance,
                 agent_summary=agent_summary,
                 agent_blockers=agent_blockers,
+                reported_defective_acceptance=tuple(
+                    check.check_id
+                    for check in acceptance
+                    if not check.passed and check.check_id in reported_defective_ids
+                ),
                 stop_reason=step_stop_reason,
                 calls_used=len(attempt_records),
                 calls_budget=max_attempt + 1,
