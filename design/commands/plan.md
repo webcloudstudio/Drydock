@@ -25,6 +25,16 @@ written.
 
 ## Details
 
+`2026-10-24` · Staged corpus probes recognize section/selection options and options whose
+parsed values feed `re.compile`, rather than treating the first option as a selector.
+Program and corpus-path arguments remain in the probe's complete literal argv; unresolved
+arguments fail validation rather than being omitted. `Probe Count: json` counts JSON array
+items, including zero for `[]`; JSON arrays/objects are rejected under `lines`. Probe repair
+receives only the implicated runner source, preserves non-probe metadata, code and assertions,
+and changes listing flags/count formats for `probe-failed`; `empty-selection` retains scoped
+selector repair. `BLUEPRINTS_CONTRACT.md` requires flags and protocols the supplied runner
+implements. This revises `51a9c2b`; the master specification is unchanged.
+
 `2026-10-24` · Ed defines repeated artifact filenames within one response as updates: the last
 block replaces earlier drafts before validation. Both parser paths and output cleanup accept
 closed repeated envelopes; unrelated files remain intact. The chosen body still passes every
@@ -626,6 +636,11 @@ exist.
 
 
 ## Actions
+
+- `2026-10-24` · CommonMark `20261024.231239` probe fixes require later live verification by
+  Ed: all scoped probes must inspect their declared section and corpus, JSON emptiness must
+  fail, and protocol repairs must retain scope; local proof is in `test_acceptance.py` JSON
+  corpus regressions and `test_plan_repair.py::test_probe_protocol_repair_receives_runner_and_preserves_scope`.
 
 - `2026-10-24` · `5e9962e` implements Ed's final-draft update policy and exact parser-defect
   feedback for CsvStat `20261024.221659`; the matching ledger rows are `unverified` pending a

@@ -11,8 +11,8 @@ call on their own; repairing an advisory is out of this command's scope.
 
 One call for the whole pass, not one call per file. Every defective criterion across every
 Blueprint file is sent in a single request, each as its own minimal fenced block. Citation repair
-also receives the referenced source files with line numbers; other repairs receive no source
-context. What stays true: one attempt per criterion, surgical splice, re-verify before keeping a write.
+also receives referenced source files with line numbers; selection-probe repairs receive the
+implicated staged runner source. What stays true: one attempt per criterion, surgical splice, re-verify before keeping a write.
 
 Scope. This repairs *mechanics*: a criterion that raises before it asserts anything — a missing
 import, an undefined name, a syntax error. It never touches what a criterion asserts. A criterion
@@ -51,6 +51,7 @@ from drydock.acceptance import (
     parse_programmatic_acceptance_text,
     regex_defects,
     selection_probe_reason,
+    selector_recognition,
     split_fused_acceptance_boundary,
     staged_regex_defects,
     syntax_defect,
@@ -301,6 +302,39 @@ def _citation_sources(jobs: list[tuple[Defect, str]], blueprint_dir: Path) -> li
     return parts
 
 
+def _probe_sources(jobs: list[tuple[Defect, str]], blueprint_dir: Path) -> list[PromptPart]:
+    """Supply each implicated runner once; never inject the corpus or unrelated sources."""
+    parts: list[PromptPart] = []
+    seen: set[str] = set()
+    for defect, block_body in jobs:
+        if defect.kind not in {
+            "missing-selection-probe",
+            "invalid-selection-probe",
+            "probe-failed",
+            "empty-selection",
+        }:
+            continue
+        checks = parse_programmatic_acceptance_text(
+            _plain_block(defect.check_id, block_body), source=defect.filename
+        )
+        if not checks:
+            continue
+        recognized = selector_recognition(checks[0].code, blueprint_dir)
+        if recognized is None or recognized[0] in seen:
+            continue
+        relative = recognized[0]
+        seen.add(relative)
+        parts.extend(
+            contextual_markdown_parts(
+                relative,
+                (blueprint_dir / relative).read_text(encoding="utf-8"),
+                filename=relative,
+                role="staged runner contract for selection probe repair",
+            )
+        )
+    return parts
+
+
 def _contract_parts(jobs: list[tuple[Defect, str]], contracts: list[str]) -> list[PromptPart]:
     """Give an ``acceptance-store`` repair the in-process fixtures the selected foundations publish.
 
@@ -324,7 +358,7 @@ def _assemble(
 
     Deterministic, so it is unit-testable without a process. Each job carries only its own
     criterion's AC-block body; citation defects additionally receive their numbered source files,
-    and store-isolation defects the selected foundation contracts.
+    probe defects their staged runner, and store-isolation defects selected foundation contracts.
     """
     parts: list[PromptPart] = [
         system_preamble_part(),
@@ -344,6 +378,7 @@ def _assemble(
     parts.extend(_defect_part(defect, block_body) for defect, block_body in jobs)
     if blueprint_dir is not None:
         parts.extend(_citation_sources(jobs, blueprint_dir))
+        parts.extend(_probe_sources(jobs, blueprint_dir))
     parts.extend(_contract_parts(jobs, contracts or []))
     parts.append(section_heading_part("# Agent Task"))
     parts.append(part("Prompt body", body + "\n\n", kind="prompt-body"))
@@ -446,6 +481,44 @@ def _splice_and_revert(
                 RepairItem(filename, defect.check_id, "not-emitted", old, "no block returned")
             )
             continue
+        if defect.kind in {"missing-selection-probe", "invalid-selection-probe", "probe-failed"}:
+            old_body = _block_bodies(old)[defect.check_id]
+            # Compare proof text separately: a Probe-looking line inside a Python string
+            # is code, so stripping declaration-shaped lines alone would permit changing it.
+            try:
+                old_check = parse_programmatic_acceptance_text(
+                    _plain_block(defect.check_id, old_body), source=filename
+                )[0]
+                new_check = parse_programmatic_acceptance_text(
+                    _plain_block(defect.check_id, body), source=filename
+                )[0]
+            except (ValueError, IndexError) as exc:
+                items.append(
+                    RepairItem(
+                        filename,
+                        defect.check_id,
+                        "unrepaired",
+                        old,
+                        f"probe repair left the criterion unparseable: {exc}",
+                    )
+                )
+                continue
+            probe_lines = r"(?im)^[ \t]*Probe(?: Count)?:[^\n]*\n?"
+            if (
+                old_check.code != new_check.code
+                or re.sub(probe_lines, "", old_body).strip()
+                != re.sub(probe_lines, "", body).strip()
+            ):
+                items.append(
+                    RepairItem(
+                        filename,
+                        defect.check_id,
+                        "unrepaired",
+                        old,
+                        "probe repair changed content other than Probe/Probe Count and was rejected",
+                    )
+                )
+                continue
         if defect.kind == "bad-citation":
             old_body = _block_bodies(old)[defect.check_id]
             # Citation repair may change the declaration only, never its proof or other metadata.

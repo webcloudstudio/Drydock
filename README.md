@@ -158,6 +158,9 @@ remain in the original execution evidence, and artifacts accepted in earlier bat
 `init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`
 
 `plan verify` checks whether acceptance criteria can run; it does not establish product coverage.
+Staged corpus probes preserve literal corpus paths and section filters. `Probe Count: json` counts
+JSON array elements; use it with runners whose listing mode emits JSON, rather than counting output
+lines. Probe repairs receive the implicated runner source and preserve the criterion's scope.
 Criteria must observe the delivered application through its declared interfaces. A check that
 passes without the product remains `PREBUILD_PASSES` and cannot verify its story. String
 calculations compared with literal known answers are not flagged as retyped expressions;

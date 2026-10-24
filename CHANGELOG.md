@@ -322,6 +322,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock plan verify` identifies staged corpus selectors independently of
+  program and corpus-path arguments and preserves the complete literal runner arguments when
+  probing. `Probe Count: json` counts JSON array elements; empty arrays fail as empty selections,
+  and JSON cannot pass by counting output lines. `plan repair` receives the implicated runner
+  source and corrects failed probe flags/count protocols without changing the criterion's scope,
+  command, or assertions. Planning guidance uses the supplied runner's supported listing mode
+  rather than assuming `--list`. This addresses CommonMark's 19 pre-build probe failures and
+  five false coverage passes.
+
 - 2026-10-24: Repeated artifact filenames in one LLM response are full updates: planning and
   the shared artifact parser select the last body before normal validation, preserving unrelated
   files and the original response evidence. An unclosed final update requires recovery rather

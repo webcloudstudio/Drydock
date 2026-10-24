@@ -1010,3 +1010,50 @@ def test_other_defects_carry_no_foundation_contracts(tmp_path):
     repair("Demo", target, runner=runner)
 
     assert "## Selected foundation contracts" not in runner.calls[0]["prompt"]
+
+
+def test_probe_protocol_repair_receives_runner_and_preserves_scope(tmp_path):
+    from tests.test_acceptance import _JSON_CORPUS_RUNNER
+
+    broken = _BROKEN_MISSING_PROBE.replace(
+        "Intent: Selects a conformance slice through the staged runner.\n",
+        "Intent: Selects a conformance slice through the staged runner.\n"
+        "Suite: scoped\nProbe: --list\nProbe Count: summary\n",
+    ).replace(
+        '"--select", "alpha"',
+        '"--program", "./missing", "--spec", "sources/corpus.json", "-P", "alpha"',
+    )
+    target = _probe_target(tmp_path, FEATURE_Selector=broken)
+    sources = target / "blueprint" / "sources"
+    (sources / "run_probe.py").write_text(_JSON_CORPUS_RUNNER)
+    (sources / "corpus.json").write_text('[{"section": "alpha"}]')
+    (sources / "unrelated.txt").write_text("DO NOT INJECT UNRELATED SOURCE")
+    body = broken.split("=== AC select-alpha ===\n")[1].split("=== END AC")[0]
+    body = body.replace("Probe: --list", "Probe: --dump-tests").replace(
+        "Probe Count: summary", "Probe Count: json"
+    )
+    runner = _runner(_fixed_block("FEATURE_Selector.md", "select-alpha", body))
+
+    result = repair("Demo", target, runner=runner)
+
+    assert result.ok, [item.rendered for item in result.outstanding]
+    prompt = runner.calls[0]["prompt"]
+    assert "parser.add_argument('--dump-tests'" in prompt
+    assert "DO NOT INJECT UNRELATED SOURCE" not in prompt
+    assert verify("Demo", target).ok
+    text = (target / "blueprint" / "FEATURE_Selector.md").read_text()
+    assert "Suite: scoped" in text
+    assert "Probe Count: json" in text
+    assert '"-P", "alpha"' in text
+
+
+def test_probe_repair_cannot_drop_suite_or_change_assertions(tmp_path):
+    broken = _BROKEN_MISSING_PROBE.replace(
+        "Intent: Selects a conformance slice through the staged runner.\n",
+        "Intent: Selects a conformance slice through the staged runner.\nSuite: scoped\n",
+    )
+    target = _probe_target(tmp_path, FEATURE_Selector=broken)
+    result = repair("Demo", target, runner=_runner(_FIXED_PROBE_BLOCK))
+    assert not result.ok
+    assert "other than Probe/Probe Count" in result.items[0].detail
+    assert (target / "blueprint" / "FEATURE_Selector.md").read_text() == broken

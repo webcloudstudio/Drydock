@@ -1847,3 +1847,105 @@ def test_blueprint_read_defects_tolerates_unparseable_code(tmp_path):
     blueprint = tmp_path / "blueprint"
     blueprint.mkdir()
     assert blueprint_read_defects("def (:", blueprint) == ()
+
+
+_JSON_CORPUS_RUNNER = """import argparse
+import json
+import re
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--program')
+parser.add_argument('--spec', default='wrong-path.json')
+parser.add_argument('-P', '--pattern')
+parser.add_argument('--dump-tests', action='store_true')
+args = parser.parse_args()
+pattern = re.compile(args.pattern)
+with open(args.spec) as stream:
+    selected = [case for case in json.load(stream) if pattern.search(case['section'])]
+if not args.dump_tests:
+    raise RuntimeError('probe must not launch the product')
+print(json.dumps(selected, indent=2))
+"""
+
+
+def _json_probe(tmp_path, *, pattern="ATX headings", mode="json", reordered=False):
+    import json
+
+    (tmp_path / "runner.py").write_text(_JSON_CORPUS_RUNNER)
+    (tmp_path / "corpus.json").write_text(
+        json.dumps([
+            {"section": "ATX headings"},
+            {"section": "Lists"},
+        ])
+    )
+    args = ["--program", "./missing-product", "--spec", "corpus.json", "-P", pattern]
+    if reordered:
+        args = ["--spec=corpus.json", "-P", pattern, "--program", "./missing-product"]
+    code = 'import subprocess\nimport sys\nr = subprocess.run([sys.executable, "runner.py", '
+    code += ", ".join(repr(arg) for arg in args) + "])\nassert r.returncode == 0\n"
+    return ProgrammaticAcceptance(
+        check_id="scoped",
+        source="FEATURE-Test.md",
+        intent="Scoped corpus.",
+        code=code,
+        probe="--dump-tests",
+        probe_count=mode,
+    )
+
+
+def test_probe_preserves_corpus_and_selects_real_filter_in_either_order(tmp_path):
+    for reordered in (False, True):
+        check = _json_probe(tmp_path, reordered=reordered)
+        recognized = acceptance.selector_recognition(check.code, tmp_path)
+        assert recognized[1:3] == ("-P", "ATX headings")
+        assert acceptance.selection_probe_reason(check, blueprint_dir=tmp_path) is None
+
+
+def test_json_probe_rejects_empty_section_even_when_other_sections_exist(tmp_path):
+    check = _json_probe(tmp_path, pattern="absent")
+    kind, reason = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+    assert kind == "empty-selection"
+    assert "0 cases" in reason
+
+
+def test_json_cannot_masquerade_as_lines_or_summary(tmp_path):
+    for mode in ("lines", "summary"):
+        for pattern in ("ATX headings", "absent"):
+            check = _json_probe(tmp_path, pattern=pattern, mode=mode)
+            kind, _ = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+            assert kind == "probe-failed"
+
+
+def test_program_and_corpus_paths_are_not_selectors(tmp_path):
+    (tmp_path / "runner.py").write_text(_JSON_CORPUS_RUNNER)
+    code = 'import subprocess\nsubprocess.run(["python", "runner.py", "--program", "x", "--spec", "y"])'
+    assert acceptance.selector_recognition(code, tmp_path) is None
+
+
+def test_probe_does_not_silently_drop_dynamic_corpus_arguments(tmp_path):
+    check = _json_probe(tmp_path)
+    from dataclasses import replace
+
+    check = replace(check, code=check.code.replace("'corpus.json'", "runtime_corpus()"))
+    kind, _ = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+    assert kind == "invalid-selection-probe"
+
+
+def test_dynamic_selector_is_reported_beside_literal_program_and_corpus(tmp_path):
+    from dataclasses import replace
+
+    check = _json_probe(tmp_path)
+    check = replace(check, code=check.code.replace("'ATX headings'", "runtime_pattern()"))
+    assert acceptance.dynamic_selector_advisory(check, blueprint_dir=tmp_path) is not None
+
+
+@pytest.mark.parametrize("output", ["{}", "null", "42", "invalid JSON"])
+def test_json_probe_rejects_malformed_or_non_array_output(tmp_path, monkeypatch, output):
+    check = _json_probe(tmp_path)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **kw: subprocess.CompletedProcess(a[0], 0, stdout=output, stderr=""),
+    )
+    kind, _ = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+    assert kind == "probe-failed"

@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261024 V32
+version: 20261024 V33
 ---
 
 ## Overview
@@ -169,12 +169,19 @@ line is the proof body, taken character for character to the matching end marker
 
 `Probe:`/`Probe Count:` are required together whenever the body invokes a staged runner with a
 literal selection option (a flag choosing a subset of an imported corpus, such as `--sections` or
-`--select`). Drydock re-invokes that same runner with the same selector option and value, plus the
-`Probe:` flag(s) appended — flags that make the runner list or count the matched cases with no
+`--select`). Drydock re-invokes that same runner with all literal arguments, including corpus
+paths and selector options, plus the `Probe:` flag(s) appended — flags that make the runner list or count the matched cases with no
 candidate present, e.g. `--list`. `Probe Count:` names how to read the probe's stdout: `lines`
 (one selected case per non-blank line) or `summary` (the count is the leading integer of the
 trailing non-blank line, e.g. `27 cases, 2 excluded`). Drydock runs the declared probe before
 build and refuses the plan if the selector proves to match nothing.
+Use only flags and output formats the supplied runner actually implements; the `--list` example
+is not a default. `Probe Count: json` counts elements of a JSON array, including zero for `[]`.
+For a runner whose `--dump-tests` emits a JSON array, declare `Probe: --dump-tests` and
+`Probe Count: json`. Never count pretty-printed JSON lines as cases or declare a summary for JSON.
+Program and corpus-path options do not select cases. Preserve the criterion's actual section
+filter and corpus path when declaring its probe; never change supplied read-only runners to
+accommodate a probe protocol.
 
 Nothing inside the body can move a boundary. A Markdown fence, a `##` line, a `###` line, or a
 `Requires:` line inside a string is ordinary content — which matters, because a target that

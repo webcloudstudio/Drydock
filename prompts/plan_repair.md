@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261024 V17
+version: 20261024 V18
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -31,6 +31,10 @@ Error: <one sentence naming the fault>
 Nothing else about that criterion's file, and nothing about any other criterion, is provided.
 For a `bad-citation` defect, numbered source files may also be supplied as context. Use only
 those sources to repair its `Cite:` declaration; never infer missing source text or line numbers.
+
+Selection-probe repairs also receive the implicated staged runner source. Derive supported flags
+and count formats from that source; never invent a listing flag or edit the supplied runner.
+`Probe Count: json` counts JSON array elements; `[]` means zero, not one output line.
 
 Your job is to make each criterion named in its own block run. Nothing else.
 
@@ -74,9 +78,12 @@ Permitted:
 - for a `missing-selection-probe` or `invalid-selection-probe` fault, add or correct the
   criterion's `Probe:` and `Probe Count:` declaration lines so the selector it already invokes can
   be proven non-empty, and only that;
-- for an `empty-selection` or `probe-failed` fault, correct the selector value itself (the option
-  passed to the staged runner) so it selects a real, existing section of the corpus, preserving
-  the section the criterion's `Intent:` names — never widen it to "select everything";
+- for a `probe-failed` fault, correct `Probe:` and `Probe Count:` to match the supplied runner's
+  supported listing flag and count format, preserving the existing command, filter, corpus path,
+  `Suite:`, `Intent:`, and assertions; never drop probe declarations to bypass validation;
+- for an `empty-selection` fault, correct the selector value itself so it selects the existing
+  section the criterion's `Intent:` names; never widen it to "select everything", and emit
+  `REPAIR_IMPOSSIBLE` if the supplied evidence cannot establish a correct section;
 - for a `harness-exit` fault, change the named call's expected exit status to the value the
   `Error:` line says the staged harness expects, and correct any later assertion in the same
   criterion that held only because that call had the wrong outcome. The staged harness is the

@@ -24,6 +24,16 @@ and measured something; everything else is reported, not charged.
 
 ## Details
 
+`2026-10-24` · Staged corpus probes recognize section/selection options and options whose
+parsed values feed `re.compile`, rather than treating the first option as a selector.
+Program and corpus-path arguments remain in the probe's complete literal argv; unresolved
+arguments fail validation rather than being omitted. `Probe Count: json` counts JSON array
+items, including zero for `[]`; JSON arrays/objects are rejected under `lines`. Probe repair
+receives only the implicated runner source, preserves non-probe metadata, code and assertions,
+and changes listing flags/count formats for `probe-failed`; `empty-selection` retains scoped
+selector repair. `BLUEPRINTS_CONTRACT.md` requires flags and protocols the supplied runner
+implements. This revises `51a9c2b`; the master specification is unchanged.
+
 ### Rules
 
 `2026-10-24` · **An assembled expectation binds unless its typed text is escapable.** The text
@@ -183,6 +193,11 @@ file-exists stubs), and rejects a plan where no story carries it. Deferred becau
 4. **Criterion isolation:** resolved 2026-10-22 by rollback scopes and owned committed records.
 
 ## Actions
+
+- `2026-10-24` · CommonMark `20261024.231239` probe fixes require later live verification by
+  Ed: all scoped probes must inspect their declared section and corpus, JSON emptiness must
+  fail, and protocol repairs must retain scope; local proof is in `test_acceptance.py` JSON
+  corpus regressions and `test_plan_repair.py::test_probe_protocol_repair_receives_runner_and_preserves_scope`.
 
 - `2026-10-24` · Go criteria are not under the harness transaction: `drydock_go` runs native tests
   in a separate process, so Go keeps `OpenSession` scopes and owned committed records. Decide

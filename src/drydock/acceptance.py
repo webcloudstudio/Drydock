@@ -6,6 +6,7 @@ import ast
 import builtins
 import contextlib
 import io
+import json
 import os
 import re
 import shutil
@@ -683,8 +684,8 @@ class ProgrammaticAcceptance:
     #: Literal flag(s) that make a staged corpus-selection runner list or count the cases its
     #: selector matched, with no candidate present, from this criterion's ``Probe:`` declaration.
     probe: str = ""
-    #: How to read the probe's stdout: ``lines`` (one case per non-blank line) or ``summary`` (the
-    #: count is parsed from the trailing non-blank line), from ``Probe Count:``.
+    #: How to read stdout: ``lines`` (one case per line), ``summary`` (trailing-line count),
+    #: or ``json`` (array element count), from ``Probe Count:``.
     probe_count: str = ""
     #: Where the source material states this criterion's expected value, from its ``Cite:``
     #: declaration: ``sources/<file>:<line>`` or ``sources/<file>:<start>-<end>``.
@@ -2175,8 +2176,8 @@ def _runner_regex_options(source: Path) -> frozenset[str]:
 #: set is rejected before a probe is ever executed.
 _SAFE_PROBE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_./=-]+$")
 #: Recognized ``Probe Count:`` protocols: one case per non-blank stdout line, or a count parsed
-#: from the trailing non-blank line.
-_PROBE_COUNT_MODES = frozenset({"lines", "summary"})
+#: from the trailing non-blank line, or the length of a JSON array.
+_PROBE_COUNT_MODES = frozenset({"lines", "summary", "json"})
 #: The trailing-line form a ``summary``-mode runner is expected to print, e.g. ``27 cases, 2
 #: excluded``. Only the leading integer is read; the rest is the runner's own words.
 _PROBE_SUMMARY_RE = re.compile(r"^(?P<count>\d+)\s+\S")
@@ -2221,20 +2222,29 @@ def _recognized_staged_calls(
     return calls
 
 
+def _selector_options(source: Path) -> frozenset[str]:
+    return _runner_regex_options(source) | {
+        "--select",
+        "--section",
+        "--sections",
+        "--pattern",
+        "--number",
+    }
+
+
 def selector_recognition(code: str, source_root: Path) -> tuple[str, str, str, int] | None:
     """Return ``(runner_relpath, option, value, lineno)`` for the first statically-known staged
     corpus-selector call in ``code``, or ``None`` when no such call is recognized.
 
-    A selector is any literal ``-``-prefixed option paired with a literal value in a fully
-    resolvable staged-runner command. Drydock cannot know a staged runner's own flag semantics, so
-    every such pair is treated as selection-shaped and made to prove it selects something.
+    Only known selection options or options proven to feed ``re.compile`` qualify;
+    program, corpus-path, and output options are not selectors.
     """
-    for source, command, _index, lineno in _recognized_staged_calls(code, source_root):
-        options = _option_values(command)
-        if not options:
-            continue
-        option, value = next(iter(options.items()))
-        return (source.relative_to(source_root.resolve()).as_posix(), option, value, lineno)
+    for source, command, index, lineno in _recognized_staged_calls(code, source_root):
+        options = _option_values(command[index + 1 :])
+        selectors = _selector_options(source)
+        for option, value in options.items():
+            if option in selectors:
+                return (source.relative_to(source_root.resolve()).as_posix(), option, value, lineno)
     return None
 
 
@@ -2247,9 +2257,12 @@ def dynamic_selector_advisory(check: ProgrammaticAcceptance, *, blueprint_dir: P
     zero-case handling still guards it when the build actually runs.
     """
     for source, command, index, lineno in _recognized_staged_calls(check.code, blueprint_dir):
-        if _option_values(command):
-            continue
-        if any(value is None for value in command[index + 1 :]):
+        selectors = _selector_options(source)
+        if any(
+            token in selectors and position + 1 < len(command) and command[position + 1] is None
+            for position, token in enumerate(command)
+            if position > index
+        ):
             relpath = source.relative_to(blueprint_dir.resolve()).as_posix()
             return (
                 f"line {lineno}: {relpath} is invoked with a selector Drydock cannot statically "
@@ -2293,10 +2306,23 @@ def selection_probe_reason(
     if check.probe_count not in _PROBE_COUNT_MODES:
         return (
             "invalid-selection-probe",
-            f"{where}: Probe Count: {check.probe_count!r} must be 'lines' or 'summary'",
+            f"{where}: Probe Count: {check.probe_count!r} must be 'lines', 'summary', or 'json'",
         )
 
-    argv = [sys.executable, str(blueprint_dir.resolve() / runner), option, value, *probe_flags]
+    # Preserve the exact corpus and filter arguments, independent of their order. Never
+    # substitute a different command when a runtime argument cannot be resolved.
+    source, command, index, _ = next(
+        call
+        for call in _recognized_staged_calls(check.code, blueprint_dir)
+        if call[0].relative_to(blueprint_dir.resolve()).as_posix() == runner and call[3] == lineno
+    )
+    arguments = command[index + 1 :]
+    if any(argument is None for argument in arguments):
+        return (
+            "invalid-selection-probe",
+            f"{where}: probe arguments cannot be statically resolved",
+        )
+    argv = [sys.executable, str(source), *arguments, *probe_flags]
     try:
         result = subprocess.run(
             argv,
@@ -2317,7 +2343,24 @@ def selection_probe_reason(
         return ("probe-failed", f"{where}: probe exited {result.returncode}: {detail}")
 
     stdout_lines = [line for line in result.stdout.splitlines() if line.strip()]
-    if check.probe_count == "lines":
+    if check.probe_count == "json":
+        try:
+            cases = json.loads(result.stdout)
+        except (ValueError, TypeError):
+            cases = None
+        if not isinstance(cases, list):
+            return ("probe-failed", f"{where}: probe output must be a JSON array of cases")
+        count = len(cases)
+    elif check.probe_count == "lines":
+        try:
+            structured = json.loads(result.stdout)
+        except (ValueError, TypeError):
+            structured = None
+        if isinstance(structured, (list, dict)):
+            return (
+                "probe-failed",
+                f"{where}: structured JSON output is not a lines protocol; use Probe Count: json",
+            )
         count = len(stdout_lines)
     else:
         match = _PROBE_SUMMARY_RE.match(stdout_lines[-1]) if stdout_lines else None
