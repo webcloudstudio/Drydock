@@ -5,7 +5,7 @@
 | Version | 2026-10-15 V1 |
 | Description | Make a release decision trustworthy: build known fixtures unattended, end every run in a verdict about the product, and separate a defect in the product from a defect in Drydock's own checkers. |
 | Route | uat |
-| Modules | `uat.py`, `uat_report.py`, `uat_console.py`, `stop_condition.py`, `sea_trials.py` |
+| Modules | `uat.py`, `uat_report.py`, `uat_console.py`, `blockers.py`, `sea_trials.py` |
 | Prompts | `uat_diagnostic.md` (via `/ddk-uat`) |
 | Tests | `tests/test_uat*.py` |
 | Topics | [acceptance_criteria](../topics/acceptance_criteria.md) |
@@ -60,7 +60,7 @@ evidence. The diagnostic classification does not change the runner's recorded ve
 codes. Cost when broken: an upstream warning is dismissed after recovery and its downstream
 failure is repaired several steps later while the generating defect remains.
 
-`2026-10-22` · **A child's provider stop is the run's cause.** A required step that fails while the run workspace's `STOP_NOW.md` exists raises `stopped at <stage>: <reason>` from that file, and `declare_stop` announces the recorded halt rather than its own reason, because the first declaration wins ([process_stops](../topics/process_stops.md)). Cost when broken: `result.json` blames the failing block for a provider limit.
+`2026-10-22` · **A child's provider stop is the run's cause.** A required step that fails while the run workspace's `BLOCKERS.md` holds an environmental blocker raises `stopped at <stage>: <reason>` from that file, and `declare_stop` announces the recorded halt rather than its own reason, because the first declaration wins ([process_stops](../topics/process_stops.md)). Cost when broken: `result.json` blames the failing block for a provider limit.
 
 `2026-10-14` · **Resume selects the recorded run and its failed stage together.** `drydock uat resume <Project>` selects the recorded run and its failed lifecycle stage as one recovery point. Losing the stage would send the selected run to `init`, which the runner rejects before recovery.
 

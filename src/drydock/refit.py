@@ -957,20 +957,31 @@ def _restore_refit_files(
 
 
 def _write_unincorporated_notification(target_dir: Path, errors: Sequence[str]) -> None:
+    """Raise each unincorporated change ticket as a refit decision blocker."""
     if not errors:
         return
-    blockers = target_dir / "BLOCKERS.md"
-    text = blockers.read_text(encoding="utf-8") if blockers.is_file() else "# BLOCKERS\n"
-    heading = "## Unincorporated Change Tickets"
-    section = "\n".join([heading, "", *[f"- {error}" for error in errors], ""])
-    start = text.find(heading)
-    if start >= 0:
-        next_heading = re.search(r"^## ", text[start + len(heading) :], re.MULTILINE)
-        end = start + len(heading) + (next_heading.start() if next_heading else len(text))
-        text = text[:start].rstrip() + "\n\n" + section + text[end:].lstrip()
-    else:
-        text = text.rstrip() + "\n\n" + section
-    blockers.write_text(text, encoding="utf-8", newline="\n")
+    from drydock.blockers import DECISION, Blocker, Blockers, now_utc, write_blockers
+
+    target = target_dir.name
+    write_blockers(
+        target_dir,
+        Blockers(
+            summary="Unincorporated Change Tickets",
+            target=target,
+            source=f"drydock refit {target}",
+            owner=f"refit {target}",
+            declared=now_utc(),
+            blockers=tuple(
+                Blocker(
+                    f"blocker-{index:03d}",
+                    "Unincorporated change ticket",
+                    DECISION,
+                    question=f"{error}\n\nHow should refit incorporate this change?",
+                )
+                for index, error in enumerate(errors, start=1)
+            ),
+        ),
+    )
 
 
 def refit_target(

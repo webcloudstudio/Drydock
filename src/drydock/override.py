@@ -1,10 +1,10 @@
 """Override waivers: the record of every gate ``--override`` bypassed.
 
 ``--override`` waives the gates that are waiting on a human answer — unanswered Analyze
-questionnaire decisions, blocking ``DECISIONS.json`` records that park a story, and acceptance
-prerequisites awaiting Commander authorization. It deliberately does not waive a blocked
-analysis (``BLOCKERS.md``, ``Quality: Blocked``), because on a Target whose sources the author
-controls that verdict is a signal about the sources, not an interruption to route around.
+questionnaire decisions, analysis decision blockers in ``BLOCKERS.md`` (``plan`` only),
+blocking ``DECISIONS.json`` records that park a story, and acceptance prerequisites awaiting
+Commander authorization. It never waives an environmental blocker: a provider limit, an expired
+login, or a halted UAT stage is not a question a waiver can answer.
 
 Every waiver is recorded rather than merely skipped, so an override run reports what it ignored
 and the Target is stamped as ungoverned.
@@ -18,6 +18,7 @@ from pathlib import Path
 # Waiver kinds. Kept as constants so the summary groups stably and tests assert on a name
 # rather than on prose.
 PLAN_DECISION = "plan-decision"
+ANALYSIS_BLOCKER = "analysis-blocker"
 STORY_QUESTION = "story-question"
 ACCEPTANCE_AUTHORIZATION = "acceptance-authorization"
 

@@ -97,8 +97,9 @@ class TargetInfo:
     analysis: AnalysisSummary | None = None
     blockers_present: bool = False
     #: Open, unarchived blocking entries in ``DECISIONS.json``. Reported separately from
-    #: ``blockers_present``, which means ``BLOCKERS.md`` exists and drives phase routing back to
-    #: Arrange. A blocking decision gates its own story at build and must not reroute the phase.
+    #: ``blockers_present``, which means ``BLOCKERS.md`` holds analysis decisions and drives phase
+    #: routing back to Arrange. A blocking decision gates its own story at build and must not
+    #: reroute the phase.
     decision_blocker_count: int = 0
     questionnaire_count: int = 0
     plan_summary: PlanSummary | None = None
@@ -350,7 +351,14 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
     imported_sources = _count_imported_sources(blueprint_dir)
     authored_blueprints = _count_authored_blueprints(blueprint_dir)
     analysis = _read_analysis_summary(target_dir)
-    blockers_present = (target_dir / "BLOCKERS.md").is_file()
+    from drydock.blockers import read_blockers
+
+    blockers = read_blockers(target_dir)
+    # Only an analysis decision routes the phase back to Arrange. Any other block is reported by
+    # the banner that ends ``drydock status``.
+    blockers_present = blockers is not None and (
+        blockers.owner_verb == "analyze" and not blockers.environmental()
+    )
     from drydock.errors import read_error_record
 
     active_error = read_error_record(target_dir)

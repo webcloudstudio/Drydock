@@ -14,7 +14,7 @@ import json
 import os
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import Protocol
@@ -28,6 +28,16 @@ from drydock.artifact_blocks import (
     parse_artifact_report,
     retry_reply_without_artifacts,
     stray_reporter,
+)
+from drydock.blockers import (
+    DECISION,
+    Blockers,
+    blockers_path,
+    now_utc,
+    parse_blockers,
+    read_blockers,
+    render_blockers,
+    write_blockers,
 )
 from drydock.compass_sources import (
     clear_compass_import_pending,
@@ -88,19 +98,8 @@ _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
 # A genuine BLOCKERS.md block carries at least one "## " blocker entry (see prompts/analyze.md).
 _BLOCKER_ENTRY_RE = re.compile(r"^## \S", re.MULTILINE)
 _BLOCKER_ID_RE = re.compile(r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:", re.MULTILINE)
-_BLOCKER_SECTION_RE = re.compile(
-    r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:\s*(?P<title>.*?)\s*$"
-    r"\n?(?P<body>.*?)(?=^##\s|\Z)",
-    re.MULTILINE | re.DOTALL,
-)
-_COMMANDER_RESOLUTION_RE = re.compile(
-    r"^### Commander Resolution\s*$\n?(?P<answer>.*)\Z", re.MULTILINE | re.DOTALL
-)
 _RESOLVED_BLOCKERS_SECTION_RE = re.compile(
     r"^## Resolved Blockers\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
-)
-_RESOLUTION_PLACEHOLDER = (
-    "<!-- Enter the decision that resolves this blocker, then re-run Analyze. -->"
 )
 _OPEN_QUESTIONS_SECTION_RE = re.compile(
     r"^## Questions\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
@@ -159,10 +158,8 @@ class AnalyzeResult:
 class BlockerRecord:
     blocker_id: str
     title: str
-    full_text: str
     original_text: str
     resolution: str | None
-    has_resolution_field: bool
 
 
 def _parse_blocks(text: str) -> dict[str, str]:
@@ -565,46 +562,38 @@ def _validate_blockers(raw: str | None) -> str | None:
 
 
 def _parse_blocker_records(raw: str | None) -> list[BlockerRecord]:
-    """Extract active blocker records and any Commander resolutions."""
+    """Extract decision blockers and any Commander resolutions, from model output or the file."""
     if not raw:
         return []
-    records: list[BlockerRecord] = []
-    for match in _BLOCKER_SECTION_RE.finditer(raw.strip()):
-        body = match.group("body").strip()
-        resolution_match = _COMMANDER_RESOLUTION_RE.search(body)
-        resolution = None
-        original = body
-        has_resolution_field = resolution_match is not None
-        if resolution_match is not None:
-            original = body[: resolution_match.start()].strip()
-            candidate = resolution_match.group("answer").strip()
-            if candidate and candidate != _RESOLUTION_PLACEHOLDER:
-                resolution = candidate
-        records.append(
-            BlockerRecord(
-                blocker_id=match.group("id"),
-                title=match.group("title").strip(),
-                full_text=match.group(0).strip(),
-                original_text=original,
-                resolution=resolution,
-                has_resolution_field=has_resolution_field,
-            )
+    return [
+        BlockerRecord(
+            blocker_id=item.blocker_id,
+            title=item.title,
+            original_text=item.question,
+            resolution=item.resolution or None,
         )
-    return records
+        for item in parse_blockers(raw).decisions()
+    ]
 
 
-def _ensure_blocker_resolution_fields(raw: str | None) -> str | None:
-    """Add the Commander-owned resolution field to every active blocker."""
-    if not raw:
-        return raw
-
-    def add_field(match: re.Match[str]) -> str:
-        section = match.group(0).strip()
-        if _COMMANDER_RESOLUTION_RE.search(match.group("body").strip()):
-            return section
-        return section + "\n\n### Commander Resolution\n\n" + _RESOLUTION_PLACEHOLDER
-
-    return _BLOCKER_SECTION_RE.sub(add_field, raw).strip()
+def _standard_blockers(raw: str, target: str, execution_id: str | None) -> Blockers | None:
+    """Convert model-written blockers into the standard file, owned by ``analyze``."""
+    decisions = tuple(
+        replace(item, kind=DECISION, blocker_class="", auto_continue="", error="")
+        for item in parse_blockers(raw).decisions()
+    )
+    if not decisions:
+        return None
+    summary = decisions[0].title if len(decisions) == 1 else f"{len(decisions)} Analysis Decisions"
+    return Blockers(
+        summary=summary,
+        target=target,
+        source=f"drydock analyze {target}",
+        owner=f"analyze {target}",
+        declared=now_utc(),
+        execution=execution_id or "",
+        blockers=decisions,
+    )
 
 
 def _resolved_blocker_history(
@@ -613,20 +602,6 @@ def _resolved_blocker_history(
     """Archive all prior blocker entries exactly once in ANALYSIS.md."""
     previous_records = _parse_blocker_records(previous_blockers)
     entries = _extract_resolved_blocker_history(prior_analysis)
-    if not previous_records and previous_blockers:
-        entry = "\n".join((
-            "### Prior Blockers",
-            "",
-            f"Archived: {archived_on}",
-            "",
-            "```markdown",
-            previous_blockers.strip(),
-            "```",
-        ))
-        if not any(
-            "```markdown\n" + previous_blockers.strip() + "\n```" in item for item in entries
-        ):
-            entries.append(entry)
     for record in previous_records:
         blocker_text = record.original_text or "(No additional blocker detail.)"
         resolution_text = record.resolution or "_Not provided._"
@@ -1059,10 +1034,14 @@ def analyze(
 
         compass_content = strip_guardrail(compass_content)
 
-    # Inject prior blocker answers if the Commander has filled in BLOCKERS.md.
-    blockers_md_path = target_dir / "BLOCKERS.md"
+    # Inject prior blocker answers if the Commander has filled in BLOCKERS.md. Only decision
+    # blockers are analysis input; an environmental blocker is the reason this is a rerun.
+    blockers_md_path = blockers_path(target_dir)
+    prior_blockers = read_blockers(target_dir)
     blockers_text = (
-        blockers_md_path.read_text(encoding="utf-8") if blockers_md_path.is_file() else None
+        render_blockers(replace(prior_blockers, blockers=prior_blockers.decisions()))
+        if prior_blockers is not None and prior_blockers.decisions()
+        else None
     )
 
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
@@ -1302,7 +1281,6 @@ def analyze(
 
     if sea_trials_blocker:
         blockers_text_out = _ensure_sea_trials_blocker(blockers_text_out, sea_trials_blocker)
-    blockers_text_out = _ensure_blocker_resolution_fields(blockers_text_out)
     resolved_blockers = _resolved_blocker_history(
         prior_analysis_text,
         blockers_text,
@@ -1313,9 +1291,9 @@ def analyze(
     # Its presence is the flag that halts the pipeline; written when present, deleted otherwise
     # (resolved, empty, or placeholder). Never trust block-presence alone — fail closed.
     written_blockers: Path | None = None
-    if blockers_text_out:
-        blockers_md_path.write_text(blockers_text_out + "\n", encoding="utf-8", newline="\n")
-        written_blockers = blockers_md_path
+    standard = _standard_blockers(blockers_text_out, target, exec_id) if blockers_text_out else None
+    if standard is not None:
+        written_blockers = write_blockers(target_dir, standard)
     elif blockers_md_path.is_file():
         blockers_md_path.unlink()
 

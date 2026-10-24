@@ -218,11 +218,11 @@ row here or breaks the format.
 | `score` | `design/commands/score.md` | `score*.py`, `scorecard.py`, `sea_trials.py` |
 | `status` | `design/commands/status.md` | `status.py`, `project_status.py` |
 | `survey` | `design/commands/survey.md` | `survey.py` |
-| `uat` | `design/commands/uat.md` | `uat*.py`, `stop_condition.py` |
+| `uat` | `design/commands/uat.md` | `uat*.py`, `blockers.py` |
 | `validate` | `design/commands/validate.md` | `validate_specification.py` |
 | *Acceptance criteria* | `design/topics/acceptance_criteria.md` | `acceptance*.py`, `ac_repair.py`, `proof_integrity.py` |
 | *Foundations* | `design/topics/foundations.md` | `rigging_contract.py`, `technology_stack.py` |
-| *Process stops* | `design/topics/process_stops.md` | `stop_condition.py`, `llm.py` (`fatal_stop`), `cli.py` (stop gate) |
+| *Process stops* | `design/topics/process_stops.md` | `blockers.py`, `llm.py` (`fatal_stop`), `cli.py` (stop gate) |
 | *Language-agnostic Targets* | `design/topics/language_agnostic.md` | `technology_stack.py`, `Rigging/languages/` |
 | *Planner step validation* | `design/topics/planner_step_validation.md` | `planning_session.py` |
 | `/ddk-uat` skill | `design/skills/ddk-uat.md` | `prompts/uat_diagnostic.md` |

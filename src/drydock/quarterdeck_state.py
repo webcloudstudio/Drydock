@@ -198,32 +198,40 @@ _OVERVIEW_RE = re.compile(r'<main id="chair-overview"[^>]*>.*?</main>', re.DOTAL
 
 
 def with_stop_view(html: str, target_dir: Path) -> str:
-    """Replace the Chair overview with the Target's ``STOP_NOW.md`` when one is recorded.
+    """Replace the Chair overview with the Target's ``BLOCKERS.md`` when one is recorded.
 
     Applied when the Chair is served, never baked into ``commanders_chair.html``: the file is
-    regenerated only by commands, so a baked view would outlive a cleared stop. The view carries
-    what a refused command prints — the halt, the file verbatim, and how to remove it.
+    regenerated only by commands, so a baked view would outlive a cleared block. The view carries
+    what a refused command prints — the banner, the file verbatim, and how to remove it.
     """
-    from drydock.stop_condition import read_stop, stop_path
+    from drydock.blockers import blockers_path, read_blockers
 
-    stop = read_stop(target_dir)
-    if stop is None:
+    blockers = read_blockers(target_dir)
+    if blockers is None:
         return html
-    path = stop_path(target_dir)
+    path = blockers_path(target_dir)
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         text = f"(unreadable: {exc})"
-    heading = f"STOPPED: {target_dir.name} · {stop.stage}"
-    if stop.declared_at:
-        heading += f" · {stop.declared_at}"
-    recovery = f"<h3>Recovery</h3><pre>{escape(stop.recovery)}</pre>" if stop.recovery else ""
+    heading = f"BLOCKED: {target_dir.name} · {blockers.owner or 'no owner'}"
+    if blockers.declared:
+        heading += f" · {blockers.declared}"
+    items = "".join(
+        f"<li><b>{escape(item.blocker_id)}: {escape(item.title)}</b> "
+        f"({escape(item.blocker_class or item.kind)})"
+        + (f"<br>Resolution: {escape(item.resolution)}" if item.resolution else "")
+        + "</li>"
+        for item in blockers.blockers
+    )
+    rerun = f"<h3>Owner rerun</h3><pre>{escape(blockers.source)}</pre>" if blockers.source else ""
     view = (
         '<main id="chair-overview" class="chair-pane stop-view">'
         '<section class="stop-panel" role="alert">'
         f"<strong>{escape(heading)}</strong>"
-        f"<span>{escape(stop.reason)}</span>"
-        f"{recovery}"
+        f"<span>{escape(blockers.summary)}</span>"
+        f"<ul>{items}</ul>"
+        f"{rerun}"
         "<span>Every Drydock command on this Target except <code>status</code>, "
         "<code>run</code>, and <code>uat</code> refuses to run while this file exists.</span>"
         "</section>"
@@ -231,7 +239,7 @@ def with_stop_view(html: str, target_dir: Path) -> str:
         f"<h2>Contents of {escape(str(path))}</h2>"
         f'<pre class="stop-file">{escape(text)}</pre>'
         "<h2>To continue</h2>"
-        "<p>Fix the cause above, then remove the stop:</p>"
+        "<p>Answer each Commander Resolution and rerun the owner, or remove the file:</p>"
         f"<pre class=\"stop-file\">rm '{escape(str(path))}'</pre>"
         "</section>"
         "</main>"

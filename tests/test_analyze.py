@@ -1445,6 +1445,9 @@ Pattern: unwanted""",
         blockers = (target_dir / "BLOCKERS.md").read_text(encoding="utf-8")
         assert "blocker-sea-trials" in blockers
         assert "is missing Criterion" in blockers
+        # Drydock writes the standard file: analyze owns it and raises a decision.
+        assert f"- owner: analyze {target_dir.name}\n" in blockers
+        assert "- kind: decision\n### Question\n" in blockers
         assert not (target_dir / "SOUNDINGS.md").exists()
 
     def test_withheld_source_content_is_warned(self, tmp_path):
@@ -1838,23 +1841,6 @@ Which representative workload defines the measurement?
         assert "The product purpose is missing." in analysis
         assert "_Not provided._" in analysis
 
-    def test_legacy_blocker_is_archived_verbatim_when_cleared(self, tmp_path):
-        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        legacy = "# Blockers\n\nCommander chose local-only processing.\n"
-        (target_dir / "BLOCKERS.md").write_text(legacy, encoding="utf-8")
-        questionnaires = target_dir / "QuarterDeck" / "questionnaires"
-        questionnaires.mkdir(parents=True)
-        (questionnaires / "discovery-stack.json").write_text(
-            json.dumps({"questions": [{"id": "stack_components", "answer": "python.md"}]}),
-            encoding="utf-8",
-        )
-
-        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-
-        analysis = result.analysis_path.read_text(encoding="utf-8")
-        assert "### Prior Blockers" in analysis
-        assert legacy.strip() in analysis
-
     def test_placeholder_blockers_block_not_written(self, tmp_path):
         # FIX-10: a placeholder block must not create a file (its existence would falsely halt
         # plan create) and must remove any stale file.
@@ -1869,7 +1855,9 @@ Which representative workload defines the measurement?
     def test_blockers_md_injected_in_prompt(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         (target_dir / "BLOCKERS.md").write_text(
-            "# Blockers\n\n- Name is missing.\n", encoding="utf-8"
+            "# Blockers: Name\n- owner: analyze MyTarget\n\n## blocker-001: Name\n"
+            "- kind: decision\n### Question\nName is missing.\n### Commander Resolution\n",
+            encoding="utf-8",
         )
         received_prompts = []
 

@@ -64,7 +64,7 @@ story is frozen; optimization failure rolls back the transaction, including a ne
 `2026-09-12` · **Change tickets are normalized, not applied.** `blueprint/changes/TICKET-*.md`
 (the `change_ticket_directory`, Target-relative) is normalized by one call per ticket with exactly
 one `Amends:` home; Blueprint content is not modified. An unincorporated source ticket is recorded
-in `BLOCKERS.md` and fails the refit.
+in `BLOCKERS.md` as a decision blocker owned by `refit <Target>` and fails the refit.
 
 `2026-09-22` · **A changed Blueprint resets what consumed it.** `applied_specs` drift resets consumer
 blocks and transitive dependents to `pending`; only already-built work resets. `DATABASE.md`

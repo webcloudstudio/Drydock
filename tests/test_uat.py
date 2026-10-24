@@ -1173,9 +1173,9 @@ def test_resumed_plan_clears_a_stale_plan_repair_stop_when_verify_now_passes(
     ``build_until_no_work_remains`` clears its own stage's stop on every entry before
     re-declaring it if the retry also fails. ``repair_unrunnable_acceptance`` must do the same:
     otherwise a resumed plan whose fresh verify passes cleanly still halts the run on a
-    ``STOP_NOW.md`` left behind by the attempt that made the resume necessary.
+    ``BLOCKERS.md`` left behind by the attempt that made the resume necessary.
     """
-    from drydock.stop_condition import read_stop
+    from drydock.blockers import read_blockers
 
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
@@ -1193,7 +1193,7 @@ def test_resumed_plan_clears_a_stale_plan_repair_stop_when_verify_now_passes(
     target_dir = (
         fixtures_root / "ReadingList" / "runs" / run_id / "workspace" / "targets" / "ReadingList"
     )
-    assert read_stop(target_dir) is not None
+    assert read_blockers(target_dir) is not None
     _seed_target_artifact(fixtures_root, run_id, "ANALYSIS.md")
 
     resumed_id, results = run_uat(
@@ -1209,7 +1209,7 @@ def test_resumed_plan_clears_a_stale_plan_repair_stop_when_verify_now_passes(
 
     assert resumed_id == run_id
     assert results[0].status == "passed"
-    assert read_stop(target_dir) is None
+    assert read_blockers(target_dir) is None
 
 
 def test_resume_supersedes_the_replayed_steps_and_keeps_their_numbers(tmp_path: Path) -> None:
@@ -1421,8 +1421,8 @@ def test_a_failed_build_stops_the_run(tmp_path: Path) -> None:
 
 
 def test_a_stopped_run_records_why_at_the_target_root(tmp_path: Path) -> None:
-    """``STOP_NOW.md`` is the first file to open in a halted run tree."""
-    from drydock.stop_condition import read_stop
+    """``BLOCKERS.md`` is the first file to open in a halted run tree."""
+    from drydock.blockers import read_blockers
 
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
@@ -1447,11 +1447,13 @@ def test_a_stopped_run_records_why_at_the_target_root(tmp_path: Path) -> None:
         / "targets"
         / "ReadingList"
     )
-    halt = read_stop(target_dir)
+    halt = read_blockers(target_dir)
     assert halt is not None
-    assert halt.stage == "initial-build-1"
-    assert "exited 1" in halt.reason
-    assert halt.declared_at
+    stage, reason = halt.halt()
+    assert stage == "initial-build-1"
+    assert "exited 1" in reason
+    assert halt.declared
+    assert halt.blockers[0].blocker_class == "uat stage"
 
 
 def test_incomplete_status_snapshot_does_not_gate_an_empty_frontier(tmp_path: Path) -> None:
@@ -2144,7 +2146,7 @@ def test_an_unbuildable_manifest_stops_the_run_before_the_first_build_pass(
     stories are all parked behind blocking decisions. Before the first pass the two are
     opposites, and ``status --check`` separates them.
     """
-    from drydock.stop_condition import read_stop
+    from drydock.blockers import read_blockers
 
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
@@ -2184,9 +2186,9 @@ def test_an_unbuildable_manifest_stops_the_run_before_the_first_build_pass(
         / "targets"
         / "ReadingList"
     )
-    stop = read_stop(target_dir)
+    stop = read_blockers(target_dir)
     assert stop is not None
-    assert "DECISIONS.json" in stop.reason
+    assert "DECISIONS.json" in stop.halt()[1]
 
 
 def test_a_complete_target_still_passes_with_an_empty_frontier_at_pass_zero(

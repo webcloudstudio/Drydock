@@ -5396,10 +5396,33 @@ def test_override_waives_the_required_decision_and_reports_it(tmp_path):
     assert "override: true" in (target_dir / "METADATA.md").read_text(encoding="utf-8")
 
 
-def test_override_does_not_waive_a_blocked_analysis(tmp_path):
-    """A blockers file is a verdict about the sources, not a question awaiting an answer."""
+def test_override_waives_an_analysis_decision_blocker_and_reports_it(tmp_path):
     target_dir = _make_target(tmp_path)
-    (target_dir / "BLOCKERS.md").write_text("- The sources contradict each other.\n", "utf-8")
+    (target_dir / "METADATA.md").write_text("# METADATA\n\nname: Example\n", encoding="utf-8")
+    (target_dir / "BLOCKERS.md").write_text(
+        "# Blockers: Contradiction\n- owner: analyze Example\n\n"
+        "## blocker-001: Sources contradict\n- kind: decision\n### Question\nWhich wins?\n"
+        "### Commander Resolution\n",
+        "utf-8",
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()), override=True)
+
+    assert (target_dir / "MANIFEST.md").is_file()
+    assert ("analysis-blocker", "blocker-001: Sources contradict") in [
+        (w.kind, w.subject) for w in result.waivers
+    ]
+
+
+def test_override_does_not_waive_a_non_analysis_blocker(tmp_path):
+    """Only an analysis decision is waivable; any other blocker is not a question for --override."""
+    target_dir = _make_target(tmp_path)
+    (target_dir / "BLOCKERS.md").write_text(
+        "# Blockers: Rate Limit Hit\n- owner: build Example\n\n"
+        "## blocker-001: Provider usage limit\n- kind: environmental\n"
+        "- class: provider rate limit\n- auto-continue: no\n### Error\nlimit\n",
+        "utf-8",
+    )
 
     with pytest.raises(SpecificationError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()), override=True)

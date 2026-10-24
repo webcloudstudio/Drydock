@@ -405,7 +405,9 @@ class TestRefitTarget:
         normalized = list((target / "blueprint/changes").glob("TICKET-*.md"))
         assert result.exit_code() == 1  # The generated ticket still requires a build-story pass.
         assert normalized == []  # Failed conformance restores the ticket transaction.
-        assert "empty output" in (target / "BLOCKERS.md").read_text(encoding="utf-8")
+        blockers = (target / "BLOCKERS.md").read_text(encoding="utf-8")
+        assert "empty output" in blockers
+        assert f"- owner: refit {target.name}\n" in blockers and "- kind: decision\n" in blockers
 
     def test_conforms_ticket_and_patches_manifest(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))

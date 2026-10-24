@@ -154,6 +154,22 @@ command surface and Typed Specification contract are unstable and may change bet
   reports completion: Details updated, open questions and actions written to the Memory File,
   `CHANGELOG.md` entry, commit. `docs/Drydock_Specification.md` must be correct but need not be
   complete or explanatory. `tests/test_design_coverage.py` enforces the index and the format.
+- 2026-10-24: `BLOCKERS.md` is the one file that blocks a Target; `STOP_NOW.md` and its
+  `Clear this stop and continue? [y/N]` prompt are removed. Drydock writes the file in one format
+  (`# Blockers: <summary>`, `target`, `source`, `owner`, `declared`, `execution`, `attempts`, then
+  `## blocker-NNN` entries of kind `environmental` or `decision`, each ending in `### Commander
+  Resolution`). A fatal provider failure writes an environmental blocker owned by the command
+  that hit it; `analyze` and `refit` write decision blockers, and only they may. While the file
+  exists every Target command except `status`, `run`, and `uat` is refused unless it is the
+  owner. At a terminal a blocked command asks `How should we proceed?` per blocker, records the
+  answer as its Commander Resolution, reruns the owner with the resolutions prepended to every
+  prompt as its primary instruction, then continues. Unattended, the owner reruns only when every
+  decision is resolved and every environmental blocker may auto-continue (timeout, outage, or a
+  rate limit past the reset its message states), once. Owner success archives the file to
+  `logs/blockers.md` and deletes it. An ordinary failure clears environmental blockers and writes
+  `ERRORS.md`. `plan --override` now passes an `analyze` decision-only file, recording
+  `analysis-blocker` waivers. `status --ready` prints `BLOCKED: <Target>`. The Chair stop view,
+  `drydock uat` halts (class `uat stage`), and `scripts/uat_repair_loop.sh` read `BLOCKERS.md`.
 - 2026-10-24: Repository pytest runs cap each invocation at eight workers, including
   `python -m pytest -n auto` and `bash bin/test.sh`, to bound concurrent test load.
 

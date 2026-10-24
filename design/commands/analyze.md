@@ -61,7 +61,10 @@ Commander story guidance merges over derived; `METADATA.md` backfills only blank
 settled questions re-asked every loop.
 
 `2026-06-16` · **`BLOCKERS.md` exists only when a real blocker does.** Written from a validated
-block, deleted otherwise; an empty block fails closed.
+block, deleted otherwise; an empty block fails closed. `2026-10-24` The module converts the
+model's blockers into the standard file owned by `analyze <Target>` (decision blockers with
+`### Question`), and only prior decision blockers are injected as prior answers
+([process_stops](../topics/process_stops.md)).
 
 `2026-06-22` · **Quality is computed.** `Blocked` if `BLOCKERS.md` was written, `Questions` if any
 questionnaire is open, else `Ready`; the model's line is overwritten.

@@ -124,7 +124,13 @@ from drydock.harness_exits import go_cli_defect
 from drydock.llm import ClaudePromptSession, run_prompt
 from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
-from drydock.override import PLAN_DECISION, WaivedGate, dedupe_waivers, stamp_override
+from drydock.override import (
+    ANALYSIS_BLOCKER,
+    PLAN_DECISION,
+    WaivedGate,
+    dedupe_waivers,
+    stamp_override,
+)
 from drydock.paths import get_prompts_root, get_spec_template_dir
 from drydock.plan_blocked import (
     BLOCKED_BLOCK,
@@ -6088,19 +6094,32 @@ def create_plan(
         )
     source_roles = parse_source_roles(analysis_text)
 
-    blockers_path = target_dir / "BLOCKERS.md"
-    if blockers_path.is_file():
+    from drydock.blockers import read_blockers
+
+    waivers: list[WaivedGate] = []
+    blockers = read_blockers(target_dir)
+    # ``--override`` waives an analysis decision, never an environmental blocker.
+    waivable = (
+        blockers is not None and blockers.owner_verb == "analyze" and not blockers.environmental()
+    )
+    if blockers is not None and not (override and waivable):
         raise SpecificationError(
             "BLOCKERS.md is present — planning is blocked. Answer the blockers and re-run "
             f"`drydock analyze {target}` before `drydock plan {target}`."
         )
     quality_match = _QUALITY_RE.search(analysis_text)
-    if quality_match and quality_match.group(1).lower() == "blocked":
+    analysis_blocked = bool(quality_match and quality_match.group(1).lower() == "blocked")
+    if analysis_blocked and blockers is None:
+        # ``Quality: Blocked`` is waived only with the analysis decisions it reports.
         raise SpecificationError(
             "ANALYSIS.md quality is Blocked — resolve blockers and re-run analyze before planning."
         )
+    if blockers is not None:
+        waivers.extend(
+            WaivedGate(kind=ANALYSIS_BLOCKER, subject=f"{item.blocker_id}: {item.title}")
+            for item in blockers.decisions()
+        )
     technology_stack.require_approved(target_dir)
-    waivers: list[WaivedGate] = []
     required_decisions = _required_plan_decisions(target_dir)
     if required_decisions and not override:
         raise SpecificationError(

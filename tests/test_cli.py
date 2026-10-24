@@ -1351,12 +1351,6 @@ class TestAnalyzeCommand:
         target_dir = tmp_target_root / "Proj"
         (target_dir / "blueprint").mkdir(parents=True)
         blockers_path = target_dir / "BLOCKERS.md"
-        blockers_path.write_text(
-            "# Blockers\n\n"
-            "## blocker-sea-trials: Define project acceptance criteria\n"
-            "SEA_TRIALS.md was not created because analyze could not derive valid criteria.\n",
-            encoding="utf-8",
-        )
         result = SimpleNamespace(
             ok=True,
             target_dir=target_dir,
@@ -1376,7 +1370,18 @@ class TestAnalyzeCommand:
             screen_count=0,
             stack="python",
         )
-        monkeypatch.setattr("drydock.analyze.analyze", lambda *args, **kwargs: result)
+
+        def analyze(*args, **kwargs):
+            # Analyze writes the file during its own run; the gate saw an unblocked Target.
+            blockers_path.write_text(
+                "# Blockers\n\n"
+                "## blocker-sea-trials: Define project acceptance criteria\n"
+                "SEA_TRIALS.md was not created because analyze could not derive valid criteria.\n",
+                encoding="utf-8",
+            )
+            return result
+
+        monkeypatch.setattr("drydock.analyze.analyze", analyze)
 
         rc, out, err = run_cli("analyze", "Proj")
 

@@ -1,23 +1,48 @@
-"""Fatal provider failures halt the Target through ``STOP_NOW.md`` (ReadingList 20261022.205653)."""
+"""``BLOCKERS.md`` is the one file that blocks a Target (ReadingList 20261022.205653)."""
 
 from __future__ import annotations
 
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+import drydock.cli
 import drydock.llm
+from drydock.blockers import (
+    DECISION,
+    RATE_LIMIT,
+    TIMEOUT,
+    Blocker,
+    Blockers,
+    batch_may_run_owner,
+    environmental_blocker,
+    may_auto_continue,
+    parse_blockers,
+    read_blockers,
+    render_blockers,
+    reset_clock,
+    write_blockers,
+)
 from drydock.cli import _build_parser, _declare_process_stop, _process_stop_gate
 from drydock.errors import LlmError
 from drydock.llm import FatalStop, fatal_stop, fatal_stop_reason, run_prompt
-from drydock.stop_condition import read_stop, write_stop
 from tests.test_cli import APPROVED_PLAN_STATUS, run_cli
 from tests.test_llm import FakePopen
 
 USAGE_LIMIT = "You've hit your usage limit. Upgrade to Pro or try again at 9:31 PM."
+DECLARED = "2026-10-24T18:38:12Z"
+
+
+@pytest.fixture(autouse=True)
+def _clean_process_state(monkeypatch):
+    monkeypatch.setattr(drydock.cli, "_owner_run", None)
+    monkeypatch.delenv(drydock.cli._OWNER_RERUN_ENV, raising=False)
+    yield
+    drydock.llm.set_primary_instruction("")
 
 
 @pytest.mark.parametrize(
@@ -67,6 +92,110 @@ def test_a_usage_limit_ends_the_process_provider_work(tmp_path, monkeypatch):
     assert USAGE_LIMIT in stop.message and stop.execution_id == first.execution_id
 
 
+# --- 1. One format, written by one function ---------------------------------------------------
+
+
+def _rate_limited(target: str = "TestTarget", attempts: int = 1, **fields) -> Blockers:
+    return Blockers(
+        summary="Rate Limit Hit",
+        target=target,
+        source=f"drydock build {target} --model gpt-6-luna",
+        owner=f"build {target}",
+        declared=DECLARED,
+        execution="exec-1",
+        attempts=attempts,
+        blockers=(environmental_blocker(RATE_LIMIT, USAGE_LIMIT, declared=DECLARED),),
+        **fields,
+    )
+
+
+def _analysis_decision(target: str = "TestTarget", resolution: str = "") -> Blockers:
+    return Blockers(
+        summary="Pick a database",
+        target=target,
+        source=f"drydock analyze {target}",
+        owner=f"analyze {target}",
+        declared=DECLARED,
+        blockers=(
+            Blocker(
+                "blocker-001", "Pick a database", DECISION, question="Which?", resolution=resolution
+            ),
+        ),
+    )
+
+
+def test_the_file_round_trips_the_standard_format(tmp_path):
+    path = write_blockers(tmp_path, _rate_limited())
+
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("# Blockers: Rate Limit Hit\n- target: TestTarget\n")
+    assert "- owner: build TestTarget\n" in text and "- attempts: 1\n" in text
+    assert "## blocker-001: Provider usage limit\n- kind: environmental\n" in text
+    assert "- class: provider rate limit\n- auto-continue: after 21:31\n### Error\n" in text
+    assert text.rstrip().endswith("### Commander Resolution")
+    assert read_blockers(tmp_path) == _rate_limited()
+
+
+def test_only_analyze_and_refit_may_raise_a_decision_blocker(tmp_path):
+    decision = _analysis_decision()
+    with pytest.raises(ValueError, match="may not raise a decision blocker"):
+        write_blockers(tmp_path, Blockers(**{**decision.__dict__, "owner": "build TestTarget"}))
+    write_blockers(tmp_path, decision)
+    write_blockers(tmp_path, Blockers(**{**decision.__dict__, "owner": "refit TestTarget"}))
+
+
+def test_a_model_written_blocker_parses_as_a_decision():
+    raw = (
+        "# Blockers: P\n\n## blocker-001: Pick a db\nWhich database?\n\n"
+        "### Commander Resolution\n\n<!-- Enter the decision, then re-run Analyze. -->\n"
+    )
+
+    (item,) = parse_blockers(raw).blockers
+
+    assert (item.kind, item.title, item.question, item.resolution) == (
+        DECISION,
+        "Pick a db",
+        "Which database?",
+        "",
+    )
+
+
+@pytest.mark.parametrize(
+    ("message", "clock"),
+    [
+        (USAGE_LIMIT, "21:31"),
+        ("Usage limit reached. Resets 9pm.", "21:00"),
+        ("limit; try again at 07:05", "07:05"),
+        ("rate limited", None),
+    ],
+)
+def test_a_rate_limit_reset_is_read_from_its_message(message, clock):
+    assert reset_clock(message, None) == clock
+
+
+def test_auto_continue_waits_for_the_stated_reset():
+    blocker = environmental_blocker(RATE_LIMIT, "try again at 23:59", declared=DECLARED)
+    declared_local = datetime(2026, 10, 24, 18, 38, 12, tzinfo=UTC).astimezone()
+    reset = declared_local.replace(hour=23, minute=59, second=0)
+    if reset < declared_local:
+        reset = reset.replace(day=reset.day + 1)
+
+    assert not may_auto_continue(blocker, DECLARED, now=declared_local)
+    assert may_auto_continue(blocker, DECLARED, now=reset)
+
+
+@pytest.mark.parametrize(
+    "kind", ["provider authentication required", "invalid model", "provider unavailable"]
+)
+def test_login_model_and_cli_failures_never_auto_continue(kind):
+    blocker = environmental_blocker(kind, "failed", declared=DECLARED)
+    assert blocker.auto_continue == "no"
+    assert not may_auto_continue(blocker, DECLARED, now=datetime(2030, 1, 1, tzinfo=UTC))
+
+
+# --- 2. Gate and batch rules ------------------------------------------------------------------
+
+
 def _target(tmp_target_root, monkeypatch):
     from drydock.init_specification import init_specification
 
@@ -77,79 +206,143 @@ def _target(tmp_target_root, monkeypatch):
     return target_dir
 
 
-def test_a_fatal_stop_is_written_with_its_recovery(tmp_target_root, isolated_config, monkeypatch):
+def _gate(argv: list[str]):
+    return _process_stop_gate(_build_parser().parse_args(argv))
+
+
+def _timed_out(target_dir: Path, attempts: int = 1) -> None:
+    write_blockers(
+        target_dir,
+        Blockers(**{
+            **_rate_limited(attempts=attempts).__dict__,
+            "blockers": (environmental_blocker(TIMEOUT, "timed out", declared=DECLARED),),
+        }),
+    )
+
+
+def test_a_fatal_stop_is_written_as_an_environmental_blocker(
+    tmp_target_root, isolated_config, monkeypatch
+):
     target_dir = _target(tmp_target_root, monkeypatch)
     drydock.llm._record_fatal_stop(
         FatalStop("provider rate limit", USAGE_LIMIT, "codex", "build", "exec-1")
     )
-    args = _build_parser().parse_args(["build", "TestTarget"])
+    argv = ["build", "TestTarget", "--model", "gpt-6-luna"]
 
-    assert _declare_process_stop(args, ["build", "TestTarget"])
+    assert _declare_process_stop(_build_parser().parse_args(argv), argv)
 
-    stop = read_stop(target_dir)
-    assert stop is not None and stop.stage == "build"
-    assert stop.reason.startswith("provider rate limit: ") and "9:31 PM" in stop.reason
-    assert "exec-1" in stop.reason
-    assert "Wait for the provider limit to reset" in stop.recovery
-    assert "Then rerun: drydock build TestTarget" in stop.recovery
+    recorded = read_blockers(target_dir)
+    assert recorded is not None and recorded.owner == "build TestTarget"
+    assert recorded.source == "drydock build TestTarget --model gpt-6-luna"
+    assert recorded.execution == "exec-1" and recorded.attempts == 1
+    (item,) = recorded.blockers
+    assert item.blocker_class == "provider rate limit" and USAGE_LIMIT in item.error
+    assert item.auto_continue == "after 21:31"
 
 
-def test_ready_reports_a_stop_and_ends_the_build_loop(
+def test_the_same_class_again_counts_an_attempt(tmp_target_root, isolated_config, monkeypatch):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _rate_limited())
+    drydock.llm._record_fatal_stop(
+        FatalStop("provider rate limit", USAGE_LIMIT, "codex", "build", "exec-2")
+    )
+
+    _declare_process_stop(_build_parser().parse_args(["build", "TestTarget"]), None)
+
+    recorded = read_blockers(target_dir)
+    assert recorded is not None and recorded.attempts == 2 and recorded.execution == "exec-2"
+
+
+def test_ready_reports_a_block_and_ends_the_build_loop(
     tmp_target_root, isolated_config, monkeypatch
 ):
     target_dir = _target(tmp_target_root, monkeypatch)
     assert run_cli("status", "TestTarget", "--ready")[0] == 0
-    write_stop(target_dir, "build", f"provider rate limit: {USAGE_LIMIT}")
+    write_blockers(target_dir, _rate_limited())
 
     rc, out, err = run_cli("status", "TestTarget", "--ready")
 
     assert rc == 1
-    assert out.startswith("STOPPED: TestTarget  (build: provider rate limit")
+    assert out.startswith("BLOCKED: TestTarget  (build: provider rate limit")
     assert err == ""
 
 
-def test_status_dashboard_ends_with_the_stop_and_its_recovery(
+def test_status_dashboard_ends_with_the_banner_and_its_recovery(
     tmp_target_root, isolated_config, monkeypatch
 ):
     target_dir = _target(tmp_target_root, monkeypatch)
-    write_stop(target_dir, "build", "provider timeout: execution timed out", "Check the network.")
+    write_blockers(target_dir, _rate_limited())
 
     rc, out, _ = run_cli("status", "TestTarget")
 
     assert rc == 0
-    tail = out[out.index("STOPPED: TestTarget") :]
-    assert "build" in tail and "provider timeout" in tail and "Check the network." in tail
+    tail = out[out.index("BLOCKED: TestTarget") :]
+    assert "build TestTarget" in tail and "provider rate limit" in tail
+    assert "Wait for the provider limit to reset" in tail
 
 
-def test_an_unattended_llm_command_refuses_while_stopped(
-    tmp_target_root, isolated_config, monkeypatch
-):
+def test_a_batch_non_owner_is_refused(tmp_target_root, isolated_config, monkeypatch):
     target_dir = _target(tmp_target_root, monkeypatch)
-    write_stop(target_dir, "build", f"provider rate limit: {USAGE_LIMIT}", "Wait for the reset.")
+    _timed_out(target_dir)
     monkeypatch.setattr(
-        drydock.llm, "run_prompt", lambda *a, **k: pytest.fail("a stopped Target called a model")
+        drydock.llm, "run_prompt", lambda *a, **k: pytest.fail("a blocked Target called a model")
     )
 
     rc, _, err = run_cli("analyze", "TestTarget")
 
     assert rc == 1
-    assert "STOPPED: TestTarget" in err and "Wait for the reset." in err
-    assert read_stop(target_dir) is not None
+    assert "drydock analyze refused: TestTarget is blocked." in err
+    assert read_blockers(target_dir) is not None
 
 
-@pytest.mark.parametrize(("answer", "proceeds"), [("y", True), ("", False)])
-def test_an_interactive_command_offers_to_clear_the_stop(
-    tmp_target_root, isolated_config, monkeypatch, answer, proceeds
+@pytest.mark.parametrize(
+    ("attempts", "admitted"),
+    [(1, True), (2, False)],
+)
+def test_a_batch_owner_auto_continues_once(
+    tmp_target_root, isolated_config, monkeypatch, attempts, admitted
 ):
     target_dir = _target(tmp_target_root, monkeypatch)
-    write_stop(target_dir, "build", f"provider rate limit: {USAGE_LIMIT}")
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(sys.__stdout__, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr("builtins.input", lambda prompt: answer)
-    args = _build_parser().parse_args(["diagnose", "TestTarget"])
+    _timed_out(target_dir, attempts=attempts)
 
-    assert _process_stop_gate(args) is proceeds
-    assert (read_stop(target_dir) is None) is proceeds
+    assert _gate(["build", "TestTarget"]) is admitted
+
+
+def test_a_batch_owner_waits_for_the_rate_limit_reset(
+    tmp_target_root, isolated_config, monkeypatch
+):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _rate_limited())
+    blockers = read_blockers(target_dir)
+    assert blockers is not None
+    before = datetime(2026, 10, 24, 18, 39, tzinfo=UTC)
+    after = datetime(2026, 10, 26, tzinfo=UTC)
+
+    assert not batch_may_run_owner(blockers, before)
+    assert batch_may_run_owner(blockers, after)
+
+
+def test_a_batch_decision_owner_needs_every_resolution(
+    tmp_target_root, isolated_config, monkeypatch
+):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _analysis_decision())
+    assert _gate(["analyze", "TestTarget"]) is False
+
+    write_blockers(target_dir, _analysis_decision(resolution="Use SQLite."))
+    assert _gate(["analyze", "TestTarget"]) is True
+
+
+def test_plan_override_passes_an_analysis_decision_only(
+    tmp_target_root, isolated_config, monkeypatch
+):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _analysis_decision())
+    assert _gate(["plan", "TestTarget"]) is False
+    assert _gate(["plan", "TestTarget", "--override"]) is True
+
+    _timed_out(target_dir)
+    assert _gate(["plan", "TestTarget", "--override"]) is False
 
 
 @pytest.mark.parametrize(
@@ -160,13 +353,13 @@ def test_an_interactive_command_offers_to_clear_the_stop(
         ["plan", "repair", "TestTarget"],
     ],
 )
-def test_every_target_command_refuses_while_stopped(
+def test_every_target_command_refuses_while_blocked(
     tmp_target_root, isolated_config, monkeypatch, argv
 ):
     target_dir = _target(tmp_target_root, monkeypatch)
-    write_stop(target_dir, "plan-repair", "acceptance criteria still cannot run")
+    write_blockers(target_dir, _rate_limited())
 
-    assert not _process_stop_gate(_build_parser().parse_args(argv))
+    assert _gate(argv) is False
 
 
 @pytest.mark.parametrize(
@@ -178,24 +371,177 @@ def test_every_target_command_refuses_while_stopped(
         ["run", "quarterdeck", "TestTarget"],
     ],
 )
-def test_status_run_and_uat_ignore_the_stop(tmp_target_root, isolated_config, monkeypatch, argv):
+def test_status_run_and_uat_ignore_the_block(tmp_target_root, isolated_config, monkeypatch, argv):
     target_dir = _target(tmp_target_root, monkeypatch)
-    write_stop(target_dir, "plan-repair", "acceptance criteria still cannot run")
+    write_blockers(target_dir, _rate_limited())
 
-    assert _process_stop_gate(_build_parser().parse_args(argv))
+    assert _gate(argv) is True
 
 
 def test_a_refusal_shows_the_file_and_how_to_remove_it(
     tmp_target_root, isolated_config, monkeypatch
 ):
     target_dir = _target(tmp_target_root, monkeypatch)
-    path = write_stop(target_dir, "plan-repair", "acceptance criteria still cannot run")
+    path = write_blockers(target_dir, _rate_limited())
 
     rc, _, err = run_cli("plan", "verify", "TestTarget")
 
     assert rc == 1
-    assert "drydock plan refused: TestTarget is stopped." in err
+    assert "drydock plan refused: TestTarget is blocked." in err
     assert f"Contents of {path}:" in err
-    assert "  - stage: plan-repair" in err
+    assert "  - owner: build TestTarget" in err
     assert f"rm '{path}'" in err
     assert path.is_file()
+
+
+# --- 3. Interactive "How should we proceed?" and owner rerun ----------------------------------
+
+
+def _interactive(monkeypatch, answers: list[str]) -> list[str]:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.__stdout__, "isatty", lambda: True, raising=False)
+    prompts: list[str] = []
+
+    def answer(prompt):
+        prompts.append(prompt)
+        return answers.pop(0)
+
+    monkeypatch.setattr("builtins.input", answer)
+    return prompts
+
+
+def test_an_answer_is_written_as_the_commander_resolution(
+    tmp_target_root, isolated_config, monkeypatch
+):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _analysis_decision())
+    prompts = _interactive(monkeypatch, ["Use SQLite."])
+
+    assert _gate(["analyze", "TestTarget"]) is True
+
+    assert prompts == ["How should we proceed? "]
+    recorded = read_blockers(target_dir)
+    assert recorded is not None and recorded.blockers[0].resolution == "Use SQLite."
+
+
+def test_q_aborts(tmp_target_root, isolated_config, monkeypatch):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _rate_limited())
+    _interactive(monkeypatch, ["q"])
+    monkeypatch.setattr(drydock.cli, "_run_owner", lambda b: pytest.fail("owner reran"))
+
+    assert _gate(["diagnose", "TestTarget"]) is False
+    assert read_blockers(target_dir) is not None
+
+
+def test_a_non_owner_reruns_the_owner_then_continues(tmp_target_root, isolated_config, monkeypatch):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _rate_limited())
+    _interactive(monkeypatch, [""])
+    reran: list[list[str]] = []
+
+    def owner_succeeds(blockers):
+        reran.append(blockers.rerun_tokens())
+        (target_dir / "BLOCKERS.md").unlink()
+        return 0
+
+    monkeypatch.setattr(drydock.cli, "_run_owner", owner_succeeds)
+
+    assert _gate(["diagnose", "TestTarget"]) is True
+    assert reran == [["build", "TestTarget", "--model", "gpt-6-luna"]]
+
+
+def test_a_failed_owner_rerun_ends_the_requested_command(
+    tmp_target_root, isolated_config, monkeypatch
+):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _rate_limited())
+    _interactive(monkeypatch, [""])
+    monkeypatch.setattr(drydock.cli, "_run_owner", lambda blockers: 3)
+
+    assert _gate(["diagnose", "TestTarget"]) == 3
+
+
+def test_an_owner_success_archives_and_deletes_the_file(
+    tmp_target_root, isolated_config, monkeypatch
+):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    _timed_out(target_dir)
+    assert _gate(["build", "TestTarget"]) is True
+
+    drydock.cli._settle_owner_run(0)
+
+    assert read_blockers(target_dir) is None
+    archive = (target_dir / "logs" / "blockers.md").read_text(encoding="utf-8")
+    assert "# Blockers: Rate Limit Hit" in archive
+
+
+def test_an_ordinary_owner_failure_clears_environmental_blockers(
+    tmp_target_root, isolated_config, monkeypatch
+):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    _timed_out(target_dir)
+    assert _gate(["build", "TestTarget"]) is True
+
+    drydock.cli._settle_owner_run(1)
+
+    assert read_blockers(target_dir) is None
+    errors = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
+    assert "build TestTarget failed" in errors
+
+
+def test_an_owner_child_is_admitted_without_asking(tmp_target_root, isolated_config, monkeypatch):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _rate_limited(attempts=5))
+    monkeypatch.setenv(drydock.cli._OWNER_RERUN_ENV, "build TestTarget")
+    monkeypatch.setattr("builtins.input", lambda prompt: pytest.fail("the child asked"))
+
+    assert _gate(["build", "TestTarget"]) is True
+
+
+# --- 4. Resolution as primary instruction -----------------------------------------------------
+
+
+def test_an_owner_rerun_leads_its_prompt_with_the_resolution(
+    tmp_target_root, isolated_config, monkeypatch
+):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    write_blockers(target_dir, _analysis_decision(resolution="Use SQLite."))
+
+    assert _gate(["analyze", "TestTarget"]) is True
+
+    instruction = drydock.llm.primary_instruction()
+    assert instruction.startswith("# Commander Resolution — primary instruction")
+    assert "Use SQLite." in instruction
+
+
+def test_no_resolution_leaves_the_prompt_unchanged(tmp_target_root, isolated_config, monkeypatch):
+    target_dir = _target(tmp_target_root, monkeypatch)
+    _timed_out(target_dir)
+
+    assert _gate(["build", "TestTarget"]) is True
+    assert drydock.llm.primary_instruction() == ""
+
+
+def test_run_prompt_sends_the_primary_instruction_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    spawned: list[FakePopen] = []
+
+    def popen(command, **kwargs):
+        spawned.append(FakePopen(command, stdout_text="", returncode=0, **kwargs))
+        return spawned[-1]
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    drydock.llm.set_primary_instruction("# Commander Resolution — primary instruction\n\nGo.\n\n")
+
+    run_prompt("Work", tmp_path, llm="codex", command_name="build")
+
+    sent = spawned[0].stdin.getvalue()
+    assert sent.startswith("# Commander Resolution — primary instruction")
+    assert sent.rstrip().endswith("Work")
+
+
+def test_the_rendered_file_parses_back(tmp_path):
+    blockers = _analysis_decision(resolution="Use SQLite.")
+    assert parse_blockers(render_blockers(blockers)) == blockers

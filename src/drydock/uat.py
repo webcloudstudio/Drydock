@@ -23,6 +23,16 @@ from typing import IO
 
 from drydock import __version__, sea_trials, technology_stack
 from drydock.acceptance_contract import AcceptanceContract, contract_from_config, write_contract
+from drydock.blockers import (
+    UAT_STAGE,
+    Blockers,
+    clear_environmental,
+    environmental_blocker,
+    now_utc,
+    read_blockers,
+    summary_for,
+    write_blockers,
+)
 from drydock.build_report import build_score_report
 from drydock.compass_sources import mark_compass_authored
 from drydock.config import DEFAULT_REPAIR_ATTEMPTS
@@ -30,7 +40,6 @@ from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import executed_models, normalize_tokens, read_records
 from drydock.metadata import METADATA_NAME, parse_metadata
-from drydock.stop_condition import StopCondition, clear_stop, read_stop, write_stop
 from drydock.story_guidance import StoryGuidance, guidance_from_config, write_guidance
 from drydock.uat_console import StepSink
 from drydock.uat_report import build_case_kit, local_run_window, write_kit_index
@@ -1400,9 +1409,9 @@ def run_fixture(
         commands.append(result)
         if required and result.returncode != 0:
             # A child that halted on a fatal provider failure recorded why; that is the cause.
-            halt = read_stop(workspace / "targets" / fixture.target)
+            halt = stopped()
             if halt is not None:
-                raise DrydockError(f"{fixture.name}: stopped at {halt.stage}: {halt.reason}")
+                raise DrydockError(f"{fixture.name}: stopped at {halt.line()}")
             raise DrydockError(f"{fixture.name}: {label} exited {result.returncode}")
         if to_step is not None and sequence >= to_step:
             raise _StepBoundReached()
@@ -1423,7 +1432,7 @@ def run_fixture(
         re-verifies from scratch, so a stop this same stage declared on an earlier attempt must
         not survive to halt a plan that now verifies cleanly.
         """
-        clear_stop(workspace / "targets" / fixture.target)
+        clear_environmental(workspace / "targets" / fixture.target)
         verified = execute(("plan", "verify", fixture.target), "plan-verify", required=False)
         if verified.returncode == 0:
             return
@@ -1438,19 +1447,35 @@ def run_fixture(
             )
 
     def declare_stop(stage: str, reason: str) -> None:
-        """Record the halt at the Target root and announce it on the console."""
+        """Record the halt as an environmental blocker and announce it on the console."""
         target_dir = workspace / "targets" / fixture.target
         if not target_dir.is_dir():
             return
-        write_stop(target_dir, stage, reason)
-        # The first declaration wins, so announce the halt actually recorded: a child command
-        # that stopped on its provider has already named the cause.
-        recorded = read_stop(target_dir)
+        # The first environmental blocker wins: a child command that stopped on its provider has
+        # already named the cause, and this halt is its consequence.
+        if stopped() is None:
+            declared = now_utc()
+            blocker = environmental_blocker(UAT_STAGE, reason, declared=declared, title=stage)
+            existing = read_blockers(target_dir)
+            write_blockers(
+                target_dir,
+                Blockers(
+                    summary=existing.summary if existing else summary_for(UAT_STAGE),
+                    target=fixture.target,
+                    source=existing.source if existing else f"drydock uat {fixture.name}",
+                    owner=existing.owner if existing else f"uat {fixture.target}",
+                    declared=declared,
+                    blockers=(blocker, *(existing.decisions() if existing else ())),
+                ),
+            )
+        recorded = stopped()
         if on_event and recorded is not None:
-            on_event(f"{fixture.name}: STOP declared by {recorded.stage} — {recorded.reason}")
+            on_event(f"{fixture.name}: STOP declared by {recorded.line()}")
 
-    def stopped() -> StopCondition | None:
-        return read_stop(workspace / "targets" / fixture.target)
+    def stopped() -> Blockers | None:
+        """The run's environmental block. A decision blocker is a failed stage, not a halt."""
+        blockers = read_blockers(workspace / "targets" / fixture.target)
+        return blockers if blockers is not None and blockers.environmental() else None
 
     def execute_test() -> None:
         if not fixture.test_command:
@@ -1549,7 +1574,7 @@ def run_fixture(
         halt the repaired build on the strength of a failure it just fixed.
         """
         nonlocal build_passes
-        clear_stop(workspace / "targets" / fixture.target)
+        clear_environmental(workspace / "targets" / fixture.target)
         entry_degraded = len(degraded)
         stage_passes = 0
         while True:
@@ -1639,7 +1664,7 @@ def run_fixture(
             # plan rather than after it.
             halted = stopped()
             if halted is not None:
-                raise DrydockError(f"{fixture.name}: stopped at {halted.stage}: {halted.reason}")
+                raise DrydockError(f"{fixture.name}: stopped at {halted.line()}")
         if start <= stage_index("build"):
             build_until_no_work_remains("initial")
             capture_status("after-initial-build")
@@ -1662,7 +1687,7 @@ def run_fixture(
         # not a special case each measurement has to remember to check.
         halt = stopped()
         if halt is not None:
-            raise DrydockError(f"{fixture.name}: stopped at {halt.stage}: {halt.reason}")
+            raise DrydockError(f"{fixture.name}: stopped at {halt.line()}")
 
         if start <= stage_index("test"):
             execute_test()

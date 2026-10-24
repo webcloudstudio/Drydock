@@ -167,8 +167,10 @@ verify-and-repair stage, so six repairable criteria were never repaired. The ear
 **Inputs and authority**
 
 `2026-07-30` · **Plan refuses an undecided analysis.** `BLOCKERS.md`, `Quality: Blocked`, or an
-unanswered required questionnaire stops Plan before any call (`--override` waives only the
-questionnaire). The only stack gate is Python relational persistence without its Rigging.
+unanswered required questionnaire stops Plan before any call. `2026-10-24` `--override` waives
+the questionnaire and an `analyze`-owned decision-only `BLOCKERS.md` (with its `Quality:
+Blocked`), recording one `analysis-blocker` waiver per decision; it never waives an environmental
+blocker or a `Quality: Blocked` with no file ([process_stops](../topics/process_stops.md)). The only stack gate is Python relational persistence without its Rigging.
 
 `2026-09-22` · **Analyze owns `COMPASS.md`; the Commander owns `PLAN_COMPASS.md`.** Plan never
 appends sources to the Compass and never overwrites `PLAN_COMPASS.md`. *Broken:* stale pages

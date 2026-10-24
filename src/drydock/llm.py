@@ -45,7 +45,7 @@ from drydock.execution import (
 from drydock.llm_usage import normalize_tokens
 from drydock.logging import close_execution_logger, create_execution_logger
 from drydock.output_format import CleanedOutput, OutputFormat, clean_output
-from drydock.prompt_assembly import PromptAssembly
+from drydock.prompt_assembly import PromptAssembly, PromptPart
 
 # A provider agent runs shell commands, and those grandchildren inherit the provider's
 # stdout/stderr pipes.  A grandchild that outlives the provider holds the write end open,
@@ -1472,31 +1472,38 @@ class FatalStop:
 
     def recovery(self) -> str:
         """The operator's way back, one instruction per line."""
-        if self.kind == "provider rate limit":
-            return (
-                "Wait for the provider limit to reset (the reason above names when), or switch\n"
-                "provider or model with --llm-provider / --model."
-            )
-        if self.kind == "provider authentication required":
-            return f"Log in again: {_login_command(self.llm)}"
-        if self.kind == "provider timeout":
-            return (
-                "Check the provider's status and the network. A timed-out call may already have\n"
-                "spent tokens, so Drydock does not retry it on its own."
-            )
-        if self.kind == "provider outage":
-            return "Check the provider's status page; rerun once it recovers, or switch provider."
-        if self.kind == "invalid model":
-            try:
-                allowed = ", ".join(model_config.load().provider(self.llm).allowed())
-            except ConfigurationError:
-                allowed = ""
-            return (
-                f"Choose an allowed {self.llm} model with --model, or set one with\n"
-                f"drydock config set drydock_model <model>."
-                + (f"\nAllowed {self.llm} models: {allowed}" if allowed else "")
-            )
-        return f"Install or repair the {self.llm} CLI so it runs from this shell."
+        return recovery_for(self.kind, self.llm)
+
+
+def recovery_for(kind: str, llm: str) -> str:
+    """The operator's way back from a fatal failure of ``kind``, one instruction per line."""
+    if kind == "provider rate limit":
+        return (
+            "Wait for the provider limit to reset (the error above names when), or switch\n"
+            "provider or model with --llm-provider / --model."
+        )
+    if kind == "provider authentication required":
+        return f"Log in again: {_login_command(llm)}"
+    if kind == "provider timeout":
+        return (
+            "Check the provider's status and the network. A timed-out call may already have\n"
+            "spent tokens, so Drydock does not retry it on its own."
+        )
+    if kind == "provider outage":
+        return "Check the provider's status page; rerun once it recovers, or switch provider."
+    if kind == "invalid model":
+        try:
+            allowed = ", ".join(model_config.load().provider(llm).allowed())
+        except ConfigurationError:
+            allowed = ""
+        return (
+            f"Choose an allowed {llm} model with --model, or set one with\n"
+            f"drydock config set drydock_model <model>."
+            + (f"\nAllowed {llm} models: {allowed}" if allowed else "")
+        )
+    if kind == "provider unavailable":
+        return f"Install or repair the {llm} CLI so it runs from this shell."
+    return ""
 
 
 _fatal: FatalStop | None = None
@@ -1530,6 +1537,19 @@ def fatal_stop() -> FatalStop | None:
 def reset_fatal_stop() -> None:
     global _fatal
     _fatal = None
+
+
+_primary_instruction = ""
+
+
+def set_primary_instruction(text: str) -> None:
+    """Prepend ``text`` to every prompt this process sends: an owner rerun's Commander Resolutions."""
+    global _primary_instruction
+    _primary_instruction = text
+
+
+def primary_instruction() -> str:
+    return _primary_instruction
 
 
 def _record_fatal_stop(stop: FatalStop) -> None:
@@ -2167,6 +2187,18 @@ def run_prompt(
             _preflight_codex_sandbox(sandbox)
 
     assembly = prompt_assembly or PromptAssembly.single_prompt(prompt)
+    if _primary_instruction:
+        # A Commander Resolution leads the prompt: the owner reruns to act on it.
+        assembly = PromptAssembly(
+            parts=(
+                PromptPart(
+                    label="Commander Resolution",
+                    kind="primary-instruction",
+                    text=_primary_instruction,
+                ),
+                *assembly.parts,
+            )
+        )
     prompt = assembly.rendered_text
     prompt_bytes = prompt.encode("utf-8")
 

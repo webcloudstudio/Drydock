@@ -2534,29 +2534,49 @@ _CHAIR = (
 )
 
 
-def test_a_stopped_target_chair_shows_the_stop_in_place_of_its_overview(tmp_path):
+def _uat_stage_block(target):
+    from drydock.blockers import UAT_STAGE, Blockers, environmental_blocker, write_blockers
+
+    declared = "2026-10-24T18:38:12Z"
+    return write_blockers(
+        target,
+        Blockers(
+            summary="UAT Stage",
+            target=target.name,
+            source=f"drydock uat {target.name}",
+            owner=f"uat {target.name}",
+            declared=declared,
+            blockers=(
+                environmental_blocker(
+                    UAT_STAGE, "criteria still cannot run", declared=declared, title="plan-repair"
+                ),
+            ),
+        ),
+    )
+
+
+def test_a_blocked_target_chair_shows_the_block_in_place_of_its_overview(tmp_path):
     from drydock.quarterdeck_state import with_stop_view
-    from drydock.stop_condition import write_stop
 
     target = tmp_path / "FxRates"
     target.mkdir()
     assert with_stop_view(_CHAIR, target) == _CHAIR
-    path = write_stop(target, "plan-repair", "criteria still cannot run", "Fix the criterion.")
+    path = _uat_stage_block(target)
 
     html = with_stop_view(_CHAIR, target)
 
     assert "<p>overview</p>" not in html
-    assert "STOPPED: FxRates · plan-repair" in html
-    assert "criteria still cannot run" in html and "Fix the criterion." in html
-    assert f"Contents of {path}" in html and "- stage: plan-repair" in html
+    assert "BLOCKED: FxRates · uat FxRates" in html
+    assert "plan-repair" in html and "criteria still cannot run" in html
+    assert f"Contents of {path}" in html and "- owner: uat FxRates" in html
     assert f"rm '{path}'" in html
     assert 'id="chair-build"' in html
     assert with_stop_view(html, target) == html
 
 
-def test_the_served_chair_follows_the_stop_file(tmp_path, monkeypatch):
-    """The view is applied when served, so clearing the stop restores the overview unrefreshed."""
-    from drydock.stop_condition import clear_stop, write_stop
+def test_the_served_chair_follows_the_blockers_file(tmp_path, monkeypatch):
+    """The view is applied when served, so clearing the block restores the overview unrefreshed."""
+    from drydock.blockers import clear_blockers
 
     quarterdeck = _load_quarterdeck()
     workspace = _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
@@ -2579,7 +2599,7 @@ def test_the_served_chair_follows_the_stop_file(tmp_path, monkeypatch):
         request = _RequestStub({"quarterdeck_target": "Alpha"})
         return quarterdeck.raw_document("commanders_chair", "html", request).body.decode()
 
-    write_stop(alpha, "build", "provider rate limit")
-    assert "STOPPED: Alpha · build" in served()
-    clear_stop(alpha)
+    _uat_stage_block(alpha)
+    assert "BLOCKED: Alpha · uat Alpha" in served()
+    clear_blockers(alpha)
     assert "<p>overview</p>" in served()

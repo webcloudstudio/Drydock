@@ -12,7 +12,8 @@ import time
 import traceback
 from collections import Counter
 from contextlib import nullcontext, redirect_stdout
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import NoReturn
 
@@ -2092,13 +2093,13 @@ def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
     except Exception:
         pass
     _render_status(result)
-    from drydock.stop_condition import read_stop, render_stop
+    from drydock.blockers import read_blockers, render_banner
 
-    stop = read_stop(target_dir)
-    if stop is not None:
-        # Printed last, so the halt and its recovery are the final lines the operator reads.
+    blockers = read_blockers(target_dir)
+    if blockers is not None:
+        # Printed last, so the block and its recovery are the final lines the operator reads.
         print()
-        print(render_stop(stop, target))
+        print(render_banner(blockers, target, _blockers_recovery(blockers)))
     record_activity("status", blueprint, target)
     return 0
 
@@ -2134,12 +2135,12 @@ def cmd_status_ready(target: str) -> int:
 
     target_dir = get_target_directory() / target
     _resolve_check_target(target)
-    from drydock.stop_condition import STOP_FILENAME, read_stop
+    from drydock.blockers import BLOCKERS_FILENAME, read_blockers
 
-    stop = read_stop(target_dir)
-    if stop is not None:
-        # A recorded halt outranks buildable work: the loop ends here, and the one line says why.
-        print(f"STOPPED: {target}  ({stop.line()}; see {STOP_FILENAME})")
+    blockers = read_blockers(target_dir)
+    if blockers is not None:
+        # A recorded block outranks buildable work: the loop ends here, and the one line says why.
+        print(f"BLOCKED: {target}  ({blockers.line()}; see {BLOCKERS_FILENAME})")
         return 1
     state, reason = execution_state(target_dir)
     ready = state == "buildable"
@@ -2458,7 +2459,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     from drydock.llm import fatal_stop
 
     if result.stalled() and (stop := fatal_stop()) is not None:
-        # Not a stall: the provider failed fatally and no block could be sent. STOP_NOW.md and
+        # Not a stall: the provider failed fatally and no block could be sent. BLOCKERS.md and
         # its banner follow and carry the cause and the recovery.
         print()
         print(f"BUILD STOPPED — {stop.kind}; {len(result.stalled_blocks)} block(s) outstanding.")
@@ -5184,10 +5185,28 @@ def _render_plan_deferred(result, *, target: str) -> str:
     return "\n".join(lines)
 
 
-# ``status`` is how a stop is read, and ``status --ready`` already exits 1 on one. ``run`` starts
-# the QuarterDeck, whose Commander's Chair shows the stop in place of its overview. ``uat`` drives
-# fresh run workspaces; a stop inside a sealed run is that run's evidence, never a gate.
+# ``status`` is how a block is read, and ``status --ready`` exits 1 on one. ``run`` starts the
+# QuarterDeck, whose Commander's Chair shows the block in place of its overview. ``uat`` drives
+# fresh run workspaces; a block inside a sealed run is that run's evidence, never a gate.
 _STOP_GATE_EXEMPT = frozenset({"uat", "status", "run"})
+
+#: Set by the parent of an owner rerun to the owner it launched, so the child runs as that owner
+#: without asking again.
+_OWNER_RERUN_ENV = "DRYDOCK_OWNER_RERUN"
+
+
+@dataclass
+class _OwnerRun:
+    """An owner admitted past its own ``BLOCKERS.md``: the file as it stood when admitted."""
+
+    target_dir: Path
+    text: str
+    owner: str
+    source: str
+    errors_mtime: float | None
+
+
+_owner_run: _OwnerRun | None = None
 
 
 def _stop_target_dir(args: argparse.Namespace) -> Path | None:
@@ -5210,37 +5229,218 @@ def _stop_target_dir(args: argparse.Namespace) -> Path | None:
     return target_dir if target_dir.is_dir() else None
 
 
-def _process_stop_gate(args: argparse.Namespace) -> bool:
-    """Whether this invocation may run, given the Target's ``STOP_NOW.md``.
+def _owner_identity(args: argparse.Namespace, target: str) -> str:
+    """The verb, sub-verb, and Target of an invocation; options are not part of it."""
+    if getattr(args, "command", None) == "plan":
+        sub_verb, _target = _parse_plan_args(args)
+        parts = ["plan", sub_verb]
+    else:
+        parts = _command_log_name(args).split()
+        for token in getattr(args, "args", None) or []:
+            if token == target:
+                break
+            if token in _LOG_TARGET_SUBVERBS:
+                parts.append(token)
+    return " ".join(part for part in (*parts, target) if part)
 
-    Every Target command except ``status``, ``run``, and ``uat`` refuses while a halt is recorded. At a
-    terminal the operator is shown the halt and may clear it; a script or a UAT child is refused,
-    so an unattended loop stops instead of running past a declared halt.
+
+def _invocation_source(argv: list[str] | None) -> str:
+    import shlex
+
+    tokens = argv if argv is not None else sys.argv[1:]
+    return "drydock " + shlex.join(str(token) for token in tokens)
+
+
+def _blockers_recovery(blockers) -> str:
+    """Recovery lines for the environmental blockers, for the owner's provider."""
+    from drydock.llm import recovery_for
+
+    tokens = blockers.rerun_tokens()
+
+    def option(name: str) -> str | None:
+        for index, token in enumerate(tokens):
+            if token == name and index + 1 < len(tokens):
+                return tokens[index + 1]
+            if token.startswith(name + "="):
+                return token.split("=", 1)[1]
+        return None
+
+    try:
+        from drydock.config import get_model
+        from drydock.llm import resolve_provider
+
+        provider = resolve_provider(option("--llm-provider"), get_model(option("--model")))
+    except Exception:
+        provider = ""
+    lines = [
+        recovery_for(item.blocker_class, provider)
+        for item in blockers.environmental()
+        if item.blocker_class
+    ]
+    return "\n".join(dict.fromkeys(line for line in lines if line))
+
+
+def _is_terminal() -> bool:
+    return sys.stdin.isatty() and sys.__stdout__ is not None and sys.__stdout__.isatty()
+
+
+def _ask_how_to_proceed(target_dir: Path, blockers) -> bool:
+    """Ask per blocker; write typed text into its Commander Resolution. ``False`` on ``q``."""
+    from dataclasses import replace
+
+    from drydock.blockers import write_blockers
+
+    updated = []
+    for item in blockers.blockers:
+        print()
+        print(f"{item.blocker_id}: {item.title}")
+        if item.resolution:
+            print(f"  Current resolution: {item.resolution}")
+        try:
+            answer = input("How should we proceed? ").strip()
+        except EOFError:
+            answer = ""
+        if answer.lower() == "q":
+            return False
+        updated.append(replace(item, resolution=answer) if answer else item)
+    if tuple(updated) != blockers.blockers:
+        write_blockers(target_dir, replace(blockers, blockers=tuple(updated)))
+    return True
+
+
+def _run_owner(blockers) -> int:
+    """Rerun the owner in a child process that is admitted as the owner without asking."""
+    import subprocess
+
+    env = {**os.environ, _OWNER_RERUN_ENV: blockers.owner}
+    print(f"Rerunning the owner: {blockers.source}")
+    return subprocess.run(
+        [sys.executable, "-m", "drydock", *blockers.rerun_tokens()], env=env, check=False
+    ).returncode
+
+
+def _admit_owner(target_dir: Path, blockers) -> None:
+    """Let the owner run past its file, leading its prompts with any Commander Resolution."""
+    global _owner_run
+    from drydock.blockers import blockers_path, primary_instruction
+    from drydock.errors import errors_path
+    from drydock.llm import set_primary_instruction
+
+    errors = errors_path(target_dir)
+    _owner_run = _OwnerRun(
+        target_dir,
+        blockers_path(target_dir).read_text(encoding="utf-8"),
+        blockers.owner,
+        blockers.source,
+        errors.stat().st_mtime if errors.is_file() else None,
+    )
+    set_primary_instruction(primary_instruction(blockers))
+
+
+def _process_stop_gate(args: argparse.Namespace) -> bool | int:
+    """Whether this invocation may run, given the Target's ``BLOCKERS.md``.
+
+    ``True`` runs it and ``False`` refuses it (exit ``1``). An integer is the exit code of an
+    owner rerun that failed, which ends this invocation too.
     """
+    global _owner_run
+    _owner_run = None
     target_dir = _stop_target_dir(args)
     if target_dir is None:
         return True
-    from drydock.stop_condition import clear_stop, read_stop, render_refusal
+    from drydock.blockers import batch_may_run_owner, read_blockers, render_refusal
 
-    if read_stop(target_dir) is None:
+    blockers = read_blockers(target_dir)
+    if blockers is None:
         return True
-    banner = render_refusal(target_dir, f"drydock {args.command}")
-    if sys.stdin.isatty() and sys.__stdout__ is not None and sys.__stdout__.isatty():
-        print(banner)
-        try:
-            answer = input("Clear this stop and continue? [y/N] ")
-        except EOFError:
-            answer = ""
-        if answer.strip().lower() in {"y", "yes"}:
-            clear_stop(target_dir)
+    requested = _owner_identity(args, target_dir.name)
+    is_owner = bool(blockers.owner) and requested == blockers.owner
+    if is_owner and os.environ.get(_OWNER_RERUN_ENV) == blockers.owner:
+        _admit_owner(target_dir, blockers)
+        return True
+    if (
+        args.command == "plan"
+        and getattr(args, "override", False)
+        and blockers.owner_verb == "analyze"
+        and blockers.blockers
+        and not blockers.environmental()
+    ):
+        # An analysis decision is waived by ``plan --override``, which records the waiver.
+        return True
+    banner = render_refusal(target_dir, f"drydock {args.command}", _blockers_recovery(blockers))
+    if not _is_terminal():
+        if is_owner and batch_may_run_owner(blockers):
+            print(f"{target_dir.name} is blocked by its own {blockers.owner}; rerunning it.")
+            _admit_owner(target_dir, blockers)
             return True
+        print(banner, file=sys.stderr)
         return False
-    print(banner, file=sys.stderr)
-    return False
+    print(banner)
+    if not _ask_how_to_proceed(target_dir, blockers):
+        return False
+    blockers = read_blockers(target_dir) or blockers
+    if is_owner:
+        _admit_owner(target_dir, blockers)
+        return True
+    returncode = _run_owner(blockers)
+    if returncode != 0:
+        return returncode or 1
+    if (remaining := read_blockers(target_dir)) is not None:
+        from drydock.blockers import render_banner
+
+        print(render_banner(remaining, target_dir.name, _blockers_recovery(remaining)))
+        return False
+    return True
+
+
+def _settle_owner_run(exit_code: int) -> None:
+    """After an admitted owner ends without a fatal failure, settle its ``BLOCKERS.md``.
+
+    Success archives the file it was admitted past and deletes it, unless the owner rewrote it.
+    An ordinary failure clears the environmental blockers and records the failure in
+    ``ERRORS.md``; the owner's decision blockers stay.
+    """
+    run = _owner_run
+    if run is None:
+        return
+    from drydock.blockers import (
+        archive_blockers,
+        blockers_path,
+        clear_blockers,
+        clear_environmental,
+    )
+    from drydock.llm import fatal_stop
+
+    if fatal_stop() is not None:
+        return
+    path = blockers_path(run.target_dir)
+    try:
+        current = path.read_text(encoding="utf-8") if path.is_file() else None
+    except OSError:
+        return
+    if exit_code == 0:
+        archive_blockers(run.target_dir, run.text, archived_on=date.today().isoformat())
+        if current == run.text:
+            clear_blockers(run.target_dir)
+        return
+    clear_environmental(run.target_dir)
+    from drydock.errors import errors_path, write_error_record
+
+    errors = errors_path(run.target_dir)
+    if errors.is_file() and errors.stat().st_mtime != run.errors_mtime:
+        return
+    write_error_record(
+        run.target_dir,
+        command=run.source,
+        phase="owner rerun",
+        classification=f"{run.owner} failed",
+        detail=f"{run.owner} exited {exit_code} after it was admitted past BLOCKERS.md.",
+        recovery=f"Fix the failure reported above, then rerun: {run.source}",
+    )
 
 
 def _declare_process_stop(args: argparse.Namespace, argv: list[str] | None) -> bool:
-    """Record a fatal provider failure from this invocation as the Target's ``STOP_NOW.md``."""
+    """Record a fatal provider failure from this invocation as an environmental blocker."""
     from drydock.llm import fatal_stop
 
     stop = fatal_stop()
@@ -5249,18 +5449,56 @@ def _declare_process_stop(args: argparse.Namespace, argv: list[str] | None) -> b
     target_dir = _stop_target_dir(args)
     if target_dir is None:
         return True
-    from drydock.stop_condition import read_stop, render_stop, write_stop
+    from dataclasses import replace
 
-    tokens = argv if argv is not None else sys.argv[1:]
-    write_stop(
-        target_dir,
-        _command_log_name(args),
-        f"{stop.kind}: {stop.message} (execution {stop.execution_id})",
-        f"{stop.recovery()}\nThen rerun: drydock {' '.join(tokens)}",
+    from drydock.blockers import (
+        Blockers,
+        environmental_blocker,
+        now_utc,
+        read_blockers,
+        render_banner,
+        summary_for,
+        write_blockers,
     )
-    recorded = read_stop(target_dir)
-    if recorded is not None:
-        print(render_stop(recorded, target_dir.name), file=sys.stderr)
+
+    owner = _owner_identity(args, target_dir.name)
+    declared = now_utc()
+    blocker = environmental_blocker(stop.kind, stop.message, declared=declared)
+    existing = read_blockers(target_dir)
+    if existing is not None and existing.owner and existing.owner != owner:
+        # Only ``plan --override`` runs past another owner's file; that file keeps its owner.
+        from drydock.errors import write_error_record
+
+        write_error_record(
+            target_dir,
+            command=_invocation_source(argv),
+            phase="provider",
+            classification=stop.kind,
+            detail=stop.message,
+            recovery=stop.recovery(),
+            execution_id=stop.execution_id,
+        )
+        print(f"error: {stop.kind}: {stop.message}", file=sys.stderr)
+        return True
+    attempts = 1
+    decisions: tuple = ()
+    if existing is not None:
+        decisions = existing.decisions()
+        if any(item.blocker_class == stop.kind for item in existing.environmental()):
+            attempts = existing.attempts + 1
+    recorded = Blockers(
+        summary=summary_for(stop.kind),
+        target=target_dir.name,
+        source=_invocation_source(argv),
+        owner=owner,
+        declared=declared,
+        execution=stop.execution_id,
+        attempts=attempts,
+        blockers=(blocker, *decisions),
+    )
+    write_blockers(target_dir, recorded)
+    recorded = read_blockers(target_dir) or replace(recorded)
+    print(render_banner(recorded, target_dir.name, stop.recovery()), file=sys.stderr)
     return True
 
 
@@ -5681,12 +5919,13 @@ def main(argv: list[str] | None = None) -> None:
             if not _is_machine_readable_query(args):
                 print(f"Drydock {__version__}  {__copyright__}")
             try:
-                if _process_stop_gate(args):
+                admitted = _process_stop_gate(args)
+                if admitted is True:
                     _prepare_target_repository(args)
                     exit_code = _dispatch(args, parser)
                     _commit_target_repository(args)
                 else:
-                    exit_code = 1
+                    exit_code = 1 if admitted is False else admitted
             except UsageError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 exit_code = 2
@@ -5723,6 +5962,10 @@ def main(argv: list[str] | None = None) -> None:
 
             if _declare_process_stop(args, argv):
                 exit_code = exit_code or 1
+            try:
+                _settle_owner_run(exit_code)
+            except Exception:
+                logger.exception("owner rerun settlement failed")
             if not inherited_transcript:
                 # Child processes need the inherited transcript only while the top-level
                 # command runs. Clear it before recording that top-level command itself.

@@ -235,11 +235,16 @@ fixed list of models, printing that list with each model's cost when given anyth
 The loop ends at verified build completion; scoring is separate. `status --ready` retains its
 boolean buildability contract, and `status --check` supplies the separate completion check.
 
-A rate or usage limit, expired login, timeout, or provider outage writes `<Target>/STOP_NOW.md`
-with the stage, the provider message, and the recovery. While it exists `status --ready` prints
-`STOPPED: <Target>` and exits 1, and every LLM-assisted command, `diagnose` included, refuses;
-at a terminal the command shows the stop and asks `Clear this stop and continue? [y/N]`.
-`drydock status <Target>` ends with the same banner.
+`<Target>/BLOCKERS.md` is the one file that blocks a Target. A rate or usage limit, expired
+login, timeout, outage, invalid model, or unrunnable provider CLI writes an environmental blocker
+owned by the command that hit it; `analyze` and `refit` write decision blockers that ask the
+Commander a question. While the file exists only its owner runs, and `status`, `run`, and `uat`
+are exempt. `status --ready` prints `BLOCKED: <Target>` and exits 1, and `drydock status <Target>`
+ends with the blockers banner. At a terminal a blocked command asks `How should we proceed?` per
+blocker, writes the answer as its `Commander Resolution`, reruns the owner with the resolutions
+as its primary instruction, then continues. Unattended, the owner reruns only when every decision
+is resolved and every environmental blocker may auto-continue (a timeout, an outage, or a rate
+limit past its stated reset), once. `plan --override` passes an analysis decision only.
 
 `drydock build` checkpoints the application and Target Git repositories after each agent
 execution (including repairs and failures) and completed step. Existing changes receive a
