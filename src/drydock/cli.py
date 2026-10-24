@@ -1396,9 +1396,21 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print(f"Elapsed: {_elapsed_text(time.monotonic() - plan_started)}")
     print(f"Review: {result.quarterdeck_dir}")
     _print_override_summary(getattr(result, "waivers", ()))
+    unbuildable = getattr(result, "unbuildable", "")
+    if unbuildable:
+        # Written, not buildable: the Manifest stays draft and Build refuses it. The exit is 0
+        # because the plan was written; ``plan verify`` judges it and ``plan repair`` fixes it.
+        print()
+        print("⚠  Plan written but not buildable — the Manifest is draft and Build refuses it.")
+        print(unbuildable.rstrip())
+        print(f"Next step: drydock plan verify {args.Target} || drydock plan repair {args.Target}")
     if not getattr(args, "debug", False):
         record_status(
-            target_dir, "PLAN CREATED", passed=True, command=f"drydock plan {args.Target}"
+            target_dir,
+            "PLAN CREATED",
+            passed=True,
+            detail="unbuildable: run plan repair" if unbuildable else "",
+            command=f"drydock plan {args.Target}",
         )
         return 0
     if result.conformed_files:
@@ -1434,8 +1446,15 @@ def cmd_plan(args: argparse.Namespace) -> int:
         for warning in remaining:
             print(f"  - {warning}")
     print()
-    print("Next step: review the manifest build tree in the Planning Session.")
-    record_status(target_dir, "PLAN CREATED", passed=True, command=f"drydock plan {args.Target}")
+    if not unbuildable:
+        print("Next step: review the manifest build tree in the Planning Session.")
+    record_status(
+        target_dir,
+        "PLAN CREATED",
+        passed=True,
+        detail="unbuildable: run plan repair" if unbuildable else "",
+        command=f"drydock plan {args.Target}",
+    )
     return 0
 
 

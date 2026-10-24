@@ -7115,14 +7115,14 @@ def test_an_unknown_owner_is_left_to_the_repair_loop():
     assert ps._normalize_database_interfaces(blocks) == ()
 
 
-def test_a_plan_build_cannot_execute_is_written_as_draft_and_fails(tmp_path):
+def test_a_plan_build_cannot_execute_is_written_as_draft_and_reported(tmp_path):
     """The Marina_Luna false positive: a plan with criteria that cannot run reported
-    ``PLAN CREATED`` pass and ``approved``. The terminal gate keeps the paid-for artifacts for
-    ``drydock plan repair`` but leaves the Manifest draft and fails the command."""
+    ``approved``. The terminal check keeps the paid-for artifacts for ``drydock plan repair``,
+    leaves the Manifest draft so Build refuses it, and returns the report rather than failing,
+    so ``drydock plan verify <T> || drydock plan repair <T>`` follows (FxRates
+    ``20261024.015228`` halted on the failure before its own repair stage)."""
     from drydock.build_plan import parse_build_plan
     from drydock.metadata import get_sub_state
-    from drydock.planning_session import PlanNotBuildable
-
     target_dir = _make_target(tmp_path)
     (target_dir / "METADATA.md").write_text("name: Example\nbuild_sub_state: \n", encoding="utf-8")
     broken = _llm_output().replace(
@@ -7142,9 +7142,11 @@ def test_a_plan_build_cannot_execute_is_written_as_draft_and_fails(tmp_path):
         calls.append("call")
         return FakeRun(text=broken if len(calls) == 1 else feature)
 
-    with pytest.raises(PlanNotBuildable, match="cannot be built as written"):
-        create_plan("Example", "Example", tmp_path, runner=runner, allow_diagnostic_recovery=True)
+    result = create_plan(
+        "Example", "Example", tmp_path, runner=runner, allow_diagnostic_recovery=True
+    )
 
+    assert "status-open" in result.unbuildable
     assert len(calls) > 1  # the criterion reached the repair loop before the plan was failed
 
     assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()

@@ -315,6 +315,8 @@ class PlanCreateResult:
     plan_mode: str = ""
     conformed_files: tuple[Path, ...] = ()
     waivers: tuple[WaivedGate, ...] = ()
+    #: The ``plan verify`` report when the written plan fails it; ``""`` when Build can run it.
+    unbuildable: str = ""
 
 
 @dataclass(frozen=True)
@@ -2728,10 +2730,6 @@ class CriteriaDefect(SpecificationError):
     ) -> None:
         super().__init__(message)
         self.defects = defects
-
-
-class PlanNotBuildable(SpecificationError):
-    """The plan was written but fails the buildability gate, so ``drydock plan`` fails."""
 
 
 class DatabaseDefect(SpecificationError):
@@ -6983,12 +6981,12 @@ def create_plan(
         log_dir=log_dir,
         target=target,
     )
-    # The terminal gate. Everything above repairs what it can; this asks the one question the
-    # command's exit status answers — can Build execute what was written — with the same check
-    # ``drydock plan verify`` and ``drydock build`` apply. A plan that fails it is kept, because
-    # it was paid for and ``drydock plan repair`` works from disk, but it is left ``draft`` and
-    # the command fails: reporting success over a Manifest whose criteria cannot run or whose
-    # persistence declaration Build cannot read is a false positive, not a warning. No waiver
+    # The terminal check. Everything above repairs what it can; this asks whether Build can
+    # execute what was written, with the same check ``drydock plan verify`` and ``drydock build``
+    # apply. A plan that fails it is kept, because it was paid for and ``drydock plan repair``
+    # works from disk. It is left ``draft``, so Build refuses it, and the report is returned
+    # rather than raised: ``plan`` writes, ``plan verify`` judges, ``plan repair`` fixes, so
+    # ``drydock plan verify <T> || drydock plan repair <T>`` follows a successful plan. No waiver
     # applies — neither ``--override`` nor an unattended run can make a defect buildable.
     from drydock.plan_verify import render as render_verify
     from drydock.plan_verify import verify as verify_plan
@@ -7036,10 +7034,6 @@ def create_plan(
             detail_limit=None,
         )
         _refresh_chair(target_dir)
-        raise PlanNotBuildable(
-            "Plan cannot be built as written. The Blueprint and Manifest are written for repair; "
-            "the Manifest is draft and Build refuses it.\n" + render_verify(buildability)
-        )
 
     return PlanCreateResult(
         plan=plan,
@@ -7060,4 +7054,5 @@ def create_plan(
         plan_mode=plan_mode,
         conformed_files=tuple(conformed_specs),
         waivers=unique_waivers,
+        unbuildable="" if buildability.ok else render_verify(buildability),
     )

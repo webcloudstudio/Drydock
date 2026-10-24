@@ -1535,6 +1535,44 @@ class TestLlmOverrideFlags:
         assert rc == 0, err
         assert seen["kwargs"]["conform"] is False
 
+    def test_an_unbuildable_plan_exits_zero_and_names_the_verify_repair_loop(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        # ``plan`` writes, ``plan verify`` judges, ``plan repair`` fixes. FxRates
+        # 20261024.015228 halted on plan's exit 1 before its own repair stage could run.
+        from types import SimpleNamespace
+
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        target_dir = tmp_target_root / "Proj"
+        (target_dir / "blueprint" / "sources").mkdir(parents=True)
+        (target_dir / "ANALYSIS.md").write_text(
+            "# Blueprint Analysis: Proj\n\nQuality: Questions\n\n## Story List\n\nProject type: `cli`\n",
+            encoding="utf-8",
+        )
+
+        def fake_create_plan(blueprint, target, target_directory, **kwargs):
+            return SimpleNamespace(
+                plan=SimpleNamespace(
+                    project="Proj", path=target_dir / "MANIFEST.md", state="draft", blocks=[]
+                ),
+                quarterdeck_dir=target_dir / "QuarterDeck",
+                authored_files=(),
+                target_dir=target_dir,
+                warnings=(),
+                plan_mode="full-rewrite",
+                conformed_files=(),
+                unbuildable="plan verify: Proj\n  1 criteria cannot run as written\n",
+            )
+
+        monkeypatch.setattr("drydock.planning_session.create_plan", fake_create_plan)
+
+        rc, out, err = run_cli("plan", "Proj")
+
+        assert rc == 0, err
+        assert "Plan written but not buildable" in out
+        assert "1 criteria cannot run as written" in out
+        assert "drydock plan verify Proj || drydock plan repair Proj" in out
+
     def test_plan_rejects_a_cross_provider_lineage_model(self):
         rc, _out, err = run_cli(
             "plan",

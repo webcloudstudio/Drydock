@@ -126,6 +126,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-23: `drydock plan` exits `0` when it writes a plan that `plan verify` rejects. The
+  Manifest stays `draft` with sub-state `unbuildable`, so Build still refuses it; `ERRORS.md`
+  records the defects, and the command prints the report and
+  `drydock plan verify <Target> || drydock plan repair <Target>`. `plan` writes, `plan verify`
+  judges, `plan repair` fixes. Exit `1` now means no plan was written. `drydock uat` reaches its
+  verify-and-repair stage instead of halting on the plan's exit (FxRates `20261024.015228`).
+
 - 2026-10-23: The `DATABASE.md` operation fingerprint recorded in the Manifest hashes only what a
   caller depends on: name, Kind, Match, rows, return shape, and each field's name and caller
   type. A column length, nullability, `Required`, `DEFAULT`, or index change no longer makes Refit

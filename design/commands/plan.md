@@ -30,7 +30,7 @@ drydock plan verify <Target>     deterministic, read-only, no LLM call
 drydock plan repair <Target>     one LLM pass making unrunnable criteria runnable
 ```
 
-Intended workflow: `drydock plan verify <Target> || drydock plan repair <Target>`.
+Intended workflow: `drydock plan <Target> && { drydock plan verify <Target> || drydock plan repair <Target>; }`.
 
 `--plan-override-model` replaces `--model` and the configured default for every `plan` form. It is
 read before parsing, in any operand position, and refused with exit `2` by every command except
@@ -110,10 +110,14 @@ Blueprints and 9 calls written nowhere.
 or a citation contradicting one, blocks its story; an omission is `material` and gates nothing.
 *Broken:* 22 stories parked behind questions none needed.
 
-`2026-09-19` · **A plan Build cannot execute fails the command.** The final `plan verify` must be
-clean: every criterion runs and a table-declaring `DATABASE.md` parses. Otherwise artifacts are
-written for `plan repair`, the Manifest is `draft` / `unbuildable`, and the exit is `1` — no waiver,
-`--override` and unattended included. *Broken:* `PLAN CREATED` pass over unrunnable criteria.
+`2026-10-23` · **`plan` writes, `plan verify` judges, `plan repair` fixes.** The final
+`plan verify` runs inside `plan`. When it is not clean, the artifacts are written for
+`plan repair`, the Manifest is `draft` / `unbuildable` so Build refuses it, `ERRORS.md` records
+the defects, and `plan` prints the report and `drydock plan verify <T> || drydock plan repair
+<T>`, then exits `0` — no waiver, `--override` and unattended included. *Broken:* the
+`2026-09-19` exit `1` for this case halted FxRates `20261024.015228` before the UAT's own
+verify-and-repair stage, so six repairable criteria were never repaired. The earlier
+`approved` false positive stays closed by the `draft` Manifest.
 
 **Inputs and authority**
 
@@ -387,8 +391,8 @@ two criteria on every build, and an asserted exit `1` passed whatever the progra
 
 | Code | Condition |
 |---|---|
-| `0` | Plan written and `plan verify` clean; Manifest `approved`. `plan verify`: no defects. |
-| `1` | Plan written but unbuildable (Manifest `draft`, sub-state `unbuildable`); unrepaired `DatabaseDefect`; any operational failure. `plan verify`: defects found. `plan repair`: post-repair verification not clean. |
+| `0` | Plan written: Manifest `approved` when `plan verify` is clean, else `draft` with sub-state `unbuildable` and the verify report printed. `plan verify`: no defects. |
+| `1` | No plan written: unrepaired `DatabaseDefect` or any operational failure. `plan verify`: defects found. `plan repair`: post-repair verification not clean. |
 | `2` | Usage error, a declared conflict confirmed by its challenge, or a Stage 2 product block standing after the retry allowance (`PlanDeferredResult`): `ERRORS.md` records it and `PLAN CREATED` is recorded failed with detail `plan deferred`. |
 
 Every run records the `PLAN CREATED` (or `PLAN REPAIRED`) rung in project status, pass or fail.
