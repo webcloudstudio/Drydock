@@ -637,7 +637,7 @@ def _uat_resume_selection(args: argparse.Namespace, uat_root: Path) -> tuple[str
 def cmd_uat(args: argparse.Namespace) -> int:
     """Run known project fixtures through an isolated unattended lifecycle."""
     from drydock.config import get_effort, get_model, get_workspace
-    from drydock.uat import make_streaming_runner, render_summary, run_uat
+    from drydock.uat import make_streaming_runner, render_stop, render_summary, run_uat
     from drydock.uat_console import StepConsole
 
     workspace = get_workspace().resolve()
@@ -662,6 +662,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
     from drydock.uat_git import checkpoint_kit_repositories, ensure_kit_repositories
 
     ensure_kit_repositories(kits)
+    results = ()
     try:
         if report:
             return _uat_report(kits)
@@ -711,6 +712,10 @@ def cmd_uat(args: argparse.Namespace) -> int:
         return 0 if passed == len(results) else 1
     finally:
         checkpoint_kit_repositories(kits)
+        for result in results:
+            if message := render_stop(result):
+                sys.stdout.flush()
+                print(message, file=sys.stderr, flush=True)
 
 
 def _sync_workspace_skills(workspace: Path) -> None:
@@ -5446,8 +5451,10 @@ def _declare_process_stop(args: argparse.Namespace, argv: list[str] | None) -> b
     stop = fatal_stop()
     if stop is None:
         return False
+    sys.stdout.flush()
     target_dir = _stop_target_dir(args)
     if target_dir is None:
+        print(f"Error: {stop.kind}: {stop.message}", file=sys.stderr, flush=True)
         return True
     from dataclasses import replace
 
@@ -5499,6 +5506,7 @@ def _declare_process_stop(args: argparse.Namespace, argv: list[str] | None) -> b
     write_blockers(target_dir, recorded)
     recorded = read_blockers(target_dir) or replace(recorded)
     print(render_banner(recorded, target_dir.name, stop.recovery()), file=sys.stderr)
+    print(f"Error: {target_dir.name}: {stop.kind}: {stop.message}", file=sys.stderr, flush=True)
     return True
 
 
@@ -5930,19 +5938,25 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"error: {exc}", file=sys.stderr)
                 exit_code = 2
             except RecordedError as exc:
-                print(
-                    _render_recorded_error(exc.record, target=getattr(args, "Target", None)),
-                    file=sys.stderr,
-                )
+                from drydock.llm import fatal_stop
+
+                if fatal_stop() is None:
+                    print(
+                        _render_recorded_error(exc.record, target=getattr(args, "Target", None)),
+                        file=sys.stderr,
+                    )
                 exit_code = 1
                 deterministic_validation = (
                     exc.record.phase == "post-output validation"
                     or "validation failed" in exc.record.classification.lower()
                 )
-                if not deterministic_validation:
+                if not deterministic_validation and fatal_stop() is None:
                     _standoff_diagnosis(args, argv, record=exc.record)
             except DrydockError as exc:
-                print(f"error: {exc}", file=sys.stderr)
+                from drydock.llm import fatal_stop
+
+                if fatal_stop() is None:
+                    print(f"error: {exc}", file=sys.stderr)
                 if debug:
                     from drydock.manifest import ManifestError
 

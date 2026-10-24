@@ -228,7 +228,17 @@ def test_recommended_decision_does_not_gate_story(stalled):
 
 
 @pytest.mark.parametrize(
-    "scenario", ["stalled", "failed-build", "unresolved", "false-success", "complete"]
+    "scenario",
+    [
+        "stalled",
+        "failed-build",
+        "unresolved",
+        "false-success",
+        "complete",
+        "blocked",
+        "provider-limit",
+        "diagnose-limit",
+    ],
 )
 def test_recovery_loop(tmp_path, scenario):
     """The fake CLI models state changes; no real build or LLM executes."""
@@ -244,15 +254,28 @@ with (root / "calls").open("a") as out:
     out.write(json.dumps(args) + "\\n")
 state_file = root / "state"
 state = state_file.read_text() if state_file.exists() else (
-    "complete" if scenario == "complete" else "buildable" if scenario == "failed-build" else "stalled"
+    "complete" if scenario == "complete" else "buildable" if scenario in {"failed-build", "provider-limit"} else "stalled"
 )
+if args[:2] == ["config", "env"]:
+    print("DRYDOCK_TARGET_DIR=" + str(root))
+    if scenario == "blocked": (root / "BLOCKERS.md").write_text("quota")
+    sys.exit(0)
 if args[0] == "status":
+    if (root / "BLOCKERS.md").exists():
+        print("BLOCKED: Demo (build: provider rate limit: quota exhausted)")
+        sys.exit(1)
     sys.exit(0 if state == ("buildable" if "--ready" in args else "complete") else 1)
 if args[0] == "diagnose":
+    if scenario == "diagnose-limit":
+        (root / "BLOCKERS.md").write_text("quota")
+        sys.exit(1)
     if scenario == "unresolved": sys.exit(1)
     if scenario != "false-success": state_file.write_text("buildable")
     sys.exit(0)
 if args[0] == "build":
+    if scenario == "provider-limit":
+        (root / "BLOCKERS.md").write_text("quota")
+        sys.exit(1)
     if scenario == "failed-build" and not (root / "failed").exists():
         (root / "failed").touch()
         state_file.write_text("stalled")
@@ -272,9 +295,14 @@ if args[0] == "build":
     result = subprocess.run(
         ["bash", str(script), "Demo", "--model", "test"], env=env, capture_output=True, text=True
     )
-    assert result.returncode == (1 if scenario in {"unresolved", "false-success"} else 0)
+    halted = scenario in {"blocked", "provider-limit", "diagnose-limit"}
+    assert result.returncode == (1 if halted or scenario in {"unresolved", "false-success"} else 0)
     calls = [json.loads(line) for line in (tmp_path / "calls").read_text().splitlines()]
     repairs = [call for call in calls if call[0] == "diagnose"]
-    assert len(repairs) == (0 if scenario == "complete" else 1)
+    assert len(repairs) == (0 if scenario in {"complete", "blocked", "provider-limit"} else 1)
     if repairs:
         assert repairs[0] == ["diagnose", "Demo", "--apply", "--model", "test"]
+    if halted:
+        assert result.stdout.rstrip().endswith("provider rate limit: quota exhausted)")
+        assert not result.stderr
+        assert calls[-1] == ["status", "Demo", "--ready"]

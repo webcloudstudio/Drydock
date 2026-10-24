@@ -26,6 +26,21 @@ failing block.
 
 ## Details
 
+`2026-10-24` · Fatal-provider console output ends with the environmental blocker and its error.
+The CLI suppresses secondary generic and recorded-error reports when a fatal provider stop is
+latched, skips standoff diagnosis, flushes stdout, and prints the provider cause last on stderr.
+Stage 2 exits before manufacturing a generation stall. UAT treats environmental blockers as
+fatal even for optional children and stops its kit sweep; its final blocker is printed after
+receipts, report links, and kit checkpoints. `scripts/uat_repair_loop.sh` repeats the recorded
+failure after its recovery instructions. Tests use fake providers and temporary fixture roots;
+no published UAT evidence is executed or modified.
+
+`2026-10-24` · `drydock_build_loop.sh` resolves the Target through `drydock config env` and
+checks `BLOCKERS.md` before work, before diagnosis, and after diagnosis. A recorded blocker
+ends the loop with exit `1` and `status --ready`'s blocked cause last; it never invokes diagnosis
+or another build past the file. `drydock_runner.sh` propagates that failure through `set -e`.
+Regression evidence: `tests/test_diagnose_recovery.py::test_recovery_loop`, using a fake CLI.
+
 ### Rules
 
 `2026-10-22` · **Fatal provider failures are rate or usage limits, expired logins, timeouts,

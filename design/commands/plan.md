@@ -25,6 +25,12 @@ written.
 
 ## Details
 
+`2026-10-24` · A fatal provider failure during Stage 2 propagates immediately to the CLI's
+existing environmental-blocker path, including when the runner raises after recording the stop.
+No continuation retry, generic empty-response progress, or generation-stall record follows it;
+the original provider kind, message, and execution remain authoritative. Regression evidence:
+`tests/test_planning_session.py::test_stage_two_provider_stop_never_becomes_a_generation_stall`.
+
 ### Syntax
 
 ```text

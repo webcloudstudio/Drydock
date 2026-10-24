@@ -240,6 +240,45 @@ def test_a_fatal_stop_is_written_as_an_environmental_blocker(
     assert item.auto_continue == "after 21:31"
 
 
+@pytest.mark.parametrize("recorded", [False, True])
+def test_a_fatal_command_ends_with_the_blocker_error(
+    tmp_target_root, isolated_config, monkeypatch, recorded
+):
+    from drydock.errors import RecordedError, SpecificationError, write_error_record
+
+    target_dir = _target(tmp_target_root, monkeypatch)
+
+    def fail(*args):
+        print("Earlier progress")
+        drydock.llm._record_fatal_stop(
+            FatalStop("provider rate limit", USAGE_LIMIT, "codex", "plan", "quota")
+        )
+        if recorded:
+            record = write_error_record(
+                target_dir,
+                command="plan",
+                phase="LLM execution",
+                classification="plan generation stalled",
+                detail="stale rejection",
+                recovery="retry",
+            )
+            raise RecordedError(record)
+        raise SpecificationError("generic failure that hides the quota")
+
+    monkeypatch.setattr(drydock.cli, "_dispatch", fail)
+    monkeypatch.setattr(drydock.cli, "_prepare_target_repository", lambda args: None)
+    monkeypatch.setattr(
+        drydock.cli, "_standoff_diagnosis", lambda *a, **k: pytest.fail("diagnosis after quota")
+    )
+    rc, out, err = run_cli("plan", "TestTarget")
+
+    assert rc == 1 and "Earlier progress" in out
+    assert "BLOCKED: TestTarget" in err
+    assert "plan generation stalled" not in err and "generic failure" not in err
+    assert err.rstrip().endswith(f"Error: TestTarget: provider rate limit: {USAGE_LIMIT}")
+    assert read_blockers(target_dir).execution == "quota"
+
+
 def test_the_same_class_again_counts_an_attempt(tmp_target_root, isolated_config, monkeypatch):
     target_dir = _target(tmp_target_root, monkeypatch)
     write_blockers(target_dir, _rate_limited())
@@ -251,6 +290,49 @@ def test_the_same_class_again_counts_an_attempt(tmp_target_root, isolated_config
 
     recorded = read_blockers(target_dir)
     assert recorded is not None and recorded.attempts == 2 and recorded.execution == "exec-2"
+
+
+@pytest.mark.parametrize("quiet", [False, True])
+def test_uat_prints_the_halt_after_reports_and_checkpointing(
+    tmp_path, isolated_config, monkeypatch, quiet
+):
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+    from types import SimpleNamespace
+
+    from drydock import uat, uat_git
+
+    case = tmp_path / "case"
+    target_dir = case / "workspace" / "targets" / "TestTarget"
+    target_dir.mkdir(parents=True)
+    write_blockers(target_dir, _rate_limited())
+    result = SimpleNamespace(
+        status="failed",
+        target="TestTarget",
+        fixture="TestTarget",
+        output_dir=str(case),
+        attestations=(),
+        error=f"TestTarget: stopped at build: provider rate limit: {USAGE_LIMIT}",
+    )
+    monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(drydock.cli, "_uat_kit_roots", lambda *a, **k: [case])
+    monkeypatch.setattr(drydock.cli, "_uat_resume_selection", lambda *a: (None, "init"))
+    monkeypatch.setattr(drydock.cli, "_apply_bound_overrides", lambda *a: None)
+    monkeypatch.setattr(uat_git, "ensure_kit_repositories", lambda *a: None)
+    monkeypatch.setattr(
+        uat_git, "checkpoint_kit_repositories", lambda *a: print("Checkpoint saved")
+    )
+    monkeypatch.setattr(uat, "run_uat", lambda *a, **k: ("fake", (result,)))
+    monkeypatch.setattr(uat, "render_summary", lambda *a: "Summary")
+    args = _build_parser().parse_args(["uat", "TestTarget", *(["--quiet"] if quiet else [])])
+    console = io.StringIO()
+
+    with redirect_stdout(console), redirect_stderr(console):
+        assert drydock.cli.cmd_uat(args) == 1
+
+    text = console.getvalue()
+    assert text.index("Report:") < text.index("Checkpoint saved") < text.index("BLOCKED:")
+    assert text.rstrip().endswith(f"Error: {result.error}")
 
 
 def test_ready_reports_a_block_and_ends_the_build_loop(

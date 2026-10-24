@@ -30,6 +30,15 @@ Three properties define done (UAT gate model, 2026-08-14):
 
 ## Details
 
+`2026-10-24` · Every failed child is checked for an environmental `BLOCKERS.md`, including
+optional readiness, verification, and repair calls. A provider halt stops before another child
+or another kit starts. The runner still records the failed run; the CLI checkpoints and prints
+summaries, counts, attestations, and report links before ending with the blocker banner and
+`Error: <recorded run failure>`, including in quiet mode. Ordinary nonzero control-flow results
+without an environmental blocker keep their existing handling. Regression evidence:
+`tests/test_uat.py::test_a_provider_block_ends_optional_steps_and_the_kit_sweep` and
+`tests/test_process_stop.py::test_uat_prints_the_halt_after_reports_and_checkpointing`.
+
 ### Syntax
 
 ```text

@@ -322,6 +322,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: Fatal provider failures stop `drydock plan` without a misleading generation-stall
+  report. CLI commands end with the recorded `BLOCKERS.md` cause; UAT prints it after summaries,
+  report links, and checkpoints, including with `--quiet`. A failed optional verify/repair child
+  with an environmental blocker ends the run immediately, and an environmental halt stops the
+  multi-kit sweep before another kit starts. The UAT repair loop repeats the failure last and
+  starts no repair session; `drydock_build_loop.sh` checks `BLOCKERS.md` before further build or
+  diagnosis work and ends with the blocked cause. This addresses CsvStat `20261024.221659`, where a session limit was
+  followed by stale artifact-rejection diagnostics and routine summary output.
+
 - 2026-10-24: `drydock plan` and `plan verify` accept a `cli_runner` call inside a function when
   that function asserts its exit status. Each `def` or `class` body is now judged as its own
   scope; before, every such call was reported `unchecked-call`, which stopped DupFind

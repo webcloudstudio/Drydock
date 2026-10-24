@@ -13,7 +13,18 @@ case "$max" in
   ''|*[!0-9]*|0) echo "DRYDOCK_RUNNER_MAX_BUILDS must be positive." >&2; exit 2 ;;
 esac
 
+resolved_env=$(drydock config env "$target")
+eval "$resolved_env"
+
+stop_if_blocked() {
+  if [ -f "$DRYDOCK_TARGET_DIR/BLOCKERS.md" ]; then
+    drydock status "$target" --ready || true
+    exit 1
+  fi
+}
+
 for ((attempt=1; attempt<=max; attempt++)); do
+  stop_if_blocked
   if drydock status "$target" --ready; then
     echo "Running build attempt $attempt/$max"
     if drydock build "$target" "$@"; then
@@ -23,11 +34,14 @@ for ((attempt=1; attempt<=max; attempt++)); do
     exit 0
   fi
 
+  stop_if_blocked
   echo "Repairing unfinished work for $target"
   if ! drydock diagnose "$target" --apply "$@"; then
+    stop_if_blocked
     echo "Diagnosis did not restore progress; see the repair outcome above." >&2
     exit 1
   fi
+  stop_if_blocked
   if drydock status "$target" --check; then
     exit 0
   fi

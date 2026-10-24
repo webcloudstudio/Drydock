@@ -1420,6 +1420,66 @@ def test_a_failed_build_stops_the_run(tmp_path: Path) -> None:
     assert result.score_exit_codes == {}
 
 
+@pytest.mark.parametrize("failed_stage", ["plan", "plan-repair", "initial-build-1"])
+def test_a_provider_block_ends_optional_steps_and_the_kit_sweep(tmp_path, failed_stage):
+    from dataclasses import replace
+
+    from drydock.blockers import Blockers, environmental_blocker, read_blockers, write_blockers
+    from drydock.uat import render_stop
+
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, "Alpha", updated=False)
+    _fixture(fixtures_root, "Beta", updated=False)
+    base_runner, seen = _staged_runner(tmp_path, failing=())
+    message = "session limit; resets 20:10"
+
+    def runner(argv, cwd, env, output_dir, label):
+        result = base_runner(argv, cwd, env, output_dir, label)
+        if failed_stage == "plan-repair" and label.endswith("-plan-verify"):
+            return replace(result, returncode=1)
+        if label.endswith("-" + failed_stage):
+            target_dir = Path(env["DRYDOCK_WORKSPACE"]) / "targets" / "Alpha"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            write_blockers(
+                target_dir,
+                Blockers(
+                    summary="Rate Limit Hit",
+                    target="Alpha",
+                    source="drydock plan Alpha",
+                    owner="plan Alpha",
+                    declared="2026-10-24T22:22:15Z",
+                    execution="quota",
+                    blockers=(
+                        environmental_blocker(
+                            "provider rate limit", message, declared="2026-10-24T22:22:15Z"
+                        ),
+                    ),
+                ),
+            )
+            return replace(result, returncode=1)
+        return result
+
+    _, results = run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="fake",
+        provider="claude",
+        runner=runner,
+        now=datetime(2026, 10, 24, tzinfo=UTC),
+    )
+
+    assert len(results) == 1 and results[0].fixture == "Alpha"
+    assert results[0].status == "failed" and results[0].acceptance_status == "NOT_RUN"
+    assert "stopped at plan: provider rate limit" in results[0].error
+    assert seen[-1].endswith("-" + failed_stage)
+    assert not (fixtures_root / "Beta" / "runs").exists()
+    target_dir = Path(results[0].output_dir) / "workspace" / "targets" / "Alpha"
+    assert read_blockers(target_dir).execution == "quota"
+    assert "BLOCKED: Alpha" in render_stop(results[0])
+    assert render_stop(results[0]).splitlines()[-1] == f"Error: {results[0].error}"
+
+
 def test_a_stopped_run_records_why_at_the_target_root(tmp_path: Path) -> None:
     """``BLOCKERS.md`` is the first file to open in a halted run tree."""
     from drydock.blockers import read_blockers

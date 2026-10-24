@@ -58,6 +58,7 @@ for iteration in $(seq 1 "$max_iterations"); do
         echo "No repair session was started. The halt is part of that run's sealed evidence;"
         echo "do not delete it. Fix the cause, then start a new loop, which begins a fresh run:"
         echo "  scripts/uat_repair_loop.sh $target $model $max_iterations"
+        grep -m1 "^- Failure: " "$log_dir/$iteration-uat.log"
         exit 1
     fi
 

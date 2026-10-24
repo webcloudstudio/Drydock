@@ -4376,6 +4376,41 @@ def test_a_malformed_stage_two_batch_retries_the_same_blueprint_tranche(tmp_path
     assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
 
 
+@pytest.mark.parametrize("raises", [False, True])
+@pytest.mark.parametrize("malformed_first", [False, True])
+def test_stage_two_provider_stop_never_becomes_a_generation_stall(
+    tmp_path, raises, malformed_first
+):
+    from drydock.llm import FatalStop, _record_fatal_stop
+
+    target_dir = _make_target(tmp_path)
+    calls = []
+    progress = []
+
+    def runner(prompt, *args, **kwargs):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return FakeRun(text=_short_output())
+        if malformed_first and len(calls) == 2:
+            return FakeRun(text="=== FEATURE-Status.md ===\n# FEATURE: truncated")
+        _record_fatal_stop(
+            FatalStop(
+                "provider rate limit", "session limit; resets 20:10", "claude", "plan", "quota"
+            )
+        )
+        if raises:
+            raise RuntimeError("provider unavailable")
+        return FakeRun(ok=False, text="session limit; resets 20:10", execution_id="quota")
+
+    with pytest.raises(SpecificationError, match="session limit; resets 20:10"):
+        create_plan("Example", "Example", tmp_path, runner=runner, on_text=progress.append)
+
+    assert len(calls) == (3 if malformed_first else 2)
+    assert not any("empty or failed model response" in line for line in progress)
+    assert not (target_dir / "ERRORS.md").exists()
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
 def test_a_redundant_final_end_delimiter_preserves_completed_continuation_artifacts(tmp_path):
     target_dir = _make_target(tmp_path)
     redundant_end = _feature_block() + "=== END FEATURE-Status.md ===\n"

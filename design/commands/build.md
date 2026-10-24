@@ -24,6 +24,12 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 
 ## Details
 
+`2026-10-24` · The normal `drydock_build_loop.sh` driver checks the resolved Target's
+`BLOCKERS.md` before building and before or after recovery diagnosis. Any blocker ends the
+driver with exit `1`, no further diagnosis/build call, and the blocked cause last. The parent
+`drydock_runner.sh` also stops on that exit. Temporary fake-CLI scenarios verify pre-existing,
+build-time, and diagnosis-time provider blocks in `tests/test_diagnose_recovery.py`.
+
 ### Syntax
 
 ```text

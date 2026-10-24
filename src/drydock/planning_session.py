@@ -121,7 +121,7 @@ from drydock.errors import (
 )
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
 from drydock.harness_exits import go_cli_defect
-from drydock.llm import ClaudePromptSession, run_prompt
+from drydock.llm import ClaudePromptSession, fatal_stop, run_prompt
 from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.override import (
@@ -5532,8 +5532,12 @@ def _continue_short_plan(
                 runner(assembly.rendered_text, target_dir, **runner_kwargs),
             )
         except Exception:
+            if (stop := fatal_stop()) is not None:
+                _raise_llm_failure("plan", stop.message, stop.execution_id)
             break
         execution_ids.append(getattr(result, "execution_id", "") or "")
+        if (stop := fatal_stop()) is not None:
+            _raise_llm_failure("plan", stop.message, stop.execution_id)
         if not result.ok or not result.text.strip():
             if on_text is not None:
                 on_text(

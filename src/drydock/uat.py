@@ -1407,12 +1407,13 @@ def run_fixture(
         result = runner(argv, workspace, env, command_logs, f"{sequence:02d}-{label}")
         result = replace(result, llm_executions=execution_ids(llm_records)[before:])
         commands.append(result)
-        if required and result.returncode != 0:
+        if result.returncode != 0:
             # A child that halted on a fatal provider failure recorded why; that is the cause.
             halt = stopped()
             if halt is not None:
                 raise DrydockError(f"{fixture.name}: stopped at {halt.line()}")
-            raise DrydockError(f"{fixture.name}: {label} exited {result.returncode}")
+            if required:
+                raise DrydockError(f"{fixture.name}: {label} exited {result.returncode}")
         if to_step is not None and sequence >= to_step:
             raise _StepBoundReached()
         return result
@@ -1980,6 +1981,25 @@ def _summary_banner(heading: str, description: str) -> list[str]:
     return [f"┏{border}┓", *(f"┃ {line:<{width - 2}} ┃" for line in content), f"┗{border}┛", ""]
 
 
+def result_blockers(result: UATResult) -> Blockers | None:
+    """The environmental halt that ended a failed run, if any."""
+    if result.status != "failed":
+        return None
+    target_dir = Path(result.output_dir) / "workspace" / "targets" / result.target
+    blockers = read_blockers(target_dir)
+    return blockers if blockers is not None and blockers.environmental() else None
+
+
+def render_stop(result: UATResult) -> str:
+    """End console output with the recorded blocker and its actual error."""
+    from drydock.blockers import render_banner
+
+    blockers = result_blockers(result)
+    if blockers is None:
+        return ""
+    return f"{render_banner(blockers, result.target)}\nError: {result.error or blockers.line()}"
+
+
 def run_uat(
     workspace: Path,
     *,
@@ -2044,4 +2064,6 @@ def run_uat(
                 to_step=to_step,
             )
         )
+        if result_blockers(results[-1]) is not None:
+            break
     return run_id, tuple(results)

@@ -246,6 +246,15 @@ as its primary instruction, then continues. Unattended, the owner reruns only wh
 is resolved and every environmental blocker may auto-continue (a timeout, an outage, or a rate
 limit past its stated reset), once. `plan --override` passes an analysis decision only.
 
+Fatal provider failures exit `1` with the recorded blocker and error last on the console;
+planning does not turn them into generation stalls. UAT stops even when the failing child is an
+optional verification or repair step, and an environmental halt ends a multi-kit sweep before
+the next kit starts. Receipts, report links, and checkpoints precede the final blocker error,
+including with `--quiet`. The UAT repair loop also stops without starting a repair session and
+ends by repeating the recorded failure.
+`drydock_build_loop.sh` checks the Target's `BLOCKERS.md` before further build or diagnosis
+work and exits `1` with the blocked cause last; `drydock_runner.sh` propagates that halt.
+
 `drydock build` checkpoints the application and Target Git repositories after each agent
 execution (including repairs and failures) and completed step. Existing changes receive a
 separate baseline checkpoint. Git uses the configured author identity, respects ignored files,
