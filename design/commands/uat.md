@@ -160,7 +160,7 @@ authoring contract, and (b) a warning that may cost marks, never a hard gate.
 
 ## Open Actions
 
--
+- `2026-10-24` · DupFind `20261024.140514` passed and is not yet diagnosed. It has no ledger rows.
 
 ## Working Notes
 

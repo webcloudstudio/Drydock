@@ -571,6 +571,11 @@ A failing `plan verify` condemns the standing plan rung without voiding anything
 
 ## Open Questions
 
+- `2026-10-24` · **Fenced criteria outside the plan gate.** `e4a2aad` rejects `fenced-criteria`
+  only in plan's in-plan gate. Extending it to `plan verify` and Build fails 161 fenced test
+  fixtures (about 15 test files). Should those fixtures migrate to `=== AC` blocks so verify and
+  Build reject the fenced form too?
+
 - `2026-10-23` · **Joins.** The surface has no read across tables. Options: (a) Drydock derives a
   read-only join from a declared `REFERENCES` edge — `positions.rate_id → rates.id` — named in the
   pattern (`| Join | rates |`) with Output fields from both tables; (b) builders compose `get` by
@@ -600,6 +605,11 @@ exist.
 
 ## Open Actions
 
+
+- `2026-10-24` · `1fd07d0` and `e4a2aad` are `unverified` in `design/uat_diagnoses.md`. The next
+  DupFind run must show no `unchecked-call` on SizeFilter or UnreadableFiles and no fenced
+  criteria reaching `plan verify`. If artifact repair still writes fences, fix
+  `_artifact_repair_assembly` (ledger row open) next.
 
 - `2026-10-24` · Format the existing replacement chain in
   `tests/test_database_contract.py:851`; it is the remaining repository-wide
