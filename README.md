@@ -269,7 +269,7 @@ ai  drydock document          MyApp            # Project documentation automatio
 ai  drydock document generate MyApp            # AI pass only
     drydock document assemble MyApp            # Assembly only
     drydock publish           <Source.md>      # Render Markdown to HTML/PDF
-ai  drydock rigging compact                    # Automanage compaction
+ai  drydock rigging compact [MyApp]            # Refresh stale shipped Rigging; add Target if given
     drydock rigging verify                     # Verify rigging compliance
     drydock score ac          MyApp            # Verify Story acceptance criteria
     drydock score build       MyApp            # Post-build report: repairs, tokens, cache

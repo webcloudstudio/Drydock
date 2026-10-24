@@ -1025,6 +1025,13 @@ class TestValidate:
 class TestRiggingCompact:
     """`rigging compact` discovers stale files and writes _compact.md siblings."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_rigging(self, tmp_path, monkeypatch):
+        rigging = tmp_path / "Rigging"
+        rigging.mkdir()
+        monkeypatch.setattr("drydock.rigging_compact.get_rigging_root", lambda: rigging)
+        return rigging
+
     @staticmethod
     def _fake_run_prompt(monkeypatch, *, ok=True, text="# X — Compact\n\n- must stay\n"):
         from types import SimpleNamespace
@@ -1092,7 +1099,7 @@ class TestRiggingCompact:
         """--all is a standalone Rigging refresh: no <Target>, no Blueprint scan."""
         self._setup_blueprint(tmp_target_root)
         rigging = tmp_path / "Rigging"
-        rigging.mkdir()
+        rigging.mkdir(exist_ok=True)
         (rigging / "RULES.md").write_text("def rule(): ...\n", encoding="utf-8")
         (rigging / "RULES_compact.md").write_text("stale\n", encoding="utf-8")
         monkeypatch.setattr("drydock.rigging_compact.get_rigging_root", lambda: rigging)
@@ -1105,10 +1112,66 @@ class TestRiggingCompact:
         # The Blueprint of an unrelated Target is not touched.
         assert not (tmp_target_root / "Proj" / "blueprint" / "DATABASE_compact.md").exists()
 
-    def test_no_target_and_no_scope_is_usage_error(self, isolated_config):
-        rc, _, err = run_cli("rigging", "compact")
-        assert rc == 2
-        assert "--all" in err and "<Target> is required" in err
+    @pytest.mark.parametrize("scope", ["bare", "target", "all", "include"])
+    def test_always_refreshes_stale_rigging(
+        self, scope, tmp_target_root, isolated_config, monkeypatch, tmp_path, _isolate_rigging
+    ):
+        spec = self._setup_blueprint(tmp_target_root)
+        rigging = _isolate_rigging
+        stack = rigging / "stack"
+        stack.mkdir()
+        source = stack / "sqlite.md"
+        derivative = stack / "sqlite_compact.md"
+        source.write_text("def connect(): ...\n", encoding="utf-8")
+        derivative.write_text("stale\n", encoding="utf-8")
+        os.utime(derivative, (1, 1))
+        fresh = stack / "fresh.md"
+        fresh.write_text("fresh source\n", encoding="utf-8")
+        (stack / "fresh_compact.md").write_text("current\n", encoding="utf-8")
+        os.utime(fresh, (1, 1))
+        (stack / "new.md").write_text("no sibling\n", encoding="utf-8")
+        (stack / "prose.md").write_text("changed prose\n", encoding="utf-8")
+        skip = stack / "prose_compact.skip.md"
+        skip.write_text("old no-surface marker\n", encoding="utf-8")
+        os.utime(skip, (1, 1))
+        cwd = tmp_path / "caller"
+        cwd.mkdir()
+        (cwd / "DATABASE.md").write_text("unrelated\n", encoding="utf-8")
+        monkeypatch.chdir(cwd)
+        self._fake_run_prompt(monkeypatch)
+        extra = cwd / "EXTRA.md"
+        extra.write_text("explicit contract\n", encoding="utf-8")
+        args = {
+            "bare": [],
+            "target": ["Proj"],
+            "all": ["--all"],
+            "include": ["--include-file", str(extra)],
+        }[scope]
+
+        rc, out, err = run_cli("rigging", "compact", *args)
+
+        assert rc == 0, err
+        assert "must stay" in derivative.read_text(encoding="utf-8")
+        assert (stack / "prose_compact.md").is_file()
+        assert (stack / "fresh_compact.md").read_text(encoding="utf-8") == "current\n"
+        assert not (stack / "new_compact.md").exists()
+        assert not (cwd / "DATABASE_compact.md").exists()
+        assert (spec / "DATABASE_compact.md").exists() == (scope == "target")
+        assert (cwd / "EXTRA_compact.md").exists() == (scope == "include")
+
+    def test_can_exclude_shipped_rigging(self, isolated_config, monkeypatch, _isolate_rigging):
+        source = _isolate_rigging / "sqlite.md"
+        source.write_text("changed\n", encoding="utf-8")
+        derivative = _isolate_rigging / "sqlite_compact.md"
+        derivative.write_text("stale\n", encoding="utf-8")
+        os.utime(derivative, (1, 1))
+        self._fake_run_prompt(monkeypatch)
+
+        rc, out, err = run_cli("rigging", "compact", "--exclude-file", str(source))
+
+        assert rc == 0, err
+        assert "Nothing to compact" in out
+        assert derivative.read_text(encoding="utf-8") == "stale\n"
 
 
 class TestAnalyzeCommand:

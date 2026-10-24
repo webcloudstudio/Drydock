@@ -34,11 +34,12 @@ drydock rigging verify <Target>
 
 `2026-10-19` · Each Target compaction role receives the selected language in its job context. Shipped Rigging compaction and source freshness rules remain unchanged. Breaking this rule emits interfaces for the wrong language.
 
-`2026-09-19` · **Compaction has two independent scopes.** A `<Target>` selects that Target's
-`blueprint/`. `--all` selects Drydock's shipped `Rigging/` tree and needs no `<Target>`; given both,
-the scopes are unioned. `--include-file` / `--include-dir` add explicit paths and need no `<Target>`;
-with no `<Target>` the Blueprint scan is suppressed and cwd is the anchor. No scope at all is a
-usage error. Cost when broken: refreshing Rigging recompacts an unrelated Blueprint and bills for it.
+`2026-10-24` · **Every CLI compaction refreshes shipped Rigging.** A bare `compact` scans
+Drydock's shipped `Rigging/` tree; a `<Target>` adds that Target's `blueprint/` scope.
+`--all` remains accepted and is redundant. Explicit include paths add sources; exclusions remove
+sources from either scope. With no Target, cwd anchors paths but is never scanned. Internal
+build-time `ensure_compact_files` remains restricted to its explicit sources. Cost when broken:
+stale shipped contracts such as SQLite guidance survive an ordinary maintenance run.
 
 `2026-09-19` · **Discovery is refresh-biased.** Blueprint scope takes `DATABASE.md`,
 `BUSINESS_RULES.md`, and any `*.md` that already has a `_compact.md` or `_compact.skip.md` sibling.
@@ -92,12 +93,12 @@ Rigging file whose purpose was invented.
 |---|---|
 | `0` | `compact`: no `failed` file (`no-surface` is success). `update`: done. `verify`: all checks pass. `--add`: always. |
 | `1` | `compact`: any file `failed`. `update`: failed. `verify`: any check fails. |
-| `2` | Usage error, including `compact` with no scope and invalid `--add` paths. |
+| `2` | Usage error, including invalid `--add` paths. |
 
 ### Spec divergence
 
-- The specification shows `drydock rigging compact <Target>` with a required `<Target>`; `--all`
-  and the include options need none.
+- The specification shows `drydock rigging compact <Target>` with a required `<Target>`; the
+  CLI permits no Target and always refreshes shipped Rigging alongside any requested sources.
 - The specification says `--add` takes `--file`/`--dir`; it does not say the paths must lie under
   `Rigging/` or that it only edits `Rigging/MANIFEST.md`.
 

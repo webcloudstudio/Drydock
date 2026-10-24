@@ -126,6 +126,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-24: `drydock rigging compact` always refreshes stale compact and no-surface siblings
+  throughout shipped `Rigging/`, including SQLite guidance. A bare run needs no Target; a Target
+  or explicit include paths add sources to the same run. `--all` remains accepted but is
+  redundant. Fresh derivatives and Rigging files without existing siblings remain untouched;
+  explicit exclusions and `--force` retain their behavior. Internal build compaction keeps its
+  explicit source scope.
+
 - 2026-10-24: Acceptance isolation is owned by the harness, not the criterion. Each Python
   Programmatic Acceptance criterion runs inside one store transaction that the acceptance runner
   begins before the criterion and rolls back when it ends, pass or fail. Every `Database` the

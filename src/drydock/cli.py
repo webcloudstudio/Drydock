@@ -821,30 +821,14 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     exclude_files = [Path(f) for f in (args.exclude_file or [])]
     include_dirs = [Path(d) for d in (args.include_dir or [])]
 
-    # Rigging is Drydock's own tree and has no Target. --all is a standalone refresh of its
-    # stale compacts; a Target, when given, adds that Blueprint's scope on top.
-    no_target = args.Target is None
-    scoped_without_target = (
-        bool(include_files or include_dirs or args.include_rigging) and no_target
-    )
+    # Every CLI run refreshes shipped Rigging. A Target adds its Blueprint scope;
+    # without one, cwd only anchors explicit paths and is never scanned.
+    scoped_without_target = args.Target is None
     if scoped_without_target:
-        # No Target: anchor on cwd. The Blueprint scan is suppressed, so --all and the
-        # explicit paths are the only sources.
         spec_dir = Path.cwd()
-        label = (
-            "Drydock Rigging"
-            if args.include_rigging and not (include_files or include_dirs)
-            else str(spec_dir)
-        )
+        label = "Drydock Rigging" if not (include_files or include_dirs) else str(spec_dir)
         compact_target = ""
     else:
-        if no_target:
-            print(
-                "error: <Target> is required unless --all, --include-file, "
-                "or --include-dir is provided.",
-                file=sys.stderr,
-            )
-            return 2
         target_dir = require_target_dir(args.Target)
         spec_dir = blueprint_dir_for(target_dir)
         label = args.Target
@@ -877,7 +861,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     result = compact(
         label,
         spec_dir,
-        include_rigging=args.include_rigging,
+        include_rigging=True,
         force=args.force,
         include_files=include_files or None,
         exclude_files=exclude_files or None,
@@ -3845,18 +3829,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="<Target>",
         help=(
-            "Blueprint target name. Optional when --all, --include-file, "
-            "or --include-dir is provided."
+            "Optional Blueprint target name. Shipped Rigging is always refreshed; "
+            "a Target adds its Blueprint files."
         ),
     )
     p_rig_c.add_argument(
         "--all",
         dest="include_rigging",
         action="store_true",
-        help=(
-            "Refresh stale compacts in Drydock's own Rigging tree. "
-            "Runs without a <Target>; with one, adds to that Blueprint's scope."
-        ),
+        help=("Refresh stale compacts in Drydock's own Rigging tree (already enabled by default)."),
     )
     p_rig_c.add_argument(
         "--force", action="store_true", help="Ignore the freshness gate and recompact everything."
