@@ -264,6 +264,24 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock build` starts persistence verification only at `.drydock-persistence.json`,
+  the provenance record Drydock writes when it emits persistence from `DATABASE.md`. A story built
+  before the DATABASE step that writes `schema.sql` itself no longer has every criterion failed
+  unexecuted as "persistence artifacts missing" and its block closed without repair. Step close
+  names such files as written before the DATABASE step, and a missing artifact after that step is
+  named in the failure. Closes FxRates `20261024.073528`, which revised the presence check from
+  ReadingList `20261022.220045`.
+
+- 2026-10-24: `drydock plan verify` refuses a criterion that imports `persistence` on a story
+  whose block precedes the `DATABASE.md` story's block (`persistence-order`, repaired by
+  `drydock plan repair`). Such a criterion could pass only if the builder hand-wrote the
+  generated persistence layer.
+
+- 2026-10-24: Agent subprocesses run with a `uv` shim first on `PATH` that adds `--no-workspace`
+  to `uv init`. A Target build nested inside another uv project, such as a UAT run under the
+  Drydock repository, no longer registers itself in that project's `pyproject.toml`. Two such
+  builds of one name had broken every `uv add` and `uv lock` in the build.
+
 - 2026-10-24: `drydock plan verify` accepts resolving citations on already-binding numeric
   and plain-text expectations instead of rejecting an empty re-typed-expectation set.
   Escapable-literal citations still require a verbatim match. `plan repair` receives numbered
