@@ -285,6 +285,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock plan verify` accepts a criterion that cites several source ranges, one
+  `Cite:` line each; every range must resolve, and literal derivation searches their combined
+  text. `drydock plan repair` treats the run of consecutive `Cite:` lines as one declaration, so
+  a citation repair may rewrite, add, or drop ranges without being rejected as a proof change.
+
 - 2026-10-24: `drydock plan` handles artifact-free Stage 2 replies with an additive
   instruction-failure correction while retaining the normal Blueprint batch. Automatic
   reduction to one file is removed. Retry evidence includes the refused reply, attempt count,

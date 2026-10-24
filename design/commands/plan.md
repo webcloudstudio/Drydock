@@ -44,11 +44,15 @@ Every declared `Cite:` resolves inside `sources/`. Verbatim matching applies onl
 criterion has re-typed expectations; numeric exit codes and plain ASCII expectations already
 bind and do not need literal derivation. This does not establish semantic support for an
 already-binding expectation. Citation repair receives only its referenced source files with
-one-based line numbers and changes only the existing `Cite:` value. Other proof and metadata
+one-based line numbers and changes only the existing `Cite:` declaration. Other proof and metadata
 changes, removed citations, and still-invalid citations are rejected per criterion. Missing
 source evidence yields `REPAIR_IMPOSSIBLE`. This revises `2af2661` alongside `b7ea20b`.
+A criterion may cite several ranges, one `Cite:` line each. Every range must resolve, and the
+cited text is their concatenation. The declaration is the run of consecutive `Cite:` lines, so
+repair may rewrite, add, or drop ranges within it.
 Cost when broken: DupFind `20261024.080843` rejects two runnable criteria even with correct
-citation ranges, then asks a source-free repair prompt to infer missing source lines.
+citation ranges, then asks a source-free repair prompt to infer missing source lines. FxRates
+`20261024.155325` refuses two-line citations in verify, then rejects their correct repair.
 
 `2026-10-24` · **A final invariant artifact close missing only its trailing equals is repaired.**
 For artifact-format calls, the shared adapter completes an exact `=== END ARTIFACT` on the final
