@@ -10,9 +10,9 @@ there is a defect. Verify's warnings (advisories) are never sent to repair and n
 call on their own; repairing an advisory is out of this command's scope.
 
 One call for the whole pass, not one call per file. Every defective criterion across every
-Blueprint file is sent in a single request, each as its own minimal fenced block — nothing else
-about its file, and nothing about any other file. What stays true: one attempt per criterion,
-surgical splice, re-verify before keeping a write.
+Blueprint file is sent in a single request, each as its own minimal fenced block. Citation repair
+also receives the referenced source files with line numbers; other repairs receive no source
+context. What stays true: one attempt per criterion, surgical splice, re-verify before keeping a write.
 
 Scope. This repairs *mechanics*: a criterion that raises before it asserts anything — a missing
 import, an undefined name, a syntax error. It never touches what a criterion asserts. A criterion
@@ -46,6 +46,7 @@ from typing import Protocol
 from drydock import technology_stack
 from drydock.acceptance import (
     ProgrammaticAcceptance,
+    citation_defect,
     parse_programmatic_acceptance,
     parse_programmatic_acceptance_text,
     regex_defects,
@@ -165,6 +166,8 @@ def _still_broken(check: ProgrammaticAcceptance, *, source_root: Path) -> str | 
         return "; ".join(reasons)
     if (probe := selection_probe_reason(check, blueprint_dir=source_root)) is not None:
         return probe[1]
+    if (reason := citation_defect(check, source_root)) is not None:
+        return reason
     if names := unresolved_globals(code):
         return "reads undefined global name(s): " + ", ".join(f"`{n}`" for n in sorted(names))
     return None
@@ -268,11 +271,42 @@ def _defect_part(defect: Defect, body: str) -> PromptPart:
     return part(f"{defect.filename} :: {defect.check_id}", text, kind="defect")
 
 
-def _assemble(body: str, *, jobs: list[tuple[Defect, str]]) -> PromptAssembly:
+def _citation_sources(jobs: list[tuple[Defect, str]], blueprint_dir: Path) -> list[PromptPart]:
+    """Include only cited source files for citation repair, with stable one-based line numbers."""
+    parts: list[PromptPart] = []
+    seen: set[Path] = set()
+    sources = (blueprint_dir / "sources").resolve()
+    for defect, block_body in jobs:
+        if defect.kind != "bad-citation":
+            continue
+        match = re.search(r"^Cite:[ \t]*(sources/[^:\n]+):", block_body, re.MULTILINE)
+        if match is None:
+            continue
+        relative = match[1]
+        path = (blueprint_dir / relative).resolve()
+        if not path.is_relative_to(sources) or path in seen:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        seen.add(path)
+        numbered = "\n".join(f"{index}: {line}" for index, line in enumerate(text.splitlines(), 1))
+        parts.extend(
+            contextual_markdown_parts(
+                relative, numbered, filename=relative, role="numbered source for citation repair"
+            )
+        )
+    return parts
+
+
+def _assemble(
+    body: str, *, jobs: list[tuple[Defect, str]], blueprint_dir: Path | None = None
+) -> PromptAssembly:
     """Build one repair prompt for every defective criterion across every file, in one call.
 
     Deterministic, so it is unit-testable without a process. Each job carries only its own
-    criterion's AC-block body — never the rest of its file, and never another file's content.
+    criterion's AC-block body; citation defects additionally receive their numbered source files.
     """
     parts: list[PromptPart] = [
         system_preamble_part(),
@@ -290,6 +324,8 @@ def _assemble(body: str, *, jobs: list[tuple[Defect, str]]) -> PromptAssembly:
         ),
     ]
     parts.extend(_defect_part(defect, block_body) for defect, block_body in jobs)
+    if blueprint_dir is not None:
+        parts.extend(_citation_sources(jobs, blueprint_dir))
     parts.append(section_heading_part("# Agent Task"))
     parts.append(part("Prompt body", body + "\n\n", kind="prompt-body"))
     return PromptAssembly(parts=tuple(parts))
@@ -391,6 +427,23 @@ def _splice_and_revert(
                 RepairItem(filename, defect.check_id, "not-emitted", old, "no block returned")
             )
             continue
+        if defect.kind == "bad-citation":
+            old_body = _block_bodies(old)[defect.check_id]
+            # Citation repair may change the declaration only, never its proof or other metadata.
+            citation_line = r"(?im)^([ \t]*Cite:)[^\n]*"
+            if re.sub(citation_line, r"\1", old_body, count=1).strip("\n") != re.sub(
+                citation_line, r"\1", body, count=1
+            ).strip("\n"):
+                items.append(
+                    RepairItem(
+                        filename,
+                        defect.check_id,
+                        "unrepaired",
+                        old,
+                        "citation repair changed content other than Cite and was rejected",
+                    )
+                )
+                continue
         text = text[:start] + _plain_block(defect.check_id, body) + text[end:]
         applied.append(defect.check_id)
 
@@ -414,11 +467,15 @@ def _splice_and_revert(
             )
         return items, False
 
+    citation_ids = {defect.check_id for defect in defects if defect.kind == "bad-citation"}
     broken: dict[str, str] = {}
     for check_id in applied:
         check = checks.get(check_id)
         if check is None:
             broken[check_id] = "repair dropped the criterion and was reverted"
+            continue
+        if check_id in citation_ids and not check.cite:
+            broken[check_id] = "citation repair removed the citation and was reverted"
             continue
         if (reason := _still_broken(check, source_root=source_root)) is not None:
             broken[check_id] = reason
@@ -626,7 +683,7 @@ def repair(
             + ", ".join(sorted(by_file))
             + f" · {len(jobs)} {'criterion' if len(jobs) == 1 else 'criteria'} · 1 of 1 attempt"
         )
-        assembly = _assemble(prompt.body, jobs=jobs)
+        assembly = _assemble(prompt.body, jobs=jobs, blueprint_dir=blueprint_dir)
         result = run(
             assembly.rendered_text,
             blueprint_dir,

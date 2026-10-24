@@ -809,3 +809,133 @@ def test_package_launch_repair_keeps_arguments_and_assertions(tmp_path, monkeypa
     (check,) = parse_programmatic_acceptance(target / "blueprint/FEATURE_Cli.md")
     exec(compile(check.code, "<criterion>", "exec"), {})
     assert calls == [()]
+
+
+_BAD_CITATION_BODY = (
+    "Intent: The banner matches the source.\n"
+    "Cite: sources/spec.txt:1\n\n"
+    "out = object()\n"
+    'assert out == r"C:\\Users\\Welcome"\n'
+)
+
+
+def _citation_target(tmp_path):
+    spec = (
+        "# FEATURE: Cited\n\n## Programmatic Acceptance\n\n"
+        "=== AC banner ===\n" + _BAD_CITATION_BODY + "=== END AC banner ===\n"
+    )
+    target = _target(tmp_path, FEATURE_Cited=spec)
+    sources = target / "blueprint" / "sources"
+    sources.mkdir()
+    (sources / "spec.txt").write_text("Unrelated title\nC:\\Users\\Welcome\n", encoding="utf-8")
+    (sources / "unrelated.txt").write_text("DO NOT INJECT THIS SOURCE", encoding="utf-8")
+    return target
+
+
+def test_citation_repair_receives_numbered_source_and_preserves_the_proof(tmp_path):
+    target = _citation_target(tmp_path)
+    path = target / "blueprint" / "FEATURE_Cited.md"
+    original = path.read_text()
+    fixed = _BAD_CITATION_BODY.replace("spec.txt:1", "spec.txt:2")
+    runner = _runner(_fixed_block("FEATURE_Cited.md", "banner", fixed))
+
+    result = repair("Demo", target, runner=runner)
+
+    assert result.ok
+    assert verify("Demo", target).ok
+    assert path.read_text() == original.replace("spec.txt:1", "spec.txt:2")
+    prompt = runner.calls[0]["prompt"]
+    assert "1: Unrelated title\n2: C:\\Users\\Welcome" in prompt
+    assert "DO NOT INJECT THIS SOURCE" not in prompt
+    assert "correct only the existing `Cite:` declaration" in prompt
+
+
+@pytest.mark.parametrize("cite", ["sources/spec.txt:1", "sources/spec.txt:999", ""])
+def test_invalid_citation_repair_is_reverted(tmp_path, cite):
+    target = _citation_target(tmp_path)
+    path = target / "blueprint" / "FEATURE_Cited.md"
+    original = path.read_text()
+    body = _BAD_CITATION_BODY.replace("sources/spec.txt:1", cite)
+
+    result = repair(
+        "Demo", target, runner=_runner(_fixed_block("FEATURE_Cited.md", "banner", body))
+    )
+
+    assert not result.ok
+    assert result.items[0].status == "unrepaired"
+    assert path.read_text() == original
+    assert not verify("Demo", target).ok
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        lambda body: body.replace('assert out == r"C:\\Users\\Welcome"', "assert True"),
+        lambda body: body.replace("out = object()", "out = 0"),
+        lambda body: body.replace("The banner matches the source.", "Any banner is fine."),
+        lambda body: body.replace("Cite: sources/spec.txt:2\n", ""),
+    ],
+)
+def test_citation_repair_rejects_changes_outside_the_declaration(tmp_path, changed):
+    target = _citation_target(tmp_path)
+    path = target / "blueprint" / "FEATURE_Cited.md"
+    original = path.read_text()
+    body = changed(_BAD_CITATION_BODY.replace("spec.txt:1", "spec.txt:2"))
+
+    result = repair(
+        "Demo", target, runner=_runner(_fixed_block("FEATURE_Cited.md", "banner", body))
+    )
+
+    assert not result.ok
+    assert "other than Cite" in result.items[0].detail
+    assert path.read_text() == original
+
+
+@pytest.mark.parametrize("relative", ["sources/../private.txt", "sources/link.txt"])
+def test_citation_context_never_reads_outside_sources(tmp_path, relative):
+    from drydock.plan_repair import _citation_sources
+    from drydock.plan_verify import Defect
+
+    blueprint = tmp_path / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    outside = blueprint / "private.txt"
+    outside.write_text("PRIVATE", encoding="utf-8")
+    (sources / "link.txt").symlink_to(outside)
+    body = _BAD_CITATION_BODY.replace("sources/spec.txt", relative)
+    jobs = [(Defect("FEATURE_Cited.md", "banner", "bad-citation", "invalid"), body)]
+    assert _citation_sources(jobs, blueprint) == []
+
+
+def test_invalid_citation_repair_preserves_a_successfully_repaired_sibling(tmp_path):
+    target = _citation_target(tmp_path)
+    path = target / "blueprint" / "FEATURE_Cited.md"
+    original = path.read_text()
+    sibling = original[original.index("=== AC banner ===") :].replace("AC banner", "AC sibling")
+    path.write_text(original + sibling)
+    runner = _runner(
+        _fixed_block("FEATURE_Cited.md", "banner", _BAD_CITATION_BODY)
+        + _fixed_block(
+            "FEATURE_Cited.md", "sibling", _BAD_CITATION_BODY.replace("spec.txt:1", "spec.txt:2")
+        )
+    )
+    result = repair("Demo", target, runner=runner)
+    assert not result.ok
+    assert len(result.repaired) == len(result.outstanding) == 1
+    assert path.read_text() == original + sibling.replace("spec.txt:1", "spec.txt:2")
+    assert runner.calls[0]["prompt"].count("1: Unrelated title") == 1
+
+
+def test_missing_citation_source_can_report_impossible_without_writing(tmp_path):
+    target = _citation_target(tmp_path)
+    (target / "blueprint" / "sources" / "spec.txt").unlink()
+    path = target / "blueprint" / "FEATURE_Cited.md"
+    original = path.read_text()
+    runner = _runner(
+        "REPAIR_IMPOSSIBLE: FEATURE_Cited.md :: banner — supporting source is unavailable."
+    )
+    result = repair("Demo", target, runner=runner)
+    assert not result.ok
+    assert result.items[0].status == "impossible"
+    assert path.read_text() == original
+    assert "numbered source for citation repair" not in runner.calls[0]["prompt"]

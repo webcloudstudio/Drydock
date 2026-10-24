@@ -21,6 +21,17 @@ and measured something; everything else is reported, not charged.
 
 ### Rules
 
+`2026-10-24` · **Citation validation distinguishes binding expectations from re-typed literals.**
+Every declared `Cite:` resolves inside `sources/`. Verbatim matching applies only when the
+criterion has re-typed expectations; numeric exit codes and plain ASCII expectations already
+bind and do not need literal derivation. This does not establish semantic support for an
+already-binding expectation. Citation repair receives only its referenced source files with
+one-based line numbers and changes only the existing `Cite:` value. Other proof and metadata
+changes, removed citations, and still-invalid citations are rejected per criterion. Missing
+source evidence yields `REPAIR_IMPOSSIBLE`. This revises `2af2661` alongside `b7ea20b`.
+Cost when broken: DupFind `20261024.080843` rejects two runnable criteria even with correct
+citation ranges, then asks a source-free repair prompt to infer missing source lines.
+
 `2026-10-24` · **The acceptance harness owns one rollback transaction per criterion.** The
 DATABASE step emits runtime catalog/count probes, applies schema, verifies declared columns, keys,
 constraints and indexes, and records `evidence/persistence-verification.json`. Later acceptance

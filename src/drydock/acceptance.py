@@ -1064,7 +1064,9 @@ def citation_defect(check: ProgrammaticAcceptance, blueprint_dir: Path) -> str |
     """Return why a criterion's ``Cite:`` does not support it, or ``None`` when it does.
 
     A citation exists to make a literal derived, so one that resolves to nothing, or to lines
-    containing none of the criterion's expected literals, is a plan defect rather than a no-op.
+    containing none of its re-typed expectations when there are any, is a plan defect.
+    Already-binding status codes and plain text need no literal derivation; their citations
+    still have to resolve, but this check does not judge semantic support for those values.
     """
     if not check.cite:
         return None
@@ -1075,7 +1077,7 @@ def citation_defect(check: ProgrammaticAcceptance, blueprint_dir: Path) -> str |
             "cite sources/<file>:<line> or sources/<file>:<start>-<end>"
         )
     literals = retyped_expectations(check.code)
-    if not any(value in text for value in literals):
+    if literals and not any(value in text for value in literals):
         return (
             f"Cite: {check.cite} contains none of this criterion's expected literals verbatim; "
             "cite the lines that state the expected value"

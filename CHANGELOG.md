@@ -264,6 +264,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock plan verify` accepts resolving citations on already-binding numeric
+  and plain-text expectations instead of rejecting an empty re-typed-expectation set.
+  Escapable-literal citations still require a verbatim match. `plan repair` receives numbered
+  referenced source files for `bad-citation`, may change only `Cite:`, and rejects removed or
+  still-invalid citations and changes to the proof or other metadata. Missing supporting
+  source evidence remains `REPAIR_IMPOSSIBLE`.
+
 - 2026-10-24: Build failure reports use the complete block acceptance set and retain criterion
   disputes across attempts; disputed failures direct verification and mechanical repair before
   rebuilding, while claims remain advisory and repair budgets remain unchanged.

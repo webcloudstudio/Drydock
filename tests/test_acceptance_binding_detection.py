@@ -1,5 +1,7 @@
 """Binding detection: assembled expectations are not derived; a cited source literal is."""
 
+import pytest
+
 from drydock.acceptance import (
     citation_defect,
     parse_programmatic_acceptance,
@@ -114,3 +116,34 @@ def test_a_citation_that_does_not_resolve_is_a_plan_defect(tmp_path):
     result = verify("Demo", tmp_path / "targets" / "Demo")
     (defect,) = result.defects
     assert defect.kind == "bad-citation"
+
+
+@pytest.mark.parametrize("code", ["assert code == 0", 'assert out == "group,size,path"'])
+def test_resolving_citations_on_already_binding_expectations_are_valid(tmp_path, code):
+    from dataclasses import replace
+
+    blueprint = _blueprint(tmp_path, _CITED)
+    (check,) = parse_programmatic_acceptance(blueprint / "FEATURE_Cited.md")
+    check = replace(check, code=code)
+    assert retyped_expectations(code) == ()
+    assert citation_defect(check, blueprint) is None
+    assert citation_defect(replace(check, cite="sources/spec.txt:999"), blueprint)
+
+
+@pytest.mark.parametrize("code", ["code = 0\nassert code == 0", 'out = "ok"\nassert out == "ok"'])
+def test_plan_verify_cli_accepts_cited_binding_expectations(
+    tmp_path, monkeypatch, isolated_config, code
+):
+    from tests.test_cli import run_cli
+
+    spec = (
+        "# FEATURE: Cited\n\n## Programmatic Acceptance\n\n"
+        "=== AC success ===\nIntent: Returns success.\nCite: sources/spec.txt:1\n\n"
+        + code
+        + "\n=== END AC success ===\n"
+    )
+    _blueprint(tmp_path, spec, source="Success returns 0 and writes ok.\n")
+    monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+    rc, out, err = run_cli("plan", "verify", "Demo")
+    assert rc == 0, err
+    assert "every one can run" in out

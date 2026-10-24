@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261024 V15
+version: 20261024 V16
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -28,8 +28,9 @@ Error: <one sentence naming the fault>
 </pblock>
 ```
 
-Nothing else about that criterion's file, and nothing about any other criterion, is provided. You
-do not need — and must not assume — anything beyond what is inside its own block.
+Nothing else about that criterion's file, and nothing about any other criterion, is provided.
+For a `bad-citation` defect, numbered source files may also be supplied as context. Use only
+those sources to repair its `Cite:` declaration; never infer missing source text or line numbers.
 
 Your job is to make each criterion named in its own block run. Nothing else.
 
@@ -52,6 +53,12 @@ proven otherwise by executing them. You are not judging whether the criterion is
 removing the reason it cannot be judged at all.
 
 Permitted:
+
+- for a `bad-citation` fault, correct only the existing `Cite:` declaration to name the supplied
+  source lines supporting the unchanged expectation. Source line numbers are one-based and
+  inclusive; use `sources/<file>:<line>` or `sources/<file>:<start>-<end>`. Preserve every other
+  line, including all inputs, assertions, and metadata. Never remove the citation. If the
+  supporting source is not supplied or does not state the expectation, emit `REPAIR_IMPOSSIBLE`;
 
 - add an `import` for a name the criterion reads but never binds;
 - bind a name the criterion clearly intends to use, in the obvious way;

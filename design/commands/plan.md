@@ -39,6 +39,17 @@ read before parsing, in any operand position, and refused with exit `2` by every
 
 ### Rules
 
+`2026-10-24` · **Citation validation distinguishes binding expectations from re-typed literals.**
+Every declared `Cite:` resolves inside `sources/`. Verbatim matching applies only when the
+criterion has re-typed expectations; numeric exit codes and plain ASCII expectations already
+bind and do not need literal derivation. This does not establish semantic support for an
+already-binding expectation. Citation repair receives only its referenced source files with
+one-based line numbers and changes only the existing `Cite:` value. Other proof and metadata
+changes, removed citations, and still-invalid citations are rejected per criterion. Missing
+source evidence yields `REPAIR_IMPOSSIBLE`. This revises `2af2661` alongside `b7ea20b`.
+Cost when broken: DupFind `20261024.080843` rejects two runnable criteria even with correct
+citation ranges, then asks a source-free repair prompt to infer missing source lines.
+
 `2026-10-24` · **A final invariant artifact close missing only its trailing equals is repaired.**
 For artifact-format calls, the shared adapter completes an exact `=== END ARTIFACT` on the final
 nonblank line only when one artifact remains open and the resulting envelope sequence has no
