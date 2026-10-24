@@ -319,7 +319,10 @@ refused by `_parse_access_pattern`, and so by `database_contract_defects`. One D
 with two field sets is refused by `_row_classes` when `schema.py` is rendered, as the Go emitter
 already refused it. *Broken:* FxRates `20261024.070101` wrote bare `Output:` lines. The next line's
 table header became the name of all three patterns (`FieldType`), and `rates.delete`, whose Output
-is its key, raised on upsert's four-field class.
+is its key, raised on upsert's four-field class. A label line holding fields (`Input: `date: str``,
+any `:` in the name) is refused the same way, naming the line and the `| Field | Type |` grammar.
+*Broken:* FxRates `20261024.162029` wrote fields inline, declared no Input fields, and was told
+only that its Match fields were "not Input fields" for three passes.
 
 `2026-10-24` · **No criterion imports `persistence` before the DATABASE step.** `plan verify` refuses (`persistence-order`, routed to `plan repair`) a criterion that imports `persistence` in a Blueprint implemented by a story whose `block:` precedes that of the story implementing `DATABASE.md`. A story in the DATABASE block is not earlier. *Broken:* FxRates `20261024.073528` put `architecture-boundary` (`open_database("").rates`) on `foundation`, block 1; its builder hand-wrote `schema.sql`, and block-1 failed unexecuted.
 

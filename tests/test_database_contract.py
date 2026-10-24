@@ -887,6 +887,24 @@ def test_a_bare_dto_label_is_refused_not_named_by_its_table_header():
     assert derive_missing_dtos(bare)[1] == ()
 
 
+def test_inline_dto_fields_are_refused_with_the_table_grammar():
+    # FxRates 20261024.162029: `Input: `order_id: UUID`` declared a DTO with no fields, so the
+    # only defect reported was a Match field "not an Input field", and three passes repeated it.
+    inline = _DATABASE.replace("Input: FindOrder\n", "Input: `order_id: UUID`\n", 1).replace(
+        "Output: Order\n\n| Field | Type |\n|---|---|\n| id | UUID |\n| status | "
+        "OrderStatus |\n\n### FEATURE-ORDER-002",
+        "Output: `id: UUID`\n\n### FEATURE-ORDER-002",
+        1,
+    )
+    defects = database_contract_defects(inline)
+
+    assert len(defects) == 2
+    assert "FEATURE-ORDER-001 lists fields on the `Output:` line" in defects[0]
+    assert "FEATURE-ORDER-002 lists fields on the `Input:` line" in defects[1]
+    assert "followed by a `| Field | Type |` table" in defects[1]
+    assert database_contract_defects(_DATABASE) == ()
+
+
 def test_a_placeholder_input_row_declares_no_field():
     contract = parse_database_contract(_READING_LIST)
 

@@ -872,6 +872,18 @@ def _parse_access_pattern(match: re.Match[str], block: str, source: str) -> Acce
             "`Input: <DtoName>` and `Output: <DtoName>` on one line, each followed by a "
             "`| Field | Type |` table of the fields it carries"
         )
+    # FxRates 20261024.162029 wrote `Input: `date: str`, `currency: str``: one DTO name with no
+    # field table, so the pattern declared no fields and every Match field was "not an Input
+    # field" — a defect the model could not see in its own line, repeated for three passes.
+    inline = [label.title() for label, (name, _) in values.items() if ":" in name]
+    if inline:
+        raise SpecificationError(
+            f"{source}: {match.group(1)} lists fields on the "
+            f"{' and '.join(f'`{label}:`' for label in sorted(inline))} line, which takes one "
+            "DTO name, so it declares no fields — write `Input: <DtoName>` and "
+            "`Output: <DtoName>`, each followed by a `| Field | Type |` table with one row per "
+            "field"
+        )
     declared_match: list[str] = []
     compare: list[tuple[str, str, str]] = []
     for item in (part.replace("`", "").strip() for part in metadata.get("match", "").split(",")):
