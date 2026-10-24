@@ -43,6 +43,18 @@ this command (AGENTS.md §UAT Evidence).
 
 ### Rules
 
+`2026-10-24` · **UAT diagnosis requires clean execution as well as operational success.**
+`ddk-uat` investigates warnings, rejected artifacts, repairs, defective-output retries, and
+source-contract substitutions in running and completed runs, including successful runs. It
+starts downstream-failure analysis at the earliest warning, traces the affected artifacts through
+later stages, and distinguishes established, ruled-out, and undetermined causal links. Recovered
+defects remain actionable and recorded in `design/uat_diagnoses.md`; later success alone cannot
+close them. Reports state the recorded verdict and diagnostic cleanliness (`clean`, `not clean`,
+or `undetermined`) separately. Expected contractual observations require source and execution
+evidence. The diagnostic classification does not change the runner's recorded verdict or exit
+codes. Cost when broken: an upstream warning is dismissed after recovery and its downstream
+failure is repaired several steps later while the generating defect remains.
+
 `2026-10-22` · **A child's provider stop is the run's cause.** A required step that fails while the run workspace's `STOP_NOW.md` exists raises `stopped at <stage>: <reason>` from that file, and `declare_stop` announces the recorded halt rather than its own reason, because the first declaration wins ([process_stops](../topics/process_stops.md)). Cost when broken: `result.json` blames the failing block for a provider limit.
 
 `2026-10-14` · **Resume selects the recorded run and its failed stage together.** `drydock uat resume <Project>` selects the recorded run and its failed lifecycle stage as one recovery point. Losing the stage would send the selected run to `init`, which the runner rejects before recovery.

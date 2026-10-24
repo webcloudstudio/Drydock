@@ -297,6 +297,11 @@ exit. Git checkpoint failures are silent and do not change the command's result.
 UAT run receipts report the models recorded for executed LLM calls; a requested `--model` is
 retained separately in `result.json`. A run that used multiple models lists each in first-use order.
 
+`$ddk-uat <Target>` investigates warnings and recovered errors as well as terminal failures,
+including in successful or running UAT runs. Its diagnosis reports operational success and clean
+execution separately, traces upstream warnings through later artifacts and failures, and keeps
+recovered defects open until a corrected run reaches the affected stage without recurrence.
+
 ## Target reports
 
 `drydock report help` lists report names, commands, and descriptions. `drydock report <name>

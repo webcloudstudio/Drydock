@@ -1,4 +1,4 @@
 interface:
   display_name: "Drydock UAT"
-  short_description: "Diagnose the latest Drydock UAT failure"
-  default_prompt: "Use $ddk-uat to diagnose the latest UAT run for ReadingList."
+  short_description: "Investigate UAT warnings, errors, and recoveries"
+  default_prompt: "Use $ddk-uat to investigate warnings, errors, and recovered defects in the requested UAT run, assess clean execution, and trace downstream failures to their upstream causes."
