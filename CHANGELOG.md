@@ -143,6 +143,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-24: `ddk-uat` investigates warnings, rejected artifacts, repairs, and defective-output
+  retries in successful and running runs as well as failed runs. Diagnoses assess clean execution
+  separately from the recorded result, trace upstream findings through later failures, and keep
+  recovered defects open until a corrected run reaches the affected stage without recurrence.
+  The FxRates kit brief specifies uniqueness of `(date, currency)` rather than prescribing a
+  composite primary key; historical run inputs remain unchanged.
+
 - 2026-10-24: `drydock plan` Stage 2 progress no longer prints `Rejected:` for a refused
   Blueprint batch that will be retried. `Batch Result:` reads `Retrying (<n> left): <reason>`,
   then `Retries exhausted: <reason>` on the refusal that ends the no-progress allowance, and
@@ -285,6 +292,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock build` keeps a build out of any enclosing uv workspace. A Python Target's
+  build receives a standalone `pyproject.toml` before the first agent call, and every tool-using
+  agent call that registers its working directory as a workspace member of an enclosing project
+  has that project's `pyproject.toml` and `uv.lock` restored and fails with both files named.
+  This replaces the `uv` PATH shim, which Codex's login shell bypassed.
 - 2026-10-24: Programmatic Acceptance binding detection no longer demotes an assembled
   expectation of plain text. An f-string, concatenation, `%` template, or `.format` call binds
   unless its typed text is escapable (backslash, carriage return, non-ASCII, `!r`/`!a`), the

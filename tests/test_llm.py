@@ -744,38 +744,74 @@ def test_claude_isolation_skipped_without_credentials(tmp_path, monkeypatch):
     assert not (fake_home / ".drydock" / "claude-home").exists()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="the uv shim is a POSIX shell script")
-def test_agent_uv_init_never_joins_an_enclosing_workspace(tmp_path, monkeypatch):
-    # FxRates 20261024.073528: a build agent's `uv init` inside the build directory registered
-    # the build as a member of the Drydock repository's own uv workspace.
-    fake_home = tmp_path / "home"
-    tools = tmp_path / "tools"
-    tools.mkdir()
-    real_uv = tools / "uv"
-    real_uv.write_text('#!/bin/sh\necho "$@"\n', encoding="utf-8")
-    real_uv.chmod(0o755)
-    monkeypatch.setattr(Path, "home", lambda: fake_home)
-    monkeypatch.setenv("PATH", f"{tools}{os.pathsep}/usr/bin{os.pathsep}/bin")
-    real_popen = subprocess.Popen
-    captured = {}
-    monkeypatch.setattr(subprocess, "Popen", _capture_env_popen(captured, _claude_result_raw()))
+_PARENT_PYPROJECT = b'[project]\nname = "drydock"\nversion = "1.0"\n'
+_PARENT_LOCK = b"version = 1\n"
 
-    run_prompt("Work", tmp_path, llm="claude", command_name="build")
-    run_prompt("Work", tmp_path, llm="claude", command_name="build")
-    monkeypatch.setattr(subprocess, "Popen", real_popen)
 
-    env = captured["env"]
-    shim_dir = fake_home / ".drydock" / "uv-shim"
-    assert env["PATH"].split(os.pathsep).count(str(shim_dir)) == 1
+def _nested_build(tmp_path, monkeypatch, agent_edit):
+    """Run a tool-using call in a build nested under a uv project; ``agent_edit`` acts mid-call."""
+    repo = tmp_path / "repo"
+    build = repo / "uat" / "runs" / "1" / "build" / "FxRates"
+    build.mkdir(parents=True)
+    (repo / "pyproject.toml").write_bytes(_PARENT_PYPROJECT)
+    (repo / "uv.lock").write_bytes(_PARENT_LOCK)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
 
-    def uv(*args: str) -> str:
-        return subprocess.run(
-            ["uv", *args], env=env, capture_output=True, text=True, check=True
-        ).stdout.strip()
+    def fake_popen(command, **kwargs):
+        agent_edit(repo)
+        return FakePopen(command, stdout_text=_claude_result_raw(), **kwargs)
 
-    assert uv("init", "--bare", "--name", "fxrates") == "init --no-workspace --bare --name fxrates"
-    assert uv("init", "--no-workspace") == "init --no-workspace"
-    assert uv("add", "fastapi") == "add fastapi"
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    result = run_prompt("Work", build, llm="claude", command_name="build", allow_tools=True)
+    return repo, result
+
+
+@pytest.mark.parametrize("member", ["uat/runs/1/build/FxRates", "uat/runs/*/build/*"])
+def test_agent_registration_in_an_enclosing_uv_workspace_is_restored_and_fails(
+    tmp_path, monkeypatch, member
+):
+    # FxRates 20261024.164835: Codex's login shell put the real uv ahead of the 39e4e10 shim, and
+    # the agent's `uv init` registered the build in Drydock's own pyproject.toml and uv.lock.
+    def register(repo):
+        (repo / "pyproject.toml").write_bytes(
+            _PARENT_PYPROJECT + f'\n[tool.uv.workspace]\nmembers = ["{member}"]\n'.encode()
+        )
+        (repo / "uv.lock").write_bytes(_PARENT_LOCK + b'[[package]]\nname = "fxrates"\n')
+
+    repo, result = _nested_build(tmp_path, monkeypatch, register)
+
+    assert (repo / "pyproject.toml").read_bytes() == _PARENT_PYPROJECT
+    assert (repo / "uv.lock").read_bytes() == _PARENT_LOCK
+    assert not result.ok
+    assert "enclosing uv workspace" in result.failure
+    assert member in result.failure
+
+
+def test_a_parent_uv_lock_the_agent_created_is_removed(tmp_path, monkeypatch):
+    def register(repo):
+        (repo / "uv.lock").unlink()
+        with (repo / "pyproject.toml").open("ab") as handle:
+            handle.write(b'\n[tool.uv.workspace]\nmembers = ["uat/runs/1/build/FxRates/api"]\n')
+        (repo / "uv.lock").write_bytes(b"created\n")
+
+    repo, result = _nested_build(tmp_path, monkeypatch, register)
+
+    assert (repo / "uv.lock").read_bytes() == _PARENT_LOCK
+    assert not result.ok
+
+
+def test_an_unrelated_change_to_an_enclosing_project_is_kept(tmp_path, monkeypatch):
+    bumped = _PARENT_PYPROJECT.replace(b"1.0", b"1.1")
+
+    def bump(repo):
+        (repo / "pyproject.toml").write_bytes(
+            bumped + b'\n[tool.uv.workspace]\nmembers = ["packages/other"]\n'
+        )
+
+    repo, result = _nested_build(tmp_path, monkeypatch, bump)
+
+    assert (repo / "pyproject.toml").read_bytes().startswith(bumped)
+    assert result.ok
 
 
 def test_codex_isolates_codex_home_and_seeds_auth_only(tmp_path, monkeypatch):

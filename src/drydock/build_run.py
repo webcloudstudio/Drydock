@@ -2496,6 +2496,13 @@ def build_target(
             _emit(on_text, f"staged build assets: {len(staged_assets)}")
         for path in restaged:
             _emit(on_text, f"restored modified build asset: {path}")
+        from drydock.target_environment import seed_python_project
+        from drydock.technology_stack import declared_language
+
+        if declared_language(target_dir) == "python" and seed_python_project(
+            resolved_build_dir, target
+        ):
+            _emit(on_text, "seeded standalone pyproject.toml")
 
     roots = StepRoots(
         target_dir=target_dir,

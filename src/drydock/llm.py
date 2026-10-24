@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import queue
 import re
-import shlex
 import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
+import tomllib
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
@@ -548,56 +549,88 @@ def _isolate_codex_env(process_env: dict[str, str]) -> None:
     process_env["CODEX_HOME"] = str(build_home)
 
 
-_UV_SHIM = """#!/bin/sh
-# Written by Drydock. A Target build may sit inside another uv project, and `uv init` there
-# registers the build as a member of that project's workspace.
-if [ "$1" = "init" ]; then
-  case " $* " in
-    *" --no-workspace "*) ;;
-    *) shift; exec {real} init --no-workspace "$@" ;;
-  esac
-fi
-exec {real} "$@"
-"""
+@dataclass(frozen=True)
+class _EnclosingProject:
+    """An enclosing project's ``pyproject.toml`` and ``uv.lock`` bytes before an agent call."""
+
+    root: Path
+    files: dict[str, bytes | None]
+    members: frozenset[str]
 
 
-def _isolate_uv_workspace(process_env: dict[str, str]) -> None:
-    """Put a ``uv`` shim first on the subprocess PATH so ``uv init`` stays standalone.
+def _read_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
 
-    uv has no environment switch for ``init --no-workspace``, and an agent's ``uv init`` in a
-    build nested under another project rewrites that project's ``pyproject.toml``. The shim
-    lives beside the provider homes in ``~/.drydock`` and is skipped when uv is not installed.
 
-    Mutates ``process_env`` in place.
+def _workspace_members(raw: bytes | None) -> frozenset[str]:
+    try:
+        data = tomllib.loads(raw.decode("utf-8")) if raw else {}
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return frozenset()
+    members = data.get("tool", {}).get("uv", {}).get("workspace", {}).get("members", [])
+    if not isinstance(members, list):
+        return frozenset()
+    return frozenset(member for member in members if isinstance(member, str))
+
+
+def _enclosing_projects(working_directory: Path) -> tuple[_EnclosingProject, ...]:
+    """Snapshot every project above ``working_directory`` that an agent's uv could register in.
+
+    ``uv init`` run inside another uv project adds the new project to that project's workspace,
+    and uv has no environment switch to stop it. A PATH shim cannot intercept it either: a login
+    shell such as Codex's ``bash -lc`` re-sources the profile, which puts the real ``uv`` first.
     """
-    if os.name == "nt":
-        return
-    shim_dir = (Path.home() / ".drydock" / "uv-shim").expanduser()
-    parts = [
-        part
-        for part in process_env.get("PATH", "").split(os.pathsep)
-        if part and Path(part).expanduser() != shim_dir
-    ]
-    real = next(
-        (
-            str(Path(part) / "uv")
-            for part in parts
-            if (Path(part) / "uv").is_file() and os.access(Path(part) / "uv", os.X_OK)
-        ),
-        None,
+    found = []
+    for parent in working_directory.parents:
+        if not (parent / "pyproject.toml").is_file():
+            continue
+        files = {name: _read_bytes(parent / name) for name in ("pyproject.toml", "uv.lock")}
+        found.append(_EnclosingProject(parent, files, _workspace_members(files["pyproject.toml"])))
+    return tuple(found)
+
+
+def _member_reaches(root: Path, member: str, working_directory: Path) -> bool:
+    if fnmatch.fnmatchcase(working_directory.relative_to(root).as_posix(), member):
+        return True
+    return (root / member).resolve().is_relative_to(working_directory)
+
+
+def _restore_enclosing_projects(
+    snapshot: tuple[_EnclosingProject, ...], working_directory: Path
+) -> str | None:
+    """Undo an agent call's registration in an enclosing uv workspace, and describe it.
+
+    Only a new workspace member that reaches the working directory counts. Any other change to an
+    enclosing project belongs to a concurrent writer and is left alone, so restoring the snapshot
+    never discards it.
+    """
+    restored = []
+    for project in snapshot:
+        pyproject = project.root / "pyproject.toml"
+        added = sorted(
+            member
+            for member in _workspace_members(_read_bytes(pyproject)) - project.members
+            if _member_reaches(project.root, member, working_directory)
+        )
+        if not added:
+            continue
+        for name, raw in project.files.items():
+            if raw is None:
+                (project.root / name).unlink(missing_ok=True)
+            else:
+                (project.root / name).write_bytes(raw)
+        restored.append(f"{pyproject} (member {', '.join(added)})")
+    if not restored:
+        return None
+    return (
+        "The agent registered the build in an enclosing uv workspace. Drydock restored "
+        + ", ".join(restored)
+        + " and its uv.lock. Run uv only in the project rooted at the working directory, and "
+        "pass --no-workspace to any uv init."
     )
-    if real is None:
-        return
-    search = os.pathsep.join(parts)
-    script = _UV_SHIM.format(real=shlex.quote(real))
-    shim = shim_dir / "uv"
-    if not shim.is_file() or shim.read_text(encoding="utf-8") != script:
-        shim_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        staged = shim_dir / f"uv.{os.getpid()}"
-        staged.write_text(script, encoding="utf-8", newline="\n")
-        staged.chmod(0o755)
-        os.replace(staged, shim)
-    process_env["PATH"] = str(shim_dir) + os.pathsep + search
 
 
 def _events(raw: str) -> list[dict[str, Any]]:
@@ -2249,7 +2282,6 @@ def run_prompt(
     process_env.pop("ANTHROPIC_API_KEY", None)
     process_env.pop("OPENAI_API_KEY", None)
     process_env.pop("OPENAI_BASE_URL", None)
-    _isolate_uv_workspace(process_env)
     if selected == "claude":
         _isolate_claude_env(process_env)
         _apply_claude_token_limits(process_env, model)
@@ -2258,6 +2290,7 @@ def run_prompt(
     elif selected == "gemini":
         _isolate_gemini_env(process_env)
 
+    enclosing = _enclosing_projects(working_directory) if allow_tools else ()
     try:
         returncode, raw_output, stderr, timed_out = _run_streaming_process(
             command,
@@ -2271,6 +2304,7 @@ def run_prompt(
             on_text=on_text,
             on_event=on_event,
         )
+        workspace_defect = _restore_enclosing_projects(enclosing, working_directory)
         # Prune before the record is built so ``artifacts.paths()`` reflects what survives.
         artifacts.prune_empty()
         text, stats = _parse_result(selected, raw_output, artifacts)
@@ -2298,6 +2332,11 @@ def run_prompt(
             if truncation is not None and not allow_tools and returncode == 0
             else None
         )
+        if workspace_defect is not None:
+            failure = workspace_defect
+            logger.error("enclosing uv workspace restored: %s", workspace_defect)
+            if on_text is not None:
+                on_text(f"[workspace] {workspace_defect}\n")
         cleanup = None
         if output_format is not None and returncode == 0 and failure is None:
             cleanup = clean_output(text, output_format)

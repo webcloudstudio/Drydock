@@ -317,6 +317,33 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert (target_dir / "BUILD_LINEAGE.jsonl").is_file()
 
 
+def test_a_python_build_is_its_own_uv_project_before_the_first_agent_call(tmp_path):
+    # FxRates 20261024.164835: the foundation agent's `uv init` registered the build in the
+    # enclosing Drydock repository's uv workspace. A seeded project leaves uv init nothing to do.
+    target_dir, build_dir = _setup(tmp_path)
+    seen = []
+
+    def runner(prompt, working_directory, **kwargs):
+        seen.append((Path(working_directory) / "pyproject.toml").is_file())
+        return make_runner()(prompt, working_directory, **kwargs)
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert seen and all(seen)
+    assert 'name = "demo"' in (build_dir / "pyproject.toml").read_text(encoding="utf-8")
+
+
+def test_a_build_without_python_is_not_seeded(tmp_path):
+    from drydock.technology_stack import StackEntry, write
+
+    target_dir, build_dir = _setup(tmp_path)
+    write(target_dir, [StackEntry("Go", "go.md")], approved="2026-10-19")
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert not (build_dir / "pyproject.toml").exists()
+
+
 def test_build_failure_writes_current_error_and_retry_clears_prior_error(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     write_error_record(

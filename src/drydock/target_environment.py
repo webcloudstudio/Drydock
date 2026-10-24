@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -39,6 +40,27 @@ def resolve_target_environment(build_dir: Path) -> TargetEnvironment:
     if fallback:
         return TargetEnvironment(Path(fallback), "non-project python3 selected")
     return TargetEnvironment(None, "no Target interpreter or system python3 is available")
+
+
+def seed_python_project(build_dir: Path, name: str) -> Path | None:
+    """Write a standalone ``pyproject.toml`` into a Python build that has none.
+
+    Python Rigging requires uv, and ``uv init`` run inside another uv project registers the build
+    as a member of that project's workspace. A build that already holds a ``pyproject.toml`` stays
+    its own project: ``uv init`` refuses to run there, and ``uv lock`` writes the build's own
+    ``uv.lock``. Returns the file written, or ``None`` when one already exists.
+    """
+    path = build_dir / "pyproject.toml"
+    if path.exists():
+        return None
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "target"
+    path.write_text(
+        f'[project]\nname = "{slug}"\nversion = "0.1.0"\nrequires-python = ">=3.11"\n'
+        "dependencies = []\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return path
 
 
 def provision_uv_environment(build_dir: Path) -> TargetEnvironment:
