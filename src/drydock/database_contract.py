@@ -80,6 +80,13 @@ _REPOSITORY_VERBS = ("get", "list", "create", "update", "upsert", "delete")
 #: ``| Kind |`` is how it runs. A name that is a verb implies its own Kind, so a simple table
 #: needs no Kind row and calls ``db.<table>.get(...)``.
 _REPOSITORY_OPERATION_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
+#: The comparisons a Match term may state. Each binds one Input field as a parameter, so a range
+#: is two terms on one column (``date >= start_date``, ``date <= end_date``), never SQL text.
+COMPARISONS = ("=", "<", "<=", ">", ">=")
+#: ``<column> <op> <field>``: the Input field ``field`` compared with ``column``. A bare name is
+#: the Input field compared by equality with the column of its own name.
+_MATCH_TERM_RE = re.compile(r"^([a-z][a-z0-9_]*)\s*(<=|>=|=|<|>)\s*([a-z][a-z0-9_]*)$")
+_ORDER_TERM_RE = re.compile(r"^([a-z][a-z0-9_]*)(?:\s+(asc|desc))?$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -103,6 +110,14 @@ class AccessPattern:
     operations: tuple[str, ...] = ()
     match: tuple[str, ...] = ()
     kind: str = ""
+    #: ``(field, op, column)`` for each Match term written as a comparison; a bare term is absent.
+    compare: tuple[tuple[str, str, str], ...] = ()
+    #: ``(column, "asc" | "desc")`` from ``| Order |``, in sort-key order.
+    order: tuple[tuple[str, str], ...] = ()
+
+    def column_of(self, field: str) -> str:
+        """The column an Input field binds: the one its comparison names, else its own name."""
+        return next((column for name, _, column in self.compare if name == field), field)
 
     @property
     def tables(self) -> frozenset[str]:
@@ -480,7 +495,12 @@ def derived_indexes(
                 continue
             declared = {column.name for column in table.columns}
             offer(
-                table.name, tuple(field.name for field in pattern.inputs if field.name in declared)
+                table.name,
+                tuple(
+                    column
+                    for column in dict.fromkeys(pattern.column_of(f.name) for f in pattern.inputs)
+                    if column in declared
+                ),
             )
     return tuple(derived)
 
@@ -852,19 +872,42 @@ def _parse_access_pattern(match: re.Match[str], block: str, source: str) -> Acce
             "`Input: <DtoName>` and `Output: <DtoName>` on one line, each followed by a "
             "`| Field | Type |` table of the fields it carries"
         )
-    declared_match = tuple(
-        item
-        for item in (
-            part.strip().strip("`").strip() for part in metadata.get("match", "").split(",")
-        )
-        if item and not _no_field(item)
-    )
+    declared_match: list[str] = []
+    compare: list[tuple[str, str, str]] = []
+    for item in (part.replace("`", "").strip() for part in metadata.get("match", "").split(",")):
+        if not item or _no_field(item):
+            continue
+        if re.fullmatch(r"[a-z][a-z0-9_]*", item):
+            declared_match.append(item)
+            continue
+        term = _MATCH_TERM_RE.match(item)
+        if term is None:
+            raise SpecificationError(
+                f"{source}: {match.group(1)} Match term `{item}` is neither an Input field nor "
+                f"`<column> <op> <field>` with op one of {', '.join(COMPARISONS)}, such as "
+                "`date >= start_date`."
+            )
+        declared_match.append(term.group(3))
+        compare.append((term.group(3), term.group(2), term.group(1)))
+    order: list[tuple[str, str]] = []
+    for item in (part.replace("`", "").strip() for part in metadata.get("order", "").split(",")):
+        if not item or _no_field(item):
+            continue
+        term = _ORDER_TERM_RE.match(item)
+        if term is None:
+            raise SpecificationError(
+                f"{source}: {match.group(1)} Order term `{item}` is not `<column>`, "
+                "`<column> asc`, or `<column> desc`."
+            )
+        order.append((term.group(1), (term.group(2) or "asc").casefold()))
     operations = _repository_operations(
         metadata["repository operation"], identifier=match.group(1), source=source
     )
     return AccessPattern(
         identifier=match.group(1),
-        match=declared_match,
+        match=tuple(declared_match),
+        compare=tuple(compare),
+        order=tuple(order),
         kind=_operation_kind(
             operations[0], metadata.get("kind", ""), identifier=match.group(1), source=source
         ),
@@ -1154,11 +1197,18 @@ def _input_column_defects(
             if columns is None:
                 continue
             for field in pattern.inputs:
-                if field.name not in columns:
+                column = pattern.column_of(field.name)
+                if column not in columns:
+                    subject = (
+                        f"Input field `{field.name}` is compared with `{column}`, which is not"
+                        if column != field.name
+                        else f"Input field `{field.name}` is not"
+                    )
                     defects.append(
-                        f"{source}: {pattern.identifier} Input field `{field.name}` is not a "
-                        f"column of `{table}` ({', '.join(columns)}). Each Input field is bound "
-                        f"as the column of the same name; name the column it means."
+                        f"{source}: {pattern.identifier} {subject} a column of `{table}` "
+                        f"({', '.join(columns)}). Each Input field is bound "
+                        "as the column of the same name; name the column it means, or compare "
+                        "an argument with a column in `| Match |`, such as `date >= start_date`."
                     )
     return tuple(defects)
 
@@ -1223,9 +1273,12 @@ class ResolvedOperation:
 
     ``name`` is the method callers use; ``verb`` is its Kind, how it runs. ``match`` is the
     equality ``WHERE`` of a ``get``, ``update``, ``upsert``, or ``delete``; ``filters`` are the
-    optional equality filters of a ``list``; ``sets`` are the columns a ``create``, ``update``,
-    or ``upsert`` writes. ``many`` is decided from the schema, never declared: a match covering
-    the primary key or a declared ``UNIQUE`` reaches at most one row.
+    optional filters of a ``list``; ``sets`` are the columns a ``create``, ``update``, or
+    ``upsert`` writes. ``compare`` holds ``(field, op, column)`` for each field of ``match`` or
+    ``filters`` compared by something other than equality with its own column, and ``order`` the
+    ``(column, direction)`` sort keys of a ``list``. ``many`` is decided from the schema, never
+    declared: an equality match covering the primary key or a declared ``UNIQUE`` reaches at most
+    one row.
     """
 
     identifier: str
@@ -1239,10 +1292,18 @@ class ResolvedOperation:
     output_name: str
     outputs: tuple[str, ...]
     name: str = ""
+    compare: tuple[tuple[str, str, str], ...] = ()
+    order: tuple[tuple[str, str], ...] = ()
 
     @property
     def operation(self) -> str:
         return f"{self.table}.{self.name or self.verb}"
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        """The Match fields compared by equality: what reads back the one row a write reached."""
+        compared = {field for field, op, _ in self.compare if op != "="}
+        return tuple(field for field in self.match if field not in compared)
 
     @property
     def returns_row(self) -> bool:
@@ -1296,7 +1357,9 @@ def resolve_operation(pattern: AccessPattern, table: SQLiteTable) -> ResolvedOpe
         if verb in ("update", "upsert")
         else ()
     )
-    many = verb == "list" or (verb in ("update", "delete") and not _identifies_one(table, match))
+    compared = {field: op for field, op, _ in pattern.compare}
+    equal = [pattern.column_of(field) for field in match if compared.get(field, "=") == "="]
+    many = verb == "list" or (verb in ("update", "delete") and not _identifies_one(table, equal))
     return ResolvedOperation(
         identifier=pattern.identifier,
         table=table.name,
@@ -1309,6 +1372,8 @@ def resolve_operation(pattern: AccessPattern, table: SQLiteTable) -> ResolvedOpe
         output_name=pattern.output_name,
         outputs=tuple(field.name for field in pattern.outputs),
         name=pattern.operations[0].partition(".")[2],
+        compare=pattern.compare,
+        order=pattern.order,
     )
 
 
@@ -1365,7 +1430,16 @@ def _operation_shape_defects(
             continue
         seen[operation] = ident
         resolved = resolve_operation(pattern, table)
-        shape = (name, verb, resolved.match, resolved.filters, resolved.sets, resolved.outputs)
+        shape = (
+            name,
+            verb,
+            resolved.match,
+            resolved.filters,
+            resolved.sets,
+            resolved.outputs,
+            resolved.compare,
+            resolved.order,
+        )
         if shape in shapes:
             defects.append(
                 f"{source}: {ident} `{operation}` runs exactly what {shapes[shape]} runs: the "
@@ -1387,11 +1461,37 @@ def _operation_shape_defects(
                 "field is an Input field the caller supplies."
             )
             continue
-        if verb in ("create", "list") and pattern.match:
-            role = "inserts one row" if verb == "create" else "filters on its Input fields"
+        repeated = sorted({item for item in pattern.match if pattern.match.count(item) > 1})
+        if repeated:
             defects.append(
-                f"{source}: {ident} `{operation}` {role} and declares no Match; remove the "
-                "Match row."
+                f"{source}: {ident} Match names {', '.join(f'`{item}`' for item in repeated)} "
+                "more than once. Each Input field binds one parameter; a range compares two "
+                "fields with one column, such as `date >= start_date`, `date <= end_date`."
+            )
+            continue
+        columns = {column.name for column in table.columns}
+        if pattern.compare and verb not in ("list", "update", "delete"):
+            defects.append(
+                f"{source}: {ident} `{operation}` is a `{verb}`, which matches each Input field "
+                f"by equality with the column of its own name, so `{_term(pattern.compare[0])}` "
+                "cannot apply. A comparison term belongs to a `list`, `update`, or `delete`."
+            )
+        if pattern.order and verb != "list":
+            defects.append(
+                f"{source}: {ident} `{operation}` is a `{verb}`; only a `list` returns rows in "
+                "an order. Remove the Order row."
+            )
+        unknown = [column for column, _ in pattern.order if column not in columns]
+        if unknown:
+            defects.append(
+                f"{source}: {ident} Order names {', '.join(f'`{item}`' for item in unknown)}, "
+                f"which {'is' if len(unknown) == 1 else 'are'} not a column of `{name}` "
+                f"({', '.join(column.name for column in table.columns)})."
+            )
+        if verb == "create" and pattern.match:
+            defects.append(
+                f"{source}: {ident} `{operation}` inserts one row and declares no Match; remove "
+                "the Match row."
             )
         elif verb == "get":
             if set(resolved.match) != inputs:
@@ -1507,8 +1607,29 @@ def _quote(name: str) -> str:
     return f'"{name}"'
 
 
-def _where(names: Sequence[str]) -> str:
-    return (" WHERE " + " AND ".join(f"{_quote(name)} = ?" for name in names)) if names else ""
+def _term(comparison: tuple[str, str, str]) -> str:
+    field, op, column = comparison
+    return f"{column} {op} {field}"
+
+
+def _terms(names: Sequence[str], compare: Sequence[tuple[str, str, str]]) -> tuple[str, ...]:
+    """Each field as its Match term: bare under equality with its own column, else compared."""
+    by_field = {item[0]: item for item in compare}
+    return tuple(_term(by_field[name]) if name in by_field else name for name in names)
+
+
+def _where(names: Sequence[str], compare: Sequence[tuple[str, str, str]] = ()) -> str:
+    by_field = {field: (op, column) for field, op, column in compare}
+    terms = [
+        f"{_quote(by_field.get(name, ('=', name))[1])} {by_field.get(name, ('=', name))[0]} ?"
+        for name in names
+    ]
+    return (" WHERE " + " AND ".join(terms)) if terms else ""
+
+
+def _order_by(order: Sequence[tuple[str, str]]) -> str:
+    keys = ", ".join(f"{_quote(column)} {direction.upper()}" for column, direction in order)
+    return f" ORDER BY {keys}" if keys else ""
 
 
 def operation_sql(operation: ResolvedOperation, table: SQLiteTable) -> tuple[str, ...]:
@@ -1521,8 +1642,9 @@ def operation_sql(operation: ResolvedOperation, table: SQLiteTable) -> tuple[str
     selected = ", ".join(_quote(name) for name in (columns or [c.name for c in table.columns]))
     target = _quote(table.name)
 
-    def select(predicate: Sequence[str]) -> str:
-        return f"SELECT {selected} FROM {target}{_where(predicate)}"
+    def select(predicate: Sequence[str], order: Sequence[tuple[str, str]] = ()) -> str:
+        where = _where(predicate, operation.compare)
+        return f"SELECT {selected} FROM {target}{where}{_order_by(order)}"
 
     def insert(names: Sequence[str]) -> str:
         marks = ", ".join("?" for _ in names)
@@ -1532,14 +1654,14 @@ def operation_sql(operation: ResolvedOperation, table: SQLiteTable) -> tuple[str
     if verb == "get":
         return (select(operation.match),)
     if verb == "list":
-        return (select(operation.filters),)
+        return (select(operation.filters, operation.order),)
     if verb == "create":
         primary = next(column.name for column in table.columns if column.primary_key)
         return (insert(operation.inputs),) + ((select((primary,)),) if operation.outputs else ())
     if verb == "update":
         assignments = ", ".join(f"{_quote(name)} = ?" for name in operation.sets)
-        statement = f"UPDATE {target} SET {assignments}{_where(operation.match)}"
-        return (statement,) + ((select(operation.match),) if operation.returns_row else ())
+        statement = f"UPDATE {target} SET {assignments}{_where(operation.match, operation.compare)}"
+        return (statement,) + ((select(operation.keys),) if operation.returns_row else ())
     if verb == "upsert":
         conflict = ", ".join(_quote(name) for name in operation.match)
         action = (
@@ -1550,7 +1672,7 @@ def operation_sql(operation: ResolvedOperation, table: SQLiteTable) -> tuple[str
         )
         statement = f"{insert(operation.inputs)} ON CONFLICT ({conflict}) {action}"
         return (statement,) + ((select(operation.match),) if operation.outputs else ())
-    return (f"DELETE FROM {target}{_where(operation.match)}",)
+    return (f"DELETE FROM {target}{_where(operation.match, operation.compare)}",)
 
 
 def _json(fields: Mapping[str, str], optional: Collection[str] = ()) -> str:
@@ -1583,10 +1705,20 @@ def _contract_payload(pattern: AccessPattern, table: SQLiteTable | None) -> str:
     relaxing NOT NULL rebuilds nothing.
     """
     resolved = resolve_operation(pattern, table) if table is not None else None
+    matched: Sequence[str] = resolved.match if resolved else pattern.match
+    if resolved and pattern.compare:
+        # A comparison or an order is caller-visible; a pattern declaring neither hashes as before.
+        matched = _terms(resolved.match or resolved.filters, pattern.compare)
+    order = (
+        ("order:" + ",".join(f"{column} {direction}" for column, direction in pattern.order),)
+        if pattern.order
+        else ()
+    )
     return "\x1f".join((
         pattern.operations[0],
         pattern.kind,
-        "match:" + ",".join(resolved.match if resolved else pattern.match),
+        "match:" + ",".join(matched),
+        *order,
         "rows:" + ("" if resolved is None else "many" if resolved.many else "one"),
         "returns:" + ("" if resolved is None else "row" if resolved.returns_row else "count"),
         *(f"in:{name}:{kind}" for name, kind in _field_types(pattern.inputs).items()),
@@ -1604,10 +1736,13 @@ _SURFACE_RULES = (
     "Generated by Drydock from this declaration; it is the complete persistence surface. Each "
     "operation is a method `db.<table>.<name>(field=value, ...)` (Go: "
     "`db.<Table>.<Name>(ctx, <Table><Name>Input{...})`) taking exactly its Input fields. Match "
-    "fields are required and compared by equality, joined with AND. A field marked `?` may be "
-    "omitted: an omitted `list` filter does not constrain, and an `update` sets only the fields "
-    "supplied. No operator other than equality, no OR, no join, and no SQL exists. An operation "
-    "reaches one row when its Match covers a unique key, and many rows otherwise. `upsert` "
+    "fields are required and compared with their column, joined with AND: a bare field by equality "
+    "with the column of its name, a term `<column> <op> <field>` by `=`, `<`, `<=`, `>`, or `>=`. "
+    "A field marked `?` may be omitted: an omitted `list` filter or bound does not constrain, and "
+    "an `update` sets only the fields supplied. A `list` with an Order returns its rows in that "
+    "order, and in no stated order otherwise. No other operator, no OR, no join, and no SQL "
+    "exists. An operation reaches one row when its equality Match covers a unique key, and many "
+    "rows otherwise. `upsert` "
     "inserts the row its Match identifies, or replaces that row's Set columns when it exists, in "
     "one atomic statement. The SQL is what runs, in SQLite form. An operation not listed raises "
     "`UnknownOperation`; to reach the store differently, declare a pattern in `DATABASE.md`. "
@@ -1654,11 +1789,16 @@ def operation_surface(text: str, *, source: str = "DATABASE.md") -> str:
                 "",
                 "| Kind | Rows | Match | Sets | Contract |",
                 "|---|---|---|---|---|",
-                f"| {item.verb} | {rows} | {_cells(item.match or item.filters)} | "
+                f"| {item.verb} | {rows} | {_cells(_terms(item.match or item.filters, item.compare))} | "
                 f"{_cells(item.sets)} | `{fingerprints.get(item.identifier, '')[:12]}` |",
                 "",
                 f"- Input: `{_json(_field_types(pattern.inputs), optional)}`",
                 f"- Output: `{_output_json(item, pattern, table)}`",
+                *(
+                    [f"- Order: {', '.join(f'`{c}` {d}' for c, d in item.order)}"]
+                    if item.order
+                    else []
+                ),
                 "",
                 "```sql",
                 sql,

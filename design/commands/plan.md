@@ -351,6 +351,19 @@ Match, Sets, Rows, and Returns — so builders never infer cardinality. *Broken:
 `20261023.234755` could not state "a stored (date, currency) is replaced": `update` matched only
 the `PK` and no verb inserted-or-replaced, so `FEATURE-LoadReplace.md` stalled the plan at 8/26.
 
+`2026-10-24` · **A range is Match comparison terms; a list's order is declared.** A Match term is a
+bare Input field (equality with its own column) or `<column> <op> <field>`, op ∈ `=`, `<`, `<=`,
+`>`, `>=`, binding an argument that is not a column. Comparison terms are refused on `get`,
+`upsert`, and `create`, and a field may appear in one term only. On a `list` the Match states how
+each filter compares and every filter, bound included, stays optional. `| Order | <column> [asc|desc], … |`
+is `list`-only and names columns of the table. Only equality fields count toward a unique key, so
+a comparison makes an `update`/`delete` reach many rows; a row-returning `update` reads back by its
+equality fields. Terms and Order enter the fingerprint only when declared, so a pattern with
+neither hashes as before. Both runtimes take `compare` and `order` from the generated schema,
+whitelist operators and directions, and build the SQL the surface shows. *Broken:* FxRates
+`20261024.145257` batch 1 bound `start_date`/`end_date` as columns of `rates` and was refused; the
+retry dropped the range into Feature code.
+
 `2026-09-19` · **One pattern is one `<table>.<verb>` operation**, verb ∈ `get`, `list`, `create`,
 `update`, `upsert`, `delete`. A Blueprint's `## Database Interface` entry is one checked line
 (`id — access, supplies:, returns:`) or `- None — <why>.`; a parse failure quotes the line and the

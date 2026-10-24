@@ -46,15 +46,20 @@ def _pattern(
     match: str = "",
     dto: str = "Rate",
     kind: str = "",
+    order: str = "",
 ) -> str:
     match_row = f"| Match | {match} |\n" if match else ""
     kind_row = f"| Kind | {kind} |\n" if kind else ""
+    order_row = f"| Order | {order} |\n" if order else ""
     output_rows = "".join(f"| {name} | {_type(name)} |\n" for name in output.split())
-    input_rows = "".join(f"| {name} | {_type(name)} | yes |\n" for name in inputs.split())
+    input_rows = "".join(
+        f"| {name} | {_type(name)} | {'no' if name.endswith('_date') else 'yes'} |\n"
+        for name in inputs.split()
+    )
     return (
         f"### {ident} — {operation}\n\n| Field | Value |\n|---|---|\n"
         f"| Owner | FEATURE-RateStorage.md |\n| Access | write |\n"
-        f"| Repository operation | `{operation}` |\n{kind_row}{match_row}"
+        f"| Repository operation | `{operation}` |\n{kind_row}{match_row}{order_row}"
         f"| Compatibility | unchanged |\n\n"
         f"Input: In\n\n| Field | Type | Required |\n|---|---|---|\n{input_rows}\n"
         f"Output: {dto}\n\n| Field | Type |\n|---|---|\n{output_rows}\n"
@@ -80,6 +85,20 @@ _PATTERNS = {
     ),
     "update": _pattern("FEATURE-RATE-006", "rates.update", "id rate", _ROW),
     "delete": _pattern("FEATURE-RATE-007", "rates.delete", "id", "id", dto="RateKey"),
+    # FxRates ``20261024.145257``: a date range had no operation, so batch 1 bound
+    # ``start_date`` and ``end_date`` as columns and was refused.
+    "history": _pattern(
+        "FEATURE-RATE-010",
+        "rates.history",
+        "currency start_date end_date",
+        _ROW,
+        "`currency`, `date >= start_date`, `date <= end_date`",
+        kind="list",
+        order="`date` asc",
+    ),
+    "prune": _pattern(
+        "FEATURE-RATE-011", "rates.prune", "before", "", "`date < before`", kind="delete"
+    ),
 }
 _SCHEMA = """## `rates`
 
@@ -156,6 +175,30 @@ def test_each_operation_resolves_its_name_kind_rows_and_writes():
     assert shapes["rates.reprice_currency"] == ("update", ("currency",), (), ("rate",), True)
     assert shapes["rates.update"] == ("update", ("id",), (), ("rate",), False)
     assert shapes["rates.delete"] == ("delete", ("id",), (), (), False)
+    assert shapes["rates.history"] == (
+        "list",
+        (),
+        ("currency", "start_date", "end_date"),
+        (),
+        True,
+    )
+    assert shapes["rates.prune"] == ("delete", ("before",), (), (), True)
+
+
+def test_a_range_is_two_comparison_terms_and_an_order_sorts_the_list():
+    surface = operation_surface(_declaration())
+
+    history = _block(surface, "rates.history")
+    assert "| list | 0..n | `currency`, `date >= start_date`, `date <= end_date` | — |" in history
+    assert '- Input: `{"currency": "str?", "start_date": "str?", "end_date": "str?"}`' in history
+    assert "- Order: `date` asc" in history
+    assert (
+        'SELECT "id", "date", "currency", "rate" FROM "rates" WHERE "currency" = ? AND '
+        '"date" >= ? AND "date" <= ? ORDER BY "date" ASC;' in history
+    )
+    prune = _block(surface, "rates.prune")
+    assert "| delete | 0..n | `date < before` | — |" in prune
+    assert 'DELETE FROM "rates" WHERE "date" < ?;' in prune
 
 
 def test_the_surface_states_each_call_its_json_and_its_sql():
@@ -257,6 +300,46 @@ def test_the_compact_declaration_carries_the_surface():
         ),
         (
             {
+                "get": _pattern(
+                    "FEATURE-RATE-002",
+                    "rates.get",
+                    "date currency",
+                    _ROW,
+                    "`date >= date`, `currency`",
+                )
+            },
+            "is a `get`, which matches each Input field by equality",
+        ),
+        (
+            {
+                "get": _PATTERNS["get"].replace(
+                    "| Compatibility", "| Order | `date` |\n| Compatibility"
+                )
+            },
+            "only a `list` returns rows in an order",
+        ),
+        (
+            {"history": _PATTERNS["history"].replace("`date` asc", "`day` asc")},
+            "Order names `day`, which is not a column of `rates`",
+        ),
+        (
+            {
+                "history": _PATTERNS["history"].replace(
+                    "`date <= end_date`", "`date <= start_date`, `date <= end_date`"
+                )
+            },
+            "Match names `start_date` more than once",
+        ),
+        (
+            {"prune": _PATTERNS["prune"].replace("`date < before`", "`day < before`")},
+            "Input field `before` is compared with `day`, which is not a column of `rates`",
+        ),
+        (
+            {"prune": _PATTERNS["prune"].replace("`date < before`", "`date ~ before`")},
+            "Match term `date ~ before` is neither an Input field nor",
+        ),
+        (
+            {
                 "extra": _pattern(
                     "FEATURE-RATE-008", "rates.find_by_currency", "currency", _ROW, kind="list"
                 )
@@ -322,6 +405,19 @@ def test_a_caller_facing_change_moves_exactly_that_contract():
     assert {key for key in baseline if baseline[key] != renamed[key]} == {"FEATURE-RATE-004"}
 
 
+def test_a_comparison_or_an_order_change_moves_exactly_that_contract():
+    baseline = _fingerprints(_declaration())
+    reordered = _fingerprints(
+        _declaration(history=_PATTERNS["history"].replace("`date` asc", "`date` desc"))
+    )
+    narrowed = _fingerprints(
+        _declaration(prune=_PATTERNS["prune"].replace("`date < before`", "`date <= before`"))
+    )
+
+    assert {key for key in baseline if baseline[key] != reordered[key]} == {"FEATURE-RATE-010"}
+    assert {key for key in baseline if baseline[key] != narrowed[key]} == {"FEATURE-RATE-011"}
+
+
 def test_a_manifest_recorded_with_the_legacy_fingerprint_reads_unchanged():
     text = _declaration()
     legacy = parse_database_operation_fingerprints(_legacy_operation_fingerprints(text))
@@ -357,6 +453,14 @@ assert db.rates.reprice_currency(currency="USD", rate="9") == 2
 assert {{row.rate for row in db.rates.list(currency="USD")}} == {{"9"}}
 assert db.rates.update(id=first.id, rate="8").rate == "8"
 assert db.rates.list(currency="JPY")[0].rate == "161.00"
+db.rates.create(date="2025-01-29", currency="USD", rate="1.0300")
+history = db.rates.history(currency="USD", start_date="2025-01-30", end_date="2025-01-31")
+assert [row.date for row in history] == ["2025-01-30", "2025-01-31"], history
+assert [row.date for row in db.rates.history(currency="USD")] == [
+    "2025-01-29", "2025-01-30", "2025-01-31"
+]
+assert db.rates.prune(before="2025-01-30") == 1
+assert [row.date for row in db.rates.history(currency="USD")] == ["2025-01-30", "2025-01-31"]
 try:
     db.rates.get(date="2025-01-31")
 except PersistenceError as exc:
@@ -383,6 +487,8 @@ def test_the_surface_sql_is_the_sql_the_runtime_builds(tmp_path: Path):
         "reprice_currency": {"currency": "USD", "rate": "3"},
         "update": {"id": 1, "rate": "4"},
         "delete": {"id": 1},
+        "history": {"currency": "USD", "start_date": "2025-01-01", "end_date": "2025-12-31"},
+        "prune": {"before": "2025-01-01"},
     }
     script = f"""
 import json
@@ -456,6 +562,13 @@ func TestOperations(t *testing.T) {
  if err!=nil || count!=1 {t.Fatalf("reprice: %v %v",count,err)}
  row,err:=db.Rates.Get(ctx,persistence.RatesGetInput{Date:day,Currency:jpy})
  if err!=nil || row==nil || row.Rate!=r3 {t.Fatalf("get: %v %v",row,err)}
+ early,late:="2025-01-29","2025-01-30"
+ if _,err:=db.Rates.Create(ctx,persistence.RatesCreateInput{Date:late,Currency:usd,Rate:r1});err!=nil {t.Fatal(err)}
+ if _,err:=db.Rates.Create(ctx,persistence.RatesCreateInput{Date:early,Currency:usd,Rate:r1});err!=nil {t.Fatal(err)}
+ history,err:=db.Rates.History(ctx,persistence.RatesHistoryInput{Currency:usd,StartDate:&late})
+ if err!=nil || len(history)!=2 || history[0].Date!=late || history[1].Date!=day {t.Fatalf("history: %v %v",history,err)}
+ pruned,err:=db.Rates.Prune(ctx,persistence.RatesPruneInput{Before:late})
+ if err!=nil || pruned!=1 {t.Fatalf("prune: %v %v",pruned,err)}
 }
 """)
     result = subprocess.run(

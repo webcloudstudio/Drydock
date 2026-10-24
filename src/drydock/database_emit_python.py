@@ -166,7 +166,9 @@ def render_schema_module(text: str, *, source: str = "DATABASE.md") -> str:
                 f"        columns={selected!r},\n"
                 f"        match={match!r},\n"
                 f"        name={name!r},\n"
-                f"    ),"
+                + (f"        compare={pattern.compare!r},\n" if pattern.compare else "")
+                + (f"        order={pattern.order!r},\n" if pattern.order else "")
+                + "    ),"
             )
 
     table_entries = "\n".join(

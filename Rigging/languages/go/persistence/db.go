@@ -25,10 +25,43 @@ type Table struct {
 
 // Operation describes one declared repository method. Name is the method callers use and Verb
 // is its Kind, how it runs. Match is the required equality predicate of a get, update, upsert,
-// or delete; an operation without Columns returns a count.
+// or delete; an operation without Columns returns a count. Compare names each input compared
+// other than by equality with its own column, such as start_date >= date; Order is the sort
+// keys of a list.
 type Operation struct {
 	ID, Table, Verb, Name  string
 	Inputs, Columns, Match []string
+	Compare                []Comparison
+	Order                  []Ordering
+}
+
+// Comparison binds input Field as a parameter compared with Column by Op.
+type Comparison struct{ Field, Op, Column string }
+
+// Ordering is one sort key of a list: a declared column, asc or desc.
+type Ordering struct{ Column, Direction string }
+
+var comparisons = map[string]bool{"=": true, "<": true, "<=": true, ">": true, ">=": true}
+
+// column returns the column an input binds: the one its comparison names, else its own name.
+func (op *Operation) column(field string) (string, string) {
+	for _, term := range op.Compare {
+		if term.Field == field {
+			return term.Column, term.Op
+		}
+	}
+	return field, "="
+}
+
+// keys returns the match fields compared by equality, which read back the one row a write reached.
+func (op *Operation) keys(match []string) []string {
+	equal := []string{}
+	for _, name := range match {
+		if _, kind := op.column(name); kind == "=" {
+			equal = append(equal, name)
+		}
+	}
+	return equal
 }
 
 // Schema holds generated declarations; callers do not construct SQL.
@@ -83,7 +116,21 @@ func Open(ctx context.Context, dsn string, schema Schema) (*Database, error) {
 		if table == nil {
 			return nil, fmt.Errorf("%s: undeclared table %s", op.ID, op.Table)
 		}
-		for _, name := range append(append(append([]string{}, op.Inputs...), op.Columns...), op.Match...) {
+		bound := []string{}
+		for _, name := range append(append([]string{}, op.Inputs...), op.Match...) {
+			column, kind := op.column(name)
+			if !comparisons[kind] {
+				return nil, fmt.Errorf("%s: undeclared comparison %q", op.ID, kind)
+			}
+			bound = append(bound, column)
+		}
+		for _, key := range op.Order {
+			if key.Direction != "asc" && key.Direction != "desc" {
+				return nil, fmt.Errorf("%s: undeclared order %q", op.ID, key.Direction)
+			}
+			bound = append(bound, key.Column)
+		}
+		for _, name := range append(bound, op.Columns...) {
 			found := false
 			for _, column := range table.Columns {
 				if name == column {
@@ -181,13 +228,14 @@ func (db *Database) placeholder(n int) string {
 	}
 	return "?"
 }
-func (db *Database) predicates(names []string, offset int) string {
+func (db *Database) predicates(op *Operation, names []string, offset int) string {
 	if len(names) == 0 {
 		return ""
 	}
 	parts := make([]string, len(names))
 	for i, name := range names {
-		parts[i] = quote(name) + " = " + db.placeholder(offset+i+1)
+		column, kind := op.column(name)
+		parts[i] = quote(column) + " " + kind + " " + db.placeholder(offset+i+1)
 	}
 	return " WHERE " + strings.Join(parts, " AND ")
 }
@@ -285,7 +333,14 @@ func (db *Database) run(ctx context.Context, table, name string, arguments map[s
 		}
 		// A get matches a unique key, so it reads at most one row without a LIMIT; the statement
 		// is the one the Python runtime builds.
-		query := "SELECT " + quoted(columns) + " FROM " + quote(table) + db.predicates(names, 0)
+		query := "SELECT " + quoted(columns) + " FROM " + quote(table) + db.predicates(op, names, 0)
+		if len(op.Order) > 0 {
+			keys := make([]string, len(op.Order))
+			for i, key := range op.Order {
+				keys[i] = quote(key.Column) + " " + strings.ToUpper(key.Direction)
+			}
+			query += " ORDER BY " + strings.Join(keys, ", ")
+		}
 		rows, err := db.selectRows(ctx, query, columns, values)
 		return Result{Rows: rows}, err
 	case "create":
@@ -321,7 +376,7 @@ func (db *Database) run(ctx context.Context, table, name string, arguments map[s
 		if supplied, ok := arguments[declared.Key]; ok {
 			id = supplied
 		}
-		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates([]string{declared.Key}, 0)
+		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates(&Operation{}, []string{declared.Key}, 0)
 		rows, err := db.selectRows(ctx, query, op.Columns, []any{id})
 		return Result{Rows: rows, ID: id}, err
 	case "update":
@@ -343,7 +398,7 @@ func (db *Database) run(ctx context.Context, table, name string, arguments map[s
 		if len(assignments) == 0 {
 			return Result{}, errors.New("update requires at least one assigned column")
 		}
-		query := "UPDATE " + quote(table) + " SET " + strings.Join(assignments, ", ") + db.predicates(match, len(ordered))
+		query := "UPDATE " + quote(table) + " SET " + strings.Join(assignments, ", ") + db.predicates(op, match, len(ordered))
 		result, err := db.executor().ExecContext(ctx, query, append(ordered, keys...)...)
 		if err != nil {
 			return Result{}, err
@@ -352,9 +407,15 @@ func (db *Database) run(ctx context.Context, table, name string, arguments map[s
 		if err != nil || count == 0 || len(op.Columns) == 0 {
 			return Result{Count: count}, err
 		}
-		// The declared Output row, read back by its match so unassigned columns are included.
-		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates(match, 0)
-		rows, err := db.selectRows(ctx, query, op.Columns, keys)
+		// The declared Output row, read back by its equality match so unassigned columns are
+		// included; a row-returning update matches a unique key by equality.
+		equal := op.keys(match)
+		readback := []any{}
+		for _, name := range equal {
+			readback = append(readback, values[indexOf(names, name)])
+		}
+		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates(op, equal, 0)
+		rows, err := db.selectRows(ctx, query, op.Columns, readback)
 		return Result{Rows: rows, Count: count}, err
 	case "upsert":
 		if len(match) == 0 {
@@ -386,11 +447,11 @@ func (db *Database) run(ctx context.Context, table, name string, arguments map[s
 		for _, name := range match {
 			keys = append(keys, values[indexOf(names, name)])
 		}
-		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates(match, 0)
+		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates(op, match, 0)
 		rows, err := db.selectRows(ctx, query, op.Columns, keys)
 		return Result{Rows: rows, Count: count}, err
 	case "delete":
-		result, err := db.executor().ExecContext(ctx, "DELETE FROM "+quote(table)+db.predicates(names, 0), values...)
+		result, err := db.executor().ExecContext(ctx, "DELETE FROM "+quote(table)+db.predicates(op, names, 0), values...)
 		if err != nil {
 			return Result{}, err
 		}

@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-24: `DATABASE.md` access patterns express ranges and list order. A `| Match |` term
+  `<column> <op> <field>` (`=`, `<`, `<=`, `>`, `>=`) compares an Input field that is not a column
+  with that column, as `date >= start_date`, on a `list`, `update`, or `delete`. A `list` declares
+  `| Order | <column> [asc|desc], ... |`. Plan validates both, the generated Operation Surface shows
+  the terms, the order, and the SQL, and the shipped Python and Go persistence runtimes execute
+  them as bound parameters. Terms and Order enter the contract fingerprint only when declared, so
+  existing operations keep their fingerprints.
 - 2026-10-24: `drydock plan` and `plan verify` refuse a criterion that calls a repository
   operation `DATABASE.md` does not declare (`operation-undeclared`): Python
   `db.<table>.<verb>(`, Go `db.<Table>.<Verb>(`, judged only on declared tables. The generated

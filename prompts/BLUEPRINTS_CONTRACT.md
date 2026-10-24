@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261024 V31
+version: 20261024 V32
 ---
 
 ## Overview
@@ -892,19 +892,37 @@ two names that run the same Kind, Match, Sets, and Output are synonyms: declare 
 everywhere.
 
 An optional `| Match | `a`, `b` |` row names the Input fields that select the rows an operation
-reaches. Every Match field is an Input field, required at call time, and the fields are compared
-by equality and joined with AND. No other operator, no OR, no join, and no SQL exist. A Match
-that covers the `PK` or a declared `UNIQUE` reaches at most one row; any other Match reaches many.
-Each Kind uses Match exactly as follows:
+reaches. Every Match field is an Input field, required at call time except on a `list`, and the
+terms are joined with AND. A bare field is compared by equality with the column of its own name.
+A term `<column> <op> <field>`, with op one of `=`, `<`, `<=`, `>`, `>=`, compares an Input field
+that is not a column with that column, so a range is two terms on one column:
+`` `date >= start_date`, `date <= end_date` ``. A comparison term belongs to a `list`, `update`,
+or `delete`; `get` and `upsert` match a unique key by equality. Every Input field is a column of
+the table or the field of a comparison term, and a field appears in one term only. No other
+operator, no OR, no join, and no SQL exist. A Match whose equality fields cover the `PK` or a
+declared `UNIQUE` reaches at most one row; any other Match reaches many. Each Kind uses Match
+exactly as follows:
 
 | Kind | Match | Input fields | Rows | Returns |
 |---|---|---|---|---|
 | `get` | a unique key; defaults to every Input field | exactly the Match | 0..1 | the Output row, or none |
-| `list` | not declared; every Input field is an optional equality filter | the filters | 0..n | a list of Output rows |
+| `list` | optional; states how each filter compares, and every filter, bound included, is optional | the filters | 0..n | a list of Output rows |
 | `create` | not declared | the values inserted | 1 | the Output row |
 | `update` | any Input fields; defaults to the `PK` | the Match plus at least one column to set | 0..1 on a unique key, else 0..n | the Output row, or none; a count when it reaches many |
 | `upsert` | required; exactly one declared unique key | the Match plus the columns to set, including every `NOT NULL` column without a `DEFAULT` | 1 | the Output row |
 | `delete` | defaults to every Input field | exactly the Match | 0..1 on a unique key, else 0..n | the Output built from the Match, or none; a count when it reaches many |
+
+A `list` returns its rows in no stated order unless it declares `| Order | `date` asc |`: one or
+more columns of the table, each `asc` (the default) or `desc`, the first the primary sort key.
+Declare an Order whenever a story states one, such as "points in ascending date order"; Order
+belongs to a `list` only.
+
+```markdown
+| Repository operation | `rates.history` |
+| Kind | list |
+| Match | `currency`, `date >= start_date`, `date <= end_date` |
+| Order | `date` asc |
+```
 
 An `update` or `delete` that reaches many rows declares its Output with no fields, because it
 returns the number of rows changed. `upsert` inserts the row its Match identifies, or replaces
@@ -928,7 +946,8 @@ source rule such as "a stored (date, currency) is replaced". A `get` on a non-un
 Drydock derives each operation's contract from the declaration: its call, Kind, Match, Sets,
 rows, Input and Output as JSON with caller types (`str`, `int`, `float`, `bool`, `bytes`), the
 SQL the runtime executes, and a contract fingerprint. Only a change a caller can see moves the
-fingerprint: the name, Kind, Match, rows, return shape, or a field's name or caller type. A
+fingerprint: the name, Kind, Match terms, Order, rows, return shape, or a field's name or caller
+type. A
 column's length, nullability, `DEFAULT`, an index, or the SQL never does, so changing them
 rebuilds nothing beyond `DATABASE.md`. It is the only place the declaration says which table a pattern reaches, so the form is
 checked rather than advisory, and free text there fails the plan. Every table in `## Schema` is reached by at least one access

@@ -43,6 +43,9 @@ __all__ = [
 ]
 
 VERBS = ("get", "list", "create", "update", "delete")
+#: The comparisons a declared Match term may state; anything else is refused before SQL is built.
+COMPARISONS = ("=", "<", "<=", ">", ">=")
+DIRECTIONS = ("asc", "desc")
 
 
 class PersistenceError(RuntimeError):
@@ -71,7 +74,10 @@ class Operation:
     equality predicate of a ``get``, ``update``, ``upsert``, or ``delete``, every field of it
     required; a ``list`` filters on whichever inputs are supplied, and the inputs of a
     ``create``, ``update``, or ``upsert`` outside ``match`` are the values written. ``row`` is the dataclass the operation returns, and
-    ``columns`` are its fields; an operation with no ``row`` returns a count.
+    ``columns`` are its fields; an operation with no ``row`` returns a count. ``compare`` holds
+    ``(field, op, column)`` for each input compared other than by equality with its own column,
+    such as ``("start_date", ">=", "date")``, and ``order`` the ``(column, direction)`` sort keys
+    of a ``list``.
     """
 
     identifier: str
@@ -82,6 +88,13 @@ class Operation:
     columns: tuple[str, ...] = ()
     match: tuple[str, ...] = ()
     name: str = ""
+    compare: tuple[tuple[str, str, str], ...] = ()
+    order: tuple[tuple[str, str], ...] = ()
+
+    def keys(self) -> tuple[str, ...]:
+        """The match fields compared by equality: what reads back the one row a write reached."""
+        compared = {field for field, op, _ in self.compare if op != "="}
+        return tuple(name for name in self.match if name not in compared)
 
 
 @dataclass(frozen=True)
@@ -139,17 +152,39 @@ class Driver:
             raise PersistenceError(f"refusing unsafe identifier {identifier!r}")
         return f'"{identifier}"'
 
-    def _predicate(self, names: Sequence[str], start: int = 0) -> str:
-        return " AND ".join(
-            f"{self.quote(name)} = {self.placeholder(start + offset)}"
-            for offset, name in enumerate(names)
-        )
+    def _predicate(
+        self, names: Sequence[str], start: int = 0, compare: Sequence[tuple[str, str, str]] = ()
+    ) -> str:
+        """``names`` are input fields; each is compared with its declared column, else its own."""
+        by_field = {field: (op, column) for field, op, column in compare}
+        terms = []
+        for offset, name in enumerate(names):
+            op, column = by_field.get(name, ("=", name))
+            if op not in COMPARISONS:
+                raise PersistenceError(f"refusing undeclared comparison {op!r}")
+            terms.append(f"{self.quote(column)} {op} {self.placeholder(start + offset)}")
+        return " AND ".join(terms)
 
-    def select(self, table: str, columns: Sequence[str], predicate: Sequence[str]) -> str:
+    def select(
+        self,
+        table: str,
+        columns: Sequence[str],
+        predicate: Sequence[str],
+        compare: Sequence[tuple[str, str, str]] = (),
+        order: Sequence[tuple[str, str]] = (),
+    ) -> str:
         selected = ", ".join(self.quote(name) for name in columns)
         statement = f"SELECT {selected} FROM {self.quote(table)}"
         if predicate:
-            statement += f" WHERE {self._predicate(predicate)}"
+            statement += f" WHERE {self._predicate(predicate, 0, compare)}"
+        if order:
+            for _, direction in order:
+                if direction not in DIRECTIONS:
+                    raise PersistenceError(f"refusing undeclared order {direction!r}")
+            keys = ", ".join(
+                f"{self.quote(column)} {direction.upper()}" for column, direction in order
+            )
+            statement += f" ORDER BY {keys}"
         return statement
 
     def insert(self, table: str, columns: Sequence[str], key: str | None) -> str:
@@ -160,13 +195,19 @@ class Driver:
             statement += f" RETURNING {self.quote(key)}"
         return statement
 
-    def update(self, table: str, columns: Sequence[str], predicate: Sequence[str]) -> str:
+    def update(
+        self,
+        table: str,
+        columns: Sequence[str],
+        predicate: Sequence[str],
+        compare: Sequence[tuple[str, str, str]] = (),
+    ) -> str:
         assignments = ", ".join(
             f"{self.quote(name)} = {self.placeholder(index)}" for index, name in enumerate(columns)
         )
         statement = f"UPDATE {self.quote(table)} SET {assignments}"
         if predicate:
-            statement += f" WHERE {self._predicate(predicate, len(columns))}"
+            statement += f" WHERE {self._predicate(predicate, len(columns), compare)}"
         return statement
 
     def upsert(self, table: str, columns: Sequence[str], match: Sequence[str]) -> str:
@@ -185,10 +226,12 @@ class Driver:
         )
         return f"{self.insert(table, columns, None)} ON CONFLICT ({target}) {action}"
 
-    def delete(self, table: str, predicate: Sequence[str]) -> str:
+    def delete(
+        self, table: str, predicate: Sequence[str], compare: Sequence[tuple[str, str, str]] = ()
+    ) -> str:
         statement = f"DELETE FROM {self.quote(table)}"
         if predicate:
-            statement += f" WHERE {self._predicate(predicate)}"
+            statement += f" WHERE {self._predicate(predicate, 0, compare)}"
         return statement
 
     def inserted_key(self, cursor: Any) -> Any:  # pragma: no cover - engine specific
@@ -344,7 +387,6 @@ class Database:
             cursor.close()
             self._driver.close()
 
-
     def __enter__(self) -> Database:
         return self
 
@@ -422,7 +464,10 @@ class Database:
         match = self._match(operation)
         if verb in ("get", "list"):
             columns = operation.columns or self._columns(table)
-            cursor.execute(self._driver.select(table, columns, names), values)
+            statement = self._driver.select(
+                table, columns, names, operation.compare, operation.order
+            )
+            cursor.execute(statement, values)
             rows = cursor.fetchall() if verb == "list" else cursor.fetchmany(1)
             built = [self._build(operation, columns, row) for row in rows]
             return built if verb == "list" else (built[0] if built else None)
@@ -449,14 +494,19 @@ class Database:
                 raise PersistenceError(f"{operation.identifier} supplies no column to set")
             keys = [values[names.index(name)] for name in match]
             ordered = [values[names.index(name)] for name in assigned] + keys
-            cursor.execute(self._driver.update(table, assigned, match), ordered)
+            cursor.execute(self._driver.update(table, assigned, match, operation.compare), ordered)
             if operation.row is None:
                 return cursor.rowcount
             if not cursor.rowcount:
                 return None
-            # The declared Output row, read back by its match so unassigned columns are included.
+            # The declared Output row, read back by its equality match so unassigned columns are
+            # included; a row-returning update matches a unique key by equality.
             columns = operation.columns or self._columns(table)
-            cursor.execute(self._driver.select(table, columns, match), keys)
+            equal = operation.keys() if operation.match else match
+            cursor.execute(
+                self._driver.select(table, columns, equal, operation.compare),
+                [values[names.index(name)] for name in equal],
+            )
             return self._build(operation, columns, cursor.fetchone())
         if verb == "upsert":
             cursor.execute(self._driver.upsert(table, names, match), values)
@@ -467,7 +517,7 @@ class Database:
             cursor.execute(self._driver.select(table, columns, match), keys)
             return self._build(operation, columns, cursor.fetchone())
         if verb == "delete":
-            cursor.execute(self._driver.delete(table, names), values)
+            cursor.execute(self._driver.delete(table, names, operation.compare), values)
             if operation.row is None:
                 return cursor.rowcount
             # The declared Output, built from the key it was given; None when nothing matched.

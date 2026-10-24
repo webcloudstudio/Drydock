@@ -66,6 +66,7 @@ db = open_database(config.database_url)
 
 ticket = db.tickets.get(id=ticket_id)                 # a frozen dataclass, or None
 open_tickets = db.tickets.list(status="open")         # a list of them
+history = db.rates.history(currency="USD", start_date=start)  # range list; end_date omitted
 ticket = db.tickets.create(status="open", title=title)  # the declared Output row
 db.tickets.update(id=ticket_id, status="closed")      # the row, or None
 rate = db.rates.replace_rate(date=day, currency="USD", rate="1.0393")  # upsert: the row
@@ -89,19 +90,22 @@ it, one of six: `get`, `list`, `create`, `update`, `upsert`, `delete`.
   same Kind, Match, Sets, and Output are synonyms, and the plan refuses the second.
 
 **Which rows an operation reaches is declared, never inferred.** A pattern's `| Match |` row names
-the Input fields that select rows: equality on each, joined with AND, every field required. A Match
-covering the table's `PK` or a declared `UNIQUE` reaches at most one row; any other Match reaches
-many. Every write is one statement inside the package, so a caller never composes a
+the Input fields that select rows, joined with AND, every field required except on a `list`. A
+bare field is compared by equality with the column of its name; a term `<column> <op> <field>`
+(`=`, `<`, `<=`, `>`, `>=`) compares an argument with a column, as `date >= start_date`. A Match
+whose equality fields cover the table's `PK` or a declared `UNIQUE` reaches at most one row; any
+other Match reaches many. A `list` with `| Order | `date` asc |` returns its rows in that order,
+and in no stated order otherwise; do not re-sort or filter what an operation already returns. Every write is one statement inside the package, so a caller never composes a
 read-then-write.
 
 | Kind | Selects rows by | Writes | Rows | Returns |
 |---|---|---|---|---|
 | `get` | Match: a unique key | — | 0..1 | the row, or `None` |
-| `list` | each supplied Input field (optional equality filters) | — | 0..n | a list of rows |
+| `list` | each supplied Input field, compared as its Match term states (optional filters) | — | 0..n | a list of rows, in its Order |
 | `create` | — | every Input field | 1 | the row |
-| `update` | Match (default: the `PK`) | the other Input fields supplied | 0..1 on a unique key, else 0..n | the row or `None`; the count when it reaches many |
+| `update` | Match (default: the `PK`); comparison terms allowed | the other Input fields supplied | 0..1 on a unique key, else 0..n | the row or `None`; the count when it reaches many |
 | `upsert` | Match: exactly one unique key | inserts the row, or replaces its other Input fields | 1 | the row |
-| `delete` | Match: every Input field | — | 0..1 on a unique key, else 0..n | the Output built from the Match or `None`; the count when it reaches many |
+| `delete` | Match: every Input field; comparison terms allowed | — | 0..1 on a unique key, else 0..n | the Output built from the Match or `None`; the count when it reaches many |
 
 No other operator, no OR, no join, and no SQL exists outside the package.
 
@@ -128,15 +132,15 @@ SELECT "id", "date", "currency", "rate" FROM "rates" WHERE "date" = ? AND "curre
 
 - **Call:** `db.<table>.<name>(...)`; Go `db.<Table>.<Name>(ctx, <Table><Name>Input{...})`.
 - **Input / Output:** JSON field names with caller types `str`, `int`, `float`, `bool`, `bytes`.
-  `?` marks a field the caller may omit: a `list` filter, or a column an `update` sets only when
-  supplied. Output is `{...}`, `{...} | null`, `[{...}]`, or `"int" (rows changed)`.
+  `?` marks a field the caller may omit: a `list` filter or bound, or a column an `update` sets
+  only when supplied. A `- Order:` line states a `list`'s sort keys. Output is `{...}`, `{...} | null`, `[{...}]`, or `"int" (rows changed)`.
 - **SQL:** the statements the runtime executes, in SQLite placeholder form; PostgreSQL binds the
   same positions. A test holds it byte-identical to the shipped driver.
 - **Contract:** the operation's fingerprint, the first 12 hex digits of a SHA-256.
 
 ### What forces a rebuild
 
-Only a contract change. The fingerprint hashes the name, Kind, Match, rows, return shape, and each
+Only a contract change. The fingerprint hashes the name, Kind, Match terms, Order, rows, return shape, and each
 Input and Output field's name and caller type. It excludes everything a caller cannot see: column
 length (`VARCHAR(12)` and `VARCHAR(40)` are both `str`), nullability, `Required`, `DEFAULT`,
 indexes, and the SQL. Refit rebuilds the callers of an operation only when its fingerprint moves;

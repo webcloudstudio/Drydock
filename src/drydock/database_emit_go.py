@@ -72,6 +72,23 @@ def _strings(values) -> str:
     return "[]string{" + ",".join(json.dumps(v) for v in values) + "}"
 
 
+def _comparisons(pattern) -> str:
+    """The Compare and Order members of one generated Operation, or ``""`` when undeclared."""
+    members = ""
+    if pattern.compare:
+        terms = ", ".join(
+            f"{{Field:{json.dumps(f)}, Op:{json.dumps(o)}, Column:{json.dumps(c)}}}"
+            for f, o, c in pattern.compare
+        )
+        members += f", Compare:[]Comparison{{{terms}}}"
+    if pattern.order:
+        keys = ", ".join(
+            f"{{Column:{json.dumps(c)}, Direction:{json.dumps(d)}}}" for c, d in pattern.order
+        )
+        members += f", Order:[]Ordering{{{keys}}}"
+    return members
+
+
 def render_go_schema(text: str) -> str:
     tables = sqlite_schema_tables(text)
     patterns = parse_database_contract(text).patterns
@@ -106,10 +123,12 @@ def render_go_schema(text: str) -> str:
             returns_row = verb in ("get", "list") or (
                 verb in ("create", "update", "upsert", "delete") and keyed and bool(pattern.outputs)
             )
-            for field in (*pattern.inputs, *(pattern.outputs if returns_row else ())):
-                if field.name not in column_names:
+            bound = [pattern.column_of(field.name) for field in pattern.inputs]
+            returned = [field.name for field in (pattern.outputs if returns_row else ())]
+            for column in (*bound, *returned, *(column for column, _ in pattern.order)):
+                if column not in column_names:
                     raise SpecificationError(
-                        f"Go operation {operation} refers to undeclared column {field.name}"
+                        f"Go operation {operation} refers to undeclared column {column}"
                     )
             repo = _export(table) + "Repository"
             input_type = _export(table) + _export(name) + "Input"
@@ -178,6 +197,7 @@ def render_go_schema(text: str) -> str:
             operations.append(
                 "{"
                 + f"ID:{json.dumps(pattern.identifier)}, Table:{json.dumps(table)}, Verb:{json.dumps(verb)}, Name:{json.dumps(name)}, Inputs:{_strings(f.name for f in pattern.inputs)}, Columns:{_strings(columns)}, Match:{_strings(match)}"
+                + _comparisons(pattern)
                 + "},"
             )
     fields, initializers, repositories, entries = [], [], [], []

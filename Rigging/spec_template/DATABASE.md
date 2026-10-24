@@ -47,10 +47,14 @@
 <!-- Kind, Match, Sets, and Output are synonyms and fail the plan. One pattern declares one -->
 <!-- operation, because it carries one Input and one Output; give each operation its own -->
 <!-- `### <FEATURE-DOMAIN-NNN>` section. The form is checked, not advisory. -->
-<!-- An optional `| Match | `a`, `b` |` row names the Input fields that select the rows: equality, -->
-<!-- joined with AND, every field required. A Match covering the PK or a declared UNIQUE reaches -->
-<!-- one row; any other reaches many. get: a unique key, Input = Match. list: no Match; each -->
-<!-- Input field is an optional equality filter. create: no Match. update: Match defaults to the -->
+<!-- An optional `| Match | `a`, `b` |` row names the Input fields that select the rows, joined -->
+<!-- with AND, every field required except on a list. A bare field is equality with the column -->
+<!-- of its name; `<column> <op> <field>` with op = < <= > >= compares an argument with a column, -->
+<!-- so a range is `date >= start_date`, `date <= end_date`. Comparison terms: list, update, -->
+<!-- delete only. An equality Match covering the PK or a declared UNIQUE reaches one row; any -->
+<!-- other reaches many. get: a unique key, Input = Match. list: every Input field, bound -->
+<!-- included, is an optional filter; `| Order | `date` asc |` sorts it (asc or desc, list -->
+<!-- only), and without one the order is unstated. create: no Match. update: Match defaults to the -->
 <!-- PK; the other Input fields are set. upsert: Match is exactly one unique key; inserts the row -->
 <!-- or replaces its other Input columns; Input carries every NOT NULL column without a DEFAULT. -->
 <!-- delete: Input = Match. -->
