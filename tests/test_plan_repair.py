@@ -686,3 +686,81 @@ def test_a_persistence_defect_is_never_handed_to_the_criterion_prompt(tmp_path):
     (item,) = result.outstanding
     assert item.filename == "DATABASE.md"
     assert "drydock plan Demo" in item.detail
+
+
+_GO_BROKEN = (
+    "# FEATURE: CLI\n\n## Programmatic Acceptance\n\n"
+    "=== AC usage ===\nIntent: Missing arguments exit 2 with empty stdout.\n"
+    "import subprocess\n"
+    'result = subprocess.run(["go", "run", "./cmd/dupfind"], capture_output=True, text=True)\n'
+    "assert result.returncode == 2\nassert result.stdout == ''\n"
+    "=== END AC usage ===\n"
+)
+
+
+@pytest.mark.parametrize("fenced", [False, True])
+def test_go_repair_preserves_exit_and_output_assertions(tmp_path, monkeypatch, fenced):
+    """DupFind: repaired Go criteria compile and call the variadic client correctly."""
+    import sys
+    from types import SimpleNamespace
+
+    from drydock.acceptance import parse_programmatic_acceptance
+
+    target = _target(tmp_path, FEATURE_Cli=_GO_BROKEN)
+    proof = (
+        "from drydock_go import cli_runner\n"
+        "code, out, err = cli_runner()\n"
+        "assert code == 2\nassert out == ''"
+    )
+    if fenced:
+        proof = "```python\n" + proof + "\n```"
+    response = _fixed_block(
+        "FEATURE_Cli.md", "usage", "Intent: Missing arguments exit 2 with empty stdout.\n" + proof
+    )
+    runner = _runner(response)
+    result = repair("Demo", target, runner=runner)
+    assert result.ok, result.items
+    assert verify("Demo", target).ok
+    (check,) = parse_programmatic_acceptance(target / "blueprint/FEATURE_Cli.md")
+    calls = []
+
+    def cli_runner(*args):
+        calls.append(args)
+        return 2, "", "usage"
+
+    monkeypatch.setitem(sys.modules, "drydock_go", SimpleNamespace(cli_runner=cli_runner))
+    exec(compile(check.code, "<criterion>", "exec"), {})
+    assert calls == [()]
+    assert 'cli_runner("--summary", ".")' in runner.calls[0]["prompt"]
+    assert "*args: str" in runner.calls[0]["prompt"]
+
+
+@pytest.mark.parametrize(
+    "proof",
+    [
+        "from drydock_go import cli_runner\ncode, out, err = cli_runner([])\nassert code == 2",
+        "import subprocess\nr = subprocess.run(['go', 'run', './cmd/dupfind'])\nassert r.returncode == 2",
+    ],
+)
+def test_go_repair_still_using_an_invalid_launcher_is_reverted(tmp_path, proof):
+    target = _target(tmp_path, FEATURE_Cli=_GO_BROKEN)
+    response = _fixed_block("FEATURE_Cli.md", "usage", "Intent: Usage.\n" + proof)
+    result = repair("Demo", target, runner=_runner(response))
+    assert not result.ok
+    assert result.files_changed == ()
+    assert (target / "blueprint/FEATURE_Cli.md").read_text() == _GO_BROKEN
+
+
+def test_repair_keeps_embedded_fences_and_rejects_text_outside_a_fence():
+    from drydock.plan_repair import _response_blocks
+
+    literal = (
+        'Intent: Preserve markup.\nsample = """\n```python\nassert False\n```\n"""\nassert sample\n'
+    )
+    body = _response_blocks(_fixed_block("FEATURE_Cli.md", "usage", literal))
+    assert body[("FEATURE_Cli.md", "usage")] == literal + "\n"
+    bad = "Intent: Bad.\n```python\nassert True\n```\nUnrequested explanation."
+    assert (
+        _response_blocks(_fixed_block("FEATURE_Cli.md", "usage", bad))[("FEATURE_Cli.md", "usage")]
+        == bad + "\n"
+    )

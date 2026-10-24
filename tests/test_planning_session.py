@@ -7460,3 +7460,40 @@ def test_damaged_continuation_names_the_artifact_in_progress_and_retry(partial_p
         line.startswith("[plan-score]") and "FEATURE-X.md: incomplete or nested" in line
         for line in progress
     )
+
+
+@pytest.mark.parametrize(
+    ("code", "kind"),
+    [
+        (
+            "import subprocess\nr = subprocess.run(['go', 'run', './cmd/dupfind'])\nassert r.returncode == 2",
+            "go-run",
+        ),
+        (
+            "from drydock_go import cli_runner\ncode, out, err = cli_runner([])\nassert code == 2",
+            "go-cli-args",
+        ),
+    ],
+)
+def test_go_cli_defects_enter_the_artifact_repair_gate(tmp_path, code, kind):
+    from drydock.planning_session import CriteriaDefect, _validate_plan_output
+
+    manifest = _manifest()
+    blocks = {
+        "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
+        "FEATURE-Status.md": (
+            "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
+            "=== AC usage ===\nIntent: Usage errors exit 2.\n" + code + "\n=== END AC usage ===\n"
+        ),
+        "MANIFEST.md": manifest,
+    }
+    with pytest.raises(CriteriaDefect) as raised:
+        _validate_plan_output(dict(blocks), tmp_path, FakeRun(text=_llm_output(manifest)))
+    assert [(k, d.source, d.check_id) for k, d in raised.value.defects] == [
+        (kind, "FEATURE-Status.md", "usage")
+    ]
+    # Exhausted repairs still preserve paid-for artifacts for the final buildability gate.
+    plan, _ = _validate_plan_output(
+        dict(blocks), tmp_path, FakeRun(text=_llm_output(manifest)), enforce_criteria=False
+    )
+    assert plan.blocks

@@ -118,6 +118,7 @@ from drydock.errors import (
     write_error_record,
 )
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
+from drydock.harness_exits import go_cli_defect
 from drydock.llm import ClaudePromptSession, run_prompt
 from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
@@ -4086,16 +4087,9 @@ def _validate_plan_output(
             )
         )
 
-    # Two criteria defects that are decidable the moment the Blueprints exist, and repairable by
-    # rewriting the criterion that carries them. Raising here routes both into the artifact
-    # repair loop, which re-emits only the cited specification and re-validates — the criterion
-    # is corrected before the plan is written, rather than emitted, detected, and handed to a
-    # human as a question about a defect Drydock had already located.
-    #
-    # Both were previously reported after the fact: the environment defect as a blocking
-    # decision that ``--override`` waived on every unattended run, and the scope defect not at
-    # all. Prose in the planning contract instructs the model on both, and a 370 KB prompt is
-    # not a gate.
+    # Decidable criterion defects enter the existing artifact repair loop, grouped by kind.
+    # Re-emit the owning Blueprint and validate it before writing the plan; terminal verify
+    # remains the final defence if the repair budget is exhausted.
     kinded_criteria_defects: tuple[tuple[str, MalformedAcceptance], ...] = (
         tuple(("acceptance-malformed", defect) for defect in malformed_acceptance)
         + tuple(
@@ -4111,6 +4105,14 @@ def _validate_plan_output(
             for defect in _criteria_missing_defects(blocks, plan, blueprint_dir)
         )
         + tuple(("operation-untested", defect) for defect in _untested_operation_defects(blocks))
+        + tuple(
+            (kind, MalformedAcceptance(check_id=check.check_id, source=name, reason=reason))
+            for name in sorted(blocks)
+            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+            for check in _acceptance_checks(blocks[name], source=name)
+            if (defect := go_cli_defect(check.code)) is not None
+            for kind, reason in (defect,)
+        )
         if enforce_criteria
         else ()
     )

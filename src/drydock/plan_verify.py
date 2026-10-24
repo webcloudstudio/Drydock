@@ -59,7 +59,7 @@ from drydock.database_contract import (
 from drydock.errors import SpecificationError
 from drydock.harness_exits import (
     contradictions,
-    go_run_calls,
+    go_cli_defect,
     load_harness,
     unchecked_calls,
     unloaded_staged_values,
@@ -505,19 +505,9 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                     )
                 )
                 continue
-            if lines := go_run_calls(check.code):
-                defects.append(
-                    Defect(
-                        path.name,
-                        check.check_id,
-                        "go-run",
-                        "runs the application with `go run` at line(s) "
-                        + ", ".join(str(line) for line in lines)
-                        + ", which reports every non-zero exit as 1; use "
-                        "`from drydock_go import cli_runner` and "
-                        "`code, out, err = cli_runner(<args>)`, which runs the built executable",
-                    )
-                )
+            if defect := go_cli_defect(check.code):
+                kind, reason = defect
+                defects.append(Defect(path.name, check.check_id, kind, reason))
                 continue
             if found := contradictions(check.code, harness):
                 defects.append(

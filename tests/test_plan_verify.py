@@ -1157,3 +1157,21 @@ def test_a_go_criterion_calls_the_exported_operation():
     code = 'created, err := db.Tickets.Create(ctx, CreateTicket{Status: "open"})'
 
     assert untested_operations(_DATABASE, [code]) == ("tickets.list",)
+
+
+@pytest.mark.parametrize("args", ["[]", '["--summary", "."]', '("--summary", ".")'])
+def test_go_cli_runner_rejects_a_sequence_as_one_argument(tmp_path, args):
+    code = (
+        f"from drydock_go import cli_runner\ncode, out, err = cli_runner({args})\nassert code == 2"
+    )
+    result = verify("Demo", _target(tmp_path, FEATURE_Cli=_go_criterion(code)))
+    assert [d.kind for d in result.defects] == ["go-cli-args"]
+
+
+def test_go_cli_runner_accepts_unpacked_arguments(tmp_path):
+    code = (
+        "from drydock_go import cli_runner\n"
+        'args = ["--summary", "."]\n'
+        "code, out, err = cli_runner(*args)\nassert code == 0"
+    )
+    assert verify("Demo", _target(tmp_path, FEATURE_Cli=_go_criterion(code))).ok

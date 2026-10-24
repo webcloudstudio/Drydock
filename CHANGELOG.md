@@ -271,6 +271,13 @@ command surface and Typed Specification contract are unstable and may change bet
   contract defect that `drydock plan` refuses and repairs. The Python `schema.py` emitter
   refuses one DTO name declared with two field sets, as the Go emitter already did.
 
+- 2026-10-24: `drydock plan` routes Go CLI `go-run` and `go-cli-args` defects into its
+  existing artifact repair loop. `plan verify` rejects literal list/tuple arguments passed to
+  imported `drydock_go.cli_runner`; the client accepts separate strings or an unpacked sequence.
+  `plan repair` includes the variadic client contract, removes one enclosing Python fence from
+  an otherwise valid returned criterion without changing assertions, and rejects repairs that
+  retain either Go CLI defect. This extends the Go CLI correction introduced on 2026-10-22.
+
 - 2026-10-24: Artifact-format LLM calls repair an exact final `=== END ARTIFACT` missing its
   trailing ` ===` when the envelope sequence is unambiguous, preserving bodies and original
   execution evidence. `logs/llm.jsonl` records `output_contract.repaired`; `drydock plan` prints

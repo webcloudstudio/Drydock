@@ -383,6 +383,16 @@ two criteria on every build, and an asserted exit `1` passed whatever the progra
 
 `2026-10-22` · `VERIFICATION.md` is a standard release-verification Blueprint filename, accepted by naming validation. Cost when broken: generated release gates produce spurious naming warnings.
 
+`2026-10-24` · **Go CLI mechanics are checked before plan artifacts are written.** The
+artifact repair gate and `plan verify` share `go-run` and `go-cli-args` checks. Go client calls
+pass separate strings or an unpacked sequence; direct list/tuple arguments to an imported
+`drydock_go.cli_runner` are refused. `plan repair` applies both checks before retaining a
+criterion and includes the client signature and examples in its prompt. One Python fence
+surrounding the complete returned proof is removed only when the resulting criterion parses and
+compiles; embedded fences and text outside that wrapper remain unchanged. Every assertion is
+preserved by fence normalization. *Broken:* DupFind `20261024.065948` emitted four `go run`
+criteria, then four fenced repairs containing eight invalid list arguments.
+
 ### Mechanism
 
 0. **Preflight** — refuse on blockers or missing persistence Rigging; capture questionnaire

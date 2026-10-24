@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261024 V13
+version: 20261024 V14
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -86,6 +86,19 @@ Permitted:
   same arguments, `input=` for the same standard input, and `package="<package>"` only when the
   package is not the sole `./cmd/<name>`. Read the exit status, standard output, and standard
   error from `code`, `out`, and `err` in place of the subprocess result. Keep every expected value.
+
+Go CLI client contract:
+
+```python
+from drydock_go import cli_runner
+# Signature: cli_runner(*args: str, package: str | None = None,
+#                       input: str | None = None) -> tuple[int, str, str]
+code, out, err = cli_runner()                    # no command arguments
+code, out, err = cli_runner("--summary", ".")   # separate string arguments
+```
+
+Never pass a list or tuple as one positional argument. For a `go-cli-args` fault, unpack
+that sequence with `*` and preserve every argument and assertion.
 
 Forbidden:
 

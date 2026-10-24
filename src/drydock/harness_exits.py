@@ -321,6 +321,47 @@ def go_run_calls(code: str) -> list[int]:
     return sorted(lines)
 
 
+def go_cli_defect(code: str) -> tuple[str, str] | None:
+    """Shared Go CLI checks for planning, verification, and repair retention."""
+    if lines := go_run_calls(code):
+        return (
+            "go-run",
+            "runs the application with `go run` at line(s) "
+            + ", ".join(str(line) for line in lines)
+            + ", which reports every non-zero exit as 1; use "
+            "`from drydock_go import cli_runner` and "
+            "`code, out, err = cli_runner(<args>)`, which runs the built executable",
+        )
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+    runners = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "drydock_go"
+        for alias in node.names
+        if alias.name == "cli_runner"
+    }
+    lines = sorted({
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in runners
+        and any(isinstance(arg, (ast.List, ast.Tuple)) for arg in node.args)
+    })
+    if lines:
+        return (
+            "go-cli-args",
+            "passes a list or tuple to `drydock_go.cli_runner` at line(s) "
+            + ", ".join(str(line) for line in lines)
+            + '; pass separate string arguments, e.g. cli_runner("--summary", "."), '
+            "or unpack the argument sequence with *args",
+        )
+    return None
+
+
 def unloaded_staged_values(code: str, harness: Harness) -> list[tuple[str, str]]:
     """``(key, file)`` for a staged record a criterion expects a refusal about but never loads.
 

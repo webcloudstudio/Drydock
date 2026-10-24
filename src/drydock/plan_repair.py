@@ -46,6 +46,7 @@ from typing import Protocol
 from drydock.acceptance import (
     ProgrammaticAcceptance,
     parse_programmatic_acceptance,
+    parse_programmatic_acceptance_text,
     regex_defects,
     selection_probe_reason,
     split_fused_acceptance_boundary,
@@ -54,6 +55,7 @@ from drydock.acceptance import (
     unresolved_globals,
 )
 from drydock.errors import SpecificationError
+from drydock.harness_exits import go_cli_defect
 from drydock.llm import failure_detail, run_prompt
 from drydock.plan_verify import CRITERIA_MISSING, OPERATION_UNTESTED, Defect, verify
 from drydock.prompt_assembly import (
@@ -149,6 +151,8 @@ def _still_broken(check: ProgrammaticAcceptance, *, source_root: Path) -> str | 
     code = check.code
     if (reason := syntax_defect(code)) is not None:
         return reason
+    if defect := go_cli_defect(code):
+        return defect[1]
     if reasons := regex_defects(code):
         return "; ".join(reasons)
     if reasons := staged_regex_defects(code, source_root):
@@ -188,7 +192,28 @@ def _response_blocks(text: str) -> dict[tuple[str, str], str]:
     result: dict[tuple[str, str], str] = {}
     for match in _BLOCK_RE.finditer(text):
         key = _split_composite(match.group("id"))
-        result[key] = match.group("body")
+        body = match.group("body")
+        # Only unwrap one fence enclosing the complete proof after its declarations.
+        # Embedded fences may be product input inside a Python string and stay verbatim.
+        fenced = re.fullmatch(
+            r"(?P<meta>(?:[ \t]*\n|(?:Intent|Suite|Requires|Sea Trials|Gate|Encoding|Probe|Probe Count|Cite):[^\n]*\n)*)"
+            r"```python[ \t]*\n(?P<code>.*?)\n```[ \t]*\n?",
+            body,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if fenced is not None:
+            candidate = fenced["meta"] + fenced["code"] + "\n"
+            # Reject ambiguous boundaries; never remove fences from a Python literal.
+            try:
+                checks = parse_programmatic_acceptance_text(
+                    "## Programmatic Acceptance\n\n" + _plain_block(key[1], candidate),
+                    source=key[0],
+                )
+            except ValueError:
+                checks = ()
+            if len(checks) == 1 and syntax_defect(checks[0].code) is None:
+                body = candidate
+        result[key] = body
     return result
 
 
