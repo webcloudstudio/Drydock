@@ -143,6 +143,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-24: Repository pytest runs cap each invocation at eight workers, including
+  `python -m pytest -n auto` and `bash bin/test.sh`, to bound concurrent test load.
+
 - 2026-10-24: `ddk-uat` investigates warnings, rejected artifacts, repairs, and defective-output
   retries in successful and running runs as well as failed runs. Diagnoses assess clean execution
   separately from the recorded result, trace upstream findings through later failures, and keep
