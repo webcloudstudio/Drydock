@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -51,6 +52,8 @@ def _usage_limited(monkeypatch) -> list[object]:
 
 def test_a_usage_limit_ends_the_process_provider_work(tmp_path, monkeypatch):
     """A retry loop above run_prompt must not resubmit into the same limit."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
     spawned = _usage_limited(monkeypatch)
 
     first = run_prompt("Work", tmp_path, llm="codex", command_name="build")

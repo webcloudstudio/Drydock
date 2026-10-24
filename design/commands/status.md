@@ -32,6 +32,12 @@ Flags may precede or follow `<Target>`. `console` is a reserved operand.
 
 ### Rules
 
+`2026-10-24` · **Blueprint formatting advisories follow the literal comparison contract.**
+A computed string compared with a literal is not itself reported as a retyped expectation;
+the literal still receives the normal checks. Warnings remain separate from readiness and
+product-coverage evidence. Cost when broken: the dashboard recommends renaming a Python
+expression that never exercised the Go application.
+
 `2026-08-13` · **Completion and buildability are separate observations.** `--check` reports
 completion: `COMPLETE` (0) when every executable block is `closed/verified` and no blocking
 decision is open; `RETRYABLE` (1) when the Manifest is approved and work is pending, implemented,

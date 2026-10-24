@@ -21,6 +21,16 @@ and measured something; everything else is reported, not charged.
 
 ### Rules
 
+`2026-10-24` · **A string calculation compared with a literal is not an assembled expectation.**
+For either operand order of `==` or `!=`, the literal supplies the expected bytes and retains
+the existing escaping and citation checks; the computed string is not flagged as a second
+expectation. Each adjacent pair in a chained comparison is judged separately. An assembled
+string compared with a nonliteral still follows the existing binding rule. This revises the
+assembled-expression classifier retained by `b7ea20b`; it does not establish product coverage.
+Empty-tree passes remain `PREBUILD_PASSES` and cannot verify a story. Cost when broken:
+DrydockStats `20261024.155305` reports `f'{usd:.4f}'` as retyped while missing the actual
+problem: the criterion tests Python rather than Go.
+
 `2026-10-24` · **Citation validation distinguishes binding expectations from re-typed literals.**
 Every declared `Cite:` resolves inside `sources/`. Verbatim matching applies only when the
 criterion has re-typed expectations; numeric exit codes and plain ASCII expectations already

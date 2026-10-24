@@ -395,6 +395,16 @@ is reported.
 
 **Criteria**
 
+`2026-10-24` · **Acceptance observes the delivered application.** Planning prompts forbid
+substitute implementations and standalone language expressions as the observed product value.
+Go CLI criteria invoke the declared application through `drydock_go.cli_runner`, check the
+exit code, parse CSV, and compare observed fields with fixture-derived expectations. Stage 2
+also requires Programmatic Acceptance, User Acceptance, and Guardrails in that order, preserving
+source constraints and using `- None.` only for empty non-programmatic sections. These are
+authoring instructions, not new static gates; the existing empty-tree baseline detects checks
+that pass without the product. Cost when broken: DrydockStats `20261024.155305` generates
+formatting self-tests and omits Guardrails in six Features.
+
 `2026-09-17` · **A criterion states one expectation.** A status set admitting `404` beside others,
 or both a 2xx and a 5xx, is refused. See [acceptance_criteria](../topics/acceptance_criteria.md).
 
@@ -559,6 +569,10 @@ exist.
 
 
 ## Open Actions
+
+- `2026-10-24` · Format the existing replacement chain in
+  `tests/test_database_contract.py:851`; it is the remaining repository-wide
+  `ruff format --check src/ tests/` failure found during the DrydockStats formatting fix.
 
 - `2026-10-24` · A story before the DATABASE block may still declare `provides: persistence.*` (FxRates `20261024.073528` foundation `provides: persistence.open_database`), which tells its builder to deliver the generated package. `plan verify` does not check `provides:`; a MANIFEST.md defect has no repair route in `plan repair`, so the check belongs where topology assigns `provides:`.
 

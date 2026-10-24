@@ -95,6 +95,7 @@ assert not result.passed
 def test_go_cli_runner_returns_the_program_exit_status(tmp_path, monkeypatch):
     """``go run`` reports exit 2 as 1 (CsvStat 20261022.203215); the built binary does not."""
     monkeypatch.setenv("GOCACHE", "/tmp/drydock-go-cache")
+    monkeypatch.setenv("GOFLAGS", "-buildvcs=false")
     (tmp_path / "go.mod").write_text("module example.test/tool\n\ngo 1.22\n")
     (tmp_path / "cmd" / "tool").mkdir(parents=True)
     (tmp_path / "cmd" / "tool" / "main.go").write_text("""package main

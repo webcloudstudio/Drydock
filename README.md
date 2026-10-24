@@ -152,6 +152,12 @@ JSON, duplicate keys, and ambiguous extra content are not silently extracted awa
 
 `init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`
 
+`plan verify` checks whether acceptance criteria can run; it does not establish product coverage.
+Criteria must observe the delivered application through its declared interfaces. A check that
+passes without the product remains `PREBUILD_PASSES` and cannot verify its story. String
+calculations compared with literal known answers are not flagged as retyped expressions;
+escaping checks still apply to the literal expectation.
+
 | Stage | Command | What it does |
 |---|---|---|
 | **init** | `drydock init <Target>` | Initialize Workspace<br>**Creates:** `targets/<Target>` |

@@ -290,6 +290,15 @@ command surface and Typed Specification contract are unstable and may change bet
   text. `drydock plan repair` treats the run of consecutive `Cite:` lines as one declaration, so
   a citation repair may rewrite, add, or drop ranges without being rejected as a proof change.
 
+- 2026-10-24: Acceptance binding detection treats a string calculation compared with a literal
+  as the observed expression, in either operand order, while retaining escaping checks on the
+  literal and assembled-expectation checks elsewhere. `status`, `validate`, and `plan verify`
+  no longer mislabel `f"{usd:.4f}"` as a retyped expectation. Empty-tree passes still cannot
+  verify stories. Planning guidance requires criteria to observe the delivered application,
+  rather than a replacement implementation inside the check; Stage 2 explicitly requires the
+  three terminal sections, including source-derived Guardrails. This addresses the misleading
+  warnings and generated self-tests observed in DrydockStats `20261024.155305`.
+
 - 2026-10-24: `drydock plan` handles artifact-free Stage 2 replies with an additive
   instruction-failure correction while retaining the normal Blueprint batch. Automatic
   reduction to one file is removed. Retry evidence includes the refused reply, attempt count,

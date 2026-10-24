@@ -3,7 +3,9 @@
 import pytest
 
 from drydock.acceptance import (
+    ProgrammaticAcceptance,
     citation_defect,
+    observe_programmatic_acceptance,
     parse_programmatic_acceptance,
     resolve_citation,
     retyped_expectations,
@@ -35,11 +37,14 @@ def test_numeric_arithmetic_is_not_an_assembled_string():
     ['f"{usd:.4f}"', '"%.4f" % usd', '"{:.4f}".format(usd)', '"5." + "5245"'],
 )
 @pytest.mark.parametrize("reverse", [False, True])
-def test_a_string_calculation_compared_with_a_literal_is_not_an_expectation(expression, reverse):
+@pytest.mark.parametrize("operator", ["==", "!="])
+def test_a_string_calculation_compared_with_a_literal_is_not_an_expectation(
+    expression, reverse, operator
+):
     left, right = expression, '"5.5245"'
     if reverse:
         left, right = right, left
-    assert retyped_expectations(f"usd = 5.5245\nassert {left} == {right}\n") == ()
+    assert retyped_expectations(f"usd = 5.5245\nassert {left} {operator} {right}\n") == ()
 
 
 @pytest.mark.parametrize("reverse", [False, True])
@@ -53,6 +58,30 @@ def test_a_calculation_still_reports_an_escapable_literal_expectation(reverse):
 def test_each_chained_comparison_uses_its_adjacent_operands():
     code = 'assert f"{usd:.4f}" == "5.5245" == out == f"total: {n}"\n'
     assert retyped_expectations(code) == ("f'total: {n}'",)
+
+
+def test_formatting_self_test_remains_prepassed_after_the_warning_is_removed(tmp_path):
+    from drydock.acceptance_status import (
+        ERROR_EMPTY_TREE,
+        STATUS_PREBUILD_PASSES,
+        classify_baseline,
+        prepassed_ids,
+    )
+
+    check = ProgrammaticAcceptance(
+        "format-cost",
+        "FEATURE-ReportFormat.md",
+        "Cost has four decimal places.",
+        'usd = 5.5245\nassert f"{usd:.4f}" == "5.5245"\nassert f"{0.0:.4f}" == "0.0000"',
+    )
+    assert check.binding
+    (observation,) = observe_programmatic_acceptance(
+        (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
+    )
+    assert observation.passed
+    status = classify_baseline(observation, check, empty=observation)
+    assert (status.status, status.error_code) == (STATUS_PREBUILD_PASSES, ERROR_EMPTY_TREE)
+    assert prepassed_ids({check.check_id: status}, [check]) == frozenset({check.check_id})
 
 
 def test_a_declared_csv_header_or_row_is_a_contract_token():

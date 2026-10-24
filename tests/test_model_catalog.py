@@ -111,6 +111,8 @@ def test_run_prompt_stops_fatally_before_sending_an_invalid_model(
 
 
 def test_run_prompt_sends_the_model_an_alias_selects(seed_models, tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
     commands: list[list[str]] = []
 
     def popen(command, **kwargs):

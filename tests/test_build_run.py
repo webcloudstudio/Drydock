@@ -1661,7 +1661,7 @@ def test_a_non_binding_regression_does_not_fail_the_later_block(tmp_path):
         "```python\n"
         "from pathlib import Path\n"
         'assert Path("guard.txt").exists() and "<on>" == "<on>"\n'
-        'assert Path("guard.txt").read_text().strip() + "," == "on,"\n'
+        'assert Path("guard.txt").read_text().strip() + "\\r" == "on\\r"\n'
         "```\n",
         encoding="utf-8",
     )

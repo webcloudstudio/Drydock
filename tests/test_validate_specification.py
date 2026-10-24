@@ -323,8 +323,7 @@ Blocks resolve before inlines.
         target_dir = _init(tmp_target_root)
         result = self._validate(
             target_dir,
-            'usd = 5.5245\nassert f"{usd:.4f}" == "5.5245"\n'
-            'assert f"{0.0:.4f}" == "0.0000"',
+            'usd = 5.5245\nassert f"{usd:.4f}" == "5.5245"\nassert f"{0.0:.4f}" == "0.0000"',
         )
         assert not any(f.section == "Acceptance snippets" for f in result.warnings())
         assert not any(f.section == "Acceptance snippets" for f in result.failures())

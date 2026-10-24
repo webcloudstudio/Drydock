@@ -29,6 +29,12 @@ drydock validate <Target> [--verbose]
 
 ### Rules
 
+`2026-10-24` · **Literal comparisons report the literal expectation only.** When a computed
+string is compared with a string literal in either order, the expression is not reported as
+retyped; the literal retains its escaping checks. This removes a misleading formatting warning,
+not the empty-tree baseline's product-coverage check. Cost when broken: a Python formatting
+expression is labelled as retyped and the suggested binding change leaves its Go story untested.
+
 `2026-10-22` · `VERIFICATION.md` is a standard release-verification Blueprint name. Cost when broken: a generated release gate produces a spurious naming warning.
 
 `2026-06-10` · **Required files are gated by phase.** The phase is read from the filesystem:
