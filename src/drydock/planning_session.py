@@ -5616,7 +5616,12 @@ def _continue_short_plan(
                     draft = merged
                     database_defects = database_contract_defects(merged)
                 except SpecificationError as exc:
-                    database_defects = (str(exc),)
+                    # The merge stops at its first schema fault; the draft's other faults are
+                    # reported with it, or each retry learns one (FxRates ``20261024.143213``).
+                    database_defects = (
+                        str(exc),
+                        *(item for item in database_contract_defects(body) if item != str(exc)),
+                    )
                 if database_defects:
                     rejection = f"{name} does not parse: " + "; ".join(database_defects)
                     database_draft = draft

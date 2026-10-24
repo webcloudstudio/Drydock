@@ -256,7 +256,13 @@ operations, and stalled when later batches saw the bare template. `2026-10-24`: 
 receives the rejected merged draft as `DATABASE.md` in place of the seed, and the ledger tells
 it to correct each listed defect in that draft and change nothing else. *Broken:* FxRates
 `20261024.140521` re-authored the declaration from the defect text alone three times, trading a
-duplicate `rates.list` for a composite PK for missing DTO tables, and stalled.
+duplicate `rates.list` for a composite PK for missing DTO tables, and stalled. `2026-10-24`: one
+rejection names every defect the draft holds. A table's wrong PK count is reported beside the
+pattern defects, not raised in their place; column checks run on every pattern that parses; the
+name and synonym checks run on every pattern whose fields bind, and the key-dependent shape rules
+on those whose table has one PK. A seed-merge failure carries the draft's other defects with it.
+*Broken:* FxRates `20261024.143213` batch 1 held a composite PK, unbound history and statistics
+fields, and a `rates.latest` synonym; one tier was reported per pass and three passes ran out.
 
 `2026-10-24` · **A plan stall states its cause first.** The `plan generation stalled` detail
 prints each `last rejection` defect on its own line, then `blocked:`, then the score and missing
@@ -383,6 +389,15 @@ the assertions that followed from it. Calls addressing state are not compared: t
 exit name is rebound before an `assert` reads it. `plan_repair.md` V10 binds the call and adds
 `assert code == 0` after it. *Broken:* LayersTesting `20261021.195808` ran two setup calls that
 failed silently, then tested an account that did not exist.
+
+`2026-10-24` · **Exit assertions may follow collection into a dictionary.** `plan verify`
+recognizes an empty result dictionary filled by one `cli_runner` assignment per key of a
+literal dictionary, followed immediately by a loop over every result's `.items()` that
+unpacks `(code, out, err)` and asserts `code == <integer>`. Prints may precede the assertion.
+The check preserves enclosing loop/branch scope and refuses intervening mutations, duplicate-key
+sequences, filtered checks, and rebound exit variables. Other unsupported shapes retain
+`unchecked-call`. This revises `b7ea20b`. Cost when broken: DrydockStats `20261024.143257`
+rejects REM-007 despite its later assertion of every collected exit code.
 
 `2026-10-21` · **A refusal about staged data requires loading it.** `plan verify` reports a
 `staged-value` defect when the first `cli_runner` call that uses a key from the first column of a

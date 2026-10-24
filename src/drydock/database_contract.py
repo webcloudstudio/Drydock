@@ -282,13 +282,27 @@ def _table_constraints(
     return tuple(constraints)
 
 
-def sqlite_schema_tables(text: str, *, source: str = "DATABASE.md") -> tuple[SQLiteTable, ...]:
+def _key_count_defect(name: str, keys: Sequence[str], *, source: str) -> str:
+    return (
+        f"{source}: {name} declares {len(keys)} PK columns ({', '.join(keys) or 'none'}). "
+        "Every table declares exactly one PK column, such as `id | INTEGER PK`, so each "
+        "row is read, updated, and deleted by that key; a natural key spanning several "
+        "columns is a `- UNIQUE (a, b)` bullet beside it."
+    )
+
+
+def sqlite_schema_tables(
+    text: str, *, source: str = "DATABASE.md", require_key: bool = True
+) -> tuple[SQLiteTable, ...]:
     """Read Markdown ``## `table_name``` declarations into a safe SQLite schema.
 
     ``DATABASE.md`` is a persistence declaration, not a Python test fixture.  This narrow,
     deterministic reader recognizes its table-heading/field-table form and leaves operation-only
     database contracts alone.  The result is used to prove the declaration can create and open a
     SQLite store before any model is asked to implement an application adapter.
+
+    ``require_key=False`` reads a table whose PK count is wrong instead of refusing it, so
+    :func:`database_contract_defects` can report that fault beside the pattern faults.
     """
     sections = list(_SECTION_RE.finditer(text))
     tables: list[SQLiteTable] = []
@@ -309,13 +323,8 @@ def sqlite_schema_tables(text: str, *, source: str = "DATABASE.md") -> tuple[SQL
             seen.add(field.name)
             columns.append(_parse_column(field, table=name, source=source))
         keys = [column.name for column in columns if column.primary_key]
-        if len(keys) != 1:
-            raise SpecificationError(
-                f"{source}: {name} declares {len(keys)} PK columns ({', '.join(keys) or 'none'}). "
-                "Every table declares exactly one PK column, such as `id | INTEGER PK`, so each "
-                "row is read, updated, and deleted by that key; a natural key spanning several "
-                "columns is a `- UNIQUE (a, b)` bullet beside it."
-            )
+        if len(keys) != 1 and require_key:
+            raise SpecificationError(_key_count_defect(name, keys, source=source))
         stop = sections[index + 1].start() if index + 1 < len(sections) else len(text)
         tables.append(
             SQLiteTable(
@@ -1068,7 +1077,11 @@ def database_contract_defects(text: str, *, source: str = "DATABASE.md") -> tupl
 
     The parser stops at the first bad pattern. A repair pass handed only that one fixes it and
     returns to find the next, so thirteen incomplete patterns cost thirteen passes against a
-    budget sized for far fewer. Each pattern is judged on its own here.
+    budget sized for far fewer. Each pattern is judged on its own here, and every check runs on
+    every pattern it can judge: a table's wrong PK count, a pattern that does not parse, and a
+    field that does not bind each exclude only what they make unjudgeable. Reported one tier per
+    pass, FxRates ``20261024.143213`` spent its three attempts on three faults batch 1 already
+    held.
     """
     try:
         blocks = _pattern_blocks(text, source)
@@ -1076,21 +1089,38 @@ def database_contract_defects(text: str, *, source: str = "DATABASE.md") -> tupl
         return (str(exc),)
     defects: list[str] = []
     ids: list[str] = []
+    patterns: list[AccessPattern] = []
     for match, block in blocks:
         ids.append(match.group(1))
         try:
-            _parse_access_pattern(match, block, source)
+            patterns.append(_parse_access_pattern(match, block, source))
         except SpecificationError as exc:
             defects.append(str(exc))
     duplicates = sorted({ident for ident in ids if ids.count(ident) > 1})
     if duplicates:
         defects.append(f"{source}: duplicate access-pattern identifier(s): {', '.join(duplicates)}")
-    if not defects:
-        defects.extend(input_column_defects(text, source=source))
-        defects.extend(output_column_defects(text, source=source))
-    if not defects:
-        # Shape is judged on fields that bind, so a misnamed column is reported once, not twice.
-        defects.extend(operation_shape_defects(text, source=source))
+    try:
+        tables = sqlite_schema_tables(text, source=source, require_key=False)
+    except SpecificationError:
+        # An unreadable schema is reported by the checks that own it; no field can be judged.
+        return tuple(defects)
+    for table in tables:
+        keys = [column.name for column in table.columns if column.primary_key]
+        if len(keys) != 1:
+            defects.append(_key_count_defect(table.name, keys, source=source))
+    columns_of = {table.name: tuple(column.name for column in table.columns) for table in tables}
+    binding: list[AccessPattern] = []
+    for pattern in patterns:
+        found = _input_column_defects(columns_of, (pattern,), source) + _output_column_defects(
+            columns_of, (pattern,), source
+        )
+        defects.extend(found)
+        if not found:
+            binding.append(pattern)
+    # Shape is judged on fields that bind, so a misnamed column is reported once, not twice.
+    defects.extend(
+        _operation_shape_defects({table.name: table for table in tables}, binding, source)
+    )
     return tuple(defects)
 
 
@@ -1110,8 +1140,14 @@ def input_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str
     except SpecificationError:
         return ()
     columns_of = {table.name: tuple(column.name for column in table.columns) for table in tables}
+    return _input_column_defects(columns_of, contract.patterns, source)
+
+
+def _input_column_defects(
+    columns_of: Mapping[str, tuple[str, ...]], patterns: Sequence[AccessPattern], source: str
+) -> tuple[str, ...]:
     defects: list[str] = []
-    for pattern in contract.patterns:
+    for pattern in patterns:
         for operation in pattern.operations:
             table = operation.split(".", 1)[0]
             columns = columns_of.get(table)
@@ -1142,8 +1178,14 @@ def output_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[st
     except SpecificationError:
         return ()
     columns_of = {table.name: tuple(column.name for column in table.columns) for table in tables}
+    return _output_column_defects(columns_of, contract.patterns, source)
+
+
+def _output_column_defects(
+    columns_of: Mapping[str, tuple[str, ...]], patterns: Sequence[AccessPattern], source: str
+) -> tuple[str, ...]:
     defects: list[str] = []
-    for pattern in contract.patterns:
+    for pattern in patterns:
         for operation in pattern.operations:
             table, verb = operation.partition(".")[0], pattern.kind
             columns = columns_of.get(table)
@@ -1235,7 +1277,7 @@ def resolve_operation(pattern: AccessPattern, table: SQLiteTable) -> ResolvedOpe
     """
     verb = pattern.kind
     inputs = tuple(field.name for field in pattern.inputs)
-    primary = next(column.name for column in table.columns if column.primary_key)
+    primary = next((column.name for column in table.columns if column.primary_key), "")
     if verb in ("list", "create"):
         match: tuple[str, ...] = ()
     elif pattern.match:
@@ -1297,10 +1339,16 @@ def operation_shape_defects(text: str, *, source: str = "DATABASE.md") -> tuple[
         contract = parse_database_contract(text, source=source)
     except SpecificationError:
         return ()
+    return _operation_shape_defects(tables, contract.patterns, source)
+
+
+def _operation_shape_defects(
+    tables: Mapping[str, SQLiteTable], patterns: Sequence[AccessPattern], source: str
+) -> tuple[str, ...]:
     defects: list[str] = []
     seen: dict[str, str] = {}
     shapes: dict[tuple[object, ...], str] = {}
-    for pattern in contract.patterns:
+    for pattern in patterns:
         operation = pattern.operations[0]
         name = operation.partition(".")[0]
         verb = pattern.kind
@@ -1326,6 +1374,10 @@ def operation_shape_defects(text: str, *, source: str = "DATABASE.md") -> tuple[
             )
             continue
         shapes[shape] = ident
+        if sum(1 for column in table.columns if column.primary_key) != 1:
+            # Names and synonyms hold whatever the key; the rules below read it, and the table's
+            # PK count is reported on its own.
+            continue
         inputs = set(resolved.inputs)
         stray = [item for item in pattern.match if item not in inputs]
         if stray:

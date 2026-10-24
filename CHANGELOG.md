@@ -264,6 +264,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock plan verify` recognizes exit assertions over CLI results collected in
+  a dictionary and checked in a subsequent complete `.items()` loop. Bounded validation retains
+  rejection of discarded, overwritten, filtered, and rebound results. This removes the
+  DrydockStats `REM-007` false rejection without requiring a `plan repair` model call.
+
+- 2026-10-24: `DATABASE.md` contract checks report every defect in one pass. A table that does not
+  declare exactly one PK column is reported beside the access-pattern defects instead of hiding
+  them; unbound Input and Output fields are judged on every pattern that parses; duplicate
+  operation names and synonyms are judged on every pattern whose fields bind. A Stage 2 rejection
+  from the seed merge now lists the draft's other defects too, so `drydock plan` and
+  `drydock plan verify` no longer reveal one tier of faults per pass. Closes FxRates
+  `20261024.143213`.
+
 - 2026-10-24: `drydock plan` Stage 2 returns a rejected `DATABASE.md` to the retry. The next
   batch receives its own merged draft in place of the seed and is told to correct each listed
   contract defect in it and change nothing else, instead of re-authoring the declaration from

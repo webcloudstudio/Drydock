@@ -4593,6 +4593,70 @@ def test_a_rejected_declaration_is_returned_to_the_retry_for_correction():
     assert result.score.is_complete
 
 
+def test_a_schema_fault_is_rejected_with_the_draft_s_other_defects():
+    """FxRates ``20261024.143213``: the seed merge raised on the composite PK alone, hiding the
+    synonym the same draft held until a later pass."""
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = (
+        PlannedStory(story_id="database", implements="DATABASE.md"),
+        PlannedStory(story_id="story-1", implements="FEATURE-1.md"),
+    )
+
+    def pattern(ident: str, operation: str, kind: str = "") -> str:
+        kind_row = f"| Kind | {kind} |\n" if kind else ""
+        return (
+            f"### {ident} — Read\n\n| Field | Value |\n|---|---|\n"
+            "| Owner | FEATURE-1.md |\n| Access | read |\n"
+            f"| Repository operation | `{operation}` |\n{kind_row}| Compatibility | unchanged |\n\n"
+            "Input: In\n\n| Field | Type | Required |\n|---|---|---|\n| key | str | yes |\n\n"
+            "Output: Row\n\n| Field | Type |\n|---|---|\n| key | str |\n| value | str |\n\n"
+        )
+
+    rejected = (
+        "# DATABASE: X\n\n## Access Patterns\n\n"
+        + pattern("FEATURE-X-001", "settings.list")
+        + pattern("FEATURE-X-002", "settings.by_key", kind="list")
+        + "## Schemas\n\n## `settings`\n\n| Field | Type |\n|---|---|\n"
+        "| key | TEXT PK |\n| value | TEXT PK |\n"
+    )
+    prompts: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        body = rejected if len(prompts) == 1 else _DATABASE
+        if len(prompts) > 2:
+            return FakeRun(
+                text=f"=== BEGIN ARTIFACT FEATURE-1.md ===\n{_OWNER}\n=== END ARTIFACT ===\n",
+                execution_id=f"exec-{len(prompts)}",
+            )
+        return FakeRun(
+            text=f"=== BEGIN ARTIFACT DATABASE.md ===\n{body}\n=== END ARTIFACT ===\n",
+            execution_id=f"exec-{len(prompts)}",
+        )
+
+    ps._continue_short_plan(
+        {"TOPOLOGY.md": "Two frozen stories."},
+        blocks_text="=== TOPOLOGY.md ===\nTwo frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="codex",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=None,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    ledger = prompts[1].split("## Ledger")[-1]
+    defective = ledger.split("Defective (")[1].split("Previous attempt rejected")[0]
+    assert defective.count("settings declares 2 PK columns") == 1
+    assert "FEATURE-X-002 `settings.by_key` runs exactly what FEATURE-X-001 runs" in defective
+
+
 def test_a_stall_detail_names_its_rejection_before_what_is_missing():
     assert ps._rejection_lines(
         "DATABASE.md does not parse: DATABASE.md: a; b — keep; DATABASE.md: c"

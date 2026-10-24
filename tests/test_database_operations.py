@@ -112,6 +112,37 @@ def test_the_fxrates_surface_is_a_valid_declaration():
     assert database_contract_defects(_declaration()) == ()
 
 
+_COMPOSITE_KEY = """## `rates`
+
+| Field | Type | Notes |
+|---|---|---|
+| date | TEXT PK | |
+| currency | TEXT PK | |
+| rate | TEXT NOT NULL | |
+"""
+
+
+def test_every_defect_tier_is_reported_in_one_pass():
+    """FxRates ``20261024.143213``: batch 1 held a composite PK, an unbound Input field, and a
+    synonym; each was reported only once the one before it was fixed, and three passes ran out."""
+    row = "date currency rate"
+    declaration = (
+        "# DATABASE: FxRates\n\n## Access Patterns\n\n"
+        + _pattern("FEATURE-RATE-001", "rates.list", "currency", row)
+        + _pattern("FEATURE-RATE-002", "rates.history", "currency start", row, kind="list")
+        + _pattern("FEATURE-RATE-003", "rates.by_currency", "currency", row, kind="list")
+        + "## Schemas\n\n"
+        + _COMPOSITE_KEY
+    )
+
+    defects = database_contract_defects(declaration)
+
+    assert len(defects) == 3, defects
+    assert "rates declares 2 PK columns (date, currency)" in defects[0]
+    assert "FEATURE-RATE-002 Input field `start` is not a column of `rates`" in defects[1]
+    assert "FEATURE-RATE-003 `rates.by_currency` runs exactly what FEATURE-RATE-001" in defects[2]
+
+
 def test_each_operation_resolves_its_name_kind_rows_and_writes():
     shapes = {
         item.operation: (item.verb, item.match, item.filters, item.sets, item.many)
