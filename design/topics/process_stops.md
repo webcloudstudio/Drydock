@@ -2,14 +2,14 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-24 V2 |
+| Version | 2026-10-24 V3 |
 | Route | process_stops |
 | Modules | `stop_condition.py`, `llm.py`, `cli.py`, `uat.py`, `quarterdeck_state.py`, `QuarterDeck/app.py`, `scripts/uat_repair_loop.sh` |
 | Prompts | — |
 | Tests | `tests/test_process_stop.py`, `tests/test_stop_condition.py` |
 | Governs | [run](../commands/run.md), [build](../commands/build.md), [status](../commands/status.md), [uat](../commands/uat.md), [diagnose](../commands/diagnose.md), [plan](../commands/plan.md), [analyze](../commands/analyze.md) |
 | Pending spec | 0 |
-| Pending impl | 0 |
+| Pending impl | 5 |
 
 ## Behavior
 
@@ -95,6 +95,90 @@ Cost when broken: drivers keep looping into a stopped Target.
   verdict of `status --ready`.
 
 ## Decisions
+
+`BLOCKERS.md` becomes the one file that blocks a Target. `STOP_NOW.md` is retired. `ERRORS.md`
+stays the record of the last failure and blocks nothing. Build the sections below in order, one
+slice, each with tests.
+
+### 1. One blockers format, written by one function
+`2026-10-24` · `spec:na` · `impl:unimplemented`
+
+Drydock writes `BLOCKERS.md`; a model supplies only titles and questions. One owner per file:
+only the owner may run while the file exists, so a second owner cannot arise.
+
+```
+# Blockers: Rate Limit Hit
+- target: FxRates
+- source: drydock build FxRates --model gpt-6-luna
+- owner: build FxRates
+- declared: 2026-10-24T18:38:12Z
+- execution: 20261024.183251.657Z-bc03c7b9
+- attempts: 1
+
+## blocker-001: Provider usage limit
+- kind: environmental            (environmental | decision)
+- class: provider rate limit
+- auto-continue: after 21:31     (environmental only)
+### Error
+<verbatim message>
+### Question                     (decision only)
+### Commander Resolution
+```
+
+- `Blockers:` is a short summary of the whole file.
+- `owner` is the verb, sub-verb and Target; options may differ on a rerun.
+- Environmental classes: `provider rate limit`, `provider authentication required`,
+  `provider timeout`, `provider outage`, `provider unavailable`, `invalid model`, `uat stage`.
+- A decision blocker may be raised only by an owner whose prompt takes the resolution
+  (initially `analyze` and `refit`); the write function enforces this.
+- `analyze` model-written blockers are converted to this format by the module.
+
+### 2. Gate and batch rules
+`2026-10-24` · `spec:na` · `impl:unimplemented`
+
+- While `BLOCKERS.md` exists, every Target command except `status`, `run` and `uat` is refused,
+  with the standard blockers banner (rendered from the file).
+- For an `analyze` decision blocker, `plan --override` still passes. `--override` never waives
+  an environmental blocker.
+- Batch (stdin or stdout not a terminal) never prompts. A non-owner command is refused and exits
+  `1`. The owner reruns only when every decision blocker has a `Commander Resolution`, or every
+  blocker is environmental, may auto-continue (timeout, outage, rate limit after the stated
+  reset), and `attempts < 2`.
+- Expired login, invalid model and unrunnable provider CLI never auto-continue.
+
+### 3. Interactive "How should we proceed?" and owner rerun
+`2026-10-24` · `spec:na` · `impl:unimplemented`
+
+- At a terminal, any blocked command shows the banner and asks, per blocker,
+  `How should we proceed?`
+  - Text is written into that blocker's `Commander Resolution`.
+  - Enter keeps the existing resolution, or none, which is fine for environmental blockers.
+  - `q` aborts with exit `1`.
+- Drydock then reruns the owner. If the owner succeeds and the requested command differs, the
+  requested command continues.
+- Owner succeeds: resolved blockers are archived (`analyze` keeps archiving into `ANALYSIS.md`)
+  and the file is deleted.
+- Owner fails with the same environmental class: `attempts + 1` and the time is updated.
+- Owner fails for an ordinary reason: environmental blockers clear and the failure goes to
+  `ERRORS.md`. The owner rewrites unresolved decision blockers.
+
+### 4. Resolution as primary instruction
+`2026-10-24` · `spec:na` · `impl:unimplemented`
+
+When any `Commander Resolution` is present, the owner's rerun injects it at the top of its
+prompt as its primary instruction. When none exists (for example a rate limit), the prompt is
+unchanged.
+
+### 5. Retire `STOP_NOW.md` and move its readers
+`2026-10-24` · `spec:na` · `impl:unimplemented`
+
+- Move `status` (phase routing, `--ready`), the `plan` gate, the `uat` stop check,
+  `scripts/uat_repair_loop.sh` and the Commander's Chair stop view to `BLOCKERS.md`.
+- Remove `STOP_NOW.md`, its `Clear this stop and continue? [y/N]` prompt, and
+  `stop_condition.py`'s file contract. No compatibility shim.
+- A provider failure another call cannot fix writes an environmental blocker owned by the
+  command that hit it. A `uat` stage halt writes one in the run workspace.
+- Rewrite `## Behavior` once implemented.
 
 ## Open Questions
 
