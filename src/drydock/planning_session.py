@@ -49,6 +49,7 @@ from drydock.acceptance_requirements import (
     recommend_external_declarations,
 )
 from drydock.artifact_blocks import (
+    ARTIFACT_CLOSE_TOKEN,
     RESERVED_BLOCK_NAMESPACE,
     StrayText,
     emission_contract_lines,
@@ -5533,6 +5534,14 @@ def _continue_short_plan(
         # allowed near the accumulator. The merged set spans several responses and can no longer
         # be checked as one text, so this is the only point at which that check is possible.
         pass_damaged = _unpaired_artifact_names(result.text, pass_blocks)
+        damage_details = tuple(
+            f"{name}: incomplete or nested artifact envelope; emit one complete body ending "
+            f"with `{ARTIFACT_CLOSE_TOKEN}` on its own line"
+            for name in sorted(pass_damaged)
+        )
+        if damage_details and on_text is not None:
+            for detail in damage_details:
+                on_text(f"[plan-score][plan] artifact rejected — {detail}\n")
 
         accepted_now = frozenset(score.accepted)
         declared_names = frozenset(item.filename for item in score.declared)
@@ -5616,7 +5625,9 @@ def _continue_short_plan(
                         result="No complete Blueprint accepted",
                     )
                 )
-            previous_rejection = "the response completed no Current batch Blueprint"
+            previous_rejection = "; ".join(damage_details) or (
+                "the response completed no Current batch Blueprint"
+            )
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
@@ -5632,7 +5643,7 @@ def _continue_short_plan(
                 )
             )
         stalled_passes = 0
-        previous_rejection = ""
+        previous_rejection = "; ".join(damage_details)
         batch_size = _PLAN_BLUEPRINT_BATCH_SIZE
 
     return _Continuation(

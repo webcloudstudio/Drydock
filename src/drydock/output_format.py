@@ -1,4 +1,4 @@
-"""Narrow response cleanup. Artifact semantics and retry budgets belong to callers."""
+"""Narrow response normalization. Artifact semantics and retry budgets belong to callers."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from drydock.artifact_blocks import envelope_spans, is_stray_text
+from drydock.artifact_blocks import envelope_spans, is_stray_text, repair_final_artifact_close
 
 OutputFormat = Literal["artifacts", "json"]
 
@@ -17,6 +17,7 @@ class CleanedOutput:
     text: str
     removed: tuple[str, ...] = ()
     defect: str | None = None
+    repaired: tuple[str, ...] = ()
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -38,14 +39,15 @@ def load_json(text: str) -> object:
 
 
 def clean_output(text: str, output_format: OutputFormat) -> CleanedOutput:
-    """Strip only bounded narration outside an unambiguous, complete payload.
+    """Strip bounded narration and repair only the exact final artifact-close omission.
 
     On any ambiguity preserve the entire reply for the caller's existing repair path.
     """
     removed: list[str] = []
     try:
         if output_format == "artifacts":
-            spans = envelope_spans(text)
+            candidate, repaired = repair_final_artifact_close(text)
+            spans = envelope_spans(candidate)
             for inside, span in spans:
                 if not inside and span.strip():
                     if not is_stray_text(span):
@@ -54,6 +56,7 @@ def clean_output(text: str, output_format: OutputFormat) -> CleanedOutput:
             return CleanedOutput(
                 "".join(span for inside, span in spans if inside or not span.strip()),
                 tuple(removed),
+                repaired=repaired,
             )
         if output_format != "json":
             raise ValueError(f"unsupported output format: {output_format}")

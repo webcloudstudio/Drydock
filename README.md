@@ -141,7 +141,11 @@ Structured model responses are normalized at the shared CLI adapter when the cal
 score spec/release/drydock, and prompt review use this contract. Short wrapper narration is
 removed only around complete payloads; JSON code fences are removed as well. Bodies remain
 unchanged. Raw output remains in execution evidence, and `logs/llm.jsonl` records removals and
-cleanup defects. Existing command validators and retry budgets still govern acceptance; malformed
+cleanup defects. An exact final `=== END ARTIFACT` missing its trailing ` ===` is completed only
+when the artifact envelopes are otherwise unambiguous; the record's `output_contract.repaired`
+field names the repair, and `drydock plan` prints it. Other incomplete planning artifacts remain subject
+to validation and bounded retry with the filename and closing-token requirement.
+Existing command validators and retry budgets still govern acceptance; malformed
 JSON, duplicate keys, and ambiguous extra content are not silently extracted away.
 
 ## Build workflow

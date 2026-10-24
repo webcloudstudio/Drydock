@@ -264,6 +264,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: Artifact-format LLM calls repair an exact final `=== END ARTIFACT` missing its
+  trailing ` ===` when the envelope sequence is unambiguous, preserving bodies and original
+  execution evidence. `logs/llm.jsonl` records `output_contract.repaired`; `drydock plan` prints
+  repairs and names unrepaired envelope defects in progress and retry instructions, including
+  after partially accepted batches. This prevents the Quakes 10/11 Blueprint stall caused by
+  repeatedly discarding the final verification artifact without explaining its malformed close.
+
 - 2026-10-23: An `update` with a declared Output returns that row read back by key, or
   `None`/`nil` when no row matched, in the Python and Go repositories. Its Output fields must be
   table columns. An `update` with no Output still returns the count.

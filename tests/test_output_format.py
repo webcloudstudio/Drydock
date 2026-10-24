@@ -86,3 +86,51 @@ def test_json_arrays_and_fences_are_idempotent():
 def test_malformed_second_json_string_is_not_narration():
     with pytest.raises(ValueError):
         parse_json_output('{"a": 1}\n"unterminated')
+
+
+@pytest.mark.parametrize("ending", ["", "\n", "\r\n\r\n", "  \n\n"])
+def test_final_invariant_close_is_repaired_without_changing_body(ending):
+    body = "=== BEGIN ARTIFACT A.md ===\n# A\n=== AC one ===\nassert True\n=== END AC one ===\n"
+    original = body + "=== END ARTIFACT" + ending
+    result = clean_output(original, "artifacts")
+    assert result.text == body + "=== END ARTIFACT ===" + ending
+    assert result.defect is None
+    assert result.repaired == (
+        "A.md: completed final `=== END ARTIFACT` as `=== END ARTIFACT ===`",
+    )
+    assert not clean_output(result.text, "artifacts").repaired
+
+
+def test_final_close_repair_preserves_preceding_completed_artifacts():
+    final = "=== BEGIN ARTIFACT B.md ===\n# B\n=== END ARTIFACT"
+    result = clean_output("Here it is.\n" + ARTIFACT + final, "artifacts")
+    assert result.text == ARTIFACT + final + " ==="
+    assert result.removed == ("Here it is.\n",)
+    assert result.repaired[0].startswith("B.md:")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "=== END ARTIFACT",
+        ARTIFACT + "=== END ARTIFACT",
+        ARTIFACT + ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT"),
+        "=== BEGIN ARTIFACT B.md ===\n"
+        + ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT"),
+        ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT\nMore content."),
+        ARTIFACT.replace(
+            "=== END ARTIFACT ===", "=== END ARTIFACT\nMore content.\n=== END ARTIFACT"
+        ),
+        ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT =="),
+        ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT A.md"),
+        ARTIFACT.replace("=== END ARTIFACT ===", "# unfinished body"),
+        "# lost content\n" + ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT"),
+        "=== END B.md ===\n" + ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT"),
+    ],
+)
+def test_final_close_repair_refuses_ambiguous_or_truncated_output(text):
+    result = clean_output(text, "artifacts")
+    assert result.text == text
+    assert result.defect
+    assert not result.repaired
+    assert not result.removed

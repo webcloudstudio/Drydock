@@ -7411,3 +7411,52 @@ def test_an_emitted_database_whose_criteria_skip_an_operation_is_refused():
     assert defect.check_id == "tickets.list"
     assert "db.tickets.list(" in defect.reason
     assert _untested_operation_defects({"FEATURE-Status.md": "# FEATURE: Status\n"}) == ()
+
+
+@pytest.mark.parametrize("partial_progress", [False, True])
+def test_damaged_continuation_names_the_artifact_in_progress_and_retry(partial_progress):
+    from drydock.prompt_assembly import PromptAssembly
+
+    prompts = []
+    progress = []
+    first = "=== BEGIN ARTIFACT FEATURE-X.md ===\n# FEATURE: X\n"
+    declared = [PlannedStory(story_id="story-x", implements="FEATURE-X.md")]
+    if partial_progress:
+        first = "=== BEGIN ARTIFACT FEATURE-Y.md ===\n# FEATURE: Y\n=== END ARTIFACT ===\n" + first
+        declared.insert(0, PlannedStory(story_id="story-y", implements="FEATURE-Y.md"))
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        return FakeRun(
+            text=first
+            if len(prompts) == 1
+            else ("=== BEGIN ARTIFACT FEATURE-X.md ===\n# FEATURE: X\n=== END ARTIFACT ===\n"),
+            execution_id=f"exec-{len(prompts)}",
+        )
+
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Frozen stories."},
+        blocks_text="=== TOPOLOGY.md ===\nFrozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=tuple(declared),
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="codex",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=progress.append,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+    assert result.score.is_complete
+    assert len(prompts) == 2
+    assert (
+        "Previous attempt rejected — FEATURE-X.md: incomplete or nested artifact envelope"
+        in prompts[1]
+    )
+    assert "ending with `=== END ARTIFACT ===`" in prompts[1]
+    assert any(
+        line.startswith("[plan-score]") and "FEATURE-X.md: incomplete or nested" in line
+        for line in progress
+    )

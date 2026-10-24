@@ -2254,6 +2254,8 @@ def run_prompt(
             if on_text is not None:
                 for removed in cleanup.removed:
                     on_text(f"[output] {output_format} wrapper discarded: {removed.strip()!r}\n")
+                for repair in cleanup.repaired:
+                    on_text(f"[output] {output_format} repaired: {repair}\n")
                 if cleanup.defect:
                     on_text(
                         f"[output] {output_format}: {cleanup.defect}; retained for validation\n"
@@ -2334,6 +2336,7 @@ def run_prompt(
             record["output_contract"] = {
                 "format": output_format,
                 "removed": list(cleanup.removed) if cleanup else [],
+                "repaired": list(cleanup.repaired) if cleanup else [],
                 "defect": cleanup.defect if cleanup else None,
                 "normalized_sha256": sha256_bytes(text.encode("utf-8")),
             }

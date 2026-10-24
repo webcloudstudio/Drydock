@@ -39,6 +39,18 @@ read before parsing, in any operand position, and refused with exit `2` by every
 
 ### Rules
 
+`2026-10-24` · **A final invariant artifact close missing only its trailing equals is repaired.**
+For artifact-format calls, the shared adapter completes an exact `=== END ARTIFACT` on the final
+nonblank line only when one artifact remains open and the resulting envelope sequence has no
+nested, duplicate, orphan or mismatched boundary. Body text is unchanged and all downstream
+validation still applies. Original output and provider transcripts remain unchanged;
+`logs/llm.jsonl` records `output_contract.repaired` and the normalized payload hash. Plan prints
+successful repairs without `--debug`. Other incomplete envelopes retain rejection and bounded
+retry; Stage 2 prints the damaged filename and required closing token and includes that reason
+in the next batch, including after partial progress. This revises `a3d0e60`'s generic no-progress
+feedback. Cost when broken: Quakes `20261024.054647` repeatedly discarded `VERIFICATION.md` for
+this exact token omission and stalled at 10/11 after two identical retry prompts.
+
 `2026-10-22` · Plan refuses recognized criterion DSN mutations, explicit fixture DSNs and schema calls (`acceptance-store` defects). Prompt guidance requires the shared-store lifecycle in [acceptance_criteria](../topics/acceptance_criteria.md). Cost when broken: a valid feature is graded against an unprovisioned database.
 
 `2026-10-22` · **Structured model calls declare their output format to `llm.run_prompt`.**

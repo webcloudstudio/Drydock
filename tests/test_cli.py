@@ -1549,6 +1549,8 @@ class TestLlmOverrideFlags:
         def fake_create_plan(blueprint, target, target_directory, **kwargs):
             seen["kwargs"] = kwargs
             kwargs["on_text"]("[plan-score]Topology Created:  True\nBlueprints Created: 5 / 10\n")
+            kwargs["on_text"]("[output] artifacts repaired: FEATURE-X.md: completed close\n")
+            kwargs["on_text"]("raw model body must stay hidden\n")
             return SimpleNamespace(
                 plan=SimpleNamespace(
                     project="Proj",
@@ -1591,6 +1593,8 @@ class TestLlmOverrideFlags:
         assert seen["kwargs"]["on_text"] is not print
         assert "Topology Created:  True" in out
         assert "Blueprints Created: 5 / 10" in out
+        assert "[output] artifacts repaired: FEATURE-X.md: completed close" in out
+        assert "raw model body must stay hidden" not in out
         # Conform pass is on by default and suppressed by --no-conform.
         assert seen["kwargs"]["conform"] is True
 

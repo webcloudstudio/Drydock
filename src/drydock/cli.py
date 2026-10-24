@@ -1301,6 +1301,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
         # LLM response text, which for a full-rewrite plan can be very large.
         if text.startswith("[plan-score]"):
             print(text.removeprefix("[plan-score]"), end="", flush=True)
+        elif text.startswith("[output] artifacts repaired:"):
+            print(text, end="", flush=True)
         elif getattr(args, "debug", False) and text.startswith("[plan]"):
             print(text, end="")
 

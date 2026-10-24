@@ -2323,3 +2323,89 @@ def test_ambiguous_output_is_not_rewritten_or_retried(tmp_path, monkeypatch):
     assert result.text == original
     assert result.record["output_contract"]["defect"] == "duplicate JSON key: a"
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("provider", ["codex", "claude"])
+def test_final_artifact_close_repair_records_evidence_without_an_extra_call(
+    tmp_path, monkeypatch, provider
+):
+    from hashlib import sha256
+
+    original = "=== BEGIN ARTIFACT FEATURE-X.md ===\n# FEATURE: X\n=== END ARTIFACT"
+    expected = original + " ==="
+    event = (
+        {"type": "result", "result": original}
+        if provider == "claude"
+        else {"type": "item.completed", "item": {"type": "agent_message", "text": original}}
+    )
+    raw = json.dumps(event) + "\n"
+    calls = []
+
+    def invoke(command, **kwargs):
+        calls.append(command)
+        if provider == "codex":
+            Path(command[command.index("--output-last-message") + 1]).write_text(original)
+        return FakePopen(command, stdout_text=raw, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", invoke)
+    progress = []
+    result = run_prompt(
+        "Work",
+        tmp_path,
+        llm=provider,
+        command_name="plan",
+        output_format="artifacts",
+        on_text=progress.append,
+    )
+    assert result.ok
+    assert result.text == expected
+    assert len(calls) == 1
+    assert result.artifacts.output_file.read_text() == original
+    assert result.artifacts.raw_file.read_text() == raw
+    contract = _records(tmp_path)[-1]["output_contract"]
+    assert contract["repaired"] == [
+        "FEATURE-X.md: completed final `=== END ARTIFACT` as `=== END ARTIFACT ===`"
+    ]
+    assert contract["normalized_sha256"] == sha256(expected.encode()).hexdigest()
+    assert contract["defect"] is None
+    assert any("[output] artifacts repaired: FEATURE-X.md:" in line for line in progress)
+
+
+def test_plan_continuation_accepts_repaired_provider_output_in_one_pass(tmp_path, monkeypatch):
+    from drydock.plan_topology import PlannedStory
+    from drydock.planning_session import _continue_short_plan
+
+    original = "=== BEGIN ARTIFACT FEATURE-X.md ===\n# FEATURE: X\n=== END ARTIFACT"
+    calls = []
+
+    def invoke(command, **kwargs):
+        calls.append(command)
+        Path(command[command.index("--output-last-message") + 1]).write_text(original)
+        raw = (
+            json.dumps({
+                "type": "item.completed",
+                "item": {"type": "agent_message", "text": original},
+            })
+            + "\n"
+        )
+        return FakePopen(command, stdout_text=raw, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", invoke)
+    result = _continue_short_plan(
+        {"TOPOLOGY.md": "One frozen story."},
+        blocks_text="=== TOPOLOGY.md ===\nOne frozen story.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=(PlannedStory(story_id="story-x", implements="FEATURE-X.md"),),
+        target="Example",
+        target_dir=tmp_path,
+        llm_provider="codex",
+        model="gpt-6-luna",
+        log_dir=tmp_path / "logs",
+        runner=run_prompt,
+        on_text=None,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+    assert result.score.is_complete
+    assert result.blocks["FEATURE-X.md"] == "# FEATURE: X"
+    assert len(calls) == result.passes == 1

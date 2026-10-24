@@ -504,6 +504,31 @@ def envelope_spans(text: str) -> tuple[tuple[bool, str], ...]:
     return tuple(spans)
 
 
+def repair_final_artifact_close(text: str) -> tuple[str, tuple[str, ...]]:
+    """Complete only the observed invariant close missing its trailing equals at EOF.
+
+    A candidate must have entirely unambiguous envelopes. Missing closes, nested/repeated
+    openers and conflicting closes remain the caller's validation/retry responsibility.
+    """
+    lines = text.splitlines(keepends=True)
+    index = next((i for i in range(len(lines) - 1, -1, -1) if lines[i].strip()), None)
+    if index is None or lines[index].strip() != "=== END ARTIFACT":
+        return text, ()
+    if sum(line.strip() == "=== END ARTIFACT" for line in lines) != 1:
+        return text, ()
+    pairing = pair_artifact_delimiters(text)
+    if len(pairing.unclosed) != 1:
+        return text, ()
+    name = pairing.unclosed[0]
+    lines[index] = lines[index].replace("=== END ARTIFACT", ARTIFACT_CLOSE_TOKEN, 1)
+    candidate = "".join(lines)
+    try:
+        envelope_spans(candidate)
+    except ValueError:
+        return text, ()
+    return candidate, (f"{name}: completed final `=== END ARTIFACT` as `{ARTIFACT_CLOSE_TOKEN}`",)
+
+
 def _guarded(kind: str, raw_name: str) -> tuple[str, str | None] | None:
     name = raw_name.strip()
     if _RESERVED_NAME_RE.match(name):

@@ -27,6 +27,13 @@ drydock analyze <Target> [--model <model>] [--llm-provider <p>]
 
 ### Rules
 
+`2026-10-24` · **Artifact-format replies use the shared bounded closing-token repair.** An exact
+`=== END ARTIFACT` on the final nonblank line is completed only when one artifact remains open
+and the resulting envelope sequence is unambiguous, as defined in [plan](plan.md). Bodies and
+original execution evidence are preserved; `output_contract.repaired` records the change.
+All analysis admission checks still apply. Cost when broken: an otherwise usable response is
+lost to a missing trailing ` ===`, or ambiguous output is accepted as a complete artifact.
+
 `2026-10-23` · **A stated foundation fact is not a story.** The Story List holds behavior a user
 or caller observes. A language, framework, or database goes to `TECHNOLOGY_STACK.md`, and a
 mandated table, column, or layout is a `COMPASS.md` `## Constraints` bullet. A Sea Trial may check
