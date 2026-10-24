@@ -189,11 +189,19 @@ def _is_runner(node: ast.AST) -> bool:
     return (func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)) == RUNNER_NAME
 
 
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
 def _statements(body: list[ast.stmt]) -> list[ast.stmt]:
-    """Statements in source order, descending into ``with``/``for``/``if``/``try`` bodies."""
+    """Statements in source order, descending into ``with``/``for``/``if``/``try`` bodies.
+
+    A ``def`` or ``class`` is kept but not entered: its body is a separate scope, read on its own.
+    """
     flat: list[ast.stmt] = []
     for node in body:
         flat.append(node)
+        if isinstance(node, _SCOPES):
+            continue
         for name in ("body", "orelse", "finalbody"):
             flat.extend(_statements(getattr(node, name, []) or []))
         for handler in getattr(node, "handlers", []) or []:
@@ -354,13 +362,19 @@ def _checked_calls(tree: ast.Module) -> list[_CheckedCall]:
     """Every ``cli_runner`` call in source order, with whether an ``assert`` reads its exit.
 
     A call is checked when it sits inside an ``assert``, or when its result is bound and the name
-    holding the exit status is read by an ``assert`` before it is rebound.
+    holding the exit status is read by an ``assert`` before it is rebound. A ``def`` or ``class``
+    body is judged as its own scope, so a binding never borrows an ``assert`` from another scope.
+    DupFind ``20261024.183232``: walking a ``def`` whole marked every call in it unchecked,
+    although each was followed by ``assert code == 0``.
     """
     results: list[_CheckedCall] = []
     pending: dict[str, ast.Call] = {}
     statements = _statements(tree.body)
     dictionary_checks = _dictionary_result_checks(tree, statements)
     for node in statements:
+        if isinstance(node, _SCOPES):
+            results.extend(_checked_calls(ast.Module(body=node.body, type_ignores=[])))
+            continue
         if isinstance(node, ast.Assert):
             read = {name.id for name in ast.walk(node.test) if isinstance(name, ast.Name)}
             for name in sorted(read & pending.keys()):

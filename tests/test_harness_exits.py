@@ -210,6 +210,27 @@ text = cli_runner("report")[1]
     assert unchecked_calls(code) == [3, 4, 7]
 
 
+# DupFind 20261024.183232: each call in a def was asserted, yet the def was walked whole.
+def test_calls_inside_a_def_are_judged_in_its_own_scope():
+    code = """from drydock_go import cli_runner
+
+
+def first():
+    code, out, err = cli_runner(".")
+    assert code == 0
+
+
+class Second:
+    def run(self):
+        code, out, err = cli_runner("--summary", ".")
+
+
+def third():
+    assert code == 0
+"""
+    assert unchecked_calls(code) == [11]
+
+
 # DrydockStats 20261024.143257 REM-007: collect inside a context, assert outside it.
 _DICTIONARY_RESULTS = """COLUMNS = {"summary": 11, "commands": 7}
 with context():

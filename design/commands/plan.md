@@ -437,6 +437,8 @@ the assertions that followed from it. Calls addressing state are not compared: t
 exit name is rebound before an `assert` reads it. `plan_repair.md` V10 binds the call and adds
 `assert code == 0` after it. *Broken:* LayersTesting `20261021.195808` ran two setup calls that
 failed silently, then tested an account that did not exist.
+`2026-10-24` · A `def` or `class` body is judged as its own scope, so a call inside a function
+with its own `assert` is checked. *Broken:* DupFind `20261024.183232` rejected four asserted calls.
 
 `2026-10-24` · **Exit assertions may follow collection into a dictionary.** `plan verify`
 recognizes an empty result dictionary filled by one `cli_runner` assignment per key of a
@@ -581,6 +583,8 @@ exist.
 
 
 ## Open Actions
+
+- `2026-10-24` · Plan verify and the in-plan gate must reject fenced (non-`=== AC`) criteria and criteria that define functions they never call (DupFind `20261024.183232`; `acceptance.py:1575`, `runner.py:317`).
 
 - `2026-10-24` · Format the existing replacement chain in
   `tests/test_database_contract.py:851`; it is the remaining repository-wide
