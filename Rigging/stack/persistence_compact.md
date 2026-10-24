@@ -1,123 +1,195 @@
-<!-- Compacted from Rigging/stack/persistence.md sha256=0e39be9fcbe467abf4112391c0ab77d95713ee3ae2bca3600c435e40ed9417c7 on 2026-10-23 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/persistence.md sha256=46dba643a848b1fd6c56493a0ba3651ad8f29797e25b9fc0327c7d02daff7d2f on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # Persistence & Service Encapsulation — Contract Surface
 
 ## Relational Persistence
 
-### `db.<table>.<name>`
-Executes a declared persistence operation using keyword arguments matching its declared Input fields.
+### Rule: persistence-boundary
+
+All persistence and external-service access goes through typed encapsulation classes.
+
+Constraints: Route, feature, and business-logic code must not execute raw SQL, read `os.environ`, open application files, import `sqlite3`/`psycopg`, or import cloud SDKs outside their encapsulation classes.
+
+### function_open_database
+
+Opens the generated persistence package using a database DSN.
+
+| Parameter | Type |
+|---|---|
+| `dsn` | `str` |
+
+Returns a `Database` instance with one attribute per declared table.
+
+Constraints: Callers use the generated package and must not write repositories, DAOs, ORM models, connection helpers, session factories, or migrations.
+
+### Database.<table>.<operation>
+
+Executes a declared database operation using keyword arguments matching its `Input` fields.
 
 | Input | Type |
 |---|---|
-| Declared Input fields | `str`, `int`, `float`, `bool`, or `bytes`; optional fields are marked `?` |
+| Declared operation fields | `str`, `int`, `float`, `bool`, or `bytes` |
 
-Returns the declared Output shape: row, nullable row, list of rows, or changed-row count.
+Returns the declared operation `Output`: a row, `None`, a list of rows, or an integer row count.
 
-Constraints: Only declared table operations are callable. Unknown operations raise `UnknownOperation`. No raw SQL, joins, OR operators, or alternate store-access paths are permitted outside `persistence/`.
+Constraints: Unknown operations raise `UnknownOperation`. No other arguments, operators, OR conditions, joins, or SQL access paths are accepted. Calls are synchronous, and returned rows are frozen dataclasses without connection state.
 
-### `db.<table>.get`
-Retrieves at most one row by a unique Match key; returns the row or `None`.
+### Rule: operation-kinds
 
-### `db.<table>.list`
-Retrieves zero or more rows using optional equality filters for supplied Input fields; returns a list of rows.
+Declared operations use one of six kinds: `get`, `list`, `create`, `update`, `upsert`, or `delete`.
 
-### `db.<table>.create`
-Creates one row using every Input field; returns the created row.
+Constraints: Operation names are the caller contract. Match fields select rows using AND semantics; bare fields use equality, and comparison terms may use `=`, `<`, `<=`, `>`, or `>=`. `list` filters are optional. `Order` controls list ordering. Every write executes as one package-level statement.
 
-### `db.<table>.update`
-Updates supplied non-Match Input fields for rows selected by Match, defaulting to the primary key; returns the row or `None` for a unique match, or a changed-row count for a non-unique match.
-
-### `db.<table>.upsert`
-Inserts or replaces a row selected by exactly one unique Match key; returns the resulting row.
-
-### `db.<table>.delete`
-Deletes rows selected by Match; returns the Output built from the Match or `None` for a unique match, or a changed-row count for a non-unique match.
+| Kind | Selection | Return |
+|---|---|---|
+| `get` | Unique-key match | Row or `None` |
+| `list` | Optional input-field match | Ordered list of rows |
+| `create` | None | Created row |
+| `update` | Match, defaulting to primary key | Row/`None`, or count for many rows |
+| `upsert` | Exactly one unique-key match | Inserted or replaced row |
+| `delete` | Input-field match | Matched output/`None`, or count for many rows |
 
 ### Rule: operation-surface
-Build callers from the generated `DATABASE_compact.md` Operation Surface. The operation name, Kind, Match, rows, return shape, Input fields, Output fields, caller types, SQL, and fingerprint are authoritative.
+
+Each operation exposes a generated contract containing its call path, kind, rows, match terms, sets, input schema, output schema, SQL, and 12-character SHA-256 contract fingerprint.
+
+Constraints: Callers build against `DATABASE_compact.md`’s generated `Operation Surface`. Contract fingerprints change only when the operation name, kind, match, order, row behavior, return shape, or input/output field names and types change.
 
 ### Rule: database-runtime
-The generated package exposes one attribute per declared table and one method per declared operation. Callers use one shared `Database` instance synchronously; returned rows are frozen dataclasses without connection state.
 
-### Rule: engine-selection
-SQLite and PostgreSQL engines are available at runtime and selected from the DSN.
+The generated package supports SQLite and PostgreSQL selected from the runtime DSN.
 
-### Rule: schema-lifecycle
-The generated `schema.sql` is applied once during the DATABASE step. Application startup does not create or alter schema.
-
-### Rule: persistence-guardrails
-Do not hand-write repositories, DAOs, ORM models, session factories, migrations, raw SQL, or database-driver imports outside `persistence/`. Do not edit generated `persistence/` files; change `DATABASE.md` and rebuild.
+Constraints: Both engines are present in every build. The schema is applied once during the DATABASE build step and is not created or altered at application startup.
 
 ## Configuration
 
-### `Config.load`
-Loads and validates environment-backed configuration once at startup.
+### Config.load
 
-| Field | Source | Type | Required |
-|---|---|---:|---:|
-| `secret_key` | `SECRET_KEY` | `str` | yes |
-| `database_path` | `DATABASE_PATH` | `str` | no; default `data/app.db` |
-| `port` | `APP_PORT` | `int` | no; default `5001` |
-| `debug` | `APP_DEBUG` | `bool` | no; `true` only when value is `"1"` |
+Loads and validates environment configuration once at startup.
 
-Returns a frozen typed `Config`. Missing required variables raise `RuntimeError`; malformed typed values fail during startup.
+| Field | Source | Type | Required/default |
+|---|---|---|---|
+| `secret_key` | `SECRET_KEY` | `str` | Required |
+| `database_path` | `DATABASE_PATH` | `str` | `"data/app.db"` |
+| `port` | `APP_PORT` | `int` | `5001` |
+| `debug` | `APP_DEBUG` | `bool` | `True` only when value is `"1"` |
 
-Constraints: Only `Config` reads `os.environ`. Configuration is environment-driven; no Dev, Prod, or Test subclasses exist.
+Returns a frozen `Config` instance.
+
+Constraints: Missing required variables or malformed typed values raise a startup error. No code outside `Config` reads `os.environ`. There are no environment-specific subclasses.
 
 ## File Storage
 
-### `FileStore.__init__(root: str)`
-Creates a file store rooted at the supplied directory.
+### FileStore.__init__
 
-### `FileStore.read(name: str)`
-Reads and returns the named application file as UTF-8 text.
+Creates a typed file store rooted at a directory.
 
-Returns `str`.
+| Parameter | Type |
+|---|---|
+| `root` | `str` |
 
-### `FileStore.write(name: str, data: str)`
-Writes UTF-8 text to the named application file, creating parent directories as needed.
+### FileStore.read
 
-### `FileStore.list(pattern: str = "*")`
-Lists names of files in the root matching the supplied glob pattern.
+Reads an application file by name.
 
-Returns `list[str]`.
+| Parameter | Type |
+|---|---|
+| `name` | `str` |
 
-Constraints: Callers do not build application paths or call `open()` or `shutil`; path-traversal validation and atomic writes belong to `FileStore`.
+Returns the file contents as `str`.
 
-## External Services
+### FileStore.write
 
-### `ServiceClient.__init__(backend, name: str | None = None)`
-Initializes a service wrapper with a backend handle and named logger.
+Writes string data to an application file, creating parent directories as needed.
 
-### `ServiceClient._guard(op, *args, **kwargs)`
-Executes a backend operation, logs failures, and re-raises exceptions.
-
-### `MessageBus.publish(topic: str, payload: dict)`
-Publishes a payload to a topic through the wrapped backend.
-
-Returns `str`.
-
-### `MessageBus.subscribe(topic: str, handler)`
-Registers a handler for messages from a topic.
+| Parameter | Type |
+|---|---|
+| `name` | `str` |
+| `data` | `str` |
 
 Returns `None`.
 
-Constraints: Every external-service wrapper extends `ServiceClient`, exposes typed methods, and does not leak its SDK client. Cloud SDK imports remain inside service wrappers.
+### FileStore.list
+
+Lists file names matching a pattern.
+
+| Parameter | Type | Default |
+|---|---|---|
+| `pattern` | `str` | `"*"` |
+
+Returns `list[str]`.
+
+Constraints: Callers must not construct application paths or call `open()`/`shutil` directly. Path-traversal validation and atomic-write behavior belong to `FileStore`.
+
+## External Services
+
+### ServiceClient.__init__
+
+Initializes a service wrapper with a backend handle and named logger.
+
+| Parameter | Type | Required/default |
+|---|---|---|
+| `backend` | backend handle | Required |
+| `name` | `str \| None` | Wrapper class name |
+
+### ServiceClient._guard
+
+Executes a backend operation and logs failures before re-raising them.
+
+| Parameter | Type |
+|---|---|
+| `op` | callable |
+| `*args` | operation arguments |
+| `**kwargs` | operation keyword arguments |
+
+Returns the operation result or re-raises its exception.
+
+### MessageBus.publish
+
+Publishes a typed payload through the wrapped service backend.
+
+| Parameter | Type |
+|---|---|
+| `topic` | `str` |
+| `payload` | `dict` |
+
+Returns `str`.
+
+### MessageBus.subscribe
+
+Registers a handler for a topic.
+
+| Parameter | Type |
+|---|---|
+| `topic` | `str` |
+| `handler` | callable |
+
+Returns `None`.
+
+Constraints: Every external-service wrapper extends `ServiceClient`, exposes typed methods, and never exposes the SDK client. Cloud SDK imports remain inside service wrappers.
 
 ## Acceptance Transactions
 
-### Rule: database-acceptance-session
-Database criteria use the configured store with `with db_session() as db:`. Setup, behavior, and assertions execute in one transaction, and the fixture rolls it back.
+### Rule: acceptance-store
 
-Constraints: Do not replace the configured database, create temporary databases, apply DDL, commit, close the owned connection, or open another connection inside the rollback scope.
+Acceptance criteria use the configured database provisioned by the DATABASE step.
 
-### Rule: committed-acceptance-session
-HTTP, CLI, subprocess, background-work, and commit/restart criteria use `persistence.testing.committed_session()` for setup, readback, and cleanup on the configured store.
+Constraints: Criteria must not replace database configuration, create temporary databases, apply DDL, assume an empty store, commit, or clean up records. Assertions use records created by the criterion or relative counts.
 
-Constraints: Each criterion owns a stable identifier, reconciles only its own residue, verifies setup, checks only owned records, cleans up through supported interfaces in `try/finally`, and treats cleanup failure as criterion failure.
+### Rule: python-criterion-transaction
 
-### Rule: durability-coverage
-Acceptance evidence includes independent commit/reconnect durability coverage and uses runtime catalog and row-count evidence to verify database provisioning.
+The acceptance harness starts one transaction before each Python criterion and rolls it back afterward.
 
-### Rule: immutable-history
-Immutable ledger records are never deleted or history-reset; identify them or use supported reversal entries.
+Constraints: `db_session()`, `web_client()`, and `cli_runner()` participate in that transaction. Seed through `with db_session() as db:` and pass that database into feature operations. Exiting the context does not roll back the transaction.
+
+### Rule: process-criterion
+
+Criteria that launch subprocesses, servers, or shell scripts cannot access the criterion transaction.
+
+Constraints: Such criteria must not depend on rows written in the transaction and must exercise stored behavior in-process.
+
+### Rule: go-criterion-transaction
+
+Go criteria use transaction helpers appropriate to their execution mode.
+
+Constraints: In-process Go criteria use `OpenSession(ctx, "")` with checked deferred cleanup. Go HTTP, CLI, and restart criteria use `OpenCommittedSession(ctx, "")` with a criterion-owned identifier and checked deferred cleanup through supported product interfaces.

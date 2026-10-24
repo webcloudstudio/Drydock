@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/sqlite.md sha256=6dc83be535be1333bb5ddc58dfeddfef1c42a0c5d43886b2c2cc55138ab9a238 on 2026-10-23 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/sqlite.md sha256=fd7cb92f6105bb8ea236c1ccb1824dfa2db832c8405aca14b542a7313cb8ec41 on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -98,46 +98,51 @@ def db_session():
 ```
 
 `db_session()` opens the configured application store (DATABASE_URL, else DATABASE_PATH,
-else data/app.db) and starts a rollback transaction. Schema is provisioned only at the DATABASE
-step. Pass the yielded database into the feature; setup, action, and assertions share that
-connection. The fixture always rolls back, including on assertion failure; rollback errors fail
-the criterion. It never creates a temporary database or applies schema. Default application
-operations remain autocommitted. `committed_session()` (Go: `OpenCommittedSession(ctx, "")`)
-opens that same store with autocommit and closes the connection; the criterion owns business
-cleanup. HTTP, subprocess, multi-connection, and durability checks use
-committed operations with criterion-owned identifiers and idempotent recovery/cleanup through
-supported interfaces; never reset the database or delete unrelated records.
+else data/app.db). Schema is provisioned only at the DATABASE step. Pass the yielded database into
+the feature. Under the acceptance harness, every database the criterion's process opens, including
+this fixture, the application behind `web_client()`, and commands run through `cli_runner()`, joins
+one transaction that the harness rolls back when the criterion ends, pass or fail. Leaving the
+`with` block rolls nothing back, so a later request still sees the setup. Outside the harness (the
+project's pytest suite) the fixture starts its own transaction and rolls it back on exit. It never
+creates a temporary database or applies schema. `committed_session()` opens the same store with
+autocommit for project tests that need committed state, and joins the harness transaction under
+acceptance. A process the criterion launches cannot see that transaction and must not depend on
+its rows. Never reset the database or delete unrelated records.
 
 ---
 
 # SQLite — Contract Surface
 
-### config_key
+## Connection
 
-SQLite opens from a plain filesystem path or a `sqlite://` DSN; the runtime DSN selects SQLite or PostgreSQL without rebuilding.
+### config_key: SQLite DSN
+SQLite accepts a plain filesystem path or a `sqlite://` DSN for runtime database selection.
 
-Constraints: SQLite is the development and test engine; PostgreSQL is the production relational engine.
+Constraints: The same build must support SQLite for development and testing and PostgreSQL for production through the configured DSN.
 
-### Rule: supported-schema-enforcement
+## Schema Rules
 
-The database enforces `PRIMARY KEY`, `NOT NULL`, `UNIQUE`, `DEFAULT`, and `REFERENCES`.
+### Rule: enforced-constraints
+SQLite enforces `PRIMARY KEY`, `NOT NULL`, `UNIQUE`, `DEFAULT`, and `REFERENCES` when foreign keys are enabled.
 
-Constraints: Foreign-key enforcement requires `PRAGMA foreign_keys=ON`.
+### Rule: production-length-validation
+SQLite accepts values exceeding declared column lengths; production PostgreSQL may reject them.
 
-### Rule: sqlite-limitations
+Constraints: Declare production column lengths and do not rely on SQLite to validate them.
 
-SQLite does not enforce declared column lengths or strict column types.
+### Rule: type-validation
+SQLite permits values of any type in any column.
 
-Constraints: Production declarations must include lengths and tests must not treat SQLite success as proof that production lengths or types are valid.
+Constraints: SQLite tests do not prove production column-type validity.
 
-### Rule: schema-migration
+### Rule: schema-migrations
+SQLite supports only `ADD COLUMN` and `RENAME` for `ALTER TABLE`; it does not support type changes or `ADD CONSTRAINT`.
 
-SQLite supports only `ADD COLUMN` and `RENAME` through `ALTER TABLE`.
+Constraints: Build the schema once from `schema.sql` during the DATABASE build step.
 
-Constraints: The schema is built once from `schema.sql`; `DROP COLUMN` before SQLite 3.35, type changes, and `ADD CONSTRAINT` are unsupported.
+## Access
 
-### Rule: persistence-access
+### Rule: generated-access-layer
+Consumers access persistence through the generated persistence package.
 
-Generated callers access persistence through `db.<table>.<verb>(...)`.
-
-Constraints: Application code must not import `sqlite3`, retain a `sqlite3.Connection`, or create or alter schema at startup.
+Constraints: Do not import `sqlite3`, create handwritten connection helpers, cursors, or SQL strings outside the generated `persistence/` package; do not retain database connections on application objects; do not create or alter schema at application startup.

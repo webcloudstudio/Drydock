@@ -319,6 +319,16 @@ Blocks resolve before inlines.
         )
         return validate_specification("TestProject", target_dir)
 
+    def test_format_calculation_does_not_warn_about_a_retyped_expression(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        result = self._validate(
+            target_dir,
+            'usd = 5.5245\nassert f"{usd:.4f}" == "5.5245"\n'
+            'assert f"{0.0:.4f}" == "0.0000"',
+        )
+        assert not any(f.section == "Acceptance snippets" for f in result.warnings())
+        assert not any(f.section == "Acceptance snippets" for f in result.failures())
+
     def test_unparseable_snippet_fails_rather_than_warning(self, tmp_target_root):
         """Whether a snippet compiles is a fact about the file, so it gates like a parse error.
 

@@ -1,49 +1,63 @@
-<!-- Compacted from Rigging/stack/aws-sqs.md sha256=bbc3020de24d7d672bfd38db00063d545b97e9b80331ba7e62b0e99c9657d68e on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/aws-sqs.md sha256=acb49745b1337dc4986e19c1817205d6783e334fdb8e02abbf2fdff937a10760 on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # AWS SQS Best Practices — Contract Surface
 
-## Queue
-
-### client.queue.submit(...)
-
-Submits work to the project queue through the cloud client library.
-
-Constraints: Project code does not access raw boto3 clients or hold queue URLs.
-
-### client.queue.drain(...)
-
-Drains queued messages through the cloud client library and processes each message idempotently.
-
-Returns: `{processed, succeeded, failed, expired}`.
-
-Constraints: Honor `ttl_seconds`; expire stale messages rather than processing them. Delete messages only after successful processing. Failed messages remain available for retry.
-
-### Rule: queue-receive
-
-Receives messages using long polling.
-
-Constraints: `WaitTimeSeconds = 20`; `MaxNumberOfMessages = 10`; queue default `ReceiveMessageWaitTimeSeconds = 20`; short polling is not permitted.
-
-### Rule: queue-visibility
-
-Keeps messages invisible while processing.
-
-Constraints: `VisibilityTimeout` exceeds the longest expected processing time; extend visibility with `change_message_visibility` for long-running jobs.
-
-### Rule: queue-redrive
-
-Routes repeatedly failing messages to a dead-letter queue.
-
-Constraints: Every Standard queue has a DLQ with `maxReceiveCount = 3`; DLQ depth is monitored.
+## Queue Configuration
 
 ### Rule: queue-type
 
-Uses a Standard queue unless strict ordering or exactly-once delivery is required.
+Use a Standard queue unless strict ordering or exactly-once processing is required.
 
-Constraints: FIFO is used only for a specifically ordered workflow.
+Constraints: Use FIFO only for a specifically ordered workflow.
+
+### config_key: receive_wait_time_seconds
+
+Set the queue default receive wait time to `20` seconds.
+
+### config_key: VisibilityTimeout
+
+Set visibility timeout greater than the longest expected processing time; extend it during long-running jobs when necessary.
+
+### config_key: redrive_policy
+
+Configure every Standard queue with a dead-letter queue and `maxReceiveCount = 3`.
 
 ### Rule: queue-naming
 
-Names queues and dead-letter queues using the project prefix.
+Name queues `{project}-{queue}` and dead-letter queues `{project}-{queue}-dlq`.
 
-Constraints: Queue name is `{project}-{queue}`; DLQ name is `{project}-{queue}-dlq`; standard tags apply to every queue and DLQ.
+Constraints: Apply standard tags to every queue and dead-letter queue.
+
+## Queue Client
+
+### client.queue.submit
+
+Submit a message through the cloud client library.
+
+Constraints: Project code must not access raw boto3 clients, queue URLs, or regions.
+
+### client.queue.drain
+
+Drain queued messages through the cloud client library.
+
+| Input | Description |
+|---|---|
+| message `id` | Identifier used by handlers for idempotency |
+| `ttl_seconds` | Message lifetime; stale messages expire instead of being processed |
+
+Returns counts with the following fields:
+
+| Field | Description |
+|---|---|
+| `processed` | Number of messages considered |
+| `succeeded` | Number of messages processed successfully |
+| `failed` | Number of messages that failed |
+| `expired` | Number of stale messages not processed |
+
+Constraints: Receive with `WaitTimeSeconds = 20` and `MaxNumberOfMessages = 10`. Drain must be safe to run repeatedly and concurrently. Log the summary to CloudWatch.
+
+### Rule: message-deletion
+
+Delete a message only after its handler succeeds, using its `ReceiptHandle`.
+
+Constraints: On processing failure, do not delete the message; allow the visibility timeout to lapse so it can be retried.

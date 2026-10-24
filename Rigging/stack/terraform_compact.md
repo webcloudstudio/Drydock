@@ -1,64 +1,59 @@
-<!-- Compacted from Rigging/stack/terraform.md sha256=249c2ebd469628734bd3881be971fca2baf61cd6ae4d7983c3aac44f1c1936ba on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/terraform.md sha256=3838611f0b7a7637f9f733284bdc88e7af5d28c66958588eb24a441b89330f7f on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # Terraform Best Practices — Contract Surface
 
 ## Infrastructure Layout
 
-### Rule: layered-roots
+### Rule: layered-root-modules
 
-Terraform infrastructure uses independent `backend/`, `foundation/`, and `services/` root modules plus shared `modules/` and `bin/` directories.
+Infrastructure SHALL use independent Terraform roots:
 
-Constraints: `backend/` contains one-shot bootstrap resources; `foundation/` contains rarely changed foundational resources; `services/` contains rerunnable application resources.
+- `infra/backend/`
+- `infra/foundation/`
+- `infra/services/`
+- `infra/modules/`
+- `infra/bin/`
 
-### Rule: state-isolation
-
-Each root module maintains independent Terraform state.
-
-Constraints: Lambda or service changes must not share state with or risk destroying foundational resources.
+Constraints: `backend` and `foundation` are one-shot or rarely changed layers; `services` is rerunnable; reusable modules reside under `modules`.
 
 ## Remote State
 
 ### config_key: terraform.backend.s3
 
-`foundation/` and `services/` configure an encrypted S3 backend with DynamoDB locking.
+Foundation and services SHALL use an S3 backend with DynamoDB locking.
 
 | Key | Required value |
 |---|---|
 | `bucket` | `{org}-{project}-tfstate` |
 | `key` | `{layer}/terraform.tfstate` |
-| `region` | Deployment region |
+| `region` | Configured deployment region |
 | `dynamodb_table` | `{org}-{project}-tflock` |
 | `encrypt` | `true` |
 
-Constraints: The state bucket is versioned and blocks public access. State must not be local for `foundation/` or `services/`; DynamoDB stores only the lock.
+Constraints: The S3 bucket SHALL be versioned, encrypted, and deny public access. `foundation` and `services` SHALL never use local state.
 
 ### Rule: backend-bootstrap
 
-`backend/` creates the S3 state bucket and DynamoDB lock table with local state.
+`infra/backend/` SHALL create the state bucket and lock table using local state and remain on local state permanently.
 
-Constraints: Apply `backend/` once, keep its state local permanently, commit that local state or document re-import, and exclude it from normal pipelines. Initialize `foundation/` and `services/` directly against S3 without state migration.
+Constraints: `backend` SHALL be applied once and excluded from normal pipelines. `foundation` and `services` SHALL initialize directly against S3; state migration commands SHALL not be required.
 
-## Configuration and Resources
+## Configuration
 
-### config_key: variable.project
+### config_key: terraform.variables
 
-Identifies the project used in resource naming and common tags.
+Terraform configurations SHALL define `org` and `project` string variables.
 
-| Field | Type |
-|---|---|
-| `project` | `string` |
-
-### config_key: variable.org
-
-Identifies the organization used in resource naming and common tags.
-
-| Field | Type |
+| Variable | Type |
 |---|---|
 | `org` | `string` |
+| `project` | `string` |
+
+Constraints: Resource names SHALL follow `{org}-{project}-{resource}`. Names, regions, and account IDs SHALL not be hardcoded.
 
 ### config_key: locals.common_tags
 
-Provides the standard tags applied to every taggable resource.
+All taggable resources SHALL receive a `common_tags` map.
 
 | Tag | Value |
 |---|---|
@@ -67,23 +62,19 @@ Provides the standard tags applied to every taggable resource.
 | `ManagedBy` | `"terraform"` |
 | `Phase` | `var.phase` |
 
-### Rule: variable-driven-names
+## Security
 
-Resource names use the `{org}-{project}-{resource}` convention.
+### Rule: secrets-not-in-state
 
-Constraints: Names, regions, and account IDs must not be hardcoded.
+Secrets SHALL NOT appear in `.tf` files or variables that persist them in Terraform state.
 
-### Rule: secret-handling
+Constraints: Prefer identity-based access. Values that must be referenced SHALL be read from SSM Parameter Store at apply time and SHALL not be written into state.
 
-Terraform configuration and variables must not contain secrets that enter state.
-
-Constraints: Prefer identity-based access. When a value must be referenced, read it from SSM Parameter Store at apply time without writing it into state.
-
-## Tooling and Validation
+## Terraform Wrappers
 
 ### function: tf-init.sh
 
-Initializes a named Terraform layer using its consistent working directory, region, and backend configuration.
+`infra/bin/tf-init.sh` SHALL initialize a specified Terraform layer with consistent working-directory, region, and backend configuration.
 
 | Parameter | Required values |
 |---|---|
@@ -91,7 +82,7 @@ Initializes a named Terraform layer using its consistent working directory, regi
 
 ### function: tf-plan.sh
 
-Runs Terraform planning for a named layer using `../env.tfvars` and writes `plan.out`.
+`infra/bin/tf-plan.sh` SHALL plan a specified Terraform layer using `../env.tfvars` and write `plan.out`.
 
 | Parameter | Required values |
 |---|---|
@@ -99,16 +90,33 @@ Runs Terraform planning for a named layer using `../env.tfvars` and writes `plan
 
 ### function: tf-apply.sh
 
-Applies Terraform for a named layer using the repository's consistent layer configuration.
+`infra/bin/tf-apply.sh` SHALL apply a specified Terraform layer with consistent working-directory, region, and backend configuration.
 
 | Parameter | Required values |
 |---|---|
 | `layer` | `backend`, `foundation`, or `services` |
 
-### Rule: provider-pinning
+Constraints: Wrappers SHALL use strict Bash execution settings and reject missing or invalid layer arguments.
 
-Terraform and AWS provider versions are pinned in `required_providers`.
+## Provider and CI Validation
 
-### Rule: ci-validation
+### Rule: pinned-versions
 
-CI runs `terraform fmt -check` and `terraform validate` before any plan.
+Terraform and AWS provider versions SHALL be pinned in `required_providers`.
+
+### Rule: pre-plan-validation
+
+CI SHALL run the following before any Terraform plan:
+
+- `terraform fmt -check`
+- `terraform validate`
+
+## Naming
+
+### config_key: resource-names
+
+| Resource | Required convention |
+|---|---|
+| State bucket | `{org}-{project}-tfstate` |
+| Lock table | `{org}-{project}-tflock` |
+| State key | `{layer}/terraform.tfstate` |

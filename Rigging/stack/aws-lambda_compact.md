@@ -1,23 +1,23 @@
-<!-- Compacted from Rigging/stack/aws-lambda.md sha256=daf97248f792bf5dc0f2d589b9398add702866bea5657060001b176ae3edb4c7 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/aws-lambda.md sha256=68a47f8924d79efbe17c1c48823827423531060ff0b2bbe59df8785a2092191b on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # AWS Lambda Best Practices — Contract Surface
 
-### function_name: handler
+### handler
 
-Processes an API Gateway Lambda event, validates its JSON body, dispatches the request, and returns a proxy response.
+Processes an API Gateway or event invocation and returns a Lambda proxy response.
 
 | Input | Required shape |
 |---|---|
-| `event` | Event object with optional `body` containing a JSON object |
-| `context` | Lambda invocation context |
+| `event` | Event object; API Gateway requests may contain a JSON-string `body`. |
+| `context` | Lambda invocation context. |
 
-Returns an API Gateway proxy response with `statusCode`, `headers`, and JSON-string `body`.
+Returns a dict containing `statusCode`, `headers`, and a JSON-string `body`.
 
-Constraints: Exported signature must be `handler(event, context)`. Invalid JSON returns status `400` with `{"error": "invalid_json"}`. Expected errors return typed JSON errors with appropriate status; unexpected errors raise.
+Constraints: Invalid JSON request bodies return status `400` with `{"error": "invalid_json"}`. Expected errors return typed JSON errors with appropriate statuses; unexpected errors raise.
 
-### function_name: _resp
+### _resp
 
-Constructs an API Gateway proxy response.
+Creates an API Gateway Lambda proxy response.
 
 | Input | Type |
 |---|---|
@@ -26,49 +26,45 @@ Constructs an API Gateway proxy response.
 
 Returns:
 
-| Field | Value |
+| Field | Shape |
 |---|---|
 | `statusCode` | Input status |
-| `headers` | `{"Content-Type": "application/json"}` |
-| `body` | JSON-stringified input payload |
+| `headers` | Includes `Content-Type: application/json` |
+| `body` | JSON-stringified payload |
 
-### TABLE_NAME
+### Rule: lambda-configuration
 
-Identifies the DynamoDB table used by the function.
+Configures Lambda exclusively through Terraform-managed environment variables.
 
-Constraints: Required configuration is supplied through Terraform-managed environment variables and read with `os.environ[...]`; missing required variables must fail at cold start. `.env` files are not used. Other function-specific variables may include `QUEUE_URL` and `LOG_LEVEL`.
+Constraints: Required variables such as `TABLE_NAME`, `QUEUE_URL`, and `LOG_LEVEL` must be present; missing required variables cause failure at cold start. Lambda must not depend on `.env` files.
 
-### Rule: handler-structure
+### Rule: iam-least-privilege
 
-The handler parses and validates input, dispatches to a module-level function, and returns the response.
+Assigns each function an execution role scoped to the exact resource ARNs and actions it uses.
 
-Constraints: Backend clients are initialized at module scope for reuse across warm invocations.
-
-### Rule: IAM-least-privilege
-
-Each function uses its own execution role with actions scoped to exact resource ARNs.
-
-Constraints: Do not use `Resource: "*"` or wildcard service actions. Read functions use only required actions such as `dynamodb:GetItem` and `dynamodb:Query`; ingest functions use only required actions such as `dynamodb:PutItem`.
+Constraints: Policies must not use `"Resource": "*"` or wildcard service actions. Read functions use only required read actions such as `dynamodb:GetItem` and `dynamodb:Query`; ingest functions use only required actions such as `dynamodb:PutItem`.
 
 ### Rule: structured-logging
 
-The function emits one structured JSON log line per request through Python’s `logging` module.
+Uses the `logging` module to emit one structured JSON log line per request.
 
 Constraints: Do not use `print`. Terraform must configure CloudWatch log-group retention, such as `retention_in_days = 30`; retention must not be unlimited.
 
-### Rule: dead-letter-queue
+### Rule: async-dead-letter-queue
 
-Asynchronous or SQS-triggered functions capture poison messages in a configured dead-letter queue.
+Configures a dead-letter queue for asynchronous or SQS-triggered functions.
+
+Constraints: Poison messages must be captured by the DLQ rather than silently lost.
 
 ### Rule: terraform-deployment
 
-The function is packaged as a pipeline-built ZIP and deployed through Terraform.
+Packages and deploys functions through Terraform.
 
-Constraints: Use `aws_lambda_function` with `archive_file`, pin runtime to `python3.12`, set `handler` to the exported handler, provide `filename` and `source_code_hash`, and never hand-edit functions in the AWS console. Shared dependencies used by multiple functions belong in a Lambda layer.
+Constraints: Use `aws_lambda_function` with `archive_file`, pin the runtime to `python3.12`, set the handler, source-code hash, timeout, memory size, execution role, and Terraform-managed environment variables. Use a Lambda layer when multiple functions share dependencies. Do not hand-edit functions in the AWS console.
 
 ### Rule: resource-naming
 
-AWS resources use the project-purpose naming standard.
+Names AWS resources using the project and purpose.
 
 | Resource | Convention |
 |---|---|
@@ -76,8 +72,4 @@ AWS resources use the project-purpose naming standard.
 | Execution role | `{project}-{purpose}-role` |
 | Log group | `/aws/lambda/{project}-{purpose}` |
 
-### Rule: standard-tags
-
-Every function uses the standard tags.
-
-Constraints: Tags include `Project`, `Owner`, `ManagedBy=terraform`, and `Phase`.
+Constraints: Every function must have tags `Project`, `Owner`, `ManagedBy=terraform`, and `Phase`.

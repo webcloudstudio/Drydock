@@ -30,6 +30,31 @@ def test_numeric_arithmetic_is_not_an_assembled_string():
     assert retyped_expectations("assert total == a + b\n") == ()
 
 
+@pytest.mark.parametrize(
+    "expression",
+    ['f"{usd:.4f}"', '"%.4f" % usd', '"{:.4f}".format(usd)', '"5." + "5245"'],
+)
+@pytest.mark.parametrize("reverse", [False, True])
+def test_a_string_calculation_compared_with_a_literal_is_not_an_expectation(expression, reverse):
+    left, right = expression, '"5.5245"'
+    if reverse:
+        left, right = right, left
+    assert retyped_expectations(f"usd = 5.5245\nassert {left} == {right}\n") == ()
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_a_calculation_still_reports_an_escapable_literal_expectation(reverse):
+    left, right = 'f"{name}"', '"caf\\u00e9"'
+    if reverse:
+        left, right = right, left
+    assert retyped_expectations(f"assert {left} == {right}\n") == ("café",)
+
+
+def test_each_chained_comparison_uses_its_adjacent_operands():
+    code = 'assert f"{usd:.4f}" == "5.5245" == out == f"total: {n}"\n'
+    assert retyped_expectations(code) == ("f'total: {n}'",)
+
+
 def test_a_declared_csv_header_or_row_is_a_contract_token():
     # Regression shape from LayersTesting 20261020.161323: twelve report criteria were reported
     # non-binding only because their source-declared CSV lines contain commas.
@@ -95,6 +120,18 @@ def test_a_cited_literal_is_derived(tmp_path):
     assert check.cite == "sources/spec.txt:2"
     assert check.binding
     assert citation_defect(check, blueprint) is None
+
+
+def test_each_cite_line_is_one_citation_and_all_must_resolve(tmp_path):
+    # FxRates 20261024.155325: two `Cite:` lines joined into one value never resolved.
+    spec = _CITED.replace(
+        "Cite: sources/spec.txt:2\n", "Cite: sources/spec.txt:1\nCite: sources/spec.txt:2\n"
+    )
+    blueprint = _blueprint(tmp_path, spec)
+    (check,) = parse_programmatic_acceptance(blueprint / "FEATURE_Cited.md")
+    assert resolve_citation(check.cite, blueprint) == "Title\nC:\\Users\\Welcome\n"
+    assert citation_defect(check, blueprint) is None
+    assert resolve_citation("sources/spec.txt:1 sources/spec.txt:9", blueprint) is None
 
 
 def test_an_uncited_literal_is_still_retyped(tmp_path):

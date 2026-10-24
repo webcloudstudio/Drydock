@@ -430,9 +430,11 @@ def _splice_and_revert(
         if defect.kind == "bad-citation":
             old_body = _block_bodies(old)[defect.check_id]
             # Citation repair may change the declaration only, never its proof or other metadata.
-            citation_line = r"(?im)^([ \t]*Cite:)[^\n]*"
-            if re.sub(citation_line, r"\1", old_body, count=1).strip("\n") != re.sub(
-                citation_line, r"\1", body, count=1
+            # The declaration is the whole run of consecutive ``Cite:`` lines, so repair may
+            # rewrite, add, or drop ranges within it but never remove it.
+            citation_lines = r"(?im)^[ \t]*Cite:[^\n]*(?:\n[ \t]*Cite:[^\n]*)*"
+            if re.sub(citation_lines, "Cite:", old_body, count=1).strip("\n") != re.sub(
+                citation_lines, "Cite:", body, count=1
             ).strip("\n"):
                 items.append(
                     RepairItem(

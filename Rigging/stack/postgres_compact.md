@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/postgres.md sha256=29bbf61df5b3f37de7cd64b1946fd480de23f13d8f6d9abc542d3606e8f603a6 on 2026-10-23 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/postgres.md sha256=53b3d53ef2e98014a142826a0ee89c27336963d855cff5f34d14aeb5613deaca on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -100,62 +100,44 @@ def db_session():
 ```
 
 `db_session()` opens the configured application store (DATABASE_URL, else DATABASE_PATH,
-else data/app.db) and starts a rollback transaction. Schema is provisioned only at the DATABASE
-step. Pass the yielded database into the feature; setup, action, and assertions share that
-connection. The fixture always rolls back, including on assertion failure; rollback errors fail
-the criterion. It never creates a temporary database or applies schema. Default application
-operations remain autocommitted. `committed_session()` (Go: `OpenCommittedSession(ctx, "")`)
-opens that same store with autocommit and closes the connection; the criterion owns business
-cleanup. HTTP, subprocess, multi-connection, and durability checks use
-committed operations with criterion-owned identifiers and idempotent recovery/cleanup through
-supported interfaces; never reset the database or delete unrelated records.
+else data/app.db). Schema is provisioned only at the DATABASE step. Pass the yielded database into
+the feature. Under the acceptance harness, every database the criterion's process opens, including
+this fixture, the application behind `web_client()`, and commands run through `cli_runner()`, joins
+one transaction that the harness rolls back when the criterion ends, pass or fail. Leaving the
+`with` block rolls nothing back, so a later request still sees the setup. Outside the harness (the
+project's pytest suite) the fixture starts its own transaction and rolls it back on exit. It never
+creates a temporary database or applies schema. `committed_session()` opens the same store with
+autocommit for project tests that need committed state, and joins the harness transaction under
+acceptance. A process the criterion launches cannot see that transaction and must not depend on
+its rows. Never reset the database or delete unrelated records.
 
 ---
 
 # PostgreSQL — Contract Surface
 
-## Runtime configuration
+### config_key
+`postgresql://` DSN selects PostgreSQL as the runtime production database engine.
+
+Constraints: The DSN comes from the environment through the typed `Config` class; credentials must not be stored in the repository.
 
 ### config_key
-PostgreSQL production connections use a `postgresql://` DSN selected at runtime.
+Python projects using PostgreSQL production access must declare the `psycopg[binary]` dependency.
 
-Constraints: The DSN must come from the environment through the typed `Config` class; credentials must not be stored in the repository.
+### Rule: supported-access-layer
+Python callers use only `db.<table>.<verb>(...)`; Go callers use generated typed declarations and fixtures. Other languages declaring `DATABASE.md` fail before planning.
 
-### config_key
-Projects using PostgreSQL in production must declare `psycopg[binary]` as a dependency.
+Constraints: Do not hand-write cursors, connection pools, SQL strings, or PostgreSQL imports outside the generated `persistence/` package.
 
-Constraints: The Python engine accepts either `psycopg` or `psycopg2`.
+### Rule: schema-integrity
+PostgreSQL enforces declared column types, `VARCHAR(n)` length limits, and foreign-key table creation order.
 
-## Persistence contract
-
-### Rule: generated-access-layer
-Callers use the generated persistence package rather than writing database access code.
-
-Constraints: Python callers use `db.<table>.<verb>(...)`; Go callers use generated typed declarations and fixtures. Targets in other languages that declare `DATABASE.md` fail before planning.
-
-### Rule: database-authority
-PostgreSQL enforces declared column lengths and types.
-
-Constraints: Values exceeding `VARCHAR(n)` are rejected, and values must match the declared column type.
-
-### Rule: dependency-order
-Referenced tables must be created before tables that cite them.
-
-Constraints: Schema generation must emit tables in dependency order and reject foreign-key cycles.
+Constraints: Generate tables in dependency order and reject foreign-key cycles.
 
 ### Rule: schema-lifecycle
-The schema is built once at the DATABASE build step and is not migrated within a release.
-
-### Rule: schema-change
-Across releases, supported PostgreSQL changes include widening `varchar(n)` columns and dropping or setting `NOT NULL`.
-
-## Guardrails
-
-### Rule: persistence-boundary
-Database drivers may be imported only inside the generated `persistence/` package.
+The schema is built once during the DATABASE build step and is not migrated within a release.
 
 ### Rule: parameter-binding
-SQL values must be passed as bound parameters rather than formatted into SQL strings.
+SQL values use bound parameters.
 
 ### Rule: startup-schema
-Applications must not create or alter schema at startup.
+Application startup does not create or alter database schema.

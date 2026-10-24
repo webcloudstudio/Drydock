@@ -1,67 +1,97 @@
-<!-- Compacted from Rigging/stack/aws-api-gateway.md sha256=70b65fe6e90e7190de8b3aa1a111829786545ce7a861ef5e1cc8cb46a1f94c8d on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/aws-api-gateway.md sha256=db8a09662a455caaf0bf58e006e4275863a95212cd1f064a5fdb5a44c109c675 on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # AWS API Gateway Best Practices — Contract Surface
 
 ## HTTP API
 
-### METHOD GET /catalog
+### Rule: API type
 
-The API exposes an HTTP API v2 route integrated with the catalog-read Lambda.
+The API uses Amazon API Gateway HTTP API v2 resources.
 
-Constraints: Use `aws_apigatewayv2_route`; set `authorization_type = "AWS_IAM"`; require SigV4-signed requests from an allowed AWS Organization principal with `execute-api:Invoke` permission.
+Constraints: Use `aws_apigatewayv2_*`; do not use REST API v1 unless an unavailable HTTP API feature is required.
+
+### Rule: API naming
+
+The API resource name follows `{project}-api`.
+
+Constraints: Apply standard tags to the API.
+
+## Routes and Authorization
+
+### Rule: route authorization
+
+Every route requires AWS IAM authorization with SigV4-signed requests.
+
+| Configuration | Required value |
+|---|---|
+| `authorization_type` | `AWS_IAM` |
+
+Constraints: Do not configure anonymous access, API keys, Cognito authorization, Lambda authorizers, IP allow-lists, or VPC endpoints. Allowed principals require `execute-api:Invoke` on the route ARN.
+
+### Rule: invoke role
+
+Each member account assumes a `{project}-invoke` role granting `execute-api:Invoke` on the API route ARNs.
 
 ## Lambda Integration
 
-### config_key integration_type
+### Rule: proxy integration
 
-The route uses a Lambda proxy integration.
+Each route integrates with its Lambda function through an AWS proxy integration.
 
-Constraints: Set `integration_type = "AWS_PROXY"` and `payload_format_version = "2.0"`; the Lambda must accept the full request and return the Lambda proxy response shape.
+| Configuration | Required value |
+|---|---|
+| `integration_type` | `AWS_PROXY` |
+| `payload_format_version` | `2.0` |
+| `integration_uri` | Lambda function invoke ARN |
 
-## API Stage
+Constraints: Lambda handlers consume and return the AWS Lambda proxy payload shape defined by `stack/aws-lambda.md` §2.
 
-### config_key stage
+## Stage and Deployment
+
+### Rule: default stage
 
 The API uses one auto-deployed `$default` stage.
 
-Constraints: Set `name = "$default"` and `auto_deploy = true`; use separate APIs or accounts for separate environments.
+| Configuration | Required value |
+|---|---|
+| `name` | `$default` |
+| `auto_deploy` | `true` |
 
-## Authorization
+Constraints: Separate environments use separate APIs or accounts, not separate stages.
 
-### Rule: iam-only-access
+### Rule: CORS
 
-All routes require AWS IAM authorization through SigV4.
+The API does not configure CORS.
 
-Constraints: Do not configure anonymous access, API keys, Cognito authorization, Lambda authorizers, resource policies, IP allow-lists, or VPC endpoints.
-
-## CORS
-
-### Rule: no-cors
-
-The machine-client API does not configure CORS.
-
-Constraints: Configure CORS only if a browser UI is introduced, with tightly scoped origins.
+Constraints: Add CORS only for a browser client, with tightly scoped origins.
 
 ## Access Logging
 
-### config_key access_log_settings
+### Rule: access logging
 
-The default stage emits JSON access logs to a CloudWatch log group with bounded retention.
+The `$default` stage writes JSON access logs to a CloudWatch log group with bounded retention.
 
-Constraints: Include `requestId`, `route`, `status`, `principal`, and `latencyMs`.
+| Log field | Value |
+|---|---|
+| `requestId` | `$context.requestId` |
+| `route` | `$context.routeKey` |
+| `status` | `$context.status` |
+| `principal` | `$context.identity.userArn` |
+| `latencyMs` | `$context.responseLatency` |
+
+### Rule: access log naming
+
+The access log group follows `/aws/apigw/{project}`.
 
 ## Throttling
 
-### Rule: default-throttle
+### Rule: default route throttling
 
-The stage applies conservative default route throttling.
+The stage applies conservative default route throttle limits.
 
-Constraints: Use approximately burst `20` and rate `10` requests per second unless a documented workload requires higher limits.
+| Limit | Default |
+|---|---:|
+| Burst | 20 |
+| Rate | 10 requests per second |
 
-## Naming
-
-### Rule: resource-naming
-
-Resources and stages use project-scoped names and standard tags.
-
-Constraints: Name the API `{project}-api`, integrations `{project}-{route}`, and the access log group `/aws/apigw/{project}`; apply standard tags to the API and stage.
+Constraints: Raise limits only deliberately when required by an actual usage pattern.

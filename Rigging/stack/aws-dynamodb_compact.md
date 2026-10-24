@@ -1,39 +1,43 @@
-<!-- Compacted from Rigging/stack/aws-dynamodb.md sha256=c31f63374ec8ff19309c8c86a16f353e26d8acc0f98efcd8f00c11cd6710877c on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/aws-dynamodb.md sha256=45a1127f0b305082866b3ad04175b7b425e4a23a9a1fd4f3cd53990b0fc287f7 on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # AWS DynamoDB Best Practices — Contract Surface
 
-## DynamoDB table
+## DynamoDB Table and Keys
 
 ### Rule: single-table-hierarchy
 
-Every environment uses one DynamoDB table with composite string keys `PK` and `SK`.
+Use one DynamoDB table per environment with composite string keys `PK` and `SK`, encoding organization, project, and child hierarchy.
 
 Constraints:
 
-- `PK = ORG#{org_id}`.
-- Project: `SK = PROJECT#{project}`.
-- Capability: `SK = PROJECT#{project}#CAP#{capability}`.
-- Heartbeat: `SK = PROJECT#{project}#HB#{program}`.
-- Event: `SK = PROJECT#{project}#EVT#{ts}#{ulid}`.
-- ACL: `SK = PROJECT#{project}#ACL#{principal}`.
-- Hierarchical reads use `Query` with `PK` equality and `begins_with(SK, prefix)`.
-- No `Scan` or server-side joins.
+- `PK = ORG#{org_id}`
+- `SK = PROJECT#{project}`
+- `SK = PROJECT#{project}#CAP#{capability}`
+- `SK = PROJECT#{project}#HB#{program}`
+- `SK = PROJECT#{project}#EVT#{ts}#{ulid}`
+- `SK = PROJECT#{project}#ACL#{principal}`
+- Access uses `GetItem` or `Query`; no `Scan` or server-side joins.
+- Project subtree queries use `PK=ORG#{org}` and `begins_with(SK,"PROJECT#{p}#")`.
 
 ### Rule: documented-access-patterns
 
-Every read and write must be documented with an exact key condition and served by `GetItem` or `Query`, optionally through one GSI.
+Document every read and write with its exact key condition in `DATABASE.md`.
 
 | Access pattern | Operation | Key condition |
 |---|---|---|
-| Read one project and all children | `Query` | `PK=ORG#{org} AND begins_with(SK,"PROJECT#{p}#")` |
-| List all projects in an organization | `Query` | `PK=ORG#{org} AND begins_with(SK,"PROJECT#")` |
-| Read one capability | `GetItem` | `PK=ORG#{org}, SK=PROJECT#{p}#CAP#{c}` |
-| Read heartbeats for a program | `Query` | `PK=ORG#{org} AND begins_with(SK,"PROJECT#{p}#HB#")` |
+| Read project and children | `Query` | `PK=ORG#{org} AND begins_with(SK,"PROJECT#{p}#")` |
+| List projects in organization | `Query` | `PK=ORG#{org} AND begins_with(SK,"PROJECT#")` |
+| Read capability | `GetItem` | `PK=ORG#{org}, SK=PROJECT#{p}#CAP#{c}` |
+| Read latest heartbeat per program | `Query` | `PK=ORG#{org} AND begins_with(SK,"PROJECT#{p}#HB#")` |
 | Read recent events newest-first | `Query` | `begins_with(SK,"PROJECT#{p}#EVT#")`, `ScanIndexForward=False` |
 
-### config_key: billing_mode
+Constraints: Every required pattern must be served by `GetItem`, `Query`, or optionally one GSI.
 
-The table uses on-demand billing, point-in-time recovery, and server-side encryption.
+## Table Configuration
+
+### Rule: on-demand-table
+
+Configure the table for on-demand billing with recovery and encryption enabled.
 
 | Configuration | Required value |
 |---|---|
@@ -46,67 +50,76 @@ The table uses on-demand billing, point-in-time recovery, and server-side encryp
 | Server-side encryption | Enabled |
 | Auto-scaling | Disabled |
 
-### Rule: item-schema
+### Rule: ttl-expiration
 
-Every item is a small JSON-serializable object with a type discriminator and update timestamp.
+Enable DynamoDB TTL for high-volume expirable items.
 
-| Field | Required shape |
+| Field | Requirement |
 |---|---|
-| `PK` | `ORG#{org_id}` |
-| `SK` | Item-specific hierarchical key |
+| Table TTL attribute | `ttl` |
+| `ttl` type | Unix epoch seconds |
+| Events and audit lines | Carry `ttl` |
+| Durable items | Do not carry `ttl` |
+| TTL value | `updated_at_epoch + retention_window` |
+
+## Item Schema
+
+### Rule: typed-items
+
+Every item is JSON-serializable, self-describing, and includes required identity metadata.
+
+| Field | Requirement |
+|---|---|
+| `PK` | Composite partition key |
+| `SK` | Composite sort key |
 | `type` | One of `project`, `capability`, `heartbeat`, `event`, `acl` |
 | `updated_at` | ISO-8601 string |
-| Other attributes | JSON-serializable |
-| Large blobs | Stored in S3; item contains the S3 key |
+| Item size | Well under 400 KB |
+| Large blobs | Stored in S3; only the S3 key is stored in the item |
 
-Items must remain well below DynamoDB’s 400 KB item limit.
+## Writes
 
-### Rule: conditional-writes
+### Rule: conditional-idempotent-writes
 
-Full-item upserts use `PutItem` with a condition preventing replacement by an older record.
+Use full-item upserts with conditions that prevent overwriting newer records.
 
-Constraints:
+| Operation | Constraint |
+|---|---|
+| Full-item upsert | Use `PutItem` |
+| Ordering guard | `attribute_not_exists(SK) OR updated_at <= :now` |
+| New-item test | Use `attribute_not_exists(SK)` |
+| Unrelated batch writes | Use `BatchWriteItem`, maximum 25 items |
+| Atomic multi-item writes | Use `TransactWriteItems` only when required |
 
-- Condition: `attribute_not_exists(SK) OR updated_at <= :now`.
-- The existence check uses `SK`, never `PK`.
-- Unrelated writes may use `BatchWriteItem` with at most 25 items.
-- Use `TransactWriteItems` when multiple item changes must be atomic.
-- Do not perform read-modify-write without a condition.
+## Indexes
 
-### Rule: ttl
+### Rule: demand-driven-gsis
 
-Expirable high-volume items carry a `ttl` Unix epoch-seconds attribute, and table TTL is enabled for `ttl`.
-
-Constraints:
-
-- Set `ttl = updated_at_epoch + retention_window`.
-- Events and audit lines may use TTL.
-- Projects, capabilities, latest heartbeats, and ACLs do not carry `ttl`.
-- DynamoDB TTL configuration: `attribute_name = "ttl"`, `enabled = true`.
-
-### Rule: secondary-indexes
-
-A GSI exists only for a documented access pattern that the base table cannot serve.
+Add a GSI only when a documented access pattern cannot be served by the base table.
 
 Constraints:
 
+- Use a purpose-based name such as `gsi-{purpose}`.
+- Project only required attributes with `KEYS_ONLY` or a narrow `INCLUDE`.
 - Do not add speculative GSIs.
-- Use `KEYS_ONLY` or a minimal `INCLUDE` projection.
-- GSI names follow `gsi-{purpose}`.
 
-### Rule: cloud-client-access
+## Client Access
+
+### Rule: cloud-client-library
 
 Application and project code accesses DynamoDB only through the cloud client library.
 
 Constraints:
 
-- Call the cloud client library through interfaces such as `client.catalog` and `client.report`.
-- Do not import or call raw `boto3` for DynamoDB.
-- The client library owns key construction, retries, and pagination.
+- Do not import or call `boto3` directly for DynamoDB.
+- Use cloud-client-library interfaces such as `client.catalog` and `client.report`.
+- The library owns client access, key construction, retries, and pagination.
+
+## Resource Naming
 
 ### Rule: resource-naming
 
-DynamoDB resources use project-qualified names and standard tags.
+Name and tag DynamoDB resources according to the project and organization conventions.
 
 | Resource | Convention | Example |
 |---|---|---|
@@ -114,4 +127,7 @@ DynamoDB resources use project-qualified names and standard tags.
 | Terraform lock table | `{org}-{project}-tflock` | `acme-market-tflock` |
 | GSI | `gsi-{purpose}` | `gsi-tag` |
 
-Every table must include the standard tags `Project`, `Owner`, `ManagedBy=terraform`, and `Phase`.
+Constraints:
+
+- Every resource name includes the project name.
+- Every table carries `Project`, `Owner`, `ManagedBy=terraform`, and `Phase` tags.

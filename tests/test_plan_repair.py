@@ -891,6 +891,28 @@ def test_citation_repair_rejects_changes_outside_the_declaration(tmp_path, chang
     assert path.read_text() == original
 
 
+@pytest.mark.parametrize(
+    "cites", ["Cite: sources/spec.txt:2\n", "Cite: sources/spec.txt:1\nCite: sources/spec.txt:2\n"]
+)
+def test_citation_repair_may_rewrite_a_multi_line_declaration(tmp_path, cites):
+    # FxRates 20261024.155325: only the first of two `Cite:` lines was masked, so a repair that
+    # changed or dropped the second was rejected as changing content other than Cite.
+    target = _citation_target(tmp_path)
+    path = target / "blueprint" / "FEATURE_Cited.md"
+    two_bad = "Cite: sources/spec.txt:1\nCite: sources/spec.txt:9\n"
+    path.write_text(path.read_text().replace("Cite: sources/spec.txt:1\n", two_bad))
+    original = path.read_text()
+    fixed = _BAD_CITATION_BODY.replace("Cite: sources/spec.txt:1\n", cites)
+
+    result = repair(
+        "Demo", target, runner=_runner(_fixed_block("FEATURE_Cited.md", "banner", fixed))
+    )
+
+    assert result.ok
+    assert path.read_text() == original.replace(two_bad, cites)
+    assert verify("Demo", target).ok
+
+
 @pytest.mark.parametrize("relative", ["sources/../private.txt", "sources/link.txt"])
 def test_citation_context_never_reads_outside_sources(tmp_path, relative):
     from drydock.plan_repair import _citation_sources

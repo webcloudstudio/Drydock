@@ -1,27 +1,35 @@
-<!-- Compacted from Rigging/stack/cloud-client-library.md sha256=0c7e6a43b9b2ae9164a644af2dd2b68ebbdf7b85c847cd3e032ab6cdd3b2eee5 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/cloud-client-library.md sha256=5b95cd21b7027222aae8b56a13e912a4febaa775386ae2ab577f25213041e0dc on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # Cloud Client Library Best Practices — Contract Surface
 
-## Cloud boundary
-
-### Rule: single-cloud-boundary
-Project and platform code access cloud capabilities only through `CloudClient` and never import `boto3`, construct AWS clients, build DynamoDB keys, sign requests, or store API Gateway URLs.
-
-## Client API
+## CloudClient
 
 ### CloudClient
-Provides resource clients for catalog, reporting, queues, and file sharing.
 
-Returns:
+Creates a cloud client exposing resource-oriented catalog, report, queue, and share interfaces.
 
-| Attribute | Type |
-|---|---|
-| `catalog` | `CatalogClient` |
-| `report` | `ReportClient` |
-| `queue` | `QueueClient` |
-| `share` | `ShareClient` |
+Constraints: Resolve organization, AWS identity, API endpoint, and project slug from environment; use SigV4 authentication and no API keys.
 
-### CatalogClient.publish
+### CLOUD_ORG
+
+Identifies the tenant or organization.
+
+### CLOUD_API_ENDPOINT
+
+Provides the API Gateway base URL.
+
+### PROJECT_SLUG
+
+Identifies the calling project.
+
+### AWS_PROFILE
+
+Selects the AWS profile or role through the standard credential chain.
+
+## Catalog
+
+### CloudClient.catalog.publish
+
 Publishes project metadata and capabilities.
 
 | Parameter | Type |
@@ -31,26 +39,33 @@ Publishes project metadata and capabilities.
 
 Returns: `None`.
 
-### CatalogClient.read
+### CloudClient.catalog.read
+
 Reads the whole organization tree or one project subtree.
 
-| Parameter | Type |
-|---|---|
-| `project` | `str \| None` |
+| Parameter | Type | Required |
+|---|---|---|
+| `project` | `str \| None` | No |
 
 Returns: `dict`.
 
-### CatalogClient.read_capabilities
+### CloudClient.catalog.read_capabilities
+
 Reads capabilities, optionally filtered by tags.
 
-| Parameter | Type |
-|---|---|
-| `tags` | `list[str] \| None` |
+| Parameter | Type | Required |
+|---|---|---|
+| `tags` | `list[str] \| None` | No |
 
 Returns: `list[dict]`.
 
-### ReportClient.heartbeat
-Reports a workload heartbeat as best-effort telemetry.
+Constraints: Catalog operations raise `CloudAuthError`, `CloudNotFound`, or `CloudTransportError` on failure.
+
+## Reporting
+
+### CloudClient.report.heartbeat
+
+Submits a best-effort heartbeat report.
 
 | Parameter | Type | Required |
 |---|---|---|
@@ -59,10 +74,11 @@ Reports a workload heartbeat as best-effort telemetry.
 
 Returns: `None`.
 
-Constraints: `state` is one of `OK`, `WARNING`, `ERROR`, or `CRITICAL`. Transport errors are swallowed and never raised.
+Constraints: `state` is one of `OK`, `WARNING`, `ERROR`, or `CRITICAL`. Transport errors are swallowed.
 
-### ReportClient.event
-Reports a severity-level event as best-effort telemetry.
+### CloudClient.report.event
+
+Submits a best-effort event report.
 
 | Parameter | Type |
 |---|---|
@@ -71,9 +87,12 @@ Reports a severity-level event as best-effort telemetry.
 
 Returns: `None`.
 
-Constraints: `severity` is one of `INFORMATION`, `WARNING`, `ERROR`, or `CRITICAL`. Transport errors are swallowed and never raised.
+Constraints: `severity` is one of `INFORMATION`, `WARNING`, `ERROR`, or `CRITICAL`. Transport errors are swallowed.
 
-### QueueClient.submit
+## Queue
+
+### CloudClient.queue.submit
+
 Submits a payload to an asynchronous queue.
 
 | Parameter | Type | Required |
@@ -86,26 +105,33 @@ Submits a payload to an asynchronous queue.
 
 Returns: `str`.
 
-### QueueClient.drain
+### CloudClient.queue.drain
+
 Drains queued work locally.
 
-| Parameter | Type |
-|---|---|
-| `queue` | `str \| None` |
+| Parameter | Type | Required |
+|---|---|---|
+| `queue` | `str \| None` | No |
 
-Returns: `dict` containing drain counts.
+Returns: `dict`.
 
-### ShareClient.put
-Uploads a local file to the object/file share.
+Constraints: Queue operations raise `CloudAuthError`, `CloudNotFound`, or `CloudTransportError` on failure.
 
-| Parameter | Type |
-|---|---|
-| `local_path` | `str` |
-| `key` | `str \| None` |
+## Share
+
+### CloudClient.share.put
+
+Uploads a local file to the object or file share.
+
+| Parameter | Type | Required |
+|---|---|---|
+| `local_path` | `str` | Yes |
+| `key` | `str \| None` | No |
 
 Returns: `str` share key.
 
-### ShareClient.get
+### CloudClient.share.get
+
 Downloads a shared file to a destination.
 
 | Parameter | Type |
@@ -115,50 +141,38 @@ Downloads a shared file to a destination.
 
 Returns: `None`.
 
-### ShareClient.list
+### CloudClient.share.list
+
 Lists shared files, optionally filtered by prefix.
 
-| Parameter | Type |
-|---|---|
-| `prefix` | `str \| None` |
+| Parameter | Type | Required |
+|---|---|---|
+| `prefix` | `str \| None` | No |
 
 Returns: `list[dict]`.
 
-## Configuration and authentication
+Constraints: Share operations raise `CloudAuthError`, `CloudNotFound`, or `CloudTransportError` on failure.
 
-### CLOUD_ORG
-Identifies the tenant or organization.
+## Integration Rules
 
-### CLOUD_API_ENDPOINT
-Provides the API Gateway base URL.
+### Rule: cloud-boundary
 
-### PROJECT_SLUG
-Identifies the calling project.
-
-### AWS_PROFILE
-Selects the AWS profile used for credential resolution.
-
-### Rule: environment-configuration
-`CloudClient()` resolves organization, API endpoint, project slug, and AWS identity from the workstation environment; these values must not be hardcoded.
-
-### Rule: sigv4-authentication
-Requests use the resolved AWS identity with SigV4 for the `execute-api` service and do not use a separate API key.
-
-## Errors and reliability
-
-### Rule: typed-data-operation-errors
-`catalog.*`, `queue.*`, and `share.*` raise `CloudAuthError`, `CloudNotFound`, or `CloudTransportError` when operations fail.
+Project and platform code use the cloud client library for all cloud operations and do not import `boto3`, construct AWS clients, build DynamoDB keys, sign requests, or store API Gateway URLs.
 
 ### Rule: retry-policy
+
 All network calls retry with exponential backoff and jitter.
 
-## Distribution
+### Rule: package-distribution
 
-### Rule: pinned-consumer-dependency
-Consumers install the independently versioned library as a pinned git dependency, for example `cloud-client @ git+https://github.com/{org}/cloud-client.git@v0.2.0`.
+Consumers install the library as a pinned git dependency using a version tag.
 
-### Rule: semantic-versioning
-Breaking API changes require a major version increment, and each release is tagged.
+```toml
+"cloud-client @ git+https://github.com/{org}/cloud-client.git@v0.2.0"
+```
+
+Constraints: Releases use semantic versioning; breaking API changes increment the major version.
 
 ### Rule: library-quality
-The library repository provides `pyproject.toml`, uses `uv`, passes `ruff`, and ships a pytest suite backed by local DynamoDB/SQS mocks.
+
+The library provides a `pyproject.toml`, is managed with `uv`, passes `ruff`, and ships a pytest suite using a local DynamoDB/SQS mock such as `moto`.

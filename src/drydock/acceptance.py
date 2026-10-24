@@ -1039,8 +1039,20 @@ def resolve_citation(cite: str, blueprint_dir: Path) -> str | None:
 
     A citation names one line or an inclusive range of lines of a file under the Blueprint's
     ``sources/``. Anything outside ``sources/``, or past the end of the file, does not resolve.
+    A criterion may cite several ranges, one ``Cite:`` line each; the parser joins them with a
+    space. Every one must resolve, and the cited text is their concatenation.
     """
-    match = _CITE_RE.match(cite.strip())
+    texts = [
+        _resolve_one_citation(part, blueprint_dir)
+        for part in re.split(r"\s+(?=sources/)", cite.strip())
+    ]
+    if any(text is None for text in texts):
+        return None
+    return "".join(texts)
+
+
+def _resolve_one_citation(cite: str, blueprint_dir: Path) -> str | None:
+    match = _CITE_RE.match(cite)
     if match is None:
         return None
     sources = (blueprint_dir / "sources").resolve()
@@ -1427,9 +1439,11 @@ def _is_computed_attribute(node: ast.AST) -> bool:
 def _comparison_expectations(tree: ast.AST) -> tuple[ast.expr, ...]:
     """Return the expected-value expressions asserted by an ``==``/``!=`` comparison.
 
-    Two shapes qualify: a string constant, and a path rebuilt with ``/`` and compared against a
-    value read off another object (``module.CORPUS == sources / "jq.test"``) — the reconstruction
-    is retyped by structure rather than by bytes.
+    String literals, assembled expectations, and reconstructed paths qualify. When a string
+    expression is compared with a string literal, the literal supplies the expected bytes:
+    ``f"{usd:.4f}" == "5.5245"`` tests a calculation, not an assembled expectation. This says
+    nothing about whether that calculation exercises the product; the empty-tree baseline
+    decides that separately.
     """
     found: list[ast.expr] = []
     for node in ast.walk(tree):
@@ -1440,17 +1454,24 @@ def _comparison_expectations(tree: ast.AST) -> tuple[ast.expr, ...]:
                 continue
             # Only equality states "the value is exactly this". Membership, identity, and
             # ordering are structural claims that carry no re-typed bytes.
-            for operator, comparator in zip(inner.ops, inner.comparators, strict=True):
+            operands = (inner.left, *inner.comparators)
+            for left, operator, comparator in zip(
+                operands[:-1], inner.ops, inner.comparators, strict=True
+            ):
                 if not isinstance(operator, (ast.Eq, ast.NotEq)):
                     continue
-                for side in (inner.left, comparator):
+                has_literal = any(
+                    isinstance(side, ast.Constant) and isinstance(side.value, str)
+                    for side in (left, comparator)
+                )
+                for side in (left, comparator):
                     if isinstance(side, ast.Constant) and isinstance(side.value, str):
                         found.append(side)
-                    elif _is_assembled_string(side):
+                    elif not has_literal and _is_assembled_string(side):
                         found.append(side)
-                if _is_reconstructed_path(inner.left) and _is_computed_attribute(comparator):
-                    found.append(inner.left)
-                elif _is_reconstructed_path(comparator) and _is_computed_attribute(inner.left):
+                if _is_reconstructed_path(left) and _is_computed_attribute(comparator):
+                    found.append(left)
+                elif _is_reconstructed_path(comparator) and _is_computed_attribute(left):
                     found.append(comparator)
     return tuple(found)
 

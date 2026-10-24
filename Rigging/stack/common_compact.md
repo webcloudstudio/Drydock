@@ -1,73 +1,112 @@
-<!-- Compacted from Rigging/stack/common.md sha256=40b65983221927449a47ee0257dc247042429f3e68171c645d51a34200b35a14 on 2026-09-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from /mnt/c/Users/barlo/projects/drydock/Rigging/stack/common.md sha256=2d665e4a232b3ef5b681149974e74928c8f5abb9adaac02604cc6b5987ac0f85 on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # Common Best Practices — Contract Surface
 
-## Project Structure
+## Project Layout
 
-### Rule: directory-layout
-Every project MUST provide the standard root directories and files.
+### Rule: project-directory-layout
 
-Constraints: Include `bin/`, `data/logs/`, `data/backups/`, `docs/`, `tests/`, optional `PROJECT/`, `.env`, `.env.example`, `.gitignore`, `CLAUDE.md`, and `Links.md`; stack-specific directories may be added.
+Every project must use the standard root layout and may add stack-specific directories.
 
-### Rule: links-file
-`Links.md` MUST contain relevant project URLs in a parseable Markdown table.
-
-| Field | Required |
-|---|---|
-| Label | Yes |
-| URL | Yes |
-
-Constraints: The table MUST have exactly two columns, `Label` and `URL`.
-
-### Rule: claude-file
-`CLAUDE.md` MUST contain the standard project-context sections.
-
-Constraints: Required sections are `## Project Overview`, `## Architecture`, `## Dev Commands`, `## Service Endpoints`, and `## Bookmarks`; section aliases MUST be renamed to their standard names.
+Constraints: Include `bin/`, `data/` with `logs/` and `backups/`, `docs/`, `tests/`, optional `PROJECT/`, `.env`, `.env.example`, `.gitignore`, `CLAUDE.md`, and `Links.md`; keep runtime data under `data/`.
 
 ## Shell Scripts
 
-### Rule: user-operations
-User-facing operations MUST be implemented as Bash scripts under `bin/`.
+### Rule: user-facing-operation-scripts
 
-Constraints: Scripts MUST use `set -euo pipefail`, resolve project-relative paths, create `data/logs/`, capture output with `tee`, log timestamps, arguments, working directory, and completion status, and execute from the project root.
+User-facing operations must be implemented as Bash scripts in `bin/`.
 
-### Rule: commandcenter-header
-Discoverable scripts MUST begin with a Command Center header.
+Constraints: Scripts must use standardized headers, `set -euo pipefail`, resolve project-relative paths, create `data/logs/`, log execution details, run from the project root, tee output to console and a timestamped log, and record completion.
+
+### Rule: command-center-discovery-header
+
+A discoverable script must begin with a Command Center header.
 
 | Field | Required | Values |
 |---|---:|---|
 | `# CommandCenter Operation` | Yes | Literal |
 | `# Name:` | Yes | Free text |
-| `# Type:` | No | `daemon` or `batch`; default `batch` |
-| `# Port:` | No | Integer |
+| `# Type:` | No | `daemon` or `batch`; defaults to `batch` |
+| `# Port:` | No | Integer; daemon port |
 
-Constraints: Scripts without the marker remain valid but are not discoverable by Command Center.
+Constraints: Scripts without `# CommandCenter Operation` remain valid but are not discoverable by Command Center.
 
 ### Rule: standard-scripts
-Projects SHOULD provide applicable standard operation scripts.
 
-| Script | Type |
-|---|---|
-| `bin/start.sh` | `daemon` |
-| `bin/stop.sh` | `batch` |
-| `bin/test.sh` | `batch` |
-| `bin/build.sh` | `batch` |
-| `bin/deploy.sh` | `batch` |
-| `bin/backup.sh` | `batch` |
+Projects should provide applicable operation scripts with these names and purposes.
+
+| Script | Type | Purpose |
+|---|---|---|
+| `bin/start.sh` | daemon | Start the development server |
+| `bin/stop.sh` | batch | Stop the development server |
+| `bin/test.sh` | batch | Run tests |
+| `bin/build.sh` | batch | Build or compile |
+| `bin/deploy.sh` | batch | Deploy to production |
+| `bin/backup.sh` | batch | Back up data or databases |
 
 ### Rule: script-logging
-Scripts MUST capture stdout and stderr in timestamped log files under `data/logs/`.
 
-Constraints: Log filenames MUST follow `<script>_<YYYY-MM-DD_HHMMSS>.log`; initial log lines MUST record timestamp, arguments, and working directory.
+Operation scripts must capture stdout and stderr in `data/logs/`.
 
-## Repository Hygiene
+Constraints: Log filenames must follow `<script>_<YYYY-MM-DD_HHMMSS>.log`; initial log lines must record timestamp, arguments, and working directory.
 
-### Rule: gitignore
-Repositories MUST ignore secrets, generated files, and runtime data.
+## Links
 
-Constraints: `.gitignore` MUST cover `data/`, `*.db`, `*.log`, `.env`, `venv/`, `node_modules/`, Python caches and bytecode, `*.egg-info/`, `dist/`, `build/`, `.DS_Store`, and `Thumbs.db`; `.env.example` MUST be committed with placeholders.
+### Rule: links-file
 
-### Rule: commit-workflow
-Completed error-free changes MUST be committed locally.
+Every project must provide a root-level `Links.md` containing one two-column Markdown table.
 
-Constraints: Commit messages MUST be imperative and descriptive; changes MUST NOT be pushed; commits MUST NOT contain co-authored-by lines. Web-server projects MUST end change responses with a restart notice indicating whether restart is required.
+| Column | Requirement |
+|---|---|
+| `Label` | Short and descriptive |
+| `URL` | Relevant project URL |
+
+Constraints: Command Center reads this table and exposes the links through project configuration.
+
+## Agent Instructions
+
+### Rule: claude-file
+
+Every project must provide a root-level `CLAUDE.md` with the following sections.
+
+| Section | Required content |
+|---|---|
+| `## Project Overview` | Purpose and key features |
+| `## Architecture` | Technology stack, key files, and patterns |
+| `## Dev Commands` | Bash project commands in a code block |
+| `## Service Endpoints` | `- Label: https://url` entries |
+| `## Bookmarks` | Grouped links using `### Group` and `- [Title](URL)` |
+
+Constraints: Normalize equivalent headings to the standard names: `Commands`, `Development Commands`, and `Build Commands` become `Dev Commands`; `Overview` and `Project Purpose` become `Project Overview`; `Stack` becomes `Architecture`.
+
+## Version Control
+
+### Rule: gitignore-and-secrets
+
+Repositories must ignore secrets, generated files, and runtime data.
+
+Constraints: Ignore `data/`, `*.db`, `*.log`, `.env`, `venv/`, `node_modules/`, Python caches and bytecode, `*.egg-info/`, `dist/`, `build/`, `.DS_Store`, and `Thumbs.db`; commit `.env.example` with placeholders.
+
+### Rule: commit-message
+
+Commit messages must use imperative, descriptive text without AI or tool mentions.
+
+## Development Workflow
+
+### Rule: task-commit
+
+Completed, error-free tasks must be committed immediately.
+
+### Rule: local-only-commit
+
+Changes must be committed locally and must not be pushed.
+
+### Rule: co-authorship
+
+Commits must not contain `Co-authored-by` lines.
+
+### Rule: restart-notice
+
+Code-change responses for web-server projects must state whether a restart is required.
+
+Constraints: Template, CSS, or static-only changes require the notice `No restart needed — browser refresh is enough.`; Python or JavaScript server changes require `Restart required — run the start script or equivalent.`
