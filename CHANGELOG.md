@@ -136,6 +136,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-24: `drydock plan` Stage 2 progress no longer prints `Rejected:` for a refused
+  Blueprint batch that will be retried. `Batch Result:` reads `Retrying (<n> left): <reason>`,
+  then `Retries exhausted: <reason>` on the refusal that ends the no-progress allowance, and
+  `Failed:` when the model call itself fails.
 - 2026-10-24: `drydock rigging compact` always refreshes stale compact and no-surface siblings
   throughout shipped `Rigging/`, including SQLite guidance. A bare run needs no Target; a Target
   or explicit include paths add sources to the same run. `--all` remains accepted but is

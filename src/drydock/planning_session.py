@@ -5235,6 +5235,18 @@ def _rejection_lines(rejection: str) -> tuple[str, ...]:
     )
 
 
+def _refused_batch(reason: str, stalled: int, attempts: int) -> str:
+    """Batch Result for a refused batch: a retry follows unless this refusal ends the allowance.
+
+    ``stalled`` counts the consecutive refusals before this one. An operator reads a bare
+    "Rejected" as fatal, so the line names what happens next (FxRates ``20261024.145257``).
+    """
+    remaining = attempts - stalled - 1
+    if remaining > 0:
+        return f"Retrying ({remaining} left): {reason}"
+    return f"Retries exhausted: {reason}"
+
+
 def _response_excerpt(text: str, limit: int = 240) -> str:
     """One line from the start of a response, for a refusal the console would otherwise hide."""
     flat = " ".join(text.split())
@@ -5483,7 +5495,7 @@ def _continue_short_plan(
                     "[plan-score]"
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
-                        result="Rejected: empty or failed model response",
+                        result="Failed: empty or failed model response",
                     )
                 )
             break
@@ -5503,7 +5515,9 @@ def _continue_short_plan(
                     "[plan-score]"
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
-                        result="Rejected: malformed artifact response",
+                        result=_refused_batch(
+                            "malformed artifact response", stalled_passes, attempts
+                        ),
                     )
                 )
             previous_rejection = (
@@ -5546,7 +5560,9 @@ def _continue_short_plan(
                     "[plan-score]"
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
-                        result=f"Rejected: {len(blocked)} Blueprint(s) blocked",
+                        result=_refused_batch(
+                            f"{len(blocked)} Blueprint(s) blocked", stalled_passes, attempts
+                        ),
                     )
                 )
             stalled_passes += 1
@@ -5579,7 +5595,7 @@ def _continue_short_plan(
                     "[plan-score]"
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
-                        result="Rejected: no Blueprint artifacts",
+                        result=_refused_batch("no Blueprint artifacts", stalled_passes, attempts),
                     )
                 )
             stalled_passes += 1
@@ -5667,7 +5683,7 @@ def _continue_short_plan(
                     "[plan-score]"
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
-                        result=f"Rejected: {rejection}",
+                        result=_refused_batch(rejection, stalled_passes, attempts),
                     )
                 )
             previous_rejection = rejection
@@ -5688,7 +5704,9 @@ def _continue_short_plan(
                     "[plan-score]"
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
-                        result="No complete Blueprint accepted",
+                        result=_refused_batch(
+                            "no complete Blueprint accepted", stalled_passes, attempts
+                        ),
                     )
                 )
             previous_rejection = "; ".join(damage_details) or (

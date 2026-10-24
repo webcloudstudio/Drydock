@@ -271,6 +271,12 @@ on those whose table has one PK. A seed-merge failure carries the draft's other 
 *Broken:* FxRates `20261024.143213` batch 1 held a composite PK, unbound history and statistics
 fields, and a `rates.latest` synonym; one tier was reported per pass and three passes ran out.
 
+`2026-10-24` · **A refused batch names what follows.** Its `Batch Result:` reads
+`Retrying (<n> left): <reason>` while the no-progress allowance remains, `Retries exhausted:
+<reason>` on the refusal that spends it, and `Failed: empty or failed model response` when the
+call itself fails. No Stage 2 batch prints `Rejected`. *Broken:* FxRates `20261024.145257` printed
+`Rejected: DATABASE.md does not parse`, which the operator read as fatal; batch 2 fixed it.
+
 `2026-10-24` · **A plan stall states its cause first.** The `plan generation stalled` detail
 prints each `last rejection` defect on its own line, then `blocked:`, then the score and missing
 list, then execution ids. The detail is capped at 800 characters on line boundaries. *Broken:*

@@ -3999,7 +3999,7 @@ def test_a_rejected_stage_two_pass_leaves_none_of_its_artifacts_behind(tmp_path)
         create_plan("Example", "Example", tmp_path, runner=runner, on_text=progress.append)
 
     assert "specs:     1 / 2  accepted" in excinfo.value.record.detail
-    assert "Rejected: FEATURE-Ghost.md is not declared by the frozen topology" in "".join(progress)
+    assert "FEATURE-Ghost.md is not declared by the frozen topology" in "".join(progress)
     assert not (target_dir / "MANIFEST.md").is_file()
 
 
@@ -4527,7 +4527,7 @@ def test_a_batch_that_writes_access_patterns_as_one_table_is_refused_at_that_bat
     assert "database -> DATABASE.md" in defective
     assert "### <FEATURE-DOMAIN-NNN> — <Operation>" in defective
     assert any(
-        line.startswith("[plan-score]") and "Rejected: DATABASE.md does not parse" in line
+        line.startswith("[plan-score]") and "Retrying (2 left): DATABASE.md does not parse" in line
         for line in progress
     )
     assert result.score.is_complete
@@ -7653,3 +7653,10 @@ def test_go_cli_defects_enter_the_artifact_repair_gate(tmp_path, code, kind):
         dict(blocks), blueprint_dir, FakeRun(text=_llm_output(manifest)), enforce_criteria=False
     )
     assert plan.blocks
+
+
+def test_refused_batch_names_retry_or_exhaustion() -> None:
+    """A refused batch says whether a retry follows; an operator reads bare "Rejected" as fatal."""
+    assert ps._refused_batch("bad", 0, 3) == "Retrying (2 left): bad"
+    assert ps._refused_batch("bad", 1, 3) == "Retrying (1 left): bad"
+    assert ps._refused_batch("bad", 2, 3) == "Retries exhausted: bad"
