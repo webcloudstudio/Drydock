@@ -5170,7 +5170,7 @@ def _render_ledger(
     the call that failed and draws the same answer (LayersTesting ``20261021.173113``).
     ``prior_type`` and ``prior_details`` carry the last batch's error in a fixed shape: its
     reported blocks with Drydock's check on each, or the prose it sent instead of artifacts.
-    ``size`` bounds the Current batch; a refused batch is retried smaller.
+    ``size`` bounds the Current batch independently of model refusals.
     """
     tranche = frozenset(_blueprint_tranche(score, size))
     frozen = sorted(score.accepted)
@@ -5222,6 +5222,19 @@ def _render_ledger(
             "point under the affected Blueprint's `## Questions`, report a Blueprint you "
             f"genuinely cannot author in `{BLOCKED_BLOCK}`, and emit the rest of the Current batch."
         )
+    if prior_type == "unstructured-refusal":
+        lines.extend([
+            "",
+            "## Instruction-failure correction",
+            "The preceding response did not perform the assigned authoring task. "
+            "Author the Current batch using the supplied source and language contracts.",
+            "Prior execution or inspection of the future application is not a planning "
+            "prerequisite. Supplied helper contracts establish their staging and invocation; "
+            "do not request confirmation of facts already supplied.",
+            "Emit the complete artifacts now. Report only an actual source conflict or "
+            f"missing product requirement through `{BLOCKED_BLOCK}`, citing its source. "
+            "Do not substitute a promise, explanation, or request for permission.",
+        ])
     return "\n".join(lines)
 
 
@@ -5431,7 +5444,6 @@ def _continue_short_plan(
     prior_type = ""
     prior_details: tuple[str, ...] = ()
     last_blocked: tuple[BlockedBlueprint, ...] = ()
-    batch_size = _PLAN_BLUEPRINT_BATCH_SIZE
     database_rejected: tuple[ArtifactDefect, ...] = ()
     database_draft = ""
 
@@ -5443,14 +5455,13 @@ def _continue_short_plan(
         passes += 1
         if on_text is not None:
             on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
-        tranche = frozenset(_blueprint_tranche(score, batch_size))
+        tranche = frozenset(_blueprint_tranche(score))
         ledger = _render_ledger(
             score,
             rejected=database_rejected,
             previous=previous_rejection,
             prior_type=prior_type,
             prior_details=prior_details,
-            size=batch_size,
         )
         assembly = _continuation_assembly(
             prompt_assembly,
@@ -5571,17 +5582,15 @@ def _continue_short_plan(
             continue
         if not pass_blocks:
             excerpt = _response_excerpt(result.text)
-            # A wording change alone drew the same refusal three times (LayersTesting
-            # ``20261021.183753``), so the retry also asks for less: one Blueprint until a batch
-            # is accepted. The reason tells the next call what happened and what to do instead.
-            batch_size = 1
             previous_rejection = (
-                "the response held no artifact blocks. The Current batch is now one Blueprint. "
-                "Emit that one artifact and nothing else; Drydock asks for the rest in later "
-                "batches."
+                "the response held no artifact blocks; the Current batch is unchanged. "
+                f"Instruction failure {stalled_passes + 1} of {attempts}: "
+                f"{_response_excerpt(result.text, 600)}"
             )
             prior_type = "unstructured-refusal"
             prior_details = (
+                f"Instruction failure {stalled_passes + 1} of {attempts}; "
+                f"execution {getattr(result, 'execution_id', '') or '(not recorded)'}.",
                 f'Your prose reply: "{_response_excerpt(result.text, 600)}"',
                 "Drydock reads only artifact blocks; prose reaches no one. Report a Blueprint "
                 f"you cannot author in `{BLOCKED_BLOCK}` with its error type, cited input, and "
@@ -5591,11 +5600,17 @@ def _continue_short_plan(
                 # Routed through the always-printed score channel: the console hides other
                 # ``[plan]`` notices without --debug, and this one is why the plan stalls.
                 on_text(f'[plan-score][plan] response without artifacts: "{excerpt}"\n')
+                if artifact := getattr(getattr(result, "artifacts", None), "output_file", None):
+                    on_text(f"[plan-score][plan] rejected response: {artifact}\n")
                 on_text(
                     "[plan-score]"
                     + score.progress_block(
                         stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
-                        result=_refused_batch("no Blueprint artifacts", stalled_passes, attempts),
+                        result=_refused_batch(
+                            f"instruction failure {stalled_passes + 1}/{attempts}: no Blueprint artifacts",
+                            stalled_passes,
+                            attempts,
+                        ),
                     )
                 )
             stalled_passes += 1
@@ -5728,7 +5743,6 @@ def _continue_short_plan(
             )
         stalled_passes = 0
         previous_rejection = "; ".join(damage_details)
-        batch_size = _PLAN_BLUEPRINT_BATCH_SIZE
 
     return _Continuation(
         blocks=accumulated,

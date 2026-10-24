@@ -84,13 +84,18 @@ refusals in place of artifacts and routes open points to `## Questions`. *Broken
 `20261021.173113` resent a byte-identical prompt three times after Haiku asked questions instead
 of emitting, and plan stalled at 16 / 31 Blueprints.
 
-`2026-10-21` · **A batch answered without artifacts is retried as one Blueprint.** After a
-no-artifact reply the Current batch shrinks to the first missing Blueprint, and the rejection
-reason states it: `The Current batch is now one Blueprint. Emit that one artifact and nothing
-else; Drydock asks for the rest in later batches.` An accepted batch restores the batch of 5. The
-`[plan] response without artifacts` excerpt prints through the `[plan-score]` channel, so it shows
-without `--debug`. *Broken:* LayersTesting `20261021.183753` retried the same five Blueprints with
-the reason attached, Haiku refused three more times, and plan stalled at 11 / 30.
+`2026-10-24` · **An artifact-free reply receives an additive instruction correction.**
+The continuation keeps the normal Current batch after a prose refusal; no automatic one-file
+fallback exists. The existing context and contracts remain intact. The retry ledger appends the
+rejected reply, failure count, execution id, and a correction that authoring acceptance criteria
+does not require executing or inspecting the future product; supplied helper contracts establish
+staging and invocation. Actual source conflicts and missing product requirements use
+`BLUEPRINT_BLOCKED.txt`. Console progress names the instruction failure, remaining allowance,
+and saved response path. Repeated failures stop within the existing consecutive-stall and total
+pass limits. Progress clears the correction and retains accepted artifacts. This removes
+`2e121e4`'s refusal-driven resizing. *Broken:* DrydockStats `20261024.145357` requests confirmation
+of helper facts already supplied; changing prompt size does not establish a remedy for that
+instruction failure.
 
 `2026-10-22` · **A Blueprint a batch cannot author is reported, checked, and fed back.**
 `plan_continue.md` V4 defines `BLUEPRINT_BLOCKED.txt`: one entry per Current-batch Blueprint with

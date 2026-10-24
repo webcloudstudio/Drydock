@@ -4781,10 +4781,8 @@ def test_a_batch_answered_with_questions_is_retried_with_the_reason():
     )
 
 
-def test_a_batch_answered_without_artifacts_is_retried_as_one_blueprint():
-    """LayersTesting ``20261021.183753``: the retry named the refusal but asked for the same five
-    Blueprints, and Haiku refused three times more. The retry now asks for one Blueprint, says so,
-    and the batch returns to five once a batch is accepted."""
+def test_a_batch_answered_without_artifacts_keeps_its_batch_and_appends_correction():
+    """DrydockStats refusal recovery adds instructions without shrinking the work queue."""
     from drydock.prompt_assembly import PromptAssembly
 
     declared = tuple(
@@ -4828,10 +4826,70 @@ def test_a_batch_answered_without_artifacts_is_retried_as_one_blueprint():
     assert result.score.is_complete
     assert len(prompts) == 4
     assert "Current batch (5)" in prompts[0]
-    assert "Current batch (1)" in prompts[1]
-    assert "The Current batch is now one Blueprint." in prompts[1]
+    assert "Current batch (5)" in prompts[1]
+    first_batch = "\n".join(f"  story-{n} -> FEATURE-{n}.md" for n in range(1, 6))
+    assert first_batch in prompts[0] and first_batch in prompts[1]
+    assert "## Instruction-failure correction" not in prompts[0]
+    assert "## Instruction-failure correction" in prompts[1]
+    assert "Prior execution or inspection of the future application is not" in prompts[1]
+    assert "Supplied helper contracts establish their staging and invocation" in prompts[1]
+    assert "The Current batch is now one Blueprint" not in prompts[1]
+    assert all(prompt.startswith("CONTEXT\n") for prompt in prompts)
+    # Partial progress keeps the accepted file and requests the next normal batch.
     assert "Current batch (5)" in prompts[2]
+    assert "Accepted (1)" in prompts[2]
+    assert "story-2 -> FEATURE-2.md" in prompts[2]
     assert "Previous attempt rejected" not in prompts[2]
+    assert "## Instruction-failure correction" not in prompts[2]
+    assert "Current batch (1)" in prompts[3]  # Only one outstanding file remains.
+
+
+def test_repeated_instruction_failures_keep_the_batch_and_exhaust_the_allowance():
+    from types import SimpleNamespace
+
+    from drydock.prompt_assembly import PromptAssembly
+
+    declared = tuple(
+        PlannedStory(story_id=f"story-{n}", implements=f"FEATURE-{n}.md") for n in range(1, 8)
+    )
+    prompts: list[str] = []
+    progress: list[str] = []
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        return SimpleNamespace(
+            ok=True,
+            text="I must execute the future application before I can author its criteria.",
+            execution_id=f"exec-{len(prompts)}",
+            artifacts=SimpleNamespace(output_file=Path(f"/tmp/refusal-{len(prompts)}.txt")),
+        )
+
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "Seven frozen stories."},
+        blocks_text="=== TOPOLOGY.md ===\nSeven frozen stories.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("UNCHANGED CONTEXT\n"),
+        declared=declared,
+        target="Example",
+        target_dir=Path("Example"),
+        llm_provider="claude",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=progress.append,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+    assert len(prompts) == result.passes == 3
+    assert not result.score.is_complete
+    assert all("Current batch (5)" in prompt for prompt in prompts)
+    assert all(prompt.startswith("UNCHANGED CONTEXT\n") for prompt in prompts)
+    assert "Instruction failure 1 of 3; execution exec-1" in prompts[1]
+    assert "Instruction failure 2 of 3; execution exec-2" in prompts[2]
+    assert prompts[2].count("## Instruction-failure correction") == 1
+    assert "Instruction failure 3 of 3" in result.last_rejection
+    assert "must execute the future application" in result.last_rejection
+    assert any("Retries exhausted: instruction failure 3/3" in line for line in progress)
+    assert any("rejected response: /tmp/refusal-3.txt" in line for line in progress)
 
 
 def _blocked_block(blueprint: str, error_type: str, cited: str) -> str:

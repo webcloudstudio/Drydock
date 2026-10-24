@@ -285,6 +285,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock plan` handles artifact-free Stage 2 replies with an additive
+  instruction-failure correction while retaining the normal Blueprint batch. Automatic
+  reduction to one file is removed. Retry evidence includes the refused reply, attempt count,
+  execution id, and saved response path; the correction distinguishes authoring criteria from
+  executing the future product and directs genuine source problems to `BLUEPRINT_BLOCKED.txt`.
+  Repeated failures retain the existing bounded stop policy.
+
 - 2026-10-24: `drydock plan verify` recognizes exit assertions over CLI results collected in
   a dictionary and checked in a subsequent complete `.items()` loop. Bounded validation retains
   rejection of discarded, overwritten, filtered, and rebound results. This removes the
