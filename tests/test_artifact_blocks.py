@@ -559,3 +559,15 @@ def test_retry_leaves_a_reply_with_artifacts_or_a_failed_run_alone(first):
 
     original = PromptAssembly.single_prompt("P")
     assert retry_reply_without_artifacts(first, original, rerun, tag="t") is first
+
+
+def test_content_then_a_surplus_close_marks_the_last_artifact_premature():
+    text = (
+        "=== BEGIN ARTIFACT A.md ===\nhead\n=== END ARTIFACT ===\ntail\n=== END ARTIFACT ===\n"
+        "=== BEGIN ARTIFACT B.md ===\nbody\n=== END ARTIFACT ===\n"
+    )
+
+    pairing = pair_artifact_delimiters(text)
+
+    assert pairing.premature_closes == ("A.md",)
+    assert pairing.closed == ("A.md", "B.md")

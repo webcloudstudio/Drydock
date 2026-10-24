@@ -7718,3 +7718,26 @@ def test_refused_batch_names_retry_or_exhaustion() -> None:
     assert ps._refused_batch("bad", 0, 3) == "Retrying (2 left): bad"
     assert ps._refused_batch("bad", 1, 3) == "Retrying (1 left): bad"
     assert ps._refused_batch("bad", 2, 3) == "Retries exhausted: bad"
+
+
+def test_a_close_written_inside_a_body_names_the_truncated_artifact():
+    """FxRates 20261024.183153: an AC closed with the artifact token lost the Blueprint's tail."""
+    text = (
+        "=== BEGIN ARTIFACT FEATURE-Load.md ===\n## Programmatic Acceptance\n\n"
+        "=== AC load-atomic ===\nassert True\n=== END ARTIFACT ===\n\n"
+        "## Guardrails\n\n- Validate the entire file before the first write.\n"
+        "=== END ARTIFACT ===\n"
+        "=== BEGIN ARTIFACT FEATURE-Fetch.md ===\nbody\n=== END ARTIFACT ===\n"
+    )
+    blocks = {
+        "FEATURE-Load.md": "## Programmatic Acceptance\n\n=== AC load-atomic ===\nassert True\n",
+        "FEATURE-Fetch.md": "body\n",
+    }
+
+    assert ps._unpaired_artifact_names(text, blocks) == frozenset({"FEATURE-Load.md"})
+
+
+def test_a_repeated_close_with_nothing_between_damages_nothing():
+    text = "=== BEGIN ARTIFACT A.md ===\nbody\n=== END ARTIFACT ===\n\n=== END ARTIFACT ===\n"
+
+    assert ps._unpaired_artifact_names(text, {"A.md": "body"}) == frozenset()

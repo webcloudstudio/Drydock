@@ -54,6 +54,14 @@ Cost when broken: DupFind `20261024.080843` rejects two runnable criteria even w
 citation ranges, then asks a source-free repair prompt to infer missing source lines. FxRates
 `20261024.155325` refuses two-line citations in verify, then rejects their correct repair.
 
+`2026-10-24` · **An artifact closed inside its own body is damaged.** When content and then an
+invariant `=== END ARTIFACT ===` follow an artifact's close with nothing open,
+`pair_artifact_delimiters` reports that artifact in `premature_closes` and
+`_unpaired_artifact_names` names it, so the Stage 2 pass drops it and re-requests it like a cut
+artifact. A repeated close with nothing between damages nothing. *Broken:* FxRates
+`20261024.183153` closed AC `load-rejected-file-is-atomic` with the artifact token;
+`FEATURE-CLI-Load.md` was accepted without `## User Acceptance` and `## Guardrails`.
+
 `2026-10-24` · **A final invariant artifact close missing only its trailing equals is repaired.**
 For artifact-format calls, the shared adapter completes an exact `=== END ARTIFACT` on the final
 nonblank line only when one artifact remains open and the resulting envelope sequence has no

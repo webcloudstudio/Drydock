@@ -5117,10 +5117,11 @@ def _read_repair_blocks(result: object) -> tuple[dict[str, str], str]:
 def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[str]:
     """Artifacts whose delimiters prove the response was cut, by name.
 
-    Two structural signatures, both of which survive parsing. A block with no matching
+    Three structural signatures, all of which survive parsing. A block with no matching
     ``=== END ===`` is the tail the budget cut off — :func:`_parse_strict_blocks_by_line` records
     it anyway, so it is *present but incomplete*. A block whose body holds another artifact header
-    is a cut that the model then restarted, absorbing the truncated attempt.
+    is a cut that the model then restarted, absorbing the truncated attempt. A block followed by
+    content and a second close with nothing open was closed early, and its body lost that tail.
 
     Named rather than described, because the continuation loop has to drop exactly these and ask
     for them again. :func:`_artifact_delimiter_defects` renders the same two facts as prose for a
@@ -5139,6 +5140,7 @@ def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[
     closed = Counter(pairing.closed)
     opened = frozenset(pairing.opened)
     unpaired = {name for name in blocks if name in opened and closed[name] != 1}
+    unpaired |= {name for name in pairing.premature_closes if name in blocks}
     unpaired |= {name for name, body in blocks.items() if _embedded_artifact_headers(body)}
     return frozenset(unpaired)
 

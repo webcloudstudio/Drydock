@@ -386,12 +386,16 @@ class DelimiterPairing:
     require exactly one pairing per artifact. ``unclosed`` lists the names that opened and did
     not, which is the tail a truncated response leaves behind. ``orphan_closes`` lists named
     closes that arrived with nothing open — the signature of a dropped opening delimiter. An
-    invariant close names nothing, so it can never appear there.
+    invariant close names nothing, so it can never appear there. ``premature_closes`` lists the
+    artifact that closed last when content and then an invariant close followed with nothing
+    open: the model wrote the close token inside the body, so the parsed body lost its tail
+    (FxRates ``20261024.183153`` dropped ``FEATURE-CLI-Load.md``'s Guardrails this way).
     """
 
     closed: tuple[str, ...] = ()
     unclosed: tuple[str, ...] = ()
     orphan_closes: tuple[str, ...] = ()
+    premature_closes: tuple[str, ...] = ()
 
     @property
     def opened(self) -> tuple[str, ...]:
@@ -411,12 +415,18 @@ def pair_artifact_delimiters(text: str) -> DelimiterPairing:
     closed: list[str] = []
     unclosed: list[str] = []
     orphan_closes: list[str] = []
+    premature_closes: list[str] = []
     current: str | None = None
+    # The artifact closed last, and whether non-blank content has followed its close.
+    last_closed: str | None = None
+    content_after_close = False
 
     lines = text.splitlines()
     for index, line in enumerate(lines):
         classified = _classify(line)
         if classified is None:
+            if current is None and line.strip():
+                content_after_close = True
             continue
         kind, marker_name = classified
         if kind == _OPEN:
@@ -424,12 +434,18 @@ def pair_artifact_delimiters(text: str) -> DelimiterPairing:
                 unclosed.append(current)
             assert marker_name is not None
             current = marker_name
+            last_closed = None
             continue
         if current is None:
             if marker_name is not None:
                 orphan_closes.append(marker_name)
+            elif last_closed is not None and content_after_close:
+                premature_closes.append(last_closed)
+                last_closed = None
             continue
         closed.append(current)
+        last_closed = current
+        content_after_close = False
         if marker_name is None or marker_name == current:
             current = None
         elif _closes_the_open_block(lines, index=index):
@@ -440,7 +456,10 @@ def pair_artifact_delimiters(text: str) -> DelimiterPairing:
     if current is not None:
         unclosed.append(current)
     return DelimiterPairing(
-        closed=tuple(closed), unclosed=tuple(unclosed), orphan_closes=tuple(orphan_closes)
+        closed=tuple(closed),
+        unclosed=tuple(unclosed),
+        orphan_closes=tuple(orphan_closes),
+        premature_closes=tuple(premature_closes),
     )
 
 
