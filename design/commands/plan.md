@@ -284,6 +284,8 @@ already refused it. *Broken:* FxRates `20261024.070101` wrote bare `Output:` lin
 table header became the name of all three patterns (`FieldType`), and `rates.delete`, whose Output
 is its key, raised on upsert's four-field class.
 
+`2026-10-24` · **No criterion imports `persistence` before the DATABASE step.** `plan verify` refuses (`persistence-order`, routed to `plan repair`) a criterion that imports `persistence` in a Blueprint implemented by a story whose `block:` precedes that of the story implementing `DATABASE.md`. A story in the DATABASE block is not earlier. *Broken:* FxRates `20261024.073528` put `architecture-boundary` (`open_database("").rates`) on `foundation`, block 1; its builder hand-wrote `schema.sql`, and block-1 failed unexecuted.
+
 `2026-10-23` · **Foundational stories carry no `covers:` or `accepts:`.** `parse_topology` drops
 both from a `type: foundational` story and from the story implementing `DATABASE.md`. The Feature
 or Screen that delivers the behavior owns the analyzed story and its Sea Trials. A stated
@@ -498,6 +500,8 @@ exist.
 
 
 ## Open Actions
+
+- `2026-10-24` · A story before the DATABASE block may still declare `provides: persistence.*` (FxRates `20261024.073528` foundation `provides: persistence.open_database`), which tells its builder to deliver the generated package. `plan verify` does not check `provides:`; a MANIFEST.md defect has no repair route in `plan repair`, so the check belongs where topology assigns `provides:`.
 
 - `2026-10-22` · *Closed locally:* optional adapter output-format cleanup is wired into planning calls;
   `OutputContract.forbid_outside_text` is enforced. Existing body validators remain authoritative. The proposed scope and test cases are persisted in

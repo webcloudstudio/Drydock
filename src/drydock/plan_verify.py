@@ -156,6 +156,10 @@ CRITERIA_MISSING = "criteria-missing"
 OPERATION_UNTESTED = "operation-untested"
 
 
+#: Defect kind for a criterion importing ``persistence`` on a story built before DATABASE.
+PERSISTENCE_ORDER = "persistence-order"
+
+
 def untested_operations(database_text: str, codes: Iterable[str]) -> tuple[str, ...]:
     """Each declared ``<table>.<verb>`` that no ``DATABASE.md`` criterion calls, in order.
 
@@ -285,6 +289,68 @@ def _story_criteria_defects(target_dir: Path, criteria: Mapping[str, int | None]
         Defect(filename, "", CRITERIA_MISSING, reason)
         for _, filename, reason in criteria_missing(stories, criteria)
     ]
+
+
+def _persistence_order_defects(target_dir: Path) -> list[Defect]:
+    """Refuse a criterion that imports ``persistence`` on a story built before DATABASE.
+
+    Drydock generates ``persistence/`` at the step of the story implementing ``DATABASE.md``, so a
+    criterion an earlier story owns can pass only if that story's builder writes the package
+    Rigging forbids it to write. A story in the DATABASE step itself is not earlier: the package
+    is generated before that step runs.
+    """
+    from drydock.build_plan import parse_build_plan
+
+    manifest = target_dir / "MANIFEST.md"
+    if not manifest.is_file():
+        return []
+    try:
+        plan = parse_build_plan(manifest)
+    except SpecificationError:
+        return []
+    stories = [block for block in plan.blocks if block.block_type == "story"]
+    database = min(
+        (
+            story
+            for story in stories
+            if "DATABASE.md" in implements_of(story) and story.computed_block is not None
+        ),
+        key=lambda story: story.computed_block or 0,
+        default=None,
+    )
+    if database is None or database.computed_block is None:
+        return []
+    blueprint_dir = target_dir / "blueprint"
+    defects: list[Defect] = []
+    for story in stories:
+        block = story.computed_block
+        if block is None or block >= database.computed_block:
+            continue
+        for name in implements_of(story):
+            path = blueprint_dir / name
+            if name == "DATABASE.md" or not path.is_file():
+                continue
+            try:
+                checks = parse_programmatic_acceptance(path)
+            except ValueError:
+                continue  # reported as bad-container
+            defects.extend(
+                Defect(
+                    name,
+                    check.check_id,
+                    PERSISTENCE_ORDER,
+                    f"imports `persistence`, which Drydock generates from DATABASE.md at block "
+                    f"{database.computed_block} (story `{database.block_id}`), after story "
+                    f"`{story.block_id}` builds at block {block}; assert only what that story "
+                    "delivers and leave persistence to DATABASE.md's criteria",
+                )
+                for check in checks
+                if any(
+                    module.split(".")[0] == "persistence"
+                    for _, module, _ in imported_modules(check.code)
+                )
+            )
+    return defects
 
 
 def implements_of(block: object) -> tuple[str, ...]:
@@ -574,6 +640,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                 )
 
     defects.extend(_story_criteria_defects(target_dir, criteria))
+    defects.extend(_persistence_order_defects(target_dir))
     defects.extend(persistence_defects(blueprint_dir))
     database = blueprint_dir / "DATABASE.md"
     if criteria.get("DATABASE.md"):

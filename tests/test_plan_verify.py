@@ -1037,6 +1037,70 @@ def test_every_story_with_a_criterion_verifies_clean(tmp_path):
     assert verify("Demo", target).ok
 
 
+_FOUNDATION_FIRST_MANIFEST = """# MANIFEST: Demo
+state: draft
+
+## story 1: Foundation
+id: foundation
+type: foundational
+block: 1
+implements: ARCHITECTURE.md
+instructions: |
+  Stand up the application.
+state: pending
+
+## story 2: Store
+id: data_schema
+type: foundational
+block: {database_block}
+implements: DATABASE.md
+depends: foundation
+instructions: |
+  Declare the store.
+state: pending
+"""
+
+_OPENS_PERSISTENCE = """# ARCHITECTURE: Demo
+
+## Programmatic Acceptance
+
+=== AC architecture-boundary ===
+Intent: The generated persistence interface opens the configured database.
+
+from persistence import open_database
+
+db = open_database("")
+assert hasattr(db, "rates")
+=== END AC architecture-boundary ===
+"""
+
+
+def test_a_criterion_importing_persistence_before_the_database_step_is_a_defect(tmp_path):
+    """FxRates 20261024.073528: foundation owned `architecture-boundary`, which needs the package
+    the DATABASE step generates a block later, so its builder hand-wrote `schema.sql`."""
+    target = _target(tmp_path, ARCHITECTURE=_OPENS_PERSISTENCE, DATABASE=_RUNNABLE)
+    (target / "MANIFEST.md").write_text(
+        _FOUNDATION_FIRST_MANIFEST.format(database_block=2), encoding="utf-8"
+    )
+
+    result = verify("Demo", target)
+
+    (defect,) = result.defects
+    assert defect.kind == "persistence-order"
+    assert (defect.filename, defect.check_id) == ("ARCHITECTURE.md", "architecture-boundary")
+    assert "block 2 (story `data_schema`)" in defect.detail
+    assert "story `foundation` builds at block 1" in defect.detail
+
+
+def test_a_criterion_importing_persistence_in_the_database_step_verifies_clean(tmp_path):
+    target = _target(tmp_path, ARCHITECTURE=_OPENS_PERSISTENCE, DATABASE=_RUNNABLE)
+    (target / "MANIFEST.md").write_text(
+        _FOUNDATION_FIRST_MANIFEST.format(database_block=1), encoding="utf-8"
+    )
+
+    assert verify("Demo", target).ok
+
+
 def test_a_story_citing_a_file_outside_the_blueprint_has_no_criterion(tmp_path):
     """A story implementing a Rigging file such as python.md has nothing to grade."""
     target = _target(tmp_path, **{"FEATURE-Status": _RUNNABLE})
