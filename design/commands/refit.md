@@ -1,8 +1,9 @@
-# DESIGN: drydock refit
+# MEMORY: drydock refit
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Turn a change to a built Target into ordered work the build implements. |
 | Route | refit |
 | Modules | `refit.py`, `refit_ticket.py`, `change_ticket.py`, `manifest_edit.py`, `lineage.py` |
 | Prompts | `refit.md`, `refit_sources.md`, `refit_sources_route.md` |
@@ -11,13 +12,17 @@
 | Pending spec | 0 |
 | Pending impl | 3 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Turn a change to a built Target into ordered work the build implements. Every change becomes a
 per-Blueprint REFIT ticket that is itself a Manifest story, so a later ticket can overrule an earlier
 one and Build applies them in chain order. Refit never builds.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -125,7 +130,7 @@ the authoritative external source" is withdrawn.
 
 *2026-10-15 code state:* `--sources` is absent from the parser; a replan does not yet read REFIT chains.
 
-## Open Questions
+## Questions
 
 - Deferred: two branches or developers each allocate the same `<Blueprint>_refit_<NNN>`.
   Git reports an add/add conflict; renumbering changes the parent and the story id. Who renumbers
@@ -138,7 +143,7 @@ Future work carried from notes:
 - One-time replan of the existing Target after `plan` persists lineage. Operator action; Target name
   required at execution time.
 
-## Open Actions
+## Actions
 
 - **Failing test:** `tests/test_manifest_edit.py::test_computed_manifest_normalization_uses_shared_build_block_optimizer`. Seen 2026-10-15; not investigated.
 

@@ -1,8 +1,9 @@
-# DESIGN: drydock run
+# MEMORY: drydock run
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Start a Drydock service. |
 | Route | run |
 | Modules | `quarterdeck_run.py`, `quarterdeck_state.py`, `standard_artifacts.py`, `manifest_edit.py`, `QuarterDeck/app.py` |
 | Prompts | — |
@@ -11,14 +12,18 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Start a Drydock service. The one service is the QuarterDeck: the web console where the
 Commander reads analysis, answers questionnaires, edits Compass files, and reviews or regroups the
 Manifest, and where agents put anything that needs a human. `QuarterDeck/README.md` documents the
 page types and `console.yaml`.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -88,11 +93,11 @@ sum of its steps.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 -
 

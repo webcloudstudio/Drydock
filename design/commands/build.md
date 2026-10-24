@@ -1,8 +1,9 @@
-# DESIGN: drydock build
+# MEMORY: drydock build
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Execute the dependency-ready frontier of `MANIFEST.md` one block at a time and close each story only on evidence the model did not write. |
 | Route | build |
 | Modules | `build.py`, `build_run.py`, `build_plan.py`, `acceptance.py`, `artifact_blocks.py`, `lineage.py`, `model_config.py` |
 | Prompts | `build.md` |
@@ -11,13 +12,17 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Execute the dependency-ready frontier of `MANIFEST.md` one block at a time and close each story
 only on evidence the model did not write. Code, tests, and criteria share one author, so Build
 spends a bounded repair budget on model signal and hands the verdict to independent evidence.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -214,11 +219,11 @@ an unchanged rebuild against the same immutable criterion.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 - `2026-10-20` · The acceptance-failure Recovery still says `drydock build <Target>` when the agent
   disputes the criterion in prose that neither `_defective_acceptance_claim` (`build_run.py`) nor

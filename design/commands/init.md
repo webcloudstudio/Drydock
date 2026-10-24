@@ -1,8 +1,9 @@
-# DESIGN: drydock init
+# MEMORY: drydock init
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Create the specification-independent baseline for a Target: its workspace directories, `METADATA.md`, standard QuarterDeck artifacts, and its own Git repository. |
 | Route | init |
 | Modules | `init_target.py`, `standard_artifacts.py`, `metadata.py`, `target_git.py`, `skills.py` |
 | Prompts | — |
@@ -11,12 +12,16 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Create the specification-independent baseline for a Target: its workspace directories,
 `METADATA.md`, standard QuarterDeck artifacts, and its own Git repository. Idempotent.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -67,11 +72,11 @@ broken: a skill-provisioning error blocks project creation.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 -
 

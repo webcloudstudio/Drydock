@@ -1,8 +1,9 @@
-# DESIGN: drydock uat
+# MEMORY: drydock uat
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Make a release decision trustworthy: build known fixtures unattended, end every run in a verdict about the product, and separate a defect in the product from a defect in Drydock's own checkers. |
 | Route | uat |
 | Modules | `uat.py`, `uat_report.py`, `uat_console.py`, `stop_condition.py`, `sea_trials.py` |
 | Prompts | `uat_diagnostic.md` (via `/ddk-uat`) |
@@ -11,9 +12,7 @@
 | Pending spec | 0 |
 | Pending impl | 2 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Make a release decision trustworthy: build known fixtures unattended, end every run in a verdict
 about the product, and separate a defect in the product from a defect in Drydock's own checkers.
@@ -24,6 +23,12 @@ Three properties define done (UAT gate model, 2026-08-14):
    criteria guide the build and never reach the release verdict (see [score](score.md)).
 3. **Drydock fails a project only by exhibiting a failure.** Absence of evidence is never failure;
    Drydock's bookkeeping never fails anything.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -48,7 +53,7 @@ this command (AGENTS.md §UAT Evidence).
 source-contract substitutions in running and completed runs, including successful runs. It
 starts downstream-failure analysis at the earliest warning, traces the affected artifacts through
 later stages, and distinguishes established, ruled-out, and undetermined causal links. Recovered
-defects remain actionable and recorded in `design/uat_diagnoses.md`; later success alone cannot
+defects remain actionable and recorded in `design/skills/ddk-uat.md`; later success alone cannot
 close them. Reports state the recorded verdict and diagnostic cleanliness (`clean`, `not clean`,
 or `undetermined`) separately. Expected contractual observations require source and execution
 evidence. The diagnostic classification does not change the runner's recorded verdict or exit
@@ -151,14 +156,14 @@ not to write those assertions. Keep the knowledge, drop the enforcement.
 Action: convert each analyzer from a blocking defect into (a) prompt guidance in the acceptance
 authoring contract, and (b) a warning that may cost marks, never a hard gate.
 
-## Open Questions
+## Questions
 
 1. **Two decisions of 2026-08-10 have unverified status.** Executable deterministic Sea Trials
    blocks, and demoting `proof_integrity` analyzers to authoring time (`validate` no longer runs
    them; `acceptance.py`, `acceptance_status.py`, and `ac_repair.py` still import it). Implemented,
    superseded, or open?
 
-## Open Actions
+## Actions
 
 - `2026-10-24` · DupFind `20261024.140514` passed and is not yet diagnosed. It has no ledger rows.
 

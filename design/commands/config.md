@@ -1,8 +1,9 @@
-# DESIGN: drydock config
+# MEMORY: drydock config
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Hold user-scoped defaults — workspace, build root, provider, model, and execution bounds — and expose resolved paths and token calibration to scripts. |
 | Route | config |
 | Modules | `config.py`, `model_config.py`, `calibration.py` |
 | Prompts | — |
@@ -11,13 +12,17 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Hold user-scoped defaults — workspace, build root, provider, model, and execution bounds — and
 expose resolved paths and token calibration to scripts. Configuration never lives in the
 repository.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -109,12 +114,12 @@ without consent.
 
 -
 
-## Open Questions
+## Questions
 
 1. **Metered provider cost is not declared.** AGENTS.md requires a per-token provider to declare
    its cost in `drydock config`; `config show` does not mark `gemini` as metered. Add it?
 
-## Open Actions
+## Actions
 
 -
 

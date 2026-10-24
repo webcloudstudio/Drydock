@@ -1,8 +1,9 @@
-# DESIGN: drydock rigging
+# MEMORY: drydock rigging
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Manage the governed rules every build reads. |
 | Route | rigging |
 | Modules | `rigging_compact.py`, `rigging_update.py`, `rigging_verify.py`, `rigging_manifest.py`, `rigging_contract.py`, `paths.py` |
 | Prompts | `rigging_compact_architecture.md`, `rigging_compact_contracts.md`, `rigging_compact_database.md` |
@@ -11,14 +12,18 @@
 | Pending spec | 0 |
 | Pending impl | 1 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Manage the governed rules every build reads. `compact` derives the caller-facing usage surface
 of a specification into a `*_compact.md` sibling so consumer stories carry the contract, not the
 whole file. `update` and `verify` propagate and check business rules in a built Target. `--add`
 catalogs new Rigging files for Analyze.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -110,11 +115,11 @@ Rigging file whose purpose was invented.
 Injecting branding/voice content (e.g. `BRANDING_VOICE.md` equivalent) into the target
 `AGENTS.md` is explicitly deferred. Current scope: business rules compact only.
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 -
 

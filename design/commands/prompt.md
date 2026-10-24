@@ -1,8 +1,9 @@
-# DESIGN: drydock prompt
+# MEMORY: drydock prompt
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | `prompt review <component>` critiques one LLM prompt contract against its specification section, its design file, and its consumer contracts, and writes a scored review. Hidden command. |
 | Route | prompt |
 | Modules | `prompt_review.py` |
 | Prompts | `prompt_review.md` |
@@ -11,12 +12,16 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Hidden command. `prompt review <component>` critiques one LLM prompt contract against its
 specification section, its design file, and its consumer contracts, and writes a scored review.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -72,14 +77,14 @@ model. Cost when broken: no trend across prompt revisions.
 
 -
 
-## Open Questions
+## Questions
 
 1. **Both components are broken today.** `analyze` cites `### Analyze Your Specification` and
    `plan` cites `### Building and Reviewing the Build Plan / Manifest`; neither heading exists in
    the current specification, so every review raises `spec section not found`. Repoint them to
    `### drydock analyze` and `### drydock plan`?
 
-## Open Actions
+## Actions
 
 - Repoint both components' `spec_heading` once Open Question 1 is answered.
 

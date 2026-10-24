@@ -1,8 +1,9 @@
-# DESIGN: drydock diagnose
+# MEMORY: drydock diagnose
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Explain why the latest run stopped, separate a real defect from retry exhaustion, and hand back a repair-grade Incident Report plus applyable amendments. |
 | Route | diagnose |
 | Modules | `diagnose_command.py`, `diagnose.py`, `diagnose_evidence.py`, `diagnose_report.py`, `diagnose_apply.py`, `diagnose_repair.py`, `diagnose_ladder.py`, `diagnose_console.py`, `diagnose_html.py`, `ac_repair.py` |
 | Prompts | `diagnose_report.md`, `diagnose_ac_repair.md`, `diagnose.md` (inline post-failure) |
@@ -11,14 +12,18 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Explain why the latest run stopped, separate a real defect from retry exhaustion, and hand back a
 repair-grade Incident Report plus applyable amendments. The report must be complete enough for
 another agent to repair from alone. It is the operator-invoked superset of the inline
 post-failure diagnosis in `diagnose.py`.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -109,11 +114,11 @@ loop `build || diagnose --apply` ends early on a stalled Target.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 - `2026-10-22` · A test whose stubbed command raised reached the crash diagnosis in
   `diagnose.py`, which started a real `claude/sonnet` call from pytest

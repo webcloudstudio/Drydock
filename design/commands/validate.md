@@ -1,8 +1,9 @@
-# DESIGN: drydock validate
+# MEMORY: drydock validate
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Structurally validate a Target's Blueprint without a model: required files for the current SAIL phase, `METADATA.md` fields, naming, typed headers, relationships, and Programmatic Acceptance syntax. |
 | Route | validate |
 | Modules | `validate_specification.py` |
 | Prompts | — |
@@ -11,13 +12,17 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Structurally validate a Target's Blueprint without a model: required files for the current SAIL
 phase, `METADATA.md` fields, naming, typed headers, relationships, and Programmatic Acceptance
 syntax.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -79,11 +84,11 @@ judgment.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 -
 

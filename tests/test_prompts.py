@@ -64,7 +64,7 @@ class TestLoadPrompt:
         assert "specification-contaminated" in prompt.body
         assert "exactly five sections" in prompt.body
         assert "### Root Cause" in prompt.body
-        assert "design/uat_diagnoses.md" in prompt.body
+        assert "design/skills/ddk-uat.md" in prompt.body
         assert "write no other file" in prompt.body
         assert "A failed run always" in prompt.body
         assert "Reporting Defect" in prompt.body
@@ -254,9 +254,9 @@ class TestInputTokens:
 
 
 def test_uat_diagnosis_ledger_defines_every_outcome_it_uses():
-    ledger = (Path(__file__).resolve().parent.parent / "design" / "uat_diagnoses.md").read_text(
-        encoding="utf-8"
-    )
+    ledger = (
+        Path(__file__).resolve().parent.parent / "design" / "skills" / "ddk-uat.md"
+    ).read_text(encoding="utf-8")
     rows = [line for line in ledger.splitlines() if line.startswith("| 2")]
     header = ledger.split("| Date |")[0]
 

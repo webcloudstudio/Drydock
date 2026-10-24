@@ -12,7 +12,7 @@ numbered list, wait for the user to choose, then implement the selected items.
 The argument after `/ddk-think-apply` is the subject. Resolve the notes file the same way as
 `/ddk-think`: `targets/<Target>/notes_<feature>.md` when the subject is a feature of a
 Drydock-managed project (`$DRYDOCK_WORKSPACE/targets/<Target>/`); in the Drydock repository,
-`design/commands/<command>.md` or `design/topics/<topic>.md` via the AGENTS.md §Design Manifest; otherwise
+`design/commands/<command>.md` or `design/topics/<topic>.md` via the AGENTS.md §Memory File Index; otherwise
 `notes/notes_<subject>.md`. Below, "the notes file" means the resolved file.
 
 **Drydock-managed projects:** when the notes file lives in a Target directory, selected CODE
@@ -28,7 +28,7 @@ build process. DOC items amend the Target's Blueprint the same way.
    for sections in terminal state: both `impl` and `spec` flags are done
    (`impl:implemented` or `impl:na`, **and** `spec:applied` or `spec:na`).
 
-   - In a `design/` file, fold each terminal section's settled behavior into `## Behavior`
+   - In a `design/` file, fold each terminal section's settled behavior into `## Details`
      as a dated rule, then remove the section. Elsewhere, append it verbatim to
      `notes_<subject>_done.md` (create it with `# DONE: <subject>` and today's date) and remove it.
    - Update the header counts (`Pending spec`, `Pending impl`) to reflect the removals.
@@ -82,7 +82,7 @@ The user replies with numbers, letters, ranges, or keywords (`all code`, `all do
 
 **After all selected items are implemented:**
 - Run `ruff check src/ tests/` and `python -m pytest` (or `bash bin/test.sh`).
-- In a `design/` file, update `## Behavior` for every implemented item.
+- In a `design/` file, update `## Details` for every implemented item.
 - Commit with a descriptive message per AGENTS.md rules.
 - Report: files changed, tests passed, residual risk.
 

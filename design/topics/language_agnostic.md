@@ -1,17 +1,26 @@
-# Language-Agnostic Target Generation and Library Encapsulation
+# MEMORY: language_agnostic
 
 | Field | Value |
 |---|---|
-| Date | 2026-10-19 |
+| Version | 2026-10-19 V1 |
+| Description | Generate Python and Go Targets that call Drydock's shipped libraries. |
+| Modules | `technology_stack.py`, `Rigging/languages/` |
 | Status | Proposed implementation plan; simplified after review |
-| Branch | `main` only |
 | Target languages | Python and Go |
 | Databases | SQLite and PostgreSQL |
 
-## Objective and scope
+## Intent
 
 Drydock remains Python. It generates a Target in the language selected in
 `TECHNOLOGY_STACK.md`. Planning, compaction, build and repair use that selection.
+
+## Guardrails
+
+- `2026-10-19` · Work lands on `main` only. Refit methodology is out of scope.
+
+## Details
+
+### Objective and scope
 
 The supported workflow is: select the stack, approve it, plan, then build. This work delivers
 that workflow for Python and Go. Changing languages on an already planned or built Target is
@@ -25,7 +34,7 @@ and correct-call behavior.
 Also excluded: Refit methodology, database migrations/versioning, impact analysis, per-criterion
 coverage/tracing, and new gates that reject pre-existing Target code.
 
-## 1. Select a valid stack
+### 1. Select a valid stack
 
 `TECHNOLOGY_STACK.md` remains the only selection record. Add `**Type:**` to selectable Rigging
 files and use one count table, `Rigging/rigging_types.json`:
@@ -57,7 +66,7 @@ excludes those files from its dropdown. Autosave may retain an invalid draft and
 shared validator's errors. Approval, planning and build require a valid stack; planning and
 build also require approval before an LLM call. Changing language or database clears approval.
 
-## 2. Supply the selected language everywhere
+### 2. Supply the selected language everywhere
 
 The language foundation receives the full language file. Every other build and repair prompt
 receives its shipped compact, even when the block's `stack:` omits the language. Include it once
@@ -71,7 +80,7 @@ freshness rules. Rigging compaction remains unchanged: `go.md` supplies `go_comp
 Use existing planning context and language resolution; close omissions rather than add a
 parallel context mechanism. Existing Python fallbacks can remain behind validated selection.
 
-## 3. Build native applications with shipped libraries
+### 3. Build native applications with shipped libraries
 
 Complete Go guidance with standard-library CLI and `net/http` application layouts and native
 test fixtures. Keep the root application module and nested persistence module consistent.
@@ -87,14 +96,14 @@ Keep basic interface checks: declared operations and inputs only, and required k
 operations. A keyless delete must fail without deleting rows. Verify database failures reach
 callers and valid calls retain their existing behavior. Do not redesign the library.
 
-## 4. Preserve native test results
+### 4. Preserve native test results
 
 Carry native runner results through the outer acceptance executor: pass, failure, skipped or
 not-run, unavailable tool, compilation error and timeout. A skipped Go test is neither a pass
 nor an ordinary assertion failure. Timeouts terminate child processes. Reuse existing result
 and error handling rather than create another execution framework.
 
-## Verification and delivery
+### Verification and delivery
 
 Deliver one tested slice per local commit on `main`; no push. Use fake LLM runners only.
 
@@ -117,3 +126,19 @@ specification unchanged unless separately authorized.
 
 The work is complete when the supported select → approve → plan → build workflow passes these
 checks for Python and Go, with correct existing Python calls unchanged.
+
+## Decisions
+
+- None.
+
+## Questions
+
+- None.
+
+## Actions
+
+- None.
+
+## Working Notes
+
+- None.

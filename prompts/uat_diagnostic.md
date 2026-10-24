@@ -1,7 +1,7 @@
 ---
 name: uat_diagnostic
 description: Investigate warnings, errors, recovered defects, and downstream failures in a running or completed Drydock UAT run, including a successful run.
-version: 20261024 V6
+version: 20261024 V7
 intent: Assess operational success and clean execution separately, trace upstream warnings and errors through later artifacts and failures, and recommend the earliest corrective work supported by preserved evidence.
 command: operator diagnostic prompt
 output: A five-section diagnosis of about 250 words in single-line bullets, ending in a prioritized action list.
@@ -79,7 +79,7 @@ what happened to the run; it does not fix or close the generating defect.
 
 ## Diagnosis Ledger
 
-`design/uat_diagnoses.md` in the Drydock repository is this diagnostic's memory across runs. Its
+`design/skills/ddk-uat.md` in the Drydock repository is this diagnostic's memory across runs. Its
 header defines the columns and Outcome values.
 
 1. Read it before diagnosing. Collect every row for this Kit, and every row whose Area names a file

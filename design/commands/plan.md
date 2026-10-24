@@ -1,8 +1,9 @@
-# DESIGN: drydock plan
+# MEMORY: drydock plan
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Turn imported sources into Blueprints and a Manifest Build can execute without further interpretation. |
 | Route | plan |
 | Modules | `planning_session.py`, `plan_verify.py`, `plan_repair.py`, `plan_graph.py`, `plan_topology.py`, `database_contract.py`, `manifest.py`, `lineage.py` |
 | Prompts | `plan_create.md`, `plan_create_speckit.md`, `plan_continue.md`, `plan_conform.md`, `plan_reuse.md`, `plan_repair.md`, `plan_artifact_waiver.md`, `BLUEPRINTS_CONTRACT.md`, `MANIFEST_CONTRACT.md` |
@@ -11,14 +12,18 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Turn imported sources into Blueprints and a Manifest Build can execute without further
 interpretation. Plan is the last place a defect is cheap. It never discards paid work, and it never
 reports unbuildable work as buildable: the exit status says whether Build can execute what was
 written.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -569,7 +574,7 @@ A failing `plan verify` condemns the standing plan rung without voiding anything
 
 -
 
-## Open Questions
+## Questions
 
 - `2026-10-24` · **Fenced criteria outside the plan gate.** `e4a2aad` rejects `fenced-criteria`
   only in plan's in-plan gate. Extending it to `plan verify` and Build fails 161 fenced test
@@ -603,10 +608,10 @@ boundary being rewritten. *Removed:* the Compass setup verb — `BUILD_PLAN_COMP
 exist.
 
 
-## Open Actions
+## Actions
 
 
-- `2026-10-24` · `1fd07d0` and `e4a2aad` are `unverified` in `design/uat_diagnoses.md`. The next
+- `2026-10-24` · `1fd07d0` and `e4a2aad` are `unverified` in `design/skills/ddk-uat.md`. The next
   DupFind run must show no `unchecked-call` on SizeFilter or UnreadableFiles and no fenced
   criteria reaching `plan verify`. If artifact repair still writes fences, fix
   `_artifact_repair_assembly` (ledger row open) next.
@@ -619,13 +624,13 @@ exist.
 
 - `2026-10-22` · *Closed locally:* optional adapter output-format cleanup is wired into planning calls;
   `OutputContract.forbid_outside_text` is enforced. Existing body validators remain authoritative. The proposed scope and test cases are persisted in
-  [planner_step_validation_plan.md](../planner_step_validation_plan.md#output-shape-follow-up--2026-10-22).
+  [planner_step_validation.md](../topics/planner_step_validation.md#output-shape-follow-up--2026-10-22).
 
 - `2026-10-22` · Implementation is committed in `48764ad`; 385 focused regressions pass.
   Validate the complete live plan command from saved inputs, then verify and build separately.
   Live execution is deferred: Ed instructed "do not transmit" on 2026-10-22. Do not send
   the saved inputs or retry the live sequence. Resume from
-  [planner_step_validation_plan.md](../planner_step_validation_plan.md), which records the
+  [planner_step_validation.md](../topics/planner_step_validation.md), which records the
   conversation, implementation, evidence paths, and continuation checklist.
 
 - `2026-10-21` · *Closed 2026-10-21:* the Stage 2 output contract is consistent. `DATABASE.md`

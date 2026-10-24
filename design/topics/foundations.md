@@ -1,8 +1,9 @@
-# DESIGN: foundations
+# MEMORY: foundations
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | A criterion must name the application it tests without inventing it. |
 | Route | foundations |
 | Modules | `rigging_contract.py`, `technology_stack.py`, `rigging_compact.py`, `plan_verify.py`, `manifest_edit.py` |
 | Prompts | `BLUEPRINTS_CONTRACT.md`, `MANIFEST_CONTRACT.md`, `plan_create.md` |
@@ -11,15 +12,19 @@
 | Pending spec | 0 |
 | Pending impl | 1 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 A criterion must name the application it tests without inventing it. Marina_Luna's criteria split
 98 imports of `app` against 77 of `marina_app` and called Flask's `test_client()` 134 times against
 a FastAPI stack. The fix is to make the guess unnecessary: the Commander selects a technology, its
 Rigging file publishes the package, entry, and fixture, and every criterion writes against a name it
 was given.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Rules
 
@@ -119,7 +124,7 @@ integration test producing a Manifest whose first phase-1 blocks hold only found
 language foundation ahead of the platform ones; a regression test that
 the existing Marina_Luna-shaped plan still schedules.
 
-## Open Questions
+## Questions
 
 5. `build.band_for()` is a third ordering concept — `BAND_FOUNDATION` / `BAND_DATA` /
    `BAND_FEATURES`, keyed off `implements:` (`ARCHITECTURE.md`, `DATABASE.md`). It predates tiers
@@ -127,7 +132,7 @@ the existing Marina_Luna-shaped plan still schedules.
    implements neither, so today it would band as `Features/Screens`. Slice 5 must reconcile the
    two or the build-order validator will contradict the tier chain.
 
-## Open Actions
+## Actions
 
 - `2026-10-19`: Run PostgreSQL integration for both persistence libraries with `DRYDOCK_TEST_POSTGRES_DSN`. Go and Python SQLite integration pass; PostgreSQL remains unverified (skipped, not passed).
 

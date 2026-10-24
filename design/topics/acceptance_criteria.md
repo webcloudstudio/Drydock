@@ -1,8 +1,9 @@
-# DESIGN: acceptance_criteria
+# MEMORY: acceptance_criteria
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | How a Programmatic Acceptance criterion is recorded, classified, run, repaired, and counted during staged builds. |
 | Route | acceptance_criteria |
 | Modules | `acceptance.py`, `acceptance_status.py`, `ac_repair.py`, `proof_integrity.py`, `status.py`, `build_run.py` |
 | Prompts | `diagnose_ac_repair.md` |
@@ -11,13 +12,17 @@
 | Pending spec | 0 |
 | Pending impl | 1 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 How a Programmatic Acceptance criterion is recorded, classified, run, repaired, and counted during
 staged builds. A criterion is evidence only when it binds to the product, was red before the build,
 and measured something; everything else is reported, not charged.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Rules
 
@@ -169,7 +174,7 @@ that declares `Suite: full` but samples it (`--pattern`, `--number`, slices, har
 file-exists stubs), and rejects a plan where no story carries it. Deferred because detecting
 "suite present" and sampling risks false positives.
 
-## Open Questions
+## Questions
 
 2. **What counts as sampling?** The heuristic boundary between a sampled or stubbed suite and a
    genuine full run, in `proof_integrity` or the plan gate.
@@ -177,7 +182,7 @@ file-exists stubs), and rejects a plan where no story carries it. Deferred becau
    build tree is diagnostic only and noisy; revisit if SETUP/TEARDOWN does not stop self-poisoning.
 4. **Criterion isolation:** resolved 2026-10-22 by rollback scopes and owned committed records.
 
-## Open Actions
+## Actions
 
 - `2026-10-24` · Go criteria are not under the harness transaction: `drydock_go` runs native tests
   in a separate process, so Go keeps `OpenSession` scopes and owned committed records. Decide

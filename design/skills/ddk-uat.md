@@ -1,8 +1,29 @@
-# UAT Diagnoses
+# MEMORY: ddk-uat
+
+| Field | Value |
+|---|---|
+| Version | 2026-10-24 V1 |
+| Description | Ledger of diagnosed UAT runs and root causes kept by `/ddk-uat`. |
+| Skill | `/ddk-uat` |
+| Prompts | `uat_diagnostic.md` |
+
+## Intent
 
 The memory of `/ddk-uat` (`prompts/uat_diagnostic.md`) across runs: one row per diagnosed run and
 root cause. A diagnosis reads it first, to see whether its cause has been seen before and which
 fixes already sit in the implicated area.
+
+## Guardrails
+
+- `2026-10-24` · Clean execution is required as well as operational success. Record defective warnings
+  and recovered errors even when the run passes; recovery alone never closes the generating defect.
+  Trace upstream findings through later consumers before recommending downstream repairs.
+- `2026-10-24` · Ed corrected the FxRates requirement to uniqueness of `(date, currency)`; prescribing
+  a composite physical primary key in the source brief was wrong. The correction belongs in the kit
+  brief, not in additional composite-primary-key support. Earlier rows retain their historical source
+  and generated-schema observations; successful retries do not establish a clean run.
+
+## Details
 
 | Column | Content |
 |---|---|
@@ -13,16 +34,7 @@ fixes already sit in the implicated area.
 Rules: every diagnosed failed run gets at least one row (`undetermined:` when no cause is
 established). Each root cause, and each contributing, independent, or reporting defect, gets its
 own row, and Stopped marks the non-terminal kinds. Change only the Fix and Outcome of earlier rows. A fix
-in an Area that already holds a `recurred` row revises or removes that fix, not layers beside it.
-
-`2026-10-24` · Clean execution is required as well as operational success. Record defective warnings
-and recovered errors even when the run passes; recovery alone never closes the generating defect.
-Trace upstream findings through later consumers before recommending downstream repairs.
-
-`2026-10-24` · Ed corrected the FxRates requirement to uniqueness of `(date, currency)`; prescribing
-a composite physical primary key in the source brief was wrong. The correction belongs in the kit
-brief, not in additional composite-primary-key support. Earlier rows retain their historical source
-and generated-schema observations; successful retries do not establish a clean run.
+in an Area that already holds a `recurred` row revises or removes that fix, not layers beside it. Append new rows at the end of the ledger table below.
 
 | Date | Kit | Run | Commit | Model | Stopped | Root cause | Area | Fix | Outcome |
 |---|---|---|---|---|---|---|---|---|---|
@@ -133,3 +145,19 @@ and generated-schema observations; successful retries do not establish a clean r
 | 2026-10-24 | DupFind | 20261024.183232 | 42f14d1 (no result.json at inspection) | claude-haiku-5-5 | plan lineage; independent, recovered | Lineage attribution splits `stories=` only on commas; the model emitted space-separated valid ids (`foundation pipeline`, `cli-args scan-size`), so five requirements lost valid stories as "unknown" | `lineage_attribution.py:116` `parse_attribution_output` | | open |
 | 2026-10-24 | FxRates | 20261024.183153 | 42f14d1 | gpt-6-luna | plan batch 2; independent, silently accepted | Provider closed AC `load-rejected-file-is-atomic` with `=== END ARTIFACT ===` (output `20261024.183351.045Z…output.txt:190`); the envelope ended `FEATURE-CLI-Load.md` there, an `=== END AC` close was synthesized, and the Blueprint was accepted without its `## User Acceptance` and `## Guardrails` (lost: "Validate the entire file before the first write"); the stray close at `:201` then got `FEATURE-CLI-Serve.md` rejected | `artifact_blocks.py` `pair_artifact_delimiters` + `planning_session.py` `_unpaired_artifact_names` | 506b442 | unverified |
 | 2026-10-24 | FxRates | 20261024.183153 | 42f14d1 | gpt-6-luna | plan topology; independent, recovered by declaration repair | Topology put `covers: QUAL-002` on foundational `project_tests` and left QUAL-001 uncovered, against `prompts/plan_create.md:254`; `plan_topology.py:391` rejected it and one repair moved both to `verification` | `prompts/plan_create.md:254` | | open |
+
+## Decisions
+
+- None.
+
+## Questions
+
+- None.
+
+## Actions
+
+- None.
+
+## Working Notes
+
+- None.

@@ -1,8 +1,9 @@
-# DESIGN: process_stops
+# MEMORY: process_stops
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-24 V3 |
+| Description | A provider failure that another call cannot fix ends the Target's LLM work and says so where every driver and operator looks. |
 | Route | process_stops |
 | Modules | `stop_condition.py`, `llm.py`, `cli.py`, `uat.py`, `quarterdeck_state.py`, `QuarterDeck/app.py`, `scripts/uat_repair_loop.sh` |
 | Prompts | — |
@@ -11,15 +12,19 @@
 | Pending spec | 0 |
 | Pending impl | 5 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 A provider failure that another call cannot fix ends the Target's LLM work and says so where every
 driver and operator looks. ReadingList `20261022.205653` hit a codex usage limit on its first build
 call; the build printed `BUILD STALLED`, exited the generic `1`, and both shell drivers went on to
 `drydock diagnose --apply` against the exhausted quota while UAT told the operator to diagnose the
 failing block.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Rules
 
@@ -180,8 +185,8 @@ unchanged.
   command that hit it. A `uat` stage halt writes one in the run workspace.
 - Rewrite `## Behavior` once implemented.
 
-## Open Questions
+## Questions
 
-## Open Actions
+## Actions
 
 ## Working Notes

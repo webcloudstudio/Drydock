@@ -1,8 +1,9 @@
-# DESIGN: drydock score
+# MEMORY: drydock score
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Close out a project: audit the imported specification, verify story acceptance, report build evidence, judge release readiness against Sea Trials, and publish a sealed receipt. |
 | Route | score |
 | Modules | `score.py`, `score_spec.py`, `score_report.py`, `score_drydock.py`, `scorecard.py`, `sea_trials.py`, `acceptance.py`, `llm_usage.py` |
 | Prompts | `score_spec.md`, `score_release.md`, `score_drydock.md` |
@@ -11,13 +12,17 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Close out a project: audit the imported specification, verify story acceptance, report build
 evidence, judge release readiness against Sea Trials, and publish a sealed receipt. Each command
 stamps its verdict onto one regenerated `SCORECARD.md`, which is the project's retrospective.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -137,7 +142,7 @@ convention; a command documents its own meaning in its exit table, as `status --
 
 -
 
-## Open Questions
+## Questions
 
 1. **Two release verdict channels.** `score report` carries a `LABEL_LADDER` workflow stamp and a
    separate `_receipt_checks()` exit-code table. Unify them?
@@ -147,7 +152,7 @@ convention; a command documents its own meaning in its exit table, as `status --
 3. **Is the ephemeral probe stored as evidence?** It must be, to serve as a `NOT MET` citation:
    per-run under `evidence/`, or inlined in the verdict?
 
-## Open Actions
+## Actions
 
 -
 

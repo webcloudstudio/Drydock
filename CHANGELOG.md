@@ -143,6 +143,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-24: `design/` is redefined as Drydock's Memory Files, the persistent project memory
+  shared by every session and provider. AGENTS.md `## Memory Files` replaces `## Design` with an
+  index, one format, and completion gates. Every Memory File is `# MEMORY: <name>`, a Field/Value
+  table, then `## Intent`, `## Guardrails`, `## Details` (formerly `## Behavior`), `## Decisions`,
+  `## Questions`, `## Actions`, and `## Working Notes`. A `design/skills/` kind holds state a skill
+  keeps across runs. The `/ddk-uat` ledger moves from `design/uat_diagnoses.md` to
+  `design/skills/ddk-uat.md` (`uat_diagnostic` prompt V7). The language-agnostic and planner
+  step-validation plans move to `design/topics/`. Every operation closes four gates before it
+  reports completion: Details updated, open questions and actions written to the Memory File,
+  `CHANGELOG.md` entry, commit. `docs/Drydock_Specification.md` must be correct but need not be
+  complete or explanatory. `tests/test_design_coverage.py` enforces the index and the format.
 - 2026-10-24: Repository pytest runs cap each invocation at eight workers, including
   `python -m pytest -n auto` and `bash bin/test.sh`, to bound concurrent test load.
 

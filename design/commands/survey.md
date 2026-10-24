@@ -1,8 +1,9 @@
-# DESIGN: drydock survey
+# MEMORY: drydock survey
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Score a Target's build process and specifications against per-command acceptance criteria and emit generalized, actionable fixes. Hidden command. |
 | Route | survey |
 | Modules | `survey.py` |
 | Prompts | `survey.md`, `survey_import.md` |
@@ -11,13 +12,17 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Hidden command. Score a Target's build process and specifications against per-command
 acceptance criteria and emit generalized, actionable fixes. `score` measures the delivered
 product; `survey` measures process and specification quality.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -100,11 +105,11 @@ survey invocation dispatches nothing.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 -
 

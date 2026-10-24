@@ -1,9 +1,5 @@
-# Drydock Design
+# Drydock Memory Files
 
-Behavior contracts for every `drydock` command (`commands/`) and the cross-cutting subjects that
-govern several commands (`topics/`). AGENTS.md §Design holds the manifest mapping each command and
-module to its file, the file layout, section ownership, and precedence:
-code > `design/` > `docs/Drydock_Specification.md`.
-
-`uat_diagnoses.md` is the `/ddk-uat` ledger: one row per diagnosed UAT run and root cause,
-read before each diagnosis.
+Persistent project memory for every `drydock` command (`commands/`), every skill that keeps state
+across runs (`skills/`), and every subject spanning several commands (`topics/`). AGENTS.md
+§Memory Files holds the index, the file format, and the completion gates.

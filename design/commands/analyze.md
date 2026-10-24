@@ -1,8 +1,9 @@
-# DESIGN: drydock analyze
+# MEMORY: drydock analyze
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Read every imported source once and hand the Commander a reviewable decomposition: a story list, Sea Trials, blockers, and questions. |
 | Route | analyze |
 | Modules | `analyze.py`, `sea_trials.py`, `technology_stack.py`, `quarterdeck_state.py` |
 | Prompts | `analyze.md` |
@@ -11,13 +12,17 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Read every imported source once and hand the Commander a reviewable decomposition: a story list,
 Sea Trials, blockers, and questions. Analyze proposes; the Commander ratifies. Nothing the Commander
 has decided may be lost to a rerun, because the Commander reruns Analyze until Quality is `Ready`.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -125,11 +130,11 @@ is silently dropped.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 -
 

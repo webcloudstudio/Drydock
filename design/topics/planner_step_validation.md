@@ -1,18 +1,27 @@
-# Complete and validate the planner one step at a time
+# MEMORY: planner_step_validation
 
-Date: 2026-10-21
-Status: Implementation committed as `48764ad`; deterministic whole-plan cases pass; live validation awaits
-explicit approval to transmit the saved inputs to Anthropic through the subscription CLI.
-Baseline: `9b83447`, with diagnosis bookkeeping through `ba3d7be`.
+| Field | Value |
+|---|---|
+| Version | 2026-10-21 V1 |
+| Description | Complete and validate the planner one step at a time. |
+| Modules | `planning_session.py` |
+| Status | Implementation committed as `48764ad`; deterministic whole-plan cases pass; live validation awaits explicit approval to transmit the saved inputs to Anthropic through the subscription CLI. |
+| Baseline | `9b83447`, with diagnosis bookkeeping through `ba3d7be`. |
 
-## Outcome
+## Intent
 
 Deliver one coherent change: a consistent persistence planning contract, validated through the
 complete `plan` command before advancing to `plan verify` and `build`. Reuse validated inputs
 instead of rerunning import and analyze after every planner fix. A Blueprint batch is an internal
 implementation detail, not the operator's unit of acceptance.
 
-## Conversation record
+## Guardrails
+
+- `2026-10-22` · Do not transmit the saved inputs or retry the live sequence without Ed's explicit approval.
+
+## Details
+
+### Conversation record
 
 This is the durable decision record for the conversation, not a verbatim tool transcript.
 
@@ -42,7 +51,7 @@ Working interpretation: a step is a complete lifecycle command, beginning with `
 than one model batch. Preserve steady progress and synthesize the fixes into one completed
 capability. This turn produces the plan; it does not claim implementation is complete.
 
-## Current implementation
+### Current implementation
 
 Another session committed `9b83447` during the review. It replaces cumulative database additions
 with a dedicated database batch, freezes the accepted declaration, and supplies
@@ -50,7 +59,7 @@ with a dedicated database batch, freezes the accepted declaration, and supplies
 seed merging, compact injection, and refusal of later changes. These are existing changes to
 review and complete, not work to duplicate. The diagnosis remains `unverified`.
 
-## Implementation plan
+### Implementation plan
 
 1. **Review the complete contract.** Read `design/commands/plan.md`, foundations and acceptance
    guidance, then review `9b83447` across prompts, assembly, database merge, validation, and tests.
@@ -81,7 +90,7 @@ review and complete, not work to duplicate. The diagnosis remains `unverified`.
    README where applicable, changelog, and the diagnosis ledger with the actual fix commit.
    Keep unit, live-step, and UAT verification claims separate. Ed performs the final clean UAT.
 
-## Step evidence
+### Step evidence
 
 Each development step records: input snapshot identifier, repository revision, requested and
 executed model, exact command, exit code, output artifacts, elapsed time, and next permitted step.
@@ -92,7 +101,7 @@ Existing UAT `--from-step` / `--to-step` controls are operator tools. An agent d
 them, modify a published run, or treat a resumed run as a clean benchmark. Development fixtures
 and evidence stay in a separate disposable workspace under the session directory.
 
-## Comments and continuation
+### Comments and continuation
 
 Use short comments that explain the invariant or reason, for example:
 
@@ -101,10 +110,10 @@ Use short comments that explain the invariant or reason, for example:
 - "Reject this batch before accepting any dependent Feature."
 
 Do not narrate obvious code or copy run histories into implementation comments. Keep historical
-evidence in `design/uat_diagnoses.md`. After each work session, update the checklist below with
+evidence in `design/skills/ddk-uat.md`. After each work session, update the checklist below with
 the result, verification command, commit, and next action. Record failures as failures.
 
-## Completion checklist
+### Completion checklist
 
 - [x] Persist conversation decisions and this implementation plan.
 - [x] Review and complete the contract introduced by `9b83447`.
@@ -115,9 +124,9 @@ the result, verification command, commit, and next action. Record failures as fa
 - [x] Complete required checks, documentation, and local commits.
 - [ ] Ed runs clean UAT; record its result without overstating earlier evidence.
 
-## Execution record
+### Execution record
 
-### Output-shape follow-up — 2026-10-22
+#### Output-shape follow-up — 2026-10-22
 
 Ed requested explicit shape enforcement for each main output format, including detection of
 extra strings, while retaining the approved removal of stray narration. This is a proposed
@@ -196,7 +205,7 @@ then verify and build separately. Do not rerun import, analyze, or UAT.
   these local results. The UAT ledger outcome remains `unverified`.
 
 
-### Adapter output cleanup — 2026-10-22
+#### Adapter output cleanup — 2026-10-22
 
 Ed approved implementing output cleanup through an optional `llm.py` call argument and asked
 for the remaining live validation. Automatic approval review rejected the live invocation before
@@ -220,3 +229,19 @@ Implemented scope:
 
 This completes the shared cleanup capability, not a claim that all prose sections can be checked
 for semantic correctness. Further output families should opt in only with an explicit grammar.
+
+## Decisions
+
+- None.
+
+## Questions
+
+- None.
+
+## Actions
+
+- None.
+
+## Working Notes
+
+- None.

@@ -1,8 +1,9 @@
-# DESIGN: drydock publish
+# MEMORY: drydock publish
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Render one front-matter Markdown document — white paper, specification, or guide — into publishable HTML, and optionally PDF. |
 | Route | publish |
 | Modules | `build_documentation.py`, `markdown_render.py` |
 | Prompts | — |
@@ -11,12 +12,16 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Render one front-matter Markdown document — white paper, specification, or guide — into
 publishable HTML, and optionally PDF. Deterministic; no Target and no LLM.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -63,11 +68,11 @@ failure is operational, not usage. Cost when broken: a PDF that differs from the
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 - **Failing test:** `tests/test_build_documentation.py::test_canonical_specification_documents_current_command_surface` expects `drydock build <Target> --dry-run` in the specification. Seen 2026-10-15; not investigated.
 

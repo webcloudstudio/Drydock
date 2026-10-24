@@ -1,8 +1,9 @@
-# DESIGN: drydock import
+# MEMORY: drydock import
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Bring the Commander's source material into the Target as a read-only snapshot under `blueprint/sources/`, and optionally normalize an intent document into `COMPASS.md`. |
 | Route | import |
 | Modules | `import_markdown.py`, `import_source.py`, `import_speckit.py`, `source_refit.py`, `compass_sources.py`, `lineage.py` |
 | Prompts | `import_compass.md` |
@@ -11,14 +12,18 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Bring the Commander's source material into the Target as a read-only snapshot under
 `blueprint/sources/`, and optionally normalize an intent document into `COMPASS.md`. The external
 authoring tree stays the product's source of truth; the snapshot is Drydock's working copy and
 changes only on an explicit import.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -96,11 +101,11 @@ overwritten by a re-import.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 -
 

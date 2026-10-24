@@ -30,5 +30,5 @@ downstream repairs. Recovery does not close the defect.
    for the Target or run requested by the operator.
 5. Return only the output required by that prompt. Do not edit files or rerun the UAT unless the
    loaded prompt explicitly changes those boundaries. The prompt's diagnosis ledger,
-   `design/uat_diagnoses.md`, is such a boundary: every diagnosed defect is recorded there,
+   `design/skills/ddk-uat.md`, is such a boundary: every diagnosed defect is recorded there,
    including warnings and recovered defects in successful runs.

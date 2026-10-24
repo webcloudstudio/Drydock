@@ -1,8 +1,9 @@
-# DESIGN: drydock report
+# MEMORY: drydock report
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Present existing Target state and evidence through a common, named report interface. |
 | Route | report |
 | Modules | `report.py`, `report_render.py`, `llm_report.py`, `build_report.py`, `report_uat_runs.py` |
 | Prompts | — |
@@ -11,11 +12,15 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Present existing Target state and evidence through a common, named report interface.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -105,11 +110,11 @@ passes, or a summary changes the evidence it describes.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 -
 

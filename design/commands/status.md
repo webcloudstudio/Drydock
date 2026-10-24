@@ -1,8 +1,9 @@
-# DESIGN: drydock status
+# MEMORY: drydock status
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Orient the operator and drive batch loops. |
 | Route | status |
 | Modules | `status.py`, `project_status.py`, `console.py` |
 | Prompts | — |
@@ -11,12 +12,16 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Orient the operator and drive batch loops. Without flags it is a read-only dashboard; with
 `--check` or `--ready` it is a gate whose exit status is the verdict.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -83,11 +88,11 @@ orientation command changes what it reports.
 
 -
 
-## Open Questions
+## Questions
 
 -
 
-## Open Actions
+## Actions
 
 -
 

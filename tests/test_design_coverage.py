@@ -1,8 +1,9 @@
-"""Every top-level ``drydock`` command has a design file listed in the AGENTS.md manifest."""
+"""Every top-level ``drydock`` command has a Memory File, and every Memory File is indexed and formatted."""
 
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 import pytest
@@ -12,13 +13,19 @@ from drydock.cli import _build_parser
 ROOT = Path(__file__).resolve().parent.parent
 DESIGN = ROOT / "design"
 SECTIONS = (
-    "## Behavior",
-    "### Rules",
+    "## Intent",
+    "## Guardrails",
+    "## Details",
     "## Decisions",
-    "## Open Questions",
-    "## Open Actions",
+    "## Questions",
+    "## Actions",
     "## Working Notes",
 )
+
+
+def _heading(text: str, heading: str) -> int:
+    match = re.search(rf"^{re.escape(heading)}$", text, re.M)
+    return match.start() if match else -1
 
 
 def _commands() -> list[str]:
@@ -29,20 +36,21 @@ def _commands() -> list[str]:
 
 def _manifest() -> str:
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    return agents[agents.index("### Design Manifest") :]
+    return agents[agents.index("### Memory File Index") :]
 
 
 @pytest.mark.parametrize("command", _commands())
 def test_command_has_design_file(command: str) -> None:
     path = DESIGN / "commands" / f"{command}.md"
-    assert path.is_file(), f"missing design file: design/commands/{command}.md"
+    assert path.is_file(), f"missing Memory File: design/commands/{command}.md"
     assert f"`design/commands/{command}.md`" in _manifest()
 
 
 @pytest.mark.parametrize("path", sorted(DESIGN.glob("*/*.md")), ids=lambda p: p.name)
 def test_design_file_layout(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
-    positions = [text.find(heading) for heading in SECTIONS]
+    assert text.startswith("# MEMORY: "), f"{path.name} lacks a # MEMORY: title"
+    positions = [_heading(text, heading) for heading in SECTIONS]
     assert -1 not in positions, f"{path.name} lacks a required section"
     assert positions == sorted(positions), f"{path.name} sections are out of order"
     assert f"`design/{path.parent.name}/{path.name}`" in _manifest()

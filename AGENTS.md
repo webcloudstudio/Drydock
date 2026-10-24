@@ -38,7 +38,7 @@ and `SHA256SUMS` attest to completed builds. Any write under it invalidates that
   lock files. Read-only inspection occurs only when Ed requests it.
 - A test, script, or command that reaches `uat/` is a defect. Report it and stop; do not run it
   to find out.
-- `design/uat_diagnoses.md` is the `/ddk-uat` ledger. A session that commits a fix for one of
+- `design/skills/ddk-uat.md` is the `/ddk-uat` ledger. A session that commits a fix for one of
   its rows writes the commit into that row's Fix and sets its Outcome to `unverified`.
 
 ## Project Layout
@@ -52,7 +52,7 @@ Drydock/
   bin/               Source-tree launchers; no business logic
   docs/              Authoritative specification and documentation
   logs/              Drydock logs, prompts, and full run history
-  design/            Per-command behavior rules and `/ddk-think` working notes (see Design)
+  design/            Memory Files: per-command, per-skill, and per-topic project memory (see Memory Files)
   uat/               Published UAT evidence; written only by Ed's `drydock uat` runs (see UAT Evidence)
   dist/              Build artifacts; not committed
   targets/<PROJECT>  Generated Target workspace; see Data Locations
@@ -169,25 +169,37 @@ One shape, first established by `drydock rigging compact`:
 - **Registry:** `prompts/prompts.json` maps prompts to their target documentation and is read by
   `prompt_headers.py`. Update it when adding or renaming a prompt.
 
-## Design
+## Memory Files
 
-`design/` holds the behavior contract for every `drydock` command: what it does, the rules that
-govern it, what breaking each rule costs, and its open decisions. It exists so a session does not
-re-derive a command from code before changing it.
+`design/` holds Drydock's Memory Files: persistent project memory shared by every session and
+provider. Precedence: code > Memory Files > `docs/Drydock_Specification.md`.
+`docs/Drydock_Specification.md` is a user-facing document and should be correct but need not be
+complete or explanatory.
 
-**Every editing session — not only `/ddk-think` — is authorized to read these files for context
-without asking, and must read the matching file before changing a command's module, prompt, or
-tests.** Update `## Behavior` in the same commit that changes behavior.
+- Read the Memory File of every command, skill, or topic you change before editing it.
+- Write what a later session needs into its Memory File before the session ends. Never leave it in
+  chat.
+- Keep project state out of provider-private memory. That holds only Ed's preferences.
+- Record a specification difference under Details. Never edit the specification to match.
+- Write Details, Questions, and Actions without asking. Propose changes to Intent, Guardrails, and
+  Decisions in chat.
+- Keep a rule that governs one command in its Memory File, never in this file.
 
-**Precedence:** code > `design/` > `docs/Drydock_Specification.md`. A design file describes the
-code as it runs; a difference from the specification is recorded under `### Spec divergence`, and
-the specification is not edited to match.
+### Memory File Index
 
-### Design Manifest
+| Kind | Location | Holds |
+|---|---|---|
+| Command | `design/commands/<command>.md` | One per `drydock` command |
+| Skill | `design/skills/<skill>.md` | What a skill keeps across runs |
+| Topic | `design/topics/<topic>.md` | Subjects and plans spanning several commands |
 
-Find the file by command, or by the module being edited.
+Find the file by command, skill, or module. A topic governs several commands. Read it with any
+command whose file links it. A module shared by several commands (`llm.py`, `cli.py`, `paths.py`)
+has no Memory File. Read the file of the command whose behavior the change affects.
+`tests/test_design_coverage.py` fails when a command has no Memory File, or a Memory File has no
+row here or breaks the format.
 
-| Command | Design file | Primary modules (`src/drydock/`) |
+| Subject | Memory File | Primary modules (`src/drydock/`) or skill |
 |---|---|---|
 | `analyze` | `design/commands/analyze.md` | `analyze.py`, `sea_trials.py`, `technology_stack.py` |
 | `build` | `design/commands/build.md` | `build.py`, `build_run.py`, `build_plan.py`, `model_config.py` |
@@ -211,29 +223,36 @@ Find the file by command, or by the module being edited.
 | *Acceptance criteria* | `design/topics/acceptance_criteria.md` | `acceptance*.py`, `ac_repair.py`, `proof_integrity.py` |
 | *Foundations* | `design/topics/foundations.md` | `rigging_contract.py`, `technology_stack.py` |
 | *Process stops* | `design/topics/process_stops.md` | `stop_condition.py`, `llm.py` (`fatal_stop`), `cli.py` (stop gate) |
+| *Language-agnostic Targets* | `design/topics/language_agnostic.md` | `technology_stack.py`, `Rigging/languages/` |
+| *Planner step validation* | `design/topics/planner_step_validation.md` | `planning_session.py` |
+| `/ddk-uat` skill | `design/skills/ddk-uat.md` | `prompts/uat_diagnostic.md` |
 
-A topic governs several commands; read it with any command whose file links it. A module shared
-by several commands (`llm.py`, `cli.py`, `paths.py`) has no design file; read the file of the
-command whose behavior the change affects. `tests/test_design_coverage.py` fails when a
-top-level command has no file or no row here.
+### Memory File Format
 
-### File layout
+`# MEMORY: <name>`, a Field/Value table (Version, Description, Modules or Skill), then these
+sections in order. Write `- None.` in an empty section.
 
-Each file has a metadata table, then these sections in order:
+- `## Intent`: State why the subject exists and what success means.
+- `## Guardrails`: List Ed's constraints. Date each and state what breaking it costs.
+- `## Details`: Describe how it works now: syntax, rules, mechanism, exit codes, spec divergence.
+  Update it in the commit that changes the code.
+- `## Decisions`: List choices Ed made that are not yet implemented.
+- `## Questions`: List what only Ed can decide.
+- `## Actions`: List unfinished work: unverified fixes and their proof, deferred defects,
+  follow-ups.
+- `## Working Notes`: Hold the `/ddk-think` scratchpad. Prune it once absorbed.
 
-| Section | Owner | Content |
-|---|---|---|
-| `## Behavior` | Agent — write and keep current without asking | Purpose, Syntax, Rules, Mechanism, Exit codes, Spec divergence |
-| `## Decisions` | `/ddk-think` and authors | Flagged decisions not yet implemented or applied |
-| `## Open Questions` | Authors; agents append | Unresolved questions for Ed, including code / design / specification conflicts |
-| `## Open Actions` | Agents append and close | Concrete remaining work: failing tests, deferred fixes, follow-ups |
-| `## Working Notes` | `/ddk-think` | Scratchpad and deferred ideas; prune once absorbed |
+Write each Question and Action as `` - `YYYY-MM-DD` · `` item, evidence (commit, `file:line`, run
+id), and what closes it. Mark it *Closed YYYY-MM-DD* or remove it when done.
 
-Each rule is dated and states what breaking it costs. `## Behavior` records settled behavior only.
-Open questions, open actions, and deferred work discovered in any session are written to the
-matching file, not left in chat. Propose changes to author-owned sections in chat; appending is
-permitted. A rule that governs one command lives in its design file, never in this file.
-`notes/` is a private, untracked scratch directory; nothing reads it.
+### Completion Gates
+
+Close these before reporting completion. Never list them as next steps or ask about them.
+
+1. Update Details for any behavior change.
+2. Write open questions and unfinished work to the Memory File.
+3. Add a `CHANGELOG.md` entry for behavior changes.
+4. Commit.
 
 ## Changelog
 

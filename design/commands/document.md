@@ -1,8 +1,9 @@
-# DESIGN: drydock document
+# MEMORY: drydock document
 
 | Field | Value |
 |---|---|
 | Version | 2026-10-15 V1 |
+| Description | Produce Target documentation from the Blueprint. |
 | Route | document |
 | Modules | `target_documentation.py`, `readme_generate.py` |
 | Prompts | `document_generate.md` |
@@ -11,13 +12,17 @@
 | Pending spec | 0 |
 | Pending impl | 0 |
 
-## Behavior
-
-### Purpose
+## Intent
 
 Produce Target documentation from the Blueprint. `generate` spends one LLM call writing
 `DOC-<SECTION>.md` guides; `assemble` deterministically renders them into a themed, browsable
 `index.html`; `assemble readme` rebuilds the built project's `README.md` from Blueprint files.
+
+## Guardrails
+
+- None.
+
+## Details
 
 ### Syntax
 
@@ -92,13 +97,13 @@ requires the build directory to exist. Cost when broken: a README defect fails a
 
 -
 
-## Open Questions
+## Questions
 
 1. **Dead assemble path.** `cli.cmd_document_assemble(argv)` is unreferenced. It runs the
    `build_documentation` assembler and rewrites `app_help_file_location` in every Target's
    `console.yaml`. Remove it?
 
-## Open Actions
+## Actions
 
 -
 
