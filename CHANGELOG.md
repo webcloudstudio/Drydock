@@ -13,7 +13,8 @@ command surface and Typed Specification contract are unstable and may change bet
 - 2026-10-23: Documentation: `docs/posts/devlog_2026-10-23.md` and its Slate HTML rendering
   consolidate the unannounced September development post into a 0.8 beta announcement draft:
   the acceptance-criteria verify-and-repair loop, Full UAT Harness, generated persistence,
-  diagnosis, REFIT changes, model controls, and delivery evidence. Publication follows UAT.
+  diagnosis, REFIT changes, model controls, and delivery evidence. The announcement describes
+  the UAT Harness's 10 projects scored on Haiku and Luna. Publication follows UAT.
 
 - 2026-10-23: `drydock report uat_summary` prints a read-only 30-day UAT pass matrix,
   with every kit directory and Claude/Codex columns. `Y` marks at least one passed run
