@@ -37,6 +37,8 @@ acceptance-only failures as `UNVERIFIED` before continuing.
 
 `2026-10-22` · **A provider stop is not a stall.** When a fatal provider failure ends the build, the console prints `BUILD STOPPED — <kind>` in place of `BUILD STALLED`, the Target's `STOP_NOW.md` names the cause and recovery, and the failed block stays `closed/failed`, which a plain `drydock build` resumes ([process_stops](../topics/process_stops.md)). Cost when broken: a quota stop reads as a planning deadlock.
 
+`2026-10-24` · **An agent's `uv init` stays standalone.** Every agent subprocess runs with a `~/.drydock/uv-shim/uv` first on `PATH` that adds `--no-workspace` to `uv init`; uv has no environment switch for it. Cost when broken: a build nested under another uv project registers itself in that project's `pyproject.toml`, and a second build of the same name breaks every `uv add` and `uv lock` (FxRates 20261024.073528).
+
 `2026-10-22` · **Acceptance uses the provisioned application store.** The DATABASE step emits
 runtime catalog/count probes, applies schema, verifies declared columns, keys, constraints and
 indexes, and records `evidence/persistence-verification.json`; these probes are a precondition, and the persistence story verifies only on `DATABASE.md`'s own criteria. Later acceptance runs verify without

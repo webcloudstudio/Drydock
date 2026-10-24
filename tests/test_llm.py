@@ -741,7 +741,41 @@ def test_claude_isolation_skipped_without_credentials(tmp_path, monkeypatch):
 
     assert captured["env"]["HOME"] == "/original/home"
     assert "CLAUDE_CONFIG_DIR" not in captured["env"]
-    assert not (fake_home / ".drydock").exists()
+    assert not (fake_home / ".drydock" / "claude-home").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the uv shim is a POSIX shell script")
+def test_agent_uv_init_never_joins_an_enclosing_workspace(tmp_path, monkeypatch):
+    # FxRates 20261024.073528: a build agent's `uv init` inside the build directory registered
+    # the build as a member of the Drydock repository's own uv workspace.
+    fake_home = tmp_path / "home"
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    real_uv = tools / "uv"
+    real_uv.write_text('#!/bin/sh\necho "$@"\n', encoding="utf-8")
+    real_uv.chmod(0o755)
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.setenv("PATH", f"{tools}{os.pathsep}/usr/bin{os.pathsep}/bin")
+    real_popen = subprocess.Popen
+    captured = {}
+    monkeypatch.setattr(subprocess, "Popen", _capture_env_popen(captured, _claude_result_raw()))
+
+    run_prompt("Work", tmp_path, llm="claude", command_name="build")
+    run_prompt("Work", tmp_path, llm="claude", command_name="build")
+    monkeypatch.setattr(subprocess, "Popen", real_popen)
+
+    env = captured["env"]
+    shim_dir = fake_home / ".drydock" / "uv-shim"
+    assert env["PATH"].split(os.pathsep).count(str(shim_dir)) == 1
+
+    def uv(*args: str) -> str:
+        return subprocess.run(
+            ["uv", *args], env=env, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    assert uv("init", "--bare", "--name", "fxrates") == "init --no-workspace --bare --name fxrates"
+    assert uv("init", "--no-workspace") == "init --no-workspace"
+    assert uv("add", "fastapi") == "add fastapi"
 
 
 def test_codex_isolates_codex_home_and_seeds_auth_only(tmp_path, monkeypatch):

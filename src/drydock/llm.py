@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -545,6 +546,58 @@ def _isolate_codex_env(process_env: dict[str, str]) -> None:
     if source_auth.is_file():
         shutil.copy2(source_auth, build_home / "auth.json")
     process_env["CODEX_HOME"] = str(build_home)
+
+
+_UV_SHIM = """#!/bin/sh
+# Written by Drydock. A Target build may sit inside another uv project, and `uv init` there
+# registers the build as a member of that project's workspace.
+if [ "$1" = "init" ]; then
+  case " $* " in
+    *" --no-workspace "*) ;;
+    *) shift; exec {real} init --no-workspace "$@" ;;
+  esac
+fi
+exec {real} "$@"
+"""
+
+
+def _isolate_uv_workspace(process_env: dict[str, str]) -> None:
+    """Put a ``uv`` shim first on the subprocess PATH so ``uv init`` stays standalone.
+
+    uv has no environment switch for ``init --no-workspace``, and an agent's ``uv init`` in a
+    build nested under another project rewrites that project's ``pyproject.toml``. The shim
+    lives beside the provider homes in ``~/.drydock`` and is skipped when uv is not installed.
+
+    Mutates ``process_env`` in place.
+    """
+    if os.name == "nt":
+        return
+    shim_dir = (Path.home() / ".drydock" / "uv-shim").expanduser()
+    parts = [
+        part
+        for part in process_env.get("PATH", "").split(os.pathsep)
+        if part and Path(part).expanduser() != shim_dir
+    ]
+    real = next(
+        (
+            str(Path(part) / "uv")
+            for part in parts
+            if (Path(part) / "uv").is_file() and os.access(Path(part) / "uv", os.X_OK)
+        ),
+        None,
+    )
+    if real is None:
+        return
+    search = os.pathsep.join(parts)
+    script = _UV_SHIM.format(real=shlex.quote(real))
+    shim = shim_dir / "uv"
+    if not shim.is_file() or shim.read_text(encoding="utf-8") != script:
+        shim_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        staged = shim_dir / f"uv.{os.getpid()}"
+        staged.write_text(script, encoding="utf-8", newline="\n")
+        staged.chmod(0o755)
+        os.replace(staged, shim)
+    process_env["PATH"] = str(shim_dir) + os.pathsep + search
 
 
 def _events(raw: str) -> list[dict[str, Any]]:
@@ -2196,6 +2249,7 @@ def run_prompt(
     process_env.pop("ANTHROPIC_API_KEY", None)
     process_env.pop("OPENAI_API_KEY", None)
     process_env.pop("OPENAI_BASE_URL", None)
+    _isolate_uv_workspace(process_env)
     if selected == "claude":
         _isolate_claude_env(process_env)
         _apply_claude_token_limits(process_env, model)
