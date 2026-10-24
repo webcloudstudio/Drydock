@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-23: Documentation: `docs/posts/devlog_2026-10-23.md` and its Slate HTML rendering
+  consolidate the unannounced September development post into a 0.8 beta announcement draft:
+  the acceptance-criteria verify-and-repair loop, Full UAT Harness, generated persistence,
+  diagnosis, REFIT changes, model controls, and delivery evidence. Publication follows UAT.
+
 - 2026-10-23: `drydock report uat_summary` prints a read-only 30-day UAT pass matrix,
   with every kit directory and Claude/Codex columns. `Y` marks at least one passed run
   completed in the preceding 30 days; older receipts fall back to the UTC run id.
@@ -98,6 +103,9 @@ command surface and Typed Specification contract are unstable and may change bet
   Manifest `draft`/`unbuildable` and exits `1`.
 
 ### Changed
+
+- 2026-10-23: Package version advances to `0.8.0`; the project remains beta. The version
+  prepares the next announcement and does not mark the unreleased changes as shipped.
 
 - 2026-10-23: Every `DATABASE.md` table declares exactly one `PK` column. `drydock plan`
   refuses a table with no `PK` or with two, naming `id | INTEGER PK` as the fix and a
