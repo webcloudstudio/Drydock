@@ -15,12 +15,28 @@ def test_artifact_cleanup_preserves_body_and_reports_all_wrappers():
     assert clean_output(result.text, "artifacts").text == result.text
 
 
+def test_completed_updates_remain_intact_for_the_owning_parser():
+    update = ARTIFACT.replace("# A", "# Revised A")
+    result = clean_output(ARTIFACT + "Re-emitting the corrected file.\n" + update, "artifacts")
+    assert result.text == ARTIFACT + update
+    assert result.removed == ("Re-emitting the corrected file.\n",)
+    assert not result.defect and not result.repaired
+
+
+def test_final_close_token_repair_also_accepts_an_updated_file():
+    update = ARTIFACT.replace("# A", "# Revised A").replace(
+        "=== END ARTIFACT ===", "=== END ARTIFACT"
+    )
+    result = clean_output(ARTIFACT + update, "artifacts")
+    assert result.text == ARTIFACT + update.replace("=== END ARTIFACT", "=== END ARTIFACT ===")
+    assert not result.defect and len(result.repaired) == 1
+
+
 @pytest.mark.parametrize(
     "text",
     [
         "# Missing artifact\n" + ARTIFACT,
         "=== END ARTIFACT ===\n" + ARTIFACT,
-        ARTIFACT + ARTIFACT,
         ARTIFACT.replace("=== END ARTIFACT ===", ""),
         ARTIFACT.replace("=== END ARTIFACT ===", "=== END B.md ==="),
         "one\ntwo\nthree\nfour\n" + ARTIFACT,
@@ -114,7 +130,6 @@ def test_final_close_repair_preserves_preceding_completed_artifacts():
     [
         "=== END ARTIFACT",
         ARTIFACT + "=== END ARTIFACT",
-        ARTIFACT + ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT"),
         "=== BEGIN ARTIFACT B.md ===\n"
         + ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT"),
         ARTIFACT.replace("=== END ARTIFACT ===", "=== END ARTIFACT\nMore content."),

@@ -3251,27 +3251,21 @@ def test_transition_text_between_write_calls_is_rejected(tmp_path):
     assert not (target_dir / "MANIFEST.md").exists()
 
 
-def test_conflicting_duplicate_artifact_block_refuses_without_writes(tmp_path):
+def test_later_artifact_draft_replaces_the_first_before_validation(tmp_path):
     target_dir = _make_target(tmp_path)
     arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
-    other = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="Something else.")
+    other = arch.replace("Example", "Revised Example")
     out = (
         f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
         f"=== ARCHITECTURE.md ===\n{other}\n=== END ARCHITECTURE.md ===\n"
         f"=== MANIFEST.md ===\n{_manifest(implements='ARCHITECTURE.md')}\n=== END MANIFEST.md ===\n"
     )
 
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(out))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="model artifact contract failed",
-        detail="Duplicate artifact block with conflicting content: ARCHITECTURE.md",
-    )
+    create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
-    assert not (target_dir / "MANIFEST.md").exists()
-    assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
+    assert (target_dir / "MANIFEST.md").exists()
+    written = (target_dir / "blueprint" / "ARCHITECTURE.md").read_text()
+    assert "Revised Example" in written
 
 
 def test_identical_duplicate_artifact_block_is_accepted(tmp_path):
@@ -4374,6 +4368,45 @@ def test_a_malformed_stage_two_batch_retries_the_same_blueprint_tranche(tmp_path
     assert "story-status -> FEATURE-Status.md" in second_ledger
     assert "story-status -> FEATURE-Status.md" in third_ledger
     assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+
+
+def test_stage_two_uses_the_final_update_in_the_same_response(tmp_path):
+    target_dir = _make_target(tmp_path)
+    update = (
+        "=== BEGIN ARTIFACT FEATURE-Status.md ===\ninvalid initial draft\n=== END ARTIFACT ===\n"
+        "Wait, re-emitting the corrected file.\n" + _feature_block()
+    )
+    runner = _sequence_runner(_short_output(), update)
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 2
+    written = (target_dir / "blueprint" / "FEATURE-Status.md").read_text()
+    assert "invalid initial draft" not in written
+    assert "Status command exits successfully." in written
+
+
+def test_malformed_batch_retry_preserves_the_named_parser_defect(tmp_path):
+    _make_target(tmp_path)
+    malformed = "=== FEATURE-Status.md ===\n=== BROKEN.md ===\ntruncated"
+    runner = _sequence_runner(_short_output(), malformed, _feature_block())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 3
+    assert "Delimiter pairing mismatch: FEATURE-Status.md" in runner.calls[2]
+    assert "BROKEN.md" in runner.calls[2]
+
+
+def test_a_truncated_final_update_is_retried_instead_of_using_the_old_draft(tmp_path):
+    target_dir = _make_target(tmp_path)
+    update = _feature_block() + "=== BEGIN ARTIFACT FEATURE-Status.md ===\nunfinished"
+    runner = _sequence_runner(_short_output(), update, _feature_block())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 3
+    assert "unfinished" not in (target_dir / "blueprint" / "FEATURE-Status.md").read_text()
 
 
 @pytest.mark.parametrize("raises", [False, True])

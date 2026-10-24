@@ -1,7 +1,7 @@
 ---
 name: plan_continue
 description: Stage 2 Blueprint authoring instruction appended after plan_create has accepted and frozen a complete TOPOLOGY.md declaration.
-version: 20261024 V5
+version: 20261024 V6
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
 output: A bounded batch of Blueprint specification files
@@ -23,6 +23,8 @@ when supplied.
 Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated order. Nothing else.
 
 - Do not re-emit an accepted artifact. Drydock retains its content.
+- Within this response, a complete replacement block for the same filename updates its earlier
+  draft. The last block receives normal validation; a partial replacement is not accepted.
 - `DATABASE.md` is authored in its own batch, complete, and then frozen. When it is the Current
   batch, start from the supplied seed and declare every table and every repository operation the
   frozen topology's stories need. After it is accepted, later batches receive it as

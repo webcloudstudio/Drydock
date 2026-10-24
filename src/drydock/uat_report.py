@@ -449,7 +449,7 @@ def _render_case_markdown(
         f"output {usage.get('output_tokens', 0):,}",
         f"- LLM elapsed: {int(usage.get('llm_elapsed_ms') or 0) / 1000:.1f}s",
         f"- Build passes: {result.get('build_passes', 0)}; repairs: {_repair_budget(commands)}",
-        f"- Conformance: {_conformance_result(commands)}",
+        f"- Conformance: {_conformance_result(commands, case_root, result)}",
         "- Advisory scores: "
         + (", ".join(f"{name}=exit {code}" for name, code in scores.items()) or "none recorded"),
         "",
@@ -570,7 +570,7 @@ def _receipt_checks(case_root: Path, result: dict) -> tuple[Check, ...]:
         (
             "External conformance suite passed",
             "-test",
-            "No external test command is defined for this project.",
+            _unexecuted_conformance(case_root, result)[1],
         ),
     ):
         command = _command_by_suffix(commands, suffix)
@@ -615,10 +615,37 @@ def _repair_budget(commands: Sequence[dict]) -> str:
     return "not recorded"
 
 
-def _conformance_result(commands: Sequence[dict]) -> str:
+def _unexecuted_conformance(case_root: Path, result: Mapping[str, object]) -> tuple[str, str]:
+    """Distinguish a suite never executed from an absent or unrecorded definition."""
+    target = str(result.get("target") or case_root.name)
+    paths = (
+        case_root / "workspace" / "targets" / target / "ACCEPTANCE.json",
+        case_root / "inputs" / "ACCEPTANCE.json",
+        case_root.parent.parent / "uat.json",
+    )
+    for path in paths:
+        definition = _read_json(path)
+        if not isinstance(definition, dict):
+            continue
+        acceptance = definition.get("acceptance", definition)
+        full = acceptance.get("full") if isinstance(acceptance, dict) else None
+        command = definition.get("test_command")
+        if command is None:
+            command = full
+        if isinstance(command, list) and command and all(isinstance(v, str) and v for v in command):
+            return "not executed", "The configured external conformance suite was not executed."
+        if command is not None and command != []:
+            continue
+        if path.name != "uat.json" and not (isinstance(acceptance, dict) and "full" in acceptance):
+            continue
+        return "not configured", "No external test command is defined for this project."
+    return "not recorded", "No external conformance execution or configuration was recorded."
+
+
+def _conformance_result(commands: Sequence[dict], case_root: Path, result: dict) -> str:
     test = _command_by_suffix(commands, "-test")
     if test is None:
-        return "no external suite defined"
+        return _unexecuted_conformance(case_root, result)[0]
     code = test.get("returncode")
     return "passed" if code == 0 else f"failed (exit {code})"
 
@@ -652,7 +679,7 @@ def _run_facts(
         ("Output tokens", f"{output_tokens:,}"),
         ("Build passes", html.escape(str(result.get("build_passes", "not recorded")))),
         ("Repairs", html.escape(_repair_budget(commands))),
-        ("Conformance", html.escape(_conformance_result(commands))),
+        ("Conformance", html.escape(_conformance_result(commands, case_root, result))),
         ("Code", f"<code>{html.escape(delivered)}</code>" if delivered else ""),
     ]
 
@@ -705,10 +732,16 @@ def _project_identity(case_root: Path, result: Mapping[str, object]) -> tuple[st
                 break
     project = str(metadata.get("name") or target).upper()
     description = str(metadata.get("short_description") or "not recorded")
+    from drydock.blockers import read_blockers
     from drydock.project_status import current_state
 
     current = current_state(target_dir)
-    if current and current.label == "SCORE RELEASE" and current.passed:
+    blockers = read_blockers(target_dir)
+    if blockers is not None:
+        status = f"BLOCKED: {blockers.summary}"
+    elif current and not current.passed:
+        status = f"{current.label} — FAILED"
+    elif current and current.label == "SCORE RELEASE" and current.passed:
         status = "PROJECT COMPLETE"
     elif current:
         status = current.label
@@ -1000,7 +1033,13 @@ def _render_case(
                 "User Acceptance Test — Project Record",
                 target.upper(),
                 docline,
-                "pass" if project_status == "PROJECT COMPLETE" else "warn",
+                "pass"
+                if project_status == "PROJECT COMPLETE"
+                else (
+                    "fail"
+                    if project_status.startswith("BLOCKED:") or project_status.endswith("— FAILED")
+                    else "warn"
+                ),
                 "DRYDOCK UAT",
                 project_status,
             ),

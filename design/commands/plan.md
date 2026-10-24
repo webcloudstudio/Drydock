@@ -25,6 +25,15 @@ written.
 
 ## Details
 
+`2026-10-24` · Ed defines repeated artifact filenames within one response as updates: the last
+block replaces earlier drafts before validation. Both parser paths and output cleanup accept
+closed repeated envelopes; unrelated files remain intact. The chosen body still passes every
+normal admission check, and an unclosed final update is recovered or re-requested rather than
+falling back to an older draft. Frozen artifacts accepted in earlier calls remain protected.
+Original execution evidence retains every draft. This revises `40de6f7`'s conflicting-copy
+rejection; `plan_create` V51 and `plan_continue` V6 document full replacements rather than patches.
+Malformed-response retries also retain the parser's exact filename and reason.
+
 `2026-10-24` · A fatal provider failure during Stage 2 propagates immediately to the CLI's
 existing environmental-blocker path, including when the runner raises after recording the stop.
 No continuation retry, generic empty-response progress, or generation-stall record follows it;
@@ -76,7 +85,7 @@ artifact. A repeated close with nothing between damages nothing. *Broken:* FxRat
 `2026-10-24` · **A final invariant artifact close missing only its trailing equals is repaired.**
 For artifact-format calls, the shared adapter completes an exact `=== END ARTIFACT` on the final
 nonblank line only when one artifact remains open and the resulting envelope sequence has no
-nested, duplicate, orphan or mismatched boundary. Body text is unchanged and all downstream
+nested, orphan or mismatched boundary. Body text is unchanged and all downstream
 validation still applies. Original output and provider transcripts remain unchanged;
 `logs/llm.jsonl` records `output_contract.repaired` and the normalized payload hash. Plan prints
 successful repairs without `--debug`. Other incomplete envelopes retain rejection and bounded
@@ -147,7 +156,7 @@ asked for accepted Blueprints and an `insufficient-specification` whose Required
 before, between, or after intact artifact blocks are dropped and printed as `[plan] stray text
 <where> discarded: "<text>"`. Outside text shaped like content — a heading, list, table, fence,
 JSON, markup, `===`, more than three lines or 500 characters — or beside an orphan close still fails
-the parse. Plan discards it only when every artifact opens and closes exactly once; other bounded
+the parse. Plan discards it only when every artifact occurrence opens and closes; other bounded
 outside text keeps the diagnostic waiver. *Broken:* a weak model's one-line preamble fails the run,
 or a body that lost its opener is silently dropped.
 

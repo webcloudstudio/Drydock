@@ -30,6 +30,14 @@ Three properties define done (UAT gate model, 2026-08-14):
 
 ## Details
 
+`2026-10-24` · Run reports show `BLOCKED: <summary>` when the recorded Target holds blockers,
+or `<state> — FAILED` for a failed workflow-state attempt; successful release remains
+`PROJECT COMPLETE`. Failure and blocker stamps use the failure style. Markdown and HTML
+conformance receipts distinguish a configured suite that was not executed, an explicitly absent
+configuration, and missing configuration evidence. Recorded run `ACCEPTANCE.json` is preferred
+to the kit's `uat.json`; recorded `-test` executions remain authoritative. Rendering changes no
+run verdict or execution result. Published evidence is not rebuilt by development sessions.
+
 `2026-10-24` · Every failed child is checked for an environmental `BLOCKERS.md`, including
 optional readiness, verification, and repair calls. A provider halt stops before another child
 or another kit starts. The runner still records the failed run; the CLI checkpoints and prints

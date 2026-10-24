@@ -322,6 +322,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: Repeated artifact filenames in one LLM response are full updates: planning and
+  the shared artifact parser select the last body before normal validation, preserving unrelated
+  files and the original response evidence. An unclosed final update requires recovery rather
+  than silently restoring an earlier draft. This replaces conflicting-copy rejection; Stage 2
+  malformed-response feedback also retains the exact parser defect.
+- 2026-10-24: UAT Markdown and HTML reports display recorded blockers and failed workflow-state
+  attempts instead of presenting a failed `PLAN CREATED` attempt as success. Conformance receipts
+  distinguish a configured suite that was not executed from an absent or unrecorded definition,
+  preferring the run's recorded acceptance contract over the kit definition. Run verdicts and
+  published evidence remain unchanged.
+
 - 2026-10-24: Fatal provider failures stop `drydock plan` without a misleading generation-stall
   report. CLI commands end with the recorded `BLOCKERS.md` cause; UAT prints it after summaries,
   report links, and checkpoints, including with `--quiet`. A failed optional verify/repair child

@@ -278,7 +278,7 @@ def test_disallowed_block_is_rejected_individually():
     assert [defect.name for defect in result.rejected] == ["NOTES.txt"]
 
 
-def test_conflicting_duplicate_costs_only_that_name():
+def test_later_duplicate_updates_only_that_name():
     text = (
         "=== A.md ===\nalpha\n=== END A.md ===\n"
         "=== B.md ===\nbeta\n=== END B.md ===\n"
@@ -287,8 +287,36 @@ def test_conflicting_duplicate_costs_only_that_name():
 
     result = parse_artifact_report(text, label="Test")
 
-    assert result.blocks == {"B.md": "beta"}
-    assert [defect.name for defect in result.rejected] == ["A.md"]
+    assert result.blocks == {"A.md": "different", "B.md": "beta"}
+    assert result.defects == ()
+
+
+def test_three_drafts_use_the_last_without_changing_other_files():
+    text = "\n".join(
+        f"=== BEGIN ARTIFACT {name} ===\n{body}\n=== END ARTIFACT ==="
+        for name, body in [
+            ("A.md", "first"),
+            ("B.md", "other"),
+            ("A.md", "second"),
+            ("A.md", "last"),
+        ]
+    )
+    result = parse_artifact_report(text, label="Test")
+    assert result.blocks == {"A.md": "last", "B.md": "other"}
+    assert result.defects == ()
+
+
+def test_an_unclosed_final_update_does_not_restore_the_old_draft():
+    text = (
+        "=== BEGIN ARTIFACT A.md ===\nfirst\n=== END ARTIFACT ===\n"
+        "=== BEGIN ARTIFACT B.md ===\nother\n=== END ARTIFACT ===\n"
+        "=== BEGIN ARTIFACT A.md ===\nunfinished"
+    )
+    result = parse_artifact_report(text, label="Test")
+    assert result.blocks == {"B.md": "other"}
+    assert [(d.name, d.reason) for d in result.rejected] == [
+        ("A.md", "final update is unclosed; block discarded")
+    ]
 
 
 def test_identical_duplicate_is_tolerated():

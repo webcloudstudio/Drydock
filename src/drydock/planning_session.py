@@ -512,7 +512,7 @@ def _parse_strict_blocks(
     eight LLM calls on CommonMark ``20260811.215210`` (D-008). Only a response from which nothing
     survived is rejected whole, and it names the artifacts it dropped.
 
-    Short narration around a response whose every artifact opens and closes exactly once is
+    Short narration around a response whose artifact occurrences all open and close is
     discarded and reported through ``on_stray``; other outside text still raises.
     """
     repaired = _repair_missing_leading_delimiter(text)
@@ -683,25 +683,8 @@ def _record_block(
     body: list[str],
     result: CompletedRun,
 ) -> None:
-    """Store a parsed artifact body, tolerating only a byte-identical repeat of the same name.
-
-    A model that emits the same artifact twice with identical content has lost nothing: either copy
-    is the artifact. Two blocks with the same name and different content are unresolvable, so the
-    whole response is rejected.
-    """
-    content = "".join(body).strip()
-    if name in blocks:
-        if blocks[name] == content:
-            return
-        raise SpecificationError(
-            _with_execution_evidence(
-                "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
-                f"  Duplicate artifact block with conflicting content: {name}\n"
-                "  No Blueprint or Manifest artifacts were written.",
-                result,
-            )
-        )
-    blocks[name] = content
+    """Use the last draft of a filename; ordinary pairing and content checks still apply."""
+    blocks[name] = "".join(body).strip()
 
 
 def _classify_delimiter(line: str) -> tuple[str, str | None] | None:
@@ -910,10 +893,9 @@ def _artifact_delimiter_defects(text: str, blocks: dict[str, str]) -> tuple[str,
 
 
 def _artifact_delimiters_are_complete(text: str, blocks: dict[str, str]) -> bool:
-    """Whether every parsed artifact appears in exactly one paired delimiter set."""
+    """Whether every occurrence closes, allowing later drafts of a parsed filename."""
     pairing = pair_artifact_delimiters(text)
-    expected = Counter({name: 1 for name in blocks})
-    return bool(expected) and not pairing.unclosed and Counter(pairing.closed) == expected
+    return bool(blocks) and not pairing.unclosed and set(pairing.closed) == set(blocks)
 
 
 def _outside_text_is_waiver_eligible(
@@ -5171,7 +5153,9 @@ def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[
     pairing = pair_artifact_delimiters(text)
     closed = Counter(pairing.closed)
     opened = frozenset(pairing.opened)
-    unpaired = {name for name in blocks if name in opened and closed[name] != 1}
+    unpaired = {
+        name for name in blocks if name in opened and (not closed[name] or name in pairing.unclosed)
+    }
     unpaired |= {name for name in pairing.premature_closes if name in blocks}
     unpaired |= {name for name, body in blocks.items() if _embedded_artifact_headers(body)}
     return frozenset(unpaired)
@@ -5558,7 +5542,7 @@ def _continue_short_plan(
             )
         except OutsideArtifactTextError as exc:
             pass_blocks = exc.blocks
-        except SpecificationError:
+        except SpecificationError as exc:
             if on_text is not None:
                 on_text(
                     "[plan-score]"
@@ -5569,10 +5553,7 @@ def _continue_short_plan(
                         ),
                     )
                 )
-            previous_rejection = (
-                "the response broke the artifact delimiter contract; emit every file between "
-                "its own BEGIN and END delimiters"
-            )
+            previous_rejection = str(exc)
             prior_type, prior_details = "", ()
             last_blocked = ()
             stalled_passes += 1

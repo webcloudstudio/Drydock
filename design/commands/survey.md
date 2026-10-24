@@ -24,6 +24,12 @@ product; `survey` measures process and specification quality.
 
 ## Details
 
+`2026-10-24` · The shared artifact parser treats repeated filenames within one response as
+updates and selects the final body before normal command validation. Earlier drafts cannot
+reject unrelated files; an unclosed final replacement is rejected without restoring the older
+draft. Original execution evidence retains every occurrence. See [plan](plan.md) for the shared
+replacement contract.
+
 ### Syntax
 
 ```text

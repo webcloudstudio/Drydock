@@ -148,6 +148,11 @@ to validation and bounded retry with the filename and closing-token requirement.
 Existing command validators and retry budgets still govern acceptance; malformed
 JSON, duplicate keys, and ambiguous extra content are not silently extracted away.
 
+Within one artifact response, a later block with the same filename is a complete replacement
+for its earlier draft. The final body receives normal validation; unrelated files are retained.
+An unclosed final update requires recovery rather than restoring the earlier draft. All drafts
+remain in the original execution evidence, and artifacts accepted in earlier batches stay frozen.
+
 ## Build workflow
 
 `init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`
@@ -247,8 +252,10 @@ is resolved and every environmental blocker may auto-continue (a timeout, an out
 limit past its stated reset), once. `plan --override` passes an analysis decision only.
 
 Fatal provider failures exit `1` with the recorded blocker and error last on the console;
-planning does not turn them into generation stalls. UAT stops even when the failing child is an
-optional verification or repair step, and an environmental halt ends a multi-kit sweep before
+planning does not turn them into generation stalls. UAT reports show recorded blockers and
+failed workflow attempts explicitly and distinguish conformance that was not executed from
+missing configuration. UAT stops even when the failing child is an optional verification or
+repair step, and an environmental halt ends a multi-kit sweep before
 the next kit starts. Receipts, report links, and checkpoints precede the final blocker error,
 including with `--quiet`. The UAT repair loop also stops without starting a repair session and
 ends by repeating the recorded failure.

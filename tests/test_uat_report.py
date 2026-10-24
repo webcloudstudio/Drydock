@@ -1193,6 +1193,88 @@ def test_a_run_page_uses_a_passing_release_score_as_its_terminal_status(tmp_path
     assert "SHA256SUMS" in page
 
 
+@pytest.mark.parametrize("blocked", [False, True])
+def test_a_failed_plan_is_never_presented_as_plan_created_success(tmp_path, blocked):
+    from drydock.blockers import Blockers, environmental_blocker, write_blockers
+
+    case = _case(tmp_path / "kit", status="failed", failing=True)
+    target = case / "workspace" / "targets" / "commonmark"
+    (target / "PROJECT_STATUS.jsonl").write_text(
+        json.dumps({"label": "PLAN CREATED", "result": "fail", "attempts": 1}) + "\n"
+    )
+    if blocked:
+        declared = "2026-10-24T22:22:15Z"
+        write_blockers(
+            target,
+            Blockers(
+                summary="Rate Limit Hit",
+                target="commonmark",
+                owner="plan commonmark",
+                source="drydock plan commonmark",
+                declared=declared,
+                blockers=(
+                    environmental_blocker(
+                        "provider rate limit", "session limit; resets 20:10", declared=declared
+                    ),
+                ),
+            ),
+        )
+
+    page = build_case_kit(case).read_text()
+    readme = (case / "README.md").read_text()
+    expected = "BLOCKED: RATE LIMIT HIT" if blocked else "PLAN CREATED — FAILED"
+    assert f"<dt>Status</dt><dd>{expected}</dd>" in page
+    assert f'<span class="sub">{expected}</span>' in page
+    assert '<div class="stamp fail">' in page
+    assert expected in readme
+    assert "<dt>Status</dt><dd>PLAN CREATED</dd>" not in page
+    assert json.loads((case / "result.json").read_text())["status"] == "failed"
+
+
+@pytest.mark.parametrize(
+    "definition",
+    ["test_command", "acceptance", "recorded", "partial_record", "absent", "empty", "invalid"],
+)
+def test_reports_distinguish_unexecuted_conformance_from_missing_configuration(
+    tmp_path, definition
+):
+    kit = tmp_path / "kit"
+    case = _case(kit, status="failed", failing=True)
+    command = ["sh", "sources/run.sh"]
+    if definition == "test_command":
+        (kit / "uat.json").write_text(json.dumps({"test_command": command}))
+    elif definition == "acceptance":
+        (kit / "uat.json").write_text(json.dumps({"acceptance": {"full": command}}))
+    elif definition == "recorded":
+        (kit / "uat.json").write_text("{}")
+        (case / "workspace" / "targets" / "commonmark" / "ACCEPTANCE.json").write_text(
+            json.dumps({"full": command})
+        )
+    elif definition == "partial_record":
+        (kit / "uat.json").write_text(json.dumps({"acceptance": {"full": command}}))
+        (case / "workspace" / "targets" / "commonmark" / "ACCEPTANCE.json").write_text("{}")
+    elif definition == "invalid":
+        (kit / "uat.json").write_text(json.dumps({"test_command": "sh sources/run.sh"}))
+    elif definition == "empty":
+        (kit / "uat.json").write_text("{}")
+
+    page = build_case_kit(case).read_text()
+    readme = (case / "README.md").read_text()
+    if definition in {"test_command", "acceptance", "recorded", "partial_record"}:
+        summary = "not executed"
+        detail = "The configured external conformance suite was not executed."
+        assert "No external test command is defined" not in page
+    elif definition == "empty":
+        summary = "not configured"
+        detail = "No external test command is defined for this project."
+    else:
+        summary = "not recorded"
+        detail = "No external conformance execution or configuration was recorded."
+    assert f"<dt>Conformance</dt><dd>{summary}</dd>" in page
+    assert f"- Conformance: {summary}" in readme
+    assert detail in page and detail in readme
+
+
 def test_a_run_with_no_decisions_shows_no_decisions_section(tmp_path: Path) -> None:
     kit = tmp_path / "kit"
     case = _case(kit)

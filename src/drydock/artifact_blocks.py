@@ -286,8 +286,8 @@ def parse_artifact_blocks(
         === END NAME ===
 
     Short narration outside the blocks is discarded and reported through ``on_stray``; any other
-    outside text fails the parse. A block whose name is not allowed, or whose name
-    is claimed twice with differing content, is rejected **individually**: the caller receives
+    outside text fails the parse. A later block with the same filename replaces its earlier
+    draft. A block whose name is not allowed is rejected individually: the caller receives
     every artifact the parser did accept, and states for itself which artifacts it required.
     Defects are reported through ``on_defect``.
     """
@@ -382,8 +382,8 @@ class DelimiterPairing:
     every artifact reads as unclosed and every close reads as an orphan. Pairing is therefore
     computed once, by walking the delimiters in order, and shared.
 
-    ``closed`` lists the names that opened and closed, in the order they closed, so a caller can
-    require exactly one pairing per artifact. ``unclosed`` lists the names that opened and did
+    ``closed`` lists the names that opened and closed, in the order they closed, including
+    repeated drafts of the same filename. ``unclosed`` lists the names that opened and did
     not, which is the tail a truncated response leaves behind. ``orphan_closes`` lists named
     closes that arrived with nothing open — the signature of a dropped opening delimiter. An
     invariant close names nothing, so it can never appear there. ``premature_closes`` lists the
@@ -504,8 +504,8 @@ def envelope_spans(text: str) -> tuple[tuple[bool, str], ...]:
         if marker is not None:
             kind, name = marker
             if kind == _OPEN:
-                if current is not None or name in seen:
-                    raise ValueError("nested or duplicate artifact opener")
+                if current is not None:
+                    raise ValueError("nested artifact opener")
                 assert name is not None
                 seen.add(name)
                 current = name
@@ -526,7 +526,7 @@ def envelope_spans(text: str) -> tuple[tuple[bool, str], ...]:
 def repair_final_artifact_close(text: str) -> tuple[str, tuple[str, ...]]:
     """Complete only the observed invariant close missing its trailing equals at EOF.
 
-    A candidate must have entirely unambiguous envelopes. Missing closes, nested/repeated
+    A candidate must have entirely unambiguous envelopes. Missing closes and nested
     openers and conflicting closes remain the caller's validation/retry responsibility.
     """
     lines = text.splitlines(keepends=True)
@@ -587,7 +587,6 @@ def _closes_the_open_block(lines: list[str], *, index: int) -> bool:
 
 def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
     blocks: dict[str, str] = {}
-    conflicting: set[str] = set()
     rejected: list[ArtifactDefect] = []
     repaired: list[ArtifactDefect] = []
     current_name: str | None = None
@@ -606,12 +605,8 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
         raise _outside_text_error(label, chunk, where=where, after_artifacts=after_artifacts)
 
     def record(name: str) -> None:
-        """Store a parsed body; a conflicting repeat costs that name and nothing else."""
-        content = "".join(current_body).strip()
-        if name in blocks and blocks[name] != content:
-            conflicting.add(name)
-            return
-        blocks[name] = content
+        """A later body replaces the earlier draft of the same file."""
+        blocks[name] = "".join(current_body).strip()
 
     lines = text.splitlines(keepends=True)
     for index, line in enumerate(lines):
@@ -718,7 +713,13 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
         current_body.append(line)
 
     if current_name is not None:
-        record(current_name)
+        if current_name in blocks:
+            blocks.pop(current_name)
+            rejected.append(
+                ArtifactDefect(current_name, "final update is unclosed; block discarded")
+            )
+        else:
+            record(current_name)
         saw_delimiter = True
 
     if _outside_has_text(outside, after_artifacts=saw_delimiter):
@@ -728,14 +729,6 @@ def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
             raise _outside_text_error(
                 label, "".join(outside), where="with no artifact block", after_artifacts=False
             )
-    for name in sorted(conflicting):
-        blocks.pop(name, None)
-        rejected.append(
-            ArtifactDefect(
-                name=name,
-                reason="claimed twice with differing content; both copies discarded",
-            )
-        )
     if not saw_delimiter:
         blocks = {}
     return ArtifactParseResult(
