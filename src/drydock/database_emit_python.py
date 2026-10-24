@@ -18,6 +18,7 @@ from pathlib import Path
 from drydock.database_contract import (
     AccessPattern,
     parse_database_contract,
+    resolve_operation,
     schema_sql,
     sqlite_schema_tables,
 )
@@ -106,7 +107,14 @@ def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, st
     by_pattern: dict[str, tuple[str, str]] = {}
     for pattern in patterns:
         verbs = {operation.partition(".")[2] for operation in pattern.operations}
-        if not pattern.outputs or not verbs & {"get", "list", "create", "update", "delete"}:
+        if not pattern.outputs or not verbs & {
+            "get",
+            "list",
+            "create",
+            "update",
+            "upsert",
+            "delete",
+        }:
             continue
         name = _identifier(pattern.output_name or f"{pattern.identifier}Row")
         annotations = "\n".join(
@@ -123,6 +131,7 @@ def render_schema_module(text: str, *, source: str = "DATABASE.md") -> str:
     tables = sqlite_schema_tables(text, source=source)
     contract = parse_database_contract(text)
     columns_of = {table.name: table.columns for table in tables}
+    tables_by_name = {table.name: table for table in tables}
     rows = _row_classes(contract.patterns)
 
     classes: list[str] = []
@@ -140,6 +149,9 @@ def render_schema_module(text: str, *, source: str = "DATABASE.md") -> str:
             inputs = tuple(field.name for field in pattern.inputs)
             row_name = rows.get(pattern.identifier, (None, ""))[0]
             selected: tuple[str, ...] = ()
+            match: tuple[str, ...] = ()
+            if table in tables_by_name:
+                match = resolve_operation(pattern, tables_by_name[table], verb).match
             if row_name is not None:
                 # Validation holds every Output field to a column, so nothing falls back to
                 # the whole table and a wrapper Output cannot build an empty row.
@@ -152,6 +164,7 @@ def render_schema_module(text: str, *, source: str = "DATABASE.md") -> str:
                 f"        inputs={inputs!r},\n"
                 f"        row={row_name or None},\n"
                 f"        columns={selected!r},\n"
+                f"        match={match!r},\n"
                 f"    ),"
             )
 

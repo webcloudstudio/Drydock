@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Protocol
 
 from drydock.compass_sources import is_compass_file
+from drydock.database_contract import operation_surface
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.paths import get_rigging_root
@@ -556,6 +557,12 @@ def compact(
         source_bytes = len(source_text.encode("utf-8"))
         # The foundation contract is withheld from the model and spliced back into the output.
         model_text, foundation = _split_foundation_contract(source_text)
+        if role is _DATABASE_ROLE:
+            # The per-table operation surface is generated, never summarized: a builder reads
+            # from it exactly which rows each call reaches and what it returns.
+            surface = operation_surface(source_text)
+            if surface:
+                foundation = f"{foundation.strip()}\n\n{surface}" if foundation else surface
         existing_compact = (
             compact_path.read_text(encoding="utf-8") if compact_path.is_file() else None
         )

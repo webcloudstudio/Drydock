@@ -569,7 +569,7 @@ def test_one_access_pattern_declares_one_repository_operation():
 def test_a_verb_outside_the_closed_set_is_refused():
     invented = _DATABASE.replace("| `orders.create` |", "| `orders.archive` |")
 
-    with pytest.raises(SpecificationError, match="get, list, create, update, delete"):
+    with pytest.raises(SpecificationError, match="get, list, create, update, upsert, delete"):
         parse_database_contract(invented)
 
 
@@ -848,8 +848,11 @@ def test_a_list_output_that_wraps_its_rows_is_a_defect():
 
 def test_an_update_output_names_only_columns():
     # An update returns its Output row read back by key, so a count field names no column.
-    updated = _READING_LIST.replace("| book_id |", "| id |").replace(
-        "`books.delete`", "`books.update`"
+    updated = (
+        _READING_LIST.replace("| book_id | INTEGER | Identifier of the book to remove. |",
+                              "| id | INTEGER | |\n| title | TEXT | |")
+        .replace("| book_id |", "| id |")
+        .replace("`books.delete`", "`books.update`")
     )
     defects = database_contract_defects(
         updated.replace("| id | INTEGER | |\n\n## `books`", "| removed | INTEGER | |\n\n## `books`")

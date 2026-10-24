@@ -1,7 +1,7 @@
 # Persistence & Service Encapsulation
 
 **Type:** guidance
-**Version:** 20260919 V3
+**Version:** 20261023 V4
 **Category:** Persistence
 **Description:** The single boundary rule for all persistent stores and external services — typed access classes, no raw access in application code
 
@@ -64,17 +64,37 @@ from persistence import open_database
 
 db = open_database(config.database_url)
 
-ticket = db.tickets.get(id=ticket_id)          # returns a frozen dataclass, or None
-open_tickets = db.tickets.list(status="open")  # returns a list of them
-new_id = db.tickets.create(status="open", title=title)
-db.tickets.update(id=ticket_id, status="closed")
-db.tickets.delete(id=ticket_id)
+ticket = db.tickets.get(id=ticket_id)                 # a frozen dataclass, or None
+open_tickets = db.tickets.list(status="open")         # a list of them
+ticket = db.tickets.create(status="open", title=title)  # the declared Output row
+db.tickets.update(id=ticket_id, status="closed")      # the row, or None
+rate = db.rates.upsert(date=day, currency="USD", rate="1.0393")  # inserted or replaced row
+db.tickets.delete(id=ticket_id)                       # the Output built from the Match, or None
 ```
 
-One attribute per declared table, one method per declared access pattern. The method name is the
-verb of that pattern's `Repository operation` cell, and its keyword arguments are that pattern's
-`Input:` fields — nothing else is accepted. A verb the table does not declare raises
-`UnknownOperation` naming what it does grant.
+One attribute per declared table, one method per declared verb. The method name is the verb of
+that pattern's `Repository operation` cell, and its keyword arguments are that pattern's `Input:`
+fields — nothing else is accepted. A verb the table does not declare raises `UnknownOperation`
+naming what it does grant.
+
+**Which rows a call reaches is declared, never inferred.** A pattern's `| Match |` row names the
+Input fields that select rows: equality on each, joined with AND, every field required. A Match
+covering the table's `PK` or a declared `UNIQUE` reaches at most one row; any other Match reaches
+many. Every write is one statement inside the package, so a caller never composes a
+read-then-write.
+
+| Verb | Selects rows by | Writes | Rows | Returns |
+|---|---|---|---|---|
+| `get` | Match: a unique key | — | 0..1 | the row, or `None` |
+| `list` | each supplied Input field (optional equality filters) | — | 0..n | a list of rows |
+| `create` | — | every Input field | 1 | the row |
+| `update` | Match (default: the `PK`) | the other Input fields | 0..1 on a unique key, else 0..n | the row or `None`; the count when it reaches many |
+| `upsert` | Match: exactly one unique key | inserts the row, or replaces its other Input fields | 1 | the row |
+| `delete` | Match: every Input field | — | 0..1 on a unique key, else 0..n | the Output built from the Match or `None`; the count when it reaches many |
+
+`DATABASE_compact.md` carries a generated `## Operation Surface` stating this per table and per
+call. Build against it: it is the persistence surface, and nothing beyond it exists — no other
+operator, no OR, no join, no SQL.
 
 **The declaration fixes the surface.** `DATABASE.md` names every operation in the
 `Repository operation` cell of each access pattern, as `<table>.<verb>`. That is the persistence

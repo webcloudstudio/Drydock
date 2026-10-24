@@ -247,7 +247,7 @@ def test_python_postgres_round_trip_when_server_is_configured():
 
 def test_missing_delete_key_changes_no_rows(database):
     identity = database.tickets.create(title="preserved")
-    with pytest.raises(db.PersistenceError, match="key"):
+    with pytest.raises(db.PersistenceError, match="requires id"):
         database.tickets.delete()
     assert database.tickets.get(id=identity).title == "preserved"
 

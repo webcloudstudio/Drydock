@@ -258,8 +258,22 @@ An analyzed story left uncovered fails the coverage gate, whose repair message s
 *Broken:* ReadingList `20261023.200606` attached `READING-002` and `st-002` to the store as well
 as to Add Book.
 
+`2026-10-23` · **Every operation declares the rows it reaches.** An optional `| Match |` row names
+the Input fields that select rows: equality, AND, every field required. `resolve_operation` makes
+each choice explicit — `get` matches a unique key and its Input is the Match; `list` filters on
+optional Input fields; `create` matches nothing; `update` matches the `PK` by default and sets the
+rest; `upsert` matches exactly one declared unique key and inserts or replaces in one
+`INSERT … ON CONFLICT` statement; `delete`'s Input is its Match. A Match covering the `PK` or a
+declared `UNIQUE` reaches one row; any other reaches many, and a many-row `update`/`delete` returns
+a count with an Output of no fields. A table grants each verb once. `operation_shape_defects`
+refuses every breach with the rule named, after the column checks pass. `compact_declaration` and
+`drydock rigging compact` append the generated `## Operation Surface` — per table, each call's
+Match, Sets, Rows, and Returns — so builders never infer cardinality. *Broken:* FxRates
+`20261023.234755` could not state "a stored (date, currency) is replaced": `update` matched only
+the `PK` and no verb inserted-or-replaced, so `FEATURE-LoadReplace.md` stalled the plan at 8/26.
+
 `2026-09-19` · **One pattern is one `<table>.<verb>` operation**, verb ∈ `get`, `list`, `create`,
-`update`, `delete`. A Blueprint's `## Database Interface` entry is one checked line
+`update`, `upsert`, `delete`. A Blueprint's `## Database Interface` entry is one checked line
 (`id — access, supplies:, returns:`) or `- None — <why>.`; a parse failure quotes the line and the
 accepted form.
 
@@ -270,8 +284,8 @@ also prevents DDL injection. Foreign keys order `CREATE TABLE`.
 
 `2026-10-23` · **Every table declares exactly one `PK` column.** `sqlite_schema_tables` refuses a
 table with none or with two, and the defect names the fix (`id | INTEGER PK`, natural key as a
-`- UNIQUE (a, b)` bullet). The persistence runtime addresses `get`, `update`, and `delete` by one
-key column, so a keyless table builds an update that can never run. *Broken:* FxRates
+`- UNIQUE (a, b)` bullet). A keyless table builds an update that can never run; a natural key is
+reached through `| Match |` (`2026-10-23`). *Broken:* FxRates
 `20261023.224908` declared `rates` with only `UNIQUE (date, currency)`, and `database-update`
 raised "updates rates without supplying a key".
 
@@ -382,6 +396,15 @@ A failing `plan verify` condemns the standing plan rung without voiding anything
 -
 
 ## Open Questions
+
+- `2026-10-23` · **Joins.** The surface has no read across tables. Options: (a) Drydock derives a
+  read-only join from a declared `REFERENCES` edge — `positions.rate_id → rates.id` — named in the
+  pattern (`| Join | rates |`) with Output fields from both tables; (b) builders compose `get` by
+  foreign key. (a) keeps SQL inside the package and is the recommendation; it needs an Output
+  naming rule for colliding column names.
+- `2026-10-23` · **One verb per table.** `db.<table>.<verb>` grants each verb once, so a table
+  cannot have both a by-`PK` update and a many-row update. Named operations
+  (`rates.update_by_currency`) would lift it at the cost of an open method set.
 
 1. **Compact scope** — does the applied registry and compact substitution rule cover only `stack:`
    files, or also `rules:` and `context:` files?

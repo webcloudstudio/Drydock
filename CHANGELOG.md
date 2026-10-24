@@ -10,6 +10,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-23: `DATABASE.md` access patterns declare the rows each operation reaches. An optional
+  `| Match |` row names the Input fields that select rows (equality, AND, all required), and
+  the new `upsert` verb inserts the row a declared unique key identifies or replaces its other
+  columns in one `INSERT … ON CONFLICT` statement. A Match covering the `PK` or a declared
+  `UNIQUE` reaches one row; any other reaches many, and a many-row `update` or `delete` returns
+  a count. `get` must match a unique key, `upsert` must match exactly one, and a table grants
+  each verb once; each breach fails the plan with the rule named. The Python and Go runtimes
+  update by any Match rather than only the `PK`. `DATABASE_compact.md`, both from Plan and from
+  `drydock rigging compact`, carries a generated `## Operation Surface`: per table, each call's
+  Match, Sets, Rows, and Returns. This closes FxRates `20261023.234755`, where "a stored (date,
+  currency) is replaced" had no operation to express it.
+
 - 2026-10-23: Documentation: `docs/posts/devlog_2026-10-23.md` and its Slate HTML rendering
   consolidate the unannounced September development post into a 0.8 beta announcement draft:
   the acceptance-criteria verify-and-repair loop, Full UAT Harness, generated persistence,

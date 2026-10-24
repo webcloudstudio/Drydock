@@ -9,7 +9,12 @@ import subprocess
 from pathlib import Path
 from string import Template
 
-from drydock.database_contract import parse_database_contract, schema_sql, sqlite_schema_tables
+from drydock.database_contract import (
+    parse_database_contract,
+    resolve_operation,
+    schema_sql,
+    sqlite_schema_tables,
+)
 from drydock.errors import SpecificationError
 from drydock.paths import get_language_dir
 
@@ -98,7 +103,7 @@ def render_go_schema(text: str) -> str:
             # get does, and a keyed delete returns its Output built from the key.
             keyed = any(column.primary_key for column in declared.columns)
             returns_row = verb in ("get", "list") or (
-                verb in ("create", "update", "delete") and keyed and bool(pattern.outputs)
+                verb in ("create", "update", "upsert", "delete") and keyed and bool(pattern.outputs)
             )
             for field in (*pattern.inputs, *(pattern.outputs if returns_row else ())):
                 if field.name not in column_names:
@@ -168,9 +173,10 @@ def render_go_schema(text: str) -> str:
                     raise SpecificationError(f"Conflicting Go operation declaration {operation}")
                 continue
             methods[table, verb] = body
+            match = resolve_operation(pattern, declared, verb).match
             operations.append(
                 "{"
-                + f"ID:{json.dumps(pattern.identifier)}, Table:{json.dumps(table)}, Verb:{json.dumps(verb)}, Inputs:{_strings(f.name for f in pattern.inputs)}, Columns:{_strings(columns)}"
+                + f"ID:{json.dumps(pattern.identifier)}, Table:{json.dumps(table)}, Verb:{json.dumps(verb)}, Inputs:{_strings(f.name for f in pattern.inputs)}, Columns:{_strings(columns)}, Match:{_strings(match)}"
                 + "},"
             )
     fields, initializers, repositories, entries = [], [], [], []

@@ -1,105 +1,128 @@
-<!-- Compacted from Rigging/stack/persistence.md sha256=faaae951cc9641b1a3799eb0a46030514bc49afa4ba8f9ca71949fa3861addbd on 2026-10-20 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/persistence.md sha256=68dbc5deb5795e32a81a79d845f944f32579f655d19b279592a706857d16dd99 on 2026-10-23 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 # Persistence & Service Encapsulation — Contract Surface
 
-## Persistence
+## Relational Persistence
 
 ### Rule: typed-persistence-boundary
 
-All persistence and external-service access goes through typed encapsulation classes.
+All persistence and external-service access occurs through typed encapsulation classes.
 
-Constraints: Route, feature, and business-logic code must not execute raw SQL, read `os.environ`, open application files, or import cloud SDKs.
+Constraints: Application code must not execute raw SQL, read `os.environ`, open application files, or import cloud SDKs directly.
 
-### function_name
+### Rule: generated-database-package
 
-`open_database(dsn)` opens the generated database abstraction selected by the DSN.
+The persistence package is generated from `DATABASE.md`; callers use only its declared table attributes and repository verbs.
+
+Constraints: Do not hand-write repositories, DAOs, ORM models, connection helpers, session factories, migrations, or files under `persistence/`.
+
+### `open_database`
+
+Opens a configured database and returns a synchronous `Database` with one attribute per declared table.
 
 | Input | Type |
 |---|---|
 | `dsn` | `str` |
 
-Returns a `Database` with one attribute per declared table.
+Constraints: Engine selection is determined at runtime from the DSN. Callers share one instance synchronously and do not manage connections, locking, or threads. Returned rows are frozen dataclasses without connection state.
 
-Constraints: The generated persistence package is derived from `DATABASE.md`; callers must not create repositories, DAOs, ORM models, session factories, migrations, or alternate storage paths.
+### `Database.<table>.get`
 
-### Database.table.get
-
-Retrieves one row by identifier.
+Retrieves at most one row by a declared unique-key match.
 
 | Input | Type |
 |---|---|
-| `id` | declared identifier type |
+| Declared Match fields | Keyword arguments |
 
-Returns a frozen dataclass or `None`.
+Returns the row or `None`.
 
-### Database.table.list
+### `Database.<table>.list`
 
-Lists rows matching declared access-pattern fields.
+Lists rows matching supplied input-field equality filters joined with AND.
 
-Returns a list of frozen row dataclasses.
+| Input | Type |
+|---|---|
+| Declared Input fields | Optional keyword arguments |
 
-### Database.table.create
+Returns a list of rows.
 
-Creates a row using exactly the declared operation input fields.
+### `Database.<table>.create`
 
-Returns the new record identifier.
+Creates one row using every declared input field.
 
-### Database.table.update
+| Input | Type |
+|---|---|
+| Declared Input fields | Keyword arguments |
 
-Updates a row using exactly the declared operation input fields.
+Returns the created row.
 
-Returns no specified value.
+### `Database.<table>.update`
 
-### Database.table.delete
+Updates rows selected by Match fields, defaulting to the primary key.
 
-Deletes a row by the declared operation input fields.
+| Input | Type |
+|---|---|
+| Match fields | Keyword arguments |
+| Other Input fields | Keyword arguments |
 
-Returns no specified value.
+Returns the updated row or `None` for a unique match; returns the affected count for a non-unique match.
 
-### Rule: declared-operation-surface
+### `Database.<table>.upsert`
 
-Each declared table exposes only the methods specified by its `DATABASE.md` access patterns. Unsupported verbs raise `UnknownOperation` naming the granted operations.
+Inserts or replaces a row selected by exactly one declared unique key.
 
-### Rule: database-lifecycle
+| Input | Type |
+|---|---|
+| Declared Input fields | Keyword arguments |
 
-Callers construct one `Database`, share it, and call methods synchronously. Returned rows contain no connection state.
+Returns the inserted or replaced row.
 
-Constraints: `schema.sql` is applied once during the DATABASE build step. Application startup must not create or alter schema.
+### `Database.<table>.delete`
 
-### Rule: generated-engine-access
+Deletes rows selected by every declared Match field.
 
-Both SQLite and PostgreSQL engines are available at runtime and selected from the DSN.
+| Input | Type |
+|---|---|
+| Match fields | Keyword arguments |
 
-Constraints: Code outside `persistence/` must not import `sqlite3` or `psycopg`, and nothing under `persistence/` is edited by hand.
+Returns the output built from the Match or `None` for a unique match; returns the affected count for a non-unique match.
+
+Constraints: Unknown verbs raise `UnknownOperation`. No OR clauses, joins, SQL, or undeclared operations exist. Each write is one package-managed statement.
+
+### Rule: schema-lifecycle
+
+The generated `schema.sql` is applied once during the DATABASE step.
+
+Constraints: Application startup must not create or alter schema.
 
 ## Configuration
 
-### Config.load
+### `Config.load`
 
-Loads and validates environment configuration once at startup.
+Loads and validates one environment-derived immutable configuration.
+
+| Field | Type | Source |
+|---|---|---|
+| `secret_key` | `str` | Required `SECRET_KEY` |
+| `database_path` | `str` | `DATABASE_PATH`, default `data/app.db` |
+| `port` | `int` | `APP_PORT`, default `5001` |
+| `debug` | `bool` | `APP_DEBUG == "1"` |
 
 Returns a frozen `Config`.
 
-| Field | Type | Source | Default |
-|---|---|---|---|
-| `secret_key` | `str` | `SECRET_KEY` | required |
-| `database_path` | `str` | `DATABASE_PATH` | `data/app.db` |
-| `port` | `int` | `APP_PORT` | `5001` |
-| `debug` | `bool` | `APP_DEBUG == "1"` | `False` |
-
-Constraints: Missing required environment variables raise `RuntimeError`. Malformed typed values fail during startup. No code other than `Config` reads `os.environ`; no Dev/Prod/Test subclasses are permitted.
+Constraints: Environment is loaded once. Missing required variables or malformed typed values raise at startup. No `Dev`, `Prod`, or `Test` subclasses exist. Only `Config` reads `os.environ`.
 
 ## File Storage
 
-### FileStore.__init__
+### `FileStore.__init__`
 
-Creates a file store rooted at the supplied directory.
+Creates a file store rooted at a directory.
 
 | Input | Type |
 |---|---|
 | `root` | `str` |
 
-### FileStore.read
+### `FileStore.read`
 
 Reads a UTF-8 application file by name.
 
@@ -109,9 +132,9 @@ Reads a UTF-8 application file by name.
 
 Returns `str`.
 
-### FileStore.write
+### `FileStore.write`
 
-Writes UTF-8 application data by name.
+Writes UTF-8 data to an application file, creating parent directories as needed.
 
 | Input | Type |
 |---|---|
@@ -120,9 +143,9 @@ Writes UTF-8 application data by name.
 
 Returns `None`.
 
-### FileStore.list
+### `FileStore.list`
 
-Lists application files matching a glob pattern.
+Lists root-relative file names matching a glob pattern.
 
 | Input | Type | Default |
 |---|---|---|
@@ -132,34 +155,34 @@ Returns `list[str]`.
 
 ### Rule: file-access-boundary
 
-Only `FileStore` opens application files or uses file utilities.
+`FileStore` is the only application code that opens files or uses `shutil`.
 
-Constraints: Callers must not construct application paths or call `open()` or `shutil` directly. Path-traversal validation and atomic writes are required in `FileStore`.
+Constraints: Callers must not build application paths or call `open()` or `shutil` directly. Path-traversal validation and atomic writes are enforced by `FileStore`.
 
 ## External Services
 
-### ServiceClient.__init__
+### `ServiceClient.__init__`
 
-Initializes a service wrapper with a backend handle and optional logger name.
+Initializes a service wrapper with a backend handle and named logger.
 
 | Input | Type |
 |---|---|
-| `backend` | backend object |
+| `backend` | Backend object |
 | `name` | `str \| None` |
 
-### ServiceClient._guard
+### `ServiceClient._guard`
 
 Executes a backend operation, logs failures, and re-raises exceptions.
 
 | Input | Type |
 |---|---|
-| `op` | callable |
-| `*args` | operation arguments |
-| `**kwargs` | operation keyword arguments |
+| `op` | Callable |
+| `*args` | Positional arguments |
+| `**kwargs` | Keyword arguments |
 
 Returns the operation result.
 
-### MessageBus.publish
+### `MessageBus.publish`
 
 Publishes a payload to a topic through the wrapped backend.
 
@@ -170,14 +193,14 @@ Publishes a payload to a topic through the wrapped backend.
 
 Returns `str`.
 
-### MessageBus.subscribe
+### `MessageBus.subscribe`
 
 Registers a handler for a topic through the wrapped backend.
 
 | Input | Type |
 |---|---|
 | `topic` | `str` |
-| `handler` | callable |
+| `handler` | Callable |
 
 Returns `None`.
 
@@ -185,4 +208,24 @@ Returns `None`.
 
 Every external-service wrapper extends `ServiceClient`, exposes typed methods, and does not expose the SDK client.
 
-Constraints: Cloud SDK imports must remain inside their service wrappers.
+Constraints: Cloud SDK imports occur only inside service wrappers. AWS integrations use the project-owned cloud client library.
+
+## Acceptance Transactions
+
+### Rule: database-acceptance-session
+
+Database criteria use a rollback-scoped session on the configured store.
+
+Constraints: Use `with db_session() as db:`; Go uses `OpenSession(ctx, "")` with checked deferred cleanup. Setup, operation, and assertions use the same database and transaction. Do not replace configured database settings, create temporary databases, apply DDL, commit, close the owned connection, or open another connection. The shipped fixture rolls back.
+
+### Rule: committed-acceptance-session
+
+HTTP, CLI, background-work, commit/restart, and durability criteria use committed sessions.
+
+Constraints: Use `persistence.testing.committed_session()`; Go uses `OpenCommittedSession(ctx, "")`. Use criterion-specific stable identifiers, reconcile only owned residue, assert setup success, verify only owned records, and clean up through supported interfaces in `try/finally` or checked `defer`. Cleanup failure fails the criterion; retries must remain safe. Immutable ledger history is never deleted or reset.
+
+### Rule: database-evidence
+
+Database acceptance proves provisioning through runtime catalog and row-count evidence; feature criteria prove behavior.
+
+Constraints: Database acceptance must not be replaced by a project test count. Include independent commit/reconnect durability coverage.

@@ -67,9 +67,12 @@ _MIGRATION_STATES = frozenset({"planned", "built", "applied"})
 #: persistence is worse than no check at all.
 #:
 #: The verb is a closed set because the generated persistence layer builds the statement rather
-#: than carrying SQL text. A builder for five shapes is small and testable; one for an open verb
-#: set is a SQL generator, which is the thing this design exists to avoid.
-_REPOSITORY_VERBS = ("get", "list", "create", "update", "delete")
+#: than carrying SQL text. A builder for six shapes is small and testable; one for an open verb
+#: set is a SQL generator, which is the thing this design exists to avoid. ``upsert`` exists
+#: because "a stored (date, currency) is replaced" is a write by natural key, and composing it
+#: from ``list`` and ``update`` moves a read-modify-write out of the layer that owns writes
+#: (FxRates ``20261023.234755``).
+_REPOSITORY_VERBS = ("get", "list", "create", "update", "upsert", "delete")
 _REPOSITORY_OPERATION_RE = re.compile(
     r"^[a-z][a-z0-9_]*\.(?:" + "|".join(_REPOSITORY_VERBS) + r")$"
 )
@@ -94,6 +97,7 @@ class AccessPattern:
     output_name: str
     outputs: tuple[Field, ...]
     operations: tuple[str, ...] = ()
+    match: tuple[str, ...] = ()
 
     @property
     def tables(self) -> frozenset[str]:
@@ -560,6 +564,8 @@ def database_operation_fingerprints(text: str) -> str:
             *(f"{field.name}:{field.type}:{int(field.required)}" for field in pattern.inputs),
             pattern.output_name,
             *(f"{field.name}:{field.type}" for field in pattern.outputs),
+            # Absent from a pattern that declares none, so existing fingerprints are unchanged.
+            *((f"match:{','.join(pattern.match)}",) if pattern.match else ()),
         ))
         entries.append(f"{pattern.identifier}:{sha256(payload.encode()).hexdigest()}")
     return ";".join(entries)
@@ -768,8 +774,16 @@ def _parse_access_pattern(match: re.Match[str], block: str, source: str) -> Acce
             "`| Field | Value |` table, write `Input: <DtoName>` and `Output: <DtoName>`, each "
             "followed by a `| Field | Type |` table of the fields it carries"
         )
+    declared_match = tuple(
+        item
+        for item in (
+            part.strip().strip("`").strip() for part in metadata.get("match", "").split(",")
+        )
+        if item and not _no_field(item)
+    )
     return AccessPattern(
         identifier=match.group(1),
+        match=declared_match,
         owner=metadata["owner"].strip(),
         access=access,
         repository_operation=metadata["repository operation"].strip("`"),
@@ -854,6 +868,15 @@ def _derived_dtos(
     elif verb == "create":
         inputs = (
             f"{base}Create",
+            tuple(
+                (column.name, column.sql_type, column.not_null and column.default is None)
+                for column in columns
+                if not column.primary_key
+            ),
+        )
+    elif verb == "upsert":
+        inputs = (
+            f"{base}Upsert",
             tuple(
                 (column.name, column.sql_type, column.not_null and column.default is None)
                 for column in columns
@@ -990,6 +1013,9 @@ def database_contract_defects(text: str, *, source: str = "DATABASE.md") -> tupl
     if not defects:
         defects.extend(input_column_defects(text, source=source))
         defects.extend(output_column_defects(text, source=source))
+    if not defects:
+        # Shape is judged on fields that bind, so a misnamed column is reported once, not twice.
+        defects.extend(operation_shape_defects(text, source=source))
     return tuple(defects)
 
 
@@ -1048,7 +1074,7 @@ def output_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[st
             columns = columns_of.get(table)
             if columns is None:
                 continue
-            if verb in ("get", "list", "create", "update"):
+            if verb in ("get", "list", "create", "update", "upsert"):
                 shape = (
                     "one Output row per record, so the Output names the row's columns, never a "
                     "collection of rows"
@@ -1072,6 +1098,292 @@ def output_column_defects(text: str, *, source: str = "DATABASE.md") -> tuple[st
                             "returns its Output built from the key it was given."
                         )
     return tuple(defects)
+
+
+@dataclass(frozen=True)
+class ResolvedOperation:
+    """One declared operation with every implicit choice made explicit.
+
+    ``match`` is the equality ``WHERE`` of a ``get``, ``update``, ``upsert``, or ``delete``;
+    ``filters`` are the optional equality filters of a ``list``; ``sets`` are the columns a
+    ``create``, ``update``, or ``upsert`` writes. ``many`` is decided from the schema, never
+    declared: a match covering the primary key or a declared ``UNIQUE`` reaches at most one row.
+    """
+
+    identifier: str
+    table: str
+    verb: str
+    inputs: tuple[str, ...]
+    match: tuple[str, ...]
+    filters: tuple[str, ...]
+    sets: tuple[str, ...]
+    many: bool
+    output_name: str
+    outputs: tuple[str, ...]
+
+    @property
+    def returns_row(self) -> bool:
+        """True when the operation returns its Output row rather than a count or key."""
+        return bool(self.outputs) and not (self.many and self.verb in ("update", "delete"))
+
+
+def unique_keys(table: SQLiteTable) -> tuple[tuple[str, ...], ...]:
+    """Every column set that identifies at most one row: the PK, each UNIQUE column or bullet."""
+    keys = [(column.name,) for column in table.columns if column.primary_key]
+    keys += [(column.name,) for column in table.columns if column.unique and not column.primary_key]
+    keys += [item.columns for item in table.constraints if item.kind == "UNIQUE"]
+    return tuple(keys)
+
+
+def _identifies_one(table: SQLiteTable, match: Collection[str]) -> bool:
+    return bool(match) and any(set(key) <= set(match) for key in unique_keys(table))
+
+
+def _keys_text(table: SQLiteTable) -> str:
+    return ", ".join(
+        "(" + ", ".join(f"`{name}`" for name in key) + ")" for key in unique_keys(table)
+    )
+
+
+def resolve_operation(pattern: AccessPattern, table: SQLiteTable, verb: str) -> ResolvedOperation:
+    """Make one pattern's match, filters, sets, and cardinality explicit.
+
+    Without a ``| Match |`` row an ``update`` matches the primary key and a ``get`` or ``delete``
+    matches every Input field, which is what the runtime did before ``Match`` existed. ``list``
+    filters on its Input fields and ``create`` matches nothing.
+    """
+    inputs = tuple(field.name for field in pattern.inputs)
+    primary = next(column.name for column in table.columns if column.primary_key)
+    if verb in ("list", "create"):
+        match: tuple[str, ...] = ()
+    elif pattern.match:
+        match = pattern.match
+    elif verb == "update":
+        match = (primary,)
+    elif verb in ("get", "delete"):
+        match = inputs
+    else:
+        match = ()
+    filters = inputs if verb == "list" else ()
+    sets = (
+        inputs
+        if verb == "create"
+        else tuple(name for name in inputs if name not in match)
+        if verb in ("update", "upsert")
+        else ()
+    )
+    many = verb == "list" or (verb in ("update", "delete") and not _identifies_one(table, match))
+    return ResolvedOperation(
+        identifier=pattern.identifier,
+        table=table.name,
+        verb=verb,
+        inputs=inputs,
+        match=match,
+        filters=filters,
+        sets=sets,
+        many=many,
+        output_name=pattern.output_name,
+        outputs=tuple(field.name for field in pattern.outputs),
+    )
+
+
+def resolved_operations(text: str, *, source: str = "DATABASE.md") -> tuple[ResolvedOperation, ...]:
+    """Every declared operation on a declared table, resolved; unreadable input yields ``()``."""
+    try:
+        tables = {table.name: table for table in sqlite_schema_tables(text, source=source)}
+        contract = parse_database_contract(text, source=source)
+    except SpecificationError:
+        return ()
+    resolved: list[ResolvedOperation] = []
+    for pattern in contract.patterns:
+        for operation in pattern.operations:
+            name, _, verb = operation.partition(".")
+            if name in tables:
+                resolved.append(resolve_operation(pattern, tables[name], verb))
+    return tuple(resolved)
+
+
+def operation_shape_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
+    """Name every operation whose match, writes, or return the runtime cannot honor exactly.
+
+    Each rule removes a guess a builder would otherwise make: which rows a write reaches, whether
+    one row or many come back, and what a call returns. The runtime grants each verb once per
+    table, so a second declaration of the same verb would silently replace the first.
+    """
+    try:
+        tables = {table.name: table for table in sqlite_schema_tables(text, source=source)}
+        contract = parse_database_contract(text, source=source)
+    except SpecificationError:
+        return ()
+    defects: list[str] = []
+    seen: dict[str, str] = {}
+    for pattern in contract.patterns:
+        for operation in pattern.operations:
+            name, _, verb = operation.partition(".")
+            table = tables.get(name)
+            if table is None:
+                continue
+            ident = pattern.identifier
+            if operation in seen:
+                defects.append(
+                    f"{source}: {ident} declares `{operation}`, which {seen[operation]} already "
+                    f"declares. A table grants each verb once, as `db.{name}.{verb}(...)`; merge "
+                    "the two patterns into one whose Input carries every field either needs."
+                )
+                continue
+            seen[operation] = ident
+            resolved = resolve_operation(pattern, table, verb)
+            inputs = set(resolved.inputs)
+            stray = [item for item in pattern.match if item not in inputs]
+            if stray:
+                defects.append(
+                    f"{source}: {ident} Match names {', '.join(f'`{item}`' for item in stray)}, "
+                    f"which {'is' if len(stray) == 1 else 'are'} not Input fields. Every Match "
+                    "field is an Input field the caller supplies."
+                )
+                continue
+            if verb in ("create", "list") and pattern.match:
+                role = "inserts one row" if verb == "create" else "filters on its Input fields"
+                defects.append(
+                    f"{source}: {ident} `{operation}` {role} and declares no Match; remove the "
+                    "Match row."
+                )
+            elif verb == "get":
+                if set(resolved.match) != inputs:
+                    defects.append(
+                        f"{source}: {ident} `{operation}` reads one row by its Match, so its "
+                        "Input fields are exactly its Match fields."
+                    )
+                elif not _identifies_one(table, resolved.match):
+                    defects.append(
+                        f"{source}: {ident} `{operation}` matches "
+                        f"({', '.join(resolved.match)}), which identifies no single row of "
+                        f"`{name}`. A get matches a unique key: {_keys_text(table)}. Reading "
+                        "rows by a non-unique field is a `list`."
+                    )
+            elif verb in ("update", "upsert"):
+                if verb == "update" and not pattern.match and resolved.match[0] not in inputs:
+                    defects.append(
+                        f"{source}: {ident} `{operation}` matches the primary key "
+                        f"`{resolved.match[0]}` by default, which is not an Input field. Add it "
+                        "to the Input, or declare `| Match | <columns> |`."
+                    )
+                elif verb == "upsert" and not any(
+                    set(key) == set(resolved.match) for key in unique_keys(table)
+                ):
+                    defects.append(
+                        f"{source}: {ident} `{operation}` inserts or replaces the row its Match "
+                        f"identifies, so `| Match |` names exactly one unique key of `{name}`: "
+                        f"{_keys_text(table)}."
+                    )
+                elif verb == "update" and not resolved.sets:
+                    defects.append(
+                        f"{source}: {ident} `{operation}` sets nothing: every Input field is a "
+                        "Match field. Add the columns it writes to the Input."
+                    )
+                if verb == "upsert":
+                    absent = [
+                        column.name
+                        for column in table.columns
+                        if column.not_null
+                        and column.default is None
+                        and not column.primary_key
+                        and column.name not in inputs
+                    ]
+                    if absent:
+                        defects.append(
+                            f"{source}: {ident} `{operation}` may insert, so its Input carries "
+                            f"every NOT NULL column without a DEFAULT: missing "
+                            f"{', '.join(f'`{item}`' for item in absent)}."
+                        )
+            elif verb == "delete" and set(resolved.match) != inputs:
+                defects.append(
+                    f"{source}: {ident} `{operation}` removes the rows its Match identifies, so "
+                    "its Input fields are exactly its Match fields."
+                )
+            if resolved.many and verb in ("update", "delete") and resolved.outputs:
+                defects.append(
+                    f"{source}: {ident} `{operation}` matches ({', '.join(resolved.match)}), "
+                    f"which is no unique key of `{name}` ({_keys_text(table)}), so it reaches "
+                    "many rows and returns their count. Declare its Output with no fields, or "
+                    "match a unique key."
+                )
+    return tuple(defects)
+
+
+def _call(operation: ResolvedOperation, optional: Collection[str] = ()) -> str:
+    fields = ", ".join(f"{name}?" if name in optional else name for name in operation.inputs)
+    return f"`db.{operation.table}.{operation.verb}({fields})`"
+
+
+def _cells(values: Iterable[str], suffix: str = "") -> str:
+    rendered = ", ".join(f"`{value}`{suffix}" for value in values)
+    return rendered or "—"
+
+
+def _returns(operation: ResolvedOperation) -> str:
+    row = f"`{operation.output_name}`"
+    if operation.verb == "list":
+        return f"list of {row}"
+    if not operation.returns_row:
+        return "count" if operation.verb != "create" else "key"
+    if operation.verb in ("get", "update"):
+        return f"{row} or None"
+    if operation.verb == "delete":
+        return f"{row} (from the Match) or None"
+    return row
+
+
+_SURFACE_RULES = (
+    "Generated by Drydock from this declaration; it is the complete persistence surface. Each "
+    "operation is a method `db.<table>.<verb>(field=value, ...)` (Go: "
+    "`db.<Table>.<Verb>(ctx, <Table><Verb>Input{...})`) taking exactly its listed fields. "
+    "Match fields are required and joined with AND as column equality; a `list` field marked `?` "
+    "is an optional equality filter, and an omitted filter does not constrain. No operator other "
+    "than equality, no OR, no join, and no SQL exists. An operation reaches one row when its "
+    "Match covers a unique key, and many rows otherwise. `upsert` inserts the row its Match "
+    "identifies, or replaces that row's Set columns when it exists, in one atomic statement. A "
+    "verb not listed for a table raises `UnknownOperation`; to reach the store differently, "
+    "declare a pattern in `DATABASE.md`."
+)
+
+
+def operation_surface(text: str, *, source: str = "DATABASE.md") -> str:
+    """Render the per-table CRUD surface a builder calls, or ``""`` when none is declared.
+
+    Deterministic, so the compact derivative a builder reads states exactly which rows each call
+    reaches and what it returns rather than leaving a model to summarize it.
+    """
+    try:
+        tables = sqlite_schema_tables(text, source=source)
+    except SpecificationError:
+        return ""
+    operations = resolved_operations(text, source=source)
+    if not tables or not operations:
+        return ""
+    lines = ["## Operation Surface", "", _SURFACE_RULES]
+    for table in tables:
+        mine = [item for item in operations if item.table == table.name]
+        lines += ["", f"### `{table.name}`", "", f"Unique keys: {_keys_text(table)}", ""]
+        if not mine:
+            lines.append("- No declared operation.")
+            continue
+        lines += [
+            "| Pattern | Call | Match | Sets | Rows | Returns |",
+            "|---|---|---|---|---|---|",
+        ]
+        for item in mine:
+            if item.verb == "list":
+                match = _cells(item.filters, "?")
+                rows = "0..n"
+            else:
+                match = _cells(item.match)
+                rows = "1" if item.verb in ("create", "upsert") else "0..n" if item.many else "0..1"
+            lines.append(
+                f"| {item.identifier} | {_call(item, item.filters)} | {match} | "
+                f"{_cells(item.sets)} | {rows} | {_returns(item)} |"
+            )
+    return "\n".join(lines) + "\n"
 
 
 def parse_database_interface(text: str, *, source: str = "Blueprint") -> tuple[DatabaseUse, ...]:

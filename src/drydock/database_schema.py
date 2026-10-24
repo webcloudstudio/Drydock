@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from drydock.database_contract import sqlite_schema_tables
+from drydock.database_contract import operation_surface, sqlite_schema_tables
 from drydock.errors import SpecificationError
 
 #: The persistence declaration Blueprint.
@@ -273,10 +273,13 @@ def compact_declaration(text: str) -> str:
     """The declaration without its authoring guidance: comments and examples removed.
 
     Every table, access pattern, and field is kept verbatim, so a citation written against the
-    compact form matches the declaration Build reads.
+    compact form matches the declaration Build reads. The generated ``## Operation Surface``
+    follows, stating per table which rows each call reaches and what it returns.
     """
     compact = _COMMENT_RE.sub("", _EXAMPLE_RE.sub("", text))
-    return re.sub(r"\n{3,}", "\n\n", compact).strip() + "\n"
+    compact = re.sub(r"\n{3,}", "\n\n", compact).strip() + "\n"
+    surface = operation_surface(compact)
+    return f"{compact}\n{surface}" if surface else compact
 
 
 def merge_seeded_schema(authored: str, seed: str) -> str:

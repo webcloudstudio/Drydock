@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261023 V28
+version: 20261023 V29
 ---
 
 ## Overview
@@ -871,11 +871,46 @@ required to, and `DATABASE.md` cites nothing itself. Never invent a Blueprint fi
 surface that has no Feature; name `DATABASE.md` instead.
 
 `Repository operation` names one declared table and one verb as `<table>.<verb>`, lowercase:
-`` `settings.get` ``. The verb is one of `get`, `list`, `create`, `update`, or `delete`, and no
-other. One access pattern declares exactly one operation, because it carries exactly one `Input:`
-and one `Output:` table — a cell naming two operations leaves which fields belong to which
-undeclared. Give each operation its own `### <FEATURE-DOMAIN-NNN>` section with its own DTO
-tables. It is the only place the declaration says which table a pattern reaches, so the form is
+`` `settings.get` ``. The verb is one of `get`, `list`, `create`, `update`, `upsert`, or
+`delete`, and no other. One access pattern declares exactly one operation, because it carries
+exactly one `Input:` and one `Output:` table — a cell naming two operations leaves which fields
+belong to which undeclared. Give each operation its own `### <FEATURE-DOMAIN-NNN>` section with
+its own DTO tables. A table grants each verb at most once: the generated method is
+`db.<table>.<verb>(...)`, so a second `rates.update` would replace the first. Merge the two into
+one pattern whose Input carries every field either needs.
+
+An optional `| Match | `a`, `b` |` row names the Input fields that select the rows an operation
+reaches. Every Match field is an Input field, required at call time, and the fields are compared
+by equality and joined with AND. No other operator, no OR, no join, and no SQL exist. A Match
+that covers the `PK` or a declared `UNIQUE` reaches at most one row; any other Match reaches many.
+Each verb uses Match exactly as follows:
+
+| Verb | Match | Input fields | Rows | Returns |
+|---|---|---|---|---|
+| `get` | a unique key; defaults to every Input field | exactly the Match | 0..1 | the Output row, or none |
+| `list` | not declared; every Input field is an optional equality filter | the filters | 0..n | a list of Output rows |
+| `create` | not declared | the values inserted | 1 | the Output row |
+| `update` | any Input fields; defaults to the `PK` | the Match plus at least one column to set | 0..1 on a unique key, else 0..n | the Output row, or none; a count when it reaches many |
+| `upsert` | required; exactly one declared unique key | the Match plus the columns to set, including every `NOT NULL` column without a `DEFAULT` | 1 | the Output row |
+| `delete` | defaults to every Input field | exactly the Match | 0..1 on a unique key, else 0..n | the Output built from the Match, or none; a count when it reaches many |
+
+An `update` or `delete` that reaches many rows declares its Output with no fields, because it
+returns the number of rows changed. `upsert` inserts the row its Match identifies, or replaces
+that row's other Input columns when it exists, in one atomic statement. It is the operation for a
+source rule such as "a stored (date, currency) is replaced". A `get` on a non-unique field is a
+`list`. A pattern that breaks one of these rules fails the plan with the rule named.
+
+```markdown
+### FEATURE-RATE-004 — Store a rate, replacing the stored one
+
+| Field | Value |
+|-------|-------|
+| Owner | FEATURE-RateStorage.md |
+| Access | write |
+| Repository operation | `rates.upsert` |
+| Match | `date`, `currency` |
+| Compatibility | unchanged |
+``` It is the only place the declaration says which table a pattern reaches, so the form is
 checked rather than advisory, and free text there fails the plan. Every table in `## Schema` is reached by at least one access
 pattern, and every operation names a table `## Schema` declares. A table nothing reaches is
 storage no story can use; an operation on a table that is not declared builds a repository against
@@ -887,7 +922,9 @@ build after a block has already been spent.
 every other Blueprint. That batch starts from a seed of the Rigging template and every table the
 imported source specification already declared; keep every seeded table. Declare every table and
 one access pattern for each repository operation any story in the frozen topology needs. Later
-batches receive the frozen declaration as `DATABASE_compact.md` and cite its access patterns.
+batches receive the frozen declaration as `DATABASE_compact.md` and cite its access patterns. Its
+generated `## Operation Surface` lists, per table, each call with its Match, the columns it sets,
+the rows it reaches, and what it returns; author criteria and callers against it.
 
 Each table is a top-level `` ## `table_name` `` section — lowercase snake_case in backticks — over
 a `| Field | Type | Notes |` table. A type cell is
@@ -900,10 +937,11 @@ read is a constraint the built database would not have. Declare a length where o
 PostgreSQL enforces `VARCHAR(<n>)` and SQLite accepts the same declaration and ignores it, so one
 spelling serves both. A foreign key names a table and column this same file declares.
 
-Every table declares exactly one `PK` column, such as `| id | INTEGER PK | |`. Every `get`,
-`update`, and `delete` addresses one row by that key. A natural key spanning several columns, such
-as `(date, currency)`, is a `- UNIQUE (date, currency)` bullet beside the `PK`, never a second
-`PK`. A table with no `PK` column, or with two, fails the plan.
+Every table declares exactly one `PK` column, such as `| id | INTEGER PK | |`. A natural key
+spanning several columns, such as `(date, currency)`, is a `- UNIQUE (date, currency)` bullet
+beside the `PK`, never a second `PK`. An operation reaches a row by its natural key through
+`| Match |`, so declaring the `UNIQUE` is what makes `get`, `update`, `upsert`, or `delete` by
+`(date, currency)` reach exactly one row. A table with no `PK` column, or with two, fails the plan.
 
 A constraint spanning more than one column cannot live in a per-column row, so it is declared as a
 bullet directly under that table's field table, one per line:

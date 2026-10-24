@@ -64,9 +64,11 @@ class Table:
 class Operation:
     """One declared access pattern, reduced to what executing it requires.
 
-    ``inputs`` are the parameters the caller supplies; for ``get``, ``list``, and ``delete`` they
-    are the predicate, and for ``create`` and ``update`` they are the values written. ``row`` is
-    the dataclass a read, a create, an update, or a delete returns, and ``columns`` are its fields.
+    ``inputs`` are the parameters the caller supplies. ``match`` is the equality predicate of a
+    ``get``, ``update``, ``upsert``, or ``delete``, every field of it required; a ``list`` filters
+    on whichever inputs are supplied, and the inputs of a ``create``, ``update``, or ``upsert``
+    outside ``match`` are the values written. ``row`` is the dataclass the operation returns, and
+    ``columns`` are its fields; an operation with no ``row`` returns a count.
     """
 
     identifier: str
@@ -75,7 +77,7 @@ class Operation:
     inputs: tuple[str, ...]
     row: type | None = None
     columns: tuple[str, ...] = ()
-    key: str | None = None
+    match: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -154,6 +156,22 @@ class Driver:
         if predicate:
             statement += f" WHERE {self._predicate(predicate, len(columns))}"
         return statement
+
+    def upsert(self, table: str, columns: Sequence[str], match: Sequence[str]) -> str:
+        """Insert a row, or replace the Set columns of the row ``match`` identifies.
+
+        ``match`` names a declared unique key, which is what ``ON CONFLICT`` requires; SQLite
+        and PostgreSQL spell the statement identically.
+        """
+        assigned = [name for name in columns if name not in match]
+        target = ", ".join(self.quote(name) for name in match)
+        action = (
+            "DO UPDATE SET "
+            + ", ".join(f"{self.quote(name)} = excluded.{self.quote(name)}" for name in assigned)
+            if assigned
+            else "DO NOTHING"
+        )
+        return f"{self.insert(table, columns, None)} ON CONFLICT ({target}) {action}"
 
     def delete(self, table: str, predicate: Sequence[str]) -> str:
         statement = f"DELETE FROM {self.quote(table)}"
@@ -269,9 +287,9 @@ class Database:
             )
         if operation not in self._schema.operations:
             raise UnknownOperation(f"{operation.identifier} is not a declared operation")
-        key = operation.key or self._primary_key(operation.table)
-        if operation.verb in ("get", "update", "delete") and key in operation.inputs and key not in arguments:
-            raise PersistenceError(f"{operation.identifier} requires key {key}")
+        missing = [name for name in self._match(operation) if name not in arguments]
+        if missing:
+            raise PersistenceError(f"{operation.identifier} requires {', '.join(missing)}")
         if operation.verb == "delete" and not arguments:
             raise PersistenceError(f"{operation.identifier} requires a delete predicate")
         names = [name for name in operation.inputs if name in arguments]
@@ -312,6 +330,7 @@ class Database:
     ) -> Any:
         verb = operation.verb
         table = operation.table
+        match = self._match(operation)
         if verb in ("get", "list"):
             columns = operation.columns or self._columns(table)
             cursor.execute(self._driver.select(table, columns, names), values)
@@ -319,7 +338,7 @@ class Database:
             built = [self._build(operation, columns, row) for row in rows]
             return built if verb == "list" else (built[0] if built else None)
         if verb == "create":
-            key = operation.key or self._primary_key(table)
+            key = self._primary_key(table)
             cursor.execute(self._driver.insert(table, names, key), values)
             identity = self._driver.inserted_key(cursor)
             if operation.row is None:
@@ -334,21 +353,29 @@ class Database:
             cursor.execute(self._driver.select(table, columns, [key]), [identity])
             return self._build(operation, columns, cursor.fetchone())
         if verb == "update":
-            key = operation.key or self._primary_key(table)
-            if key is None or key not in names:
-                raise PersistenceError(
-                    f"{operation.identifier} updates {table} without supplying {key or 'a key'}"
-                )
-            assigned = [name for name in names if name != key]
-            ordered = [values[names.index(name)] for name in assigned] + [values[names.index(key)]]
-            cursor.execute(self._driver.update(table, assigned, [key]), ordered)
+            if not match:
+                raise PersistenceError(f"{operation.identifier} updates {table} without a match")
+            assigned = [name for name in names if name not in match]
+            if not assigned:
+                raise PersistenceError(f"{operation.identifier} supplies no column to set")
+            keys = [values[names.index(name)] for name in match]
+            ordered = [values[names.index(name)] for name in assigned] + keys
+            cursor.execute(self._driver.update(table, assigned, match), ordered)
             if operation.row is None:
                 return cursor.rowcount
             if not cursor.rowcount:
                 return None
-            # The declared Output row, read back by key so unassigned columns are included.
+            # The declared Output row, read back by its match so unassigned columns are included.
             columns = operation.columns or self._columns(table)
-            cursor.execute(self._driver.select(table, columns, [key]), [values[names.index(key)]])
+            cursor.execute(self._driver.select(table, columns, match), keys)
+            return self._build(operation, columns, cursor.fetchone())
+        if verb == "upsert":
+            cursor.execute(self._driver.upsert(table, names, match), values)
+            if operation.row is None:
+                return cursor.rowcount
+            columns = operation.columns or self._columns(table)
+            keys = [values[names.index(name)] for name in match]
+            cursor.execute(self._driver.select(table, columns, match), keys)
             return self._build(operation, columns, cursor.fetchone())
         if verb == "delete":
             cursor.execute(self._driver.delete(table, names), values)
@@ -363,6 +390,15 @@ class Database:
             if declared.name == table:
                 return declared.columns
         raise PersistenceError(f"{table} is not a declared table")
+
+    def _match(self, operation: Operation) -> tuple[str, ...]:
+        """The required equality predicate; a schema generated without one keys by the PK."""
+        if operation.match or operation.verb not in ("get", "update", "delete"):
+            return operation.match
+        key = self._primary_key(operation.table)
+        if key and (operation.verb == "update" or key in operation.inputs):
+            return (key,)
+        return ()
 
     def _primary_key(self, table: str) -> str | None:
         for declared in self._schema.tables:

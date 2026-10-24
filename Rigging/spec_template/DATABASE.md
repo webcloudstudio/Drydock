@@ -40,13 +40,21 @@
 <!-- Plan appends new patterns as it authors Blueprints; it never rewrites held ones. -->
 
 <!-- Repository operation names one declared table and one verb as `<table>.<verb>`, lowercase: -->
-<!-- `settings.get`. The verb is get, list, create, update, or delete, and no other. One pattern -->
-<!-- declares one operation, because it carries one Input and one Output; give each operation its -->
-<!-- own `### <FEATURE-DOMAIN-NNN>` section. It is the only place the declaration says which -->
-<!-- table a pattern reaches, so the form is checked, not advisory. -->
-<!-- Output declares the row the verb returns, never a wrapper: `get`, `create`, and `update` -->
-<!-- return one row and `list` returns a list of rows, so every Output field of those four is a -->
-<!-- column of the table. A `delete` Output names only its Input key fields. -->
+<!-- `settings.get`. The verb is get, list, create, update, upsert, or delete, and no other. One -->
+<!-- pattern declares one operation, because it carries one Input and one Output; give each -->
+<!-- operation its own `### <FEATURE-DOMAIN-NNN>` section. A table grants each verb once. It is -->
+<!-- the only place the declaration says which table a pattern reaches, so the form is checked. -->
+<!-- An optional `| Match | `a`, `b` |` row names the Input fields that select the rows: equality, -->
+<!-- joined with AND, every field required. A Match covering the PK or a declared UNIQUE reaches -->
+<!-- one row; any other reaches many. get: a unique key, Input = Match. list: no Match; each -->
+<!-- Input field is an optional equality filter. create: no Match. update: Match defaults to the -->
+<!-- PK; the other Input fields are set. upsert: Match is exactly one unique key; inserts the row -->
+<!-- or replaces its other Input columns; Input carries every NOT NULL column without a DEFAULT. -->
+<!-- delete: Input = Match. -->
+<!-- Output declares the row the verb returns, never a wrapper: `get`, `create`, `update`, and -->
+<!-- `upsert` return one row and `list` returns a list of rows, so every Output field of those is -->
+<!-- a column of the table. A `delete` Output names only its Match fields. An update or delete -->
+<!-- that reaches many rows returns a count and declares its Output with no fields. -->
 <!-- Every table in `## Schema` is reached by at least one pattern, and every pattern names a -->
 <!-- table `## Schema` declares. A table nothing reaches is storage no story can use; an -->
 <!-- operation on a table that is not declared builds a repository against nothing. Both fail -->
@@ -87,8 +95,8 @@ Output: Item
 <!-- cannot read is a constraint the built database would not have. Postgres enforces -->
 <!-- VARCHAR(<n>) and SQLite accepts the same declaration and ignores it, so one spelling serves -->
 <!-- both engines. A foreign key names a table and column this same file declares. -->
-<!-- Every table declares exactly one PK column, such as `id | INTEGER PK`; every get, update, -->
-<!-- and delete addresses a row by it. A natural key over several columns is a UNIQUE bullet. -->
+<!-- Every table declares exactly one PK column, such as `id | INTEGER PK`. A natural key over -->
+<!-- several columns is a UNIQUE bullet, and an operation reaches a row by it through Match. -->
 <!-- A constraint spanning several columns is a bullet under that table's field table, one per -->
 <!-- line: `- UNIQUE (a, b)` or `- INDEX (a, b)`, each over two or more declared columns. A -->
 <!-- single-column UNIQUE states UNIQUE in its own type cell instead. -->

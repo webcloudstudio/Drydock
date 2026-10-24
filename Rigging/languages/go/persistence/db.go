@@ -23,10 +23,11 @@ type Table struct {
 	Key     string
 }
 
-// Operation describes one declared repository method.
+// Operation describes one declared repository method. Match is the required equality
+// predicate of a get, update, upsert, or delete; an operation without Columns returns a count.
 type Operation struct {
-	ID, Table, Verb string
-	Inputs, Columns []string
+	ID, Table, Verb        string
+	Inputs, Columns, Match []string
 }
 
 // Schema holds generated declarations; callers do not construct SQL.
@@ -81,7 +82,7 @@ func Open(ctx context.Context, dsn string, schema Schema) (*Database, error) {
 		if table == nil {
 			return nil, fmt.Errorf("%s: undeclared table %s", op.ID, op.Table)
 		}
-		for _, name := range append(append([]string{}, op.Inputs...), op.Columns...) {
+		for _, name := range append(append(append([]string{}, op.Inputs...), op.Columns...), op.Match...) {
 			found := false
 			for _, column := range table.Columns {
 				if name == column {
@@ -93,7 +94,7 @@ func Open(ctx context.Context, dsn string, schema Schema) (*Database, error) {
 			}
 		}
 		switch op.Verb {
-		case "get", "list", "create", "update", "delete":
+		case "get", "list", "create", "update", "upsert", "delete":
 		default:
 			return nil, fmt.Errorf("%w: %s", ErrUnknownOperation, op.Verb)
 		}
@@ -243,13 +244,13 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 			return Result{}, fmt.Errorf("undeclared input %s", name)
 		}
 	}
-	if verb == "get" || verb == "update" || verb == "delete" {
-		for _, input := range op.Inputs {
-			if input == declared.Key {
-				if _, ok := arguments[input]; !ok {
-					return Result{}, fmt.Errorf("%s requires key %s", verb, input)
-				}
-			}
+	match := op.Match
+	if len(match) == 0 && verb == "update" && declared.Key != "" {
+		match = []string{declared.Key}
+	}
+	for _, name := range match {
+		if _, ok := arguments[name]; !ok {
+			return Result{}, fmt.Errorf("%s requires %s", verb, name)
 		}
 	}
 	if verb == "delete" && len(arguments) == 0 {
@@ -319,14 +320,17 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 		rows, err := db.selectRows(ctx, query, op.Columns, []any{id})
 		return Result{Rows: rows, ID: id}, err
 	case "update":
-		key, ok := arguments[declared.Key]
-		if declared.Key == "" || !ok {
-			return Result{}, errors.New("update requires primary key")
+		if len(match) == 0 {
+			return Result{}, errors.New("update requires a match")
+		}
+		keys := []any{}
+		for _, name := range match {
+			keys = append(keys, values[indexOf(names, name)])
 		}
 		assignments := []string{}
 		ordered := []any{}
 		for _, name := range names {
-			if name != declared.Key {
+			if indexOf(match, name) < 0 {
 				ordered = append(ordered, values[indexOf(names, name)])
 				assignments = append(assignments, quote(name)+" = "+db.placeholder(len(ordered)))
 			}
@@ -334,8 +338,8 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 		if len(assignments) == 0 {
 			return Result{}, errors.New("update requires at least one assigned column")
 		}
-		query := "UPDATE " + quote(table) + " SET " + strings.Join(assignments, ", ") + db.predicates([]string{declared.Key}, len(ordered))
-		result, err := db.executor().ExecContext(ctx, query, append(ordered, key)...)
+		query := "UPDATE " + quote(table) + " SET " + strings.Join(assignments, ", ") + db.predicates(match, len(ordered))
+		result, err := db.executor().ExecContext(ctx, query, append(ordered, keys...)...)
 		if err != nil {
 			return Result{}, err
 		}
@@ -343,9 +347,42 @@ func (db *Database) run(ctx context.Context, table, verb string, arguments map[s
 		if err != nil || count == 0 || len(op.Columns) == 0 {
 			return Result{Count: count}, err
 		}
-		// The declared Output row, read back by key so unassigned columns are included.
-		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates([]string{declared.Key}, 0)
-		rows, err := db.selectRows(ctx, query, op.Columns, []any{key})
+		// The declared Output row, read back by its match so unassigned columns are included.
+		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates(match, 0)
+		rows, err := db.selectRows(ctx, query, op.Columns, keys)
+		return Result{Rows: rows, Count: count}, err
+	case "upsert":
+		if len(match) == 0 {
+			return Result{}, errors.New("upsert requires a match")
+		}
+		marks := make([]string, len(names))
+		assignments := []string{}
+		for i, name := range names {
+			marks[i] = db.placeholder(i + 1)
+			if indexOf(match, name) < 0 {
+				assignments = append(assignments, quote(name)+" = excluded."+quote(name))
+			}
+		}
+		action := "DO NOTHING"
+		if len(assignments) > 0 {
+			action = "DO UPDATE SET " + strings.Join(assignments, ", ")
+		}
+		// ON CONFLICT targets the declared unique key the match names; one atomic statement.
+		query := "INSERT INTO " + quote(table) + " (" + quoted(names) + ") VALUES (" + strings.Join(marks, ", ") + ") ON CONFLICT (" + quoted(match) + ") " + action
+		result, err := db.executor().ExecContext(ctx, query, values...)
+		if err != nil {
+			return Result{}, err
+		}
+		count, err := result.RowsAffected()
+		if err != nil || len(op.Columns) == 0 {
+			return Result{Count: count}, err
+		}
+		keys := []any{}
+		for _, name := range match {
+			keys = append(keys, values[indexOf(names, name)])
+		}
+		query = "SELECT " + quoted(op.Columns) + " FROM " + quote(table) + db.predicates(match, 0)
+		rows, err := db.selectRows(ctx, query, op.Columns, keys)
 		return Result{Rows: rows, Count: count}, err
 	case "delete":
 		result, err := db.executor().ExecContext(ctx, "DELETE FROM "+quote(table)+db.predicates(names, 0), values...)

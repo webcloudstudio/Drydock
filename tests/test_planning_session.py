@@ -7347,6 +7347,11 @@ acceptance: yes
             .replace("settings.get", f"settings.{verb}")
             .replace("| Access | read |", f"| Access | {access} |")
         )
+        if verb == "update":
+            # An update matches the key and sets at least one other column.
+            patterns[-1] = patterns[-1].replace(
+                "| key | str | yes |\n", "| key | str | yes |\n| value | str | no |\n", 1
+            )
         citations.append(
             f"- `{identifier}` — {access}: {verb} setting - supplies: `key` - returns: `key`"
         )
