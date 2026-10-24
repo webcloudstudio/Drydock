@@ -266,6 +266,13 @@ A `delete` Output is built from its key, so each field is one of its Input field
 and `books.delete` Output `DeletedBook { id }`. Every list raised on an empty row and every
 delete returned a count.
 
+`2026-10-24` · **Every `Input:` and `Output:` names its DTO on the same line.** A bare label is
+refused by `_parse_access_pattern`, and so by `database_contract_defects`. One DTO name declared
+with two field sets is refused by `_row_classes` when `schema.py` is rendered, as the Go emitter
+already refused it. *Broken:* FxRates `20261024.070101` wrote bare `Output:` lines. The next line's
+table header became the name of all three patterns (`FieldType`), and `rates.delete`, whose Output
+is its key, raised on upsert's four-field class.
+
 `2026-10-23` · **Foundational stories carry no `covers:` or `accepts:`.** `parse_topology` drops
 both from a `type: foundational` story and from the story implementing `DATABASE.md`. The Feature
 or Screen that delivers the behavior owns the analyzed story and its Sea Trials. A stated

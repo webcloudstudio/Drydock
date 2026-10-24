@@ -264,6 +264,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `DATABASE.md` access patterns must name their DTO on the `Input:` and `Output:`
+  line. A bare label previously took the next line's `| Field | Type |` header as its name, so
+  every such pattern shared one generated row class, `FieldType`, and a `delete` whose Output
+  is its key raised during the deterministic DATABASE build step. The bare label is now a
+  contract defect that `drydock plan` refuses and repairs. The Python `schema.py` emitter
+  refuses one DTO name declared with two field sets, as the Go emitter already did.
+
 - 2026-10-24: Artifact-format LLM calls repair an exact final `=== END ARTIFACT` missing its
   trailing ` ===` when the envelope sequence is unambiguous, preserving bodies and original
   execution evidence. `logs/llm.jsonl` records `output_contract.repaired`; `drydock plan` prints

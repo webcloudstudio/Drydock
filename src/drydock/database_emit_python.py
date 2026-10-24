@@ -22,6 +22,7 @@ from drydock.database_contract import (
     schema_sql,
     sqlite_schema_tables,
 )
+from drydock.errors import SpecificationError
 from drydock.paths import get_database_dir, get_language_dir
 
 #: Copied verbatim into the build. ``schema.py`` is generated beside them.
@@ -99,7 +100,8 @@ def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, st
     """One dataclass per distinct output, keyed by pattern id.
 
     A create or update returns its declared Output row, as a read does, and a delete returns its
-    Output built from the key it was given. Two patterns naming the same DTO share one class. Field annotations are emitted in
+    Output built from the key it was given. Two patterns naming the same DTO share one class, and
+    a name declared with two different field sets is refused. Field annotations are emitted in
     Python as mapped by ``_python_type`` and never evaluated — ``from __future__ import annotations``
     keeps them strings — so a declared type outside the map is preserved rather than dropped.
     """
@@ -114,7 +116,11 @@ def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, st
             f"    {field.name}: {_python_type(field.type)}" for field in pattern.outputs
         )
         body = f"@dataclass(frozen=True)\nclass {name}:\n{annotations}\n"
-        emitted.setdefault(name, body)
+        if emitted.setdefault(name, body) != body:
+            raise SpecificationError(
+                f"Conflicting Python row class {name}: {pattern.identifier} declares different "
+                "Output fields than an earlier pattern of that name"
+            )
         by_pattern[pattern.identifier] = (name, emitted[name])
     return by_pattern
 

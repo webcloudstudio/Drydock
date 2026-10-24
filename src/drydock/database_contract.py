@@ -24,7 +24,10 @@ _OWNER_CELL_RE = re.compile(
     r"(?P<head>^\|\s*Owner\s*\|)(?P<owner>[^|\n]*)(?P<tail>\|)", re.MULTILINE
 )
 _TABLE_ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$")
-_INPUT_OUTPUT_RE = re.compile(r"^(Input|Output):\s*(.+?)\s*$", re.MULTILINE)
+#: ``[ \t]`` keeps the DTO name on its own line: a bare ``Output:`` read the next line's
+#: ``| Field | Type |`` header as its name, and every such pattern shared one class (FxRates
+#: ``20261024.070101``).
+_INPUT_OUTPUT_RE = re.compile(r"^(Input|Output):[ \t]*(.*?)[ \t]*$", re.MULTILINE)
 _INTERFACE_RE = re.compile(
     r"^\s*-\s+`(?P<id>[A-Z][A-Z0-9-]*-\d{3})`\s+—\s+"
     r"(?P<access>read-write|read|write)\s*:\s*.*?\s+-\s+supplies:\s*(?P<input>.*?)"
@@ -831,6 +834,14 @@ def _parse_access_pattern(match: re.Match[str], block: str, source: str) -> Acce
             f"{source}: {match.group(1)} requires Input and Output tables — after the "
             "`| Field | Value |` table, write `Input: <DtoName>` and `Output: <DtoName>`, each "
             "followed by a `| Field | Type |` table of the fields it carries"
+        )
+    unnamed = [label.title() for label, (name, _) in values.items() if not name]
+    if unnamed:
+        raise SpecificationError(
+            f"{source}: {match.group(1)} names no DTO after "
+            f"{' and '.join(f'`{label}:`' for label in sorted(unnamed))} — write "
+            "`Input: <DtoName>` and `Output: <DtoName>` on one line, each followed by a "
+            "`| Field | Type |` table of the fields it carries"
         )
     declared_match = tuple(
         item

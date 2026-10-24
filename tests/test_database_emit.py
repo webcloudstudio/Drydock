@@ -101,6 +101,15 @@ def test_row_fields_are_annotated_with_python_types_and_a_placeholder_is_no_inpu
     assert "verb='list',\n        inputs=()," in module
 
 
+def test_one_dto_name_with_two_field_sets_is_refused():
+    # FxRates 20261024.070101: the first pattern's class was reused for a delete whose Output
+    # held only its key, so the build raised on the missing fields.
+    declared = _DATABASE.replace("Output: TicketId", "Output: Ticket", 1)
+
+    with pytest.raises(SpecificationError, match="Conflicting Python row class Ticket"):
+        render_schema_module(declared)
+
+
 _TEXT_KEY_DATABASE = """# DATABASE: Ledger
 
 ## Access Patterns

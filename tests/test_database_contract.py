@@ -874,6 +874,19 @@ def test_a_delete_output_names_only_its_input_key():
     assert database_contract_defects(renamed.replace("| book_id |", "| id |")) == ()
 
 
+def test_a_bare_dto_label_is_refused_not_named_by_its_table_header():
+    # FxRates 20261024.070101: a bare `Output:` read the `| Field | Type |` header on the next
+    # line as its name, so every pattern shared class `FieldType` and delete raised on build.
+    bare = _DATABASE.replace("Output: Order\n", "Output:\n", 1)
+
+    with pytest.raises(SpecificationError, match=r"FEATURE-ORDER-001 names no DTO after `Output:`"):
+        parse_database_contract(bare)
+    defects = database_contract_defects(bare.replace("Input: FindOrder\n", "Input: \n"))
+    assert len(defects) == 2
+    assert "FEATURE-ORDER-002 names no DTO after `Input:`" in defects[1]
+    assert derive_missing_dtos(bare)[1] == ()
+
+
 def test_a_placeholder_input_row_declares_no_field():
     contract = parse_database_contract(_READING_LIST)
 
