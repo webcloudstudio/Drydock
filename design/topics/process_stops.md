@@ -4,10 +4,10 @@
 |---|---|
 | Version | 2026-10-24 V2 |
 | Route | process_stops |
-| Modules | `stop_condition.py`, `llm.py`, `cli.py`, `uat.py`, `scripts/uat_repair_loop.sh` |
+| Modules | `stop_condition.py`, `llm.py`, `cli.py`, `uat.py`, `quarterdeck_state.py`, `QuarterDeck/app.py`, `scripts/uat_repair_loop.sh` |
 | Prompts | — |
 | Tests | `tests/test_process_stop.py`, `tests/test_stop_condition.py` |
-| Governs | [build](../commands/build.md), [status](../commands/status.md), [uat](../commands/uat.md), [diagnose](../commands/diagnose.md), [plan](../commands/plan.md), [analyze](../commands/analyze.md) |
+| Governs | [run](../commands/run.md), [build](../commands/build.md), [status](../commands/status.md), [uat](../commands/uat.md), [diagnose](../commands/diagnose.md), [plan](../commands/plan.md), [analyze](../commands/analyze.md) |
 | Pending spec | 0 |
 | Pending impl | 0 |
 
@@ -55,13 +55,21 @@ is buried mid-transcript and the last line an operator reads is wrong.
 
 `2026-10-24` · **Every Target command checks `STOP_NOW.md` before it runs.** Every command
 naming a Target refuses while the file exists, deterministic sub-verbs (`build status`, `plan
-verify`) and `run` included; `status` (which reports the stop) and `uat` (whose runs use fresh
-workspaces, and whose sealed run stops are evidence) are exempt. The refusal prints `drydock
+verify`) included; `status` (which reports the stop), `run` (whose Commander's Chair shows it),
+and `uat` (whose runs use fresh workspaces, and whose sealed run stops are evidence) are exempt. The refusal prints `drydock
 <command> refused: <Target> is stopped.`, the stop banner, the file's path and verbatim contents,
 and `rm '<path>'`. With a terminal on stdin and stdout the command then asks `Clear this stop and
 continue? [y/N]`; `y` deletes the file and proceeds. Otherwise it prints to stderr and exits `1`.
 Supersedes the `2026-10-22` LLM-only gate. Cost when broken: an unattended driver runs past a
 halt, or an operator cannot find the file to clear.
+
+`2026-10-24` · **A stopped Target's Commander's Chair is the stop.** When the QuarterDeck serves
+`/raw/commanders_chair?variant=html`, `quarterdeck_state.with_stop_view` replaces the Chair's
+`chair-overview` pane with `STOPPED: <Target> · <stage> · <declared>`, the reason, the recovery,
+the file's path and verbatim contents, and `rm '<path>'`; the other Chair tabs remain. It is
+applied when served and never written into `commanders_chair.html`, so clearing the stop restores
+the overview without a refresh. Cost when broken: the Commander reads a healthy overview of a
+Target every command refuses.
 
 `2026-10-24` · **`scripts/uat_repair_loop.sh` ends on a declared halt.** When the UAT log holds
 `: stopped at `, the loop prints `LOOP ABORTED`, the failure line, the run's `STOP_NOW.md`

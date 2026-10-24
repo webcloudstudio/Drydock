@@ -5184,9 +5184,10 @@ def _render_plan_deferred(result, *, target: str) -> str:
     return "\n".join(lines)
 
 
-# ``status`` is how a stop is read, and ``status --ready`` already exits 1 on one. ``uat`` drives
+# ``status`` is how a stop is read, and ``status --ready`` already exits 1 on one. ``run`` starts
+# the QuarterDeck, whose Commander's Chair shows the stop in place of its overview. ``uat`` drives
 # fresh run workspaces; a stop inside a sealed run is that run's evidence, never a gate.
-_STOP_GATE_EXEMPT = frozenset({"uat", "status"})
+_STOP_GATE_EXEMPT = frozenset({"uat", "status", "run"})
 
 
 def _stop_target_dir(args: argparse.Namespace) -> Path | None:
@@ -5212,7 +5213,7 @@ def _stop_target_dir(args: argparse.Namespace) -> Path | None:
 def _process_stop_gate(args: argparse.Namespace) -> bool:
     """Whether this invocation may run, given the Target's ``STOP_NOW.md``.
 
-    Every Target command except ``status`` and ``uat`` refuses while a halt is recorded. At a
+    Every Target command except ``status``, ``run``, and ``uat`` refuses while a halt is recorded. At a
     terminal the operator is shown the halt and may clear it; a script or a UAT child is refused,
     so an unattended loop stops instead of running past a declared halt.
     """

@@ -2525,3 +2525,61 @@ def test_language_change_clears_approval_and_invalid_draft_returns_errors(tmp_pa
     )
     assert result["ok"] and result["errors"]
     assert technology_stack.approved_on(tmp_path) is None
+
+
+_CHAIR = (
+    '<nav class="chair-tabs"></nav>\n'
+    '<main id="chair-overview" class="chair-pane"><p>overview</p></main>\n'
+    '<section id="chair-build" class="chair-pane live-pane" hidden></section>\n'
+)
+
+
+def test_a_stopped_target_chair_shows_the_stop_in_place_of_its_overview(tmp_path):
+    from drydock.quarterdeck_state import with_stop_view
+    from drydock.stop_condition import write_stop
+
+    target = tmp_path / "FxRates"
+    target.mkdir()
+    assert with_stop_view(_CHAIR, target) == _CHAIR
+    path = write_stop(target, "plan-repair", "criteria still cannot run", "Fix the criterion.")
+
+    html = with_stop_view(_CHAIR, target)
+
+    assert "<p>overview</p>" not in html
+    assert "STOPPED: FxRates · plan-repair" in html
+    assert "criteria still cannot run" in html and "Fix the criterion." in html
+    assert f"Contents of {path}" in html and "- stage: plan-repair" in html
+    assert f"rm '{path}'" in html
+    assert 'id="chair-build"' in html
+    assert with_stop_view(html, target) == html
+
+
+def test_the_served_chair_follows_the_stop_file(tmp_path, monkeypatch):
+    """The view is applied when served, so clearing the stop restores the overview unrefreshed."""
+    from drydock.stop_condition import clear_stop, write_stop
+
+    quarterdeck = _load_quarterdeck()
+    workspace = _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+    alpha = workspace / "targets" / "Alpha"
+    console = alpha / "QuarterDeck" / "console.yaml"
+    console.write_text(
+        console.read_text(encoding="utf-8").replace(
+            "type: markdown, path: pages/overview.md", "type: document, path_html: chair.html"
+        ),
+        encoding="utf-8",
+    )
+    quarterdeck.CONFIG, quarterdeck.CONFIG_ERROR = quarterdeck.load_config(
+        base_dir=quarterdeck.BASE_DIR,
+        project_root=quarterdeck.PROJECT_ROOT,
+        config_path=quarterdeck.CONFIG_PATH,
+    )
+    (alpha / "QuarterDeck" / "chair.html").write_text(_CHAIR, encoding="utf-8")
+
+    def served() -> str:
+        request = _RequestStub({"quarterdeck_target": "Alpha"})
+        return quarterdeck.raw_document("commanders_chair", "html", request).body.decode()
+
+    write_stop(alpha, "build", "provider rate limit")
+    assert "STOPPED: Alpha · build" in served()
+    clear_stop(alpha)
+    assert "<p>overview</p>" in served()

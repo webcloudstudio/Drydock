@@ -194,6 +194,51 @@ def _local_stamp(at: str) -> str:
         return at
 
 
+_OVERVIEW_RE = re.compile(r'<main id="chair-overview"[^>]*>.*?</main>', re.DOTALL)
+
+
+def with_stop_view(html: str, target_dir: Path) -> str:
+    """Replace the Chair overview with the Target's ``STOP_NOW.md`` when one is recorded.
+
+    Applied when the Chair is served, never baked into ``commanders_chair.html``: the file is
+    regenerated only by commands, so a baked view would outlive a cleared stop. The view carries
+    what a refused command prints — the halt, the file verbatim, and how to remove it.
+    """
+    from drydock.stop_condition import read_stop, stop_path
+
+    stop = read_stop(target_dir)
+    if stop is None:
+        return html
+    path = stop_path(target_dir)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        text = f"(unreadable: {exc})"
+    heading = f"STOPPED: {target_dir.name} · {stop.stage}"
+    if stop.declared_at:
+        heading += f" · {stop.declared_at}"
+    recovery = f"<h3>Recovery</h3><pre>{escape(stop.recovery)}</pre>" if stop.recovery else ""
+    view = (
+        '<main id="chair-overview" class="chair-pane stop-view">'
+        '<section class="stop-panel" role="alert">'
+        f"<strong>{escape(heading)}</strong>"
+        f"<span>{escape(stop.reason)}</span>"
+        f"{recovery}"
+        "<span>Every Drydock command on this Target except <code>status</code>, "
+        "<code>run</code>, and <code>uat</code> refuses to run while this file exists.</span>"
+        "</section>"
+        '<section class="detail-section">'
+        f"<h2>Contents of {escape(str(path))}</h2>"
+        f'<pre class="stop-file">{escape(text)}</pre>'
+        "<h2>To continue</h2>"
+        "<p>Fix the cause above, then remove the stop:</p>"
+        f"<pre class=\"stop-file\">rm '{escape(str(path))}'</pre>"
+        "</section>"
+        "</main>"
+    )
+    return _OVERVIEW_RE.sub(lambda _match: view, html, count=1)
+
+
 def _with_error_panel(html: str, error) -> str:
     """Place the current deterministic recovery signal directly below the Chair title."""
     diagnosis = getattr(error, "diagnosis", "")

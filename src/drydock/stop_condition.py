@@ -16,7 +16,8 @@ and it names the stage, the reason, when the halt was declared, and how to recov
 Two writers declare a halt. ``drydock uat`` declares one when a stage it drives cannot go on, and
 every command declares one when its provider fails in a way another call cannot fix: a rate or
 usage limit, an expired login, a timeout, or an outage (``llm.fatal_stop``). Every Target command
-except ``status`` and ``uat`` checks for it before it runs (``cli._process_stop_gate``).
+except ``status``, ``run``, and ``uat`` checks for it before it runs (``cli._process_stop_gate``);
+the QuarterDeck's Commander's Chair shows it in place of its overview.
 """
 
 from __future__ import annotations
@@ -66,9 +67,9 @@ def write_stop(target_dir: Path, stage: str, reason: str, recovery: str = "") ->
         + (f"## Recovery\n\n{recovery.strip()}\n\n" if recovery.strip() else "")
         + "## Clearing\n\n"
         "Fix the cause, then delete this file, or answer `y` when an interactive Drydock command\n"
-        "offers to clear it. Every Drydock command on this Target except `status` and `uat`\n"
-        "refuses to run while it exists, so a run that continues past a halt cannot be produced\n"
-        "by accident.\n",
+        "offers to clear it. Every Drydock command on this Target except `status`, `run`, and\n"
+        "`uat` refuses to run while it exists, so a run that continues past a halt cannot be\n"
+        "produced by accident.\n",
         encoding="utf-8",
         newline="\n",
     )

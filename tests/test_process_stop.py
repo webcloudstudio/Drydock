@@ -158,7 +158,6 @@ def test_an_interactive_command_offers_to_clear_the_stop(
         ["build", "status", "TestTarget"],
         ["plan", "verify", "TestTarget"],
         ["plan", "repair", "TestTarget"],
-        ["run", "quarterdeck", "TestTarget"],
     ],
 )
 def test_every_target_command_refuses_while_stopped(
@@ -171,9 +170,15 @@ def test_every_target_command_refuses_while_stopped(
 
 
 @pytest.mark.parametrize(
-    "argv", [["status", "TestTarget"], ["status", "TestTarget", "--ready"], ["uat", "TestTarget"]]
+    "argv",
+    [
+        ["status", "TestTarget"],
+        ["status", "TestTarget", "--ready"],
+        ["uat", "TestTarget"],
+        ["run", "quarterdeck", "TestTarget"],
+    ],
 )
-def test_status_and_uat_ignore_the_stop(tmp_target_root, isolated_config, monkeypatch, argv):
+def test_status_run_and_uat_ignore_the_stop(tmp_target_root, isolated_config, monkeypatch, argv):
     target_dir = _target(tmp_target_root, monkeypatch)
     write_stop(target_dir, "plan-repair", "acceptance criteria still cannot run")
 

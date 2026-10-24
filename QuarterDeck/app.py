@@ -3568,7 +3568,13 @@ def raw_document(item_id: str, variant: str | None = Query(None), request: Reque
             path_value = item.get("path")
         if not path_value:
             raise HTTPException(status_code=404, detail="Item has no file path")
-        return FileResponse(resolve_path(path_value))
+        path = resolve_path(path_value)
+        if item_id == "commanders_chair" and variant == "html" and path.is_file():
+            from drydock.quarterdeck_state import with_stop_view
+
+            chair = path.read_text(encoding="utf-8")
+            return HTMLResponse(with_stop_view(chair, _current_project_root()))
+        return FileResponse(path)
 
 
 @app.get("/logo.png")

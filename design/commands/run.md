@@ -7,7 +7,7 @@
 | Modules | `quarterdeck_run.py`, `quarterdeck_state.py`, `standard_artifacts.py`, `manifest_edit.py`, `QuarterDeck/app.py` |
 | Prompts | — |
 | Tests | `tests/test_quarterdeck*.py`, `tests/test_manifest_edit.py` |
-| Topics | — |
+| Topics | [process_stops](../topics/process_stops.md) |
 | Pending spec | 0 |
 | Pending impl | 0 |
 
