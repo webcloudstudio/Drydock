@@ -5,6 +5,20 @@ from __future__ import annotations
 import ast
 
 _STORE_KEYS = {"DATABASE_PATH", "DATABASE_URL"}
+_PROCESS_LAUNCHERS = {
+    "subprocess.run",
+    "subprocess.Popen",
+    "subprocess.call",
+    "subprocess.check_call",
+    "subprocess.check_output",
+    "subprocess.getoutput",
+    "subprocess.getstatusoutput",
+    "os.system",
+    "os.popen",
+    "asyncio.create_subprocess_exec",
+    "asyncio.create_subprocess_shell",
+}
+_PROCESS_LAUNCHER_PREFIXES = ("os.exec", "os.spawn", "os.posix_spawn")
 
 
 def store_setup_defects(code: str) -> tuple[str, ...]:
@@ -85,4 +99,32 @@ def store_setup_defects(code: str) -> tuple[str, ...]:
                 found.add(
                     "persistence fixtures take their store from configuration; do not supply a criterion DSN"
                 )
+    # The harness rolls back one transaction per criterion process. A launched process opens its
+    # own connection, so it cannot see the criterion's setup, and the criterion cannot see it.
+    opens_store = any(
+        isinstance(node, (ast.Import, ast.ImportFrom))
+        and any(
+            module.split(".", 1)[0] == "persistence"
+            for module in (
+                [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else [item.name for item in node.names]
+            )
+        )
+        for node in ast.walk(tree)
+    )
+    launches = any(
+        isinstance(node, ast.Call)
+        and (
+            (called := name(node.func)) in _PROCESS_LAUNCHERS
+            or called.startswith(_PROCESS_LAUNCHER_PREFIXES)
+        )
+        for node in ast.walk(tree)
+    )
+    if opens_store and launches:
+        found.add(
+            "criterion launches a process and opens the store; a launched process cannot see the "
+            "criterion's rolled-back transaction, so exercise stored behavior in-process through "
+            "`web_client()` or `cli_runner()`, or drop the store setup"
+        )
     return tuple(sorted(found))

@@ -111,15 +111,16 @@ def db_session():
 ```
 
 `db_session()` opens the configured application store (DATABASE_URL, else DATABASE_PATH,
-else data/app.db) and starts a rollback transaction. Schema is provisioned only at the DATABASE
-step. Pass the yielded database into the feature; setup, action, and assertions share that
-connection. The fixture always rolls back, including on assertion failure; rollback errors fail
-the criterion. It never creates a temporary database or applies schema. Default application
-operations remain autocommitted. `committed_session()` (Go: `OpenCommittedSession(ctx, "")`)
-opens that same store with autocommit and closes the connection; the criterion owns business
-cleanup. HTTP, subprocess, multi-connection, and durability checks use
-committed operations with criterion-owned identifiers and idempotent recovery/cleanup through
-supported interfaces; never reset the database or delete unrelated records.
+else data/app.db). Schema is provisioned only at the DATABASE step. Pass the yielded database into
+the feature. Under the acceptance harness, every database the criterion's process opens, including
+this fixture, the application behind `web_client()`, and commands run through `cli_runner()`, joins
+one transaction that the harness rolls back when the criterion ends, pass or fail. Leaving the
+`with` block rolls nothing back, so a later request still sees the setup. Outside the harness (the
+project's pytest suite) the fixture starts its own transaction and rolls it back on exit. It never
+creates a temporary database or applies schema. `committed_session()` opens the same store with
+autocommit for project tests that need committed state, and joins the harness transaction under
+acceptance. A process the criterion launches cannot see that transaction and must not depend on
+its rows. Never reset the database or delete unrelated records.
 
 ---
 

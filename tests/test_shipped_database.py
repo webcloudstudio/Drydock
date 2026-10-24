@@ -311,6 +311,56 @@ def test_rollback_session_refuses_operations_on_another_thread(database):
     assert errors and "owning thread" in errors[0]
 
 
+def test_acceptance_transaction_joins_every_database_and_thread_then_rolls_back(tmp_path):
+    path = tmp_path / "app.db"
+    setup = db.Database(str(path), SCHEMA)
+    setup.execute_script(DDL)
+    setup.tickets.create(status="open", title="existing")
+    setup.close()
+    db.begin_acceptance_transaction()
+    try:
+        criterion = db.Database(str(path), SCHEMA)
+        with criterion.rollback_session() as session:
+            created = session.tickets.create(status="open", title="criterion")
+        # Leaving the fixture scope and closing roll nothing back: the harness owns both.
+        criterion.close()
+        seen = []
+
+        def request():
+            # The application opens its own Database, under another DSN spelling, on a request
+            # thread — and still reads the criterion's uncommitted setup.
+            application = db.Database(f"sqlite://{path}", SCHEMA)
+            seen.append(application.tickets.get(id=created).title)
+            application.close()
+
+        thread = threading.Thread(target=request)
+        thread.start()
+        thread.join()
+        assert seen == ["criterion"]
+    finally:
+        db.end_acceptance_transaction()
+    after = db.Database(str(path), SCHEMA)
+    assert [row.title for row in after.tickets.list(status="open")] == ["existing"]
+    after.close()
+
+
+def test_acceptance_transaction_refuses_schema_and_driver_escape(tmp_path):
+    path = tmp_path / "app.db"
+    setup = db.Database(str(path), SCHEMA)
+    setup.execute_script(DDL)
+    setup.close()
+    db.begin_acceptance_transaction()
+    try:
+        database = db.Database(str(path), SCHEMA)
+        for sql in ["COMMIT", "CREATE TABLE other (id INTEGER)"]:
+            with pytest.raises(db.PersistenceError, match="forbidden"):
+                database.execute_script(sql)
+        with pytest.raises(db.PersistenceError, match="acceptance transaction"):
+            _ = database.driver
+    finally:
+        db.end_acceptance_transaction()
+
+
 def test_failed_rollback_is_reported_and_connection_is_discarded(tmp_path):
     class BrokenRollbackCursor:
         def __init__(self, cursor):

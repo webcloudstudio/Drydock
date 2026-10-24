@@ -906,6 +906,45 @@ def test_acceptance_cannot_replace_the_configured_store(tmp_path, setup):
     assert any(d.kind == "acceptance-store" for d in result.defects)
 
 
+@pytest.mark.parametrize(
+    "launch",
+    [
+        'import subprocess\nsubprocess.run(["sh", "run.sh"])',
+        'from subprocess import check_output\ncheck_output(["fxrates", "serve"])',
+        'import os\nos.system("fxrates load data.csv")',
+    ],
+)
+def test_acceptance_cannot_launch_a_process_against_its_own_transaction(tmp_path, launch):
+    setup = (
+        "from persistence.testing import db_session\n"
+        "with db_session() as db:\n"
+        "    db.rates.upsert(date='2098-01-02', currency='ZZZ', rate='1.5')\n"
+    )
+    target = _target(
+        tmp_path,
+        **{"FEATURE-Test.md": _RUNNABLE.replace("import json", setup + launch + "\nimport json")},
+    )
+    result = verify("Test", target)
+    assert any(
+        d.kind == "acceptance-store" and "launches a process" in d.detail for d in result.defects
+    )
+
+
+def test_a_launched_process_without_the_store_is_not_a_store_defect():
+    from drydock.acceptance_store import store_setup_defects
+
+    assert (
+        store_setup_defects('import subprocess\nsubprocess.run(["sh", "sources/run.sh"])\n') == ()
+    )
+    assert (
+        store_setup_defects(
+            "from persistence.testing import db_session\nfrom app_server.testing import web_client\n"
+            "with db_session() as db:\n    pass\nweb_client().get('/rates/latest')\n"
+        )
+        == ()
+    )
+
+
 def _go_criterion(body: str) -> str:
     return (
         "# FEATURE: Go CLI\n\n## Programmatic Acceptance\n\n=== AC usage ===\n"

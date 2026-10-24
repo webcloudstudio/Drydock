@@ -21,19 +21,23 @@ and measured something; everything else is reported, not charged.
 
 ### Rules
 
-`2026-10-22` · **Acceptance uses the provisioned application store.** The DATABASE step emits
-runtime catalog/count probes, applies schema, verifies declared columns, keys, constraints and
-indexes, and records `evidence/persistence-verification.json`. Every story, the persistence
-story included, carries at least one criterion; the probes do not stand in for one. Later acceptance runs verify without
-applying DDL and refuse a missing or incompatible store. Python `db_session()` and Go
-`OpenSession(ctx, dsn)` use one explicit rollback transaction on the configured store; ordinary
-application operations retain autocommit. Same-connection feature code receives the yielded
-store; no schema/commit/connection-lifetime escape is permitted. Expected operation failures use
-savepoints so PostgreSQL can continue inside the criterion. Multi-connection and durability
-criteria use committed, owned records with idempotent setup and checked cleanup;
-`committed_session()` / `OpenCommittedSession` expose the configured store with normal autocommit. Plan rejects
-recognized DSN mutations and schema calls. Cost when broken: criteria test an unprovisioned store,
-leave shared residue, or claim durability they never tested.
+`2026-10-24` · **The acceptance harness owns one rollback transaction per criterion.** The
+DATABASE step emits runtime catalog/count probes, applies schema, verifies declared columns, keys,
+constraints and indexes, and records `evidence/persistence-verification.json`. Later acceptance
+runs verify without applying DDL and refuse a missing or incompatible store. `acceptance.py` sets
+`DRYDOCK_ACCEPTANCE_TRANSACTION=1`. The shipped runner removes it from the environment, calls
+`persistence.db.begin_acceptance_transaction()` before the criterion, and
+`end_acceptance_transaction()` after it. Every `Database` the process opens then shares one pinned
+connection per store (keyed by resolved path or DSN) inside `BEGIN`, serialized by a lock across
+request threads, with each operation in a savepoint. `close()` and leaving `rollback_session()` are
+no-ops, and driver access and schema SQL are refused. A rollback failure fails the criterion. A
+crash commits nothing. Outside the harness (project pytest suites), `db_session()` rolls back its
+own scope and `committed_session()` autocommits. Plan rejects recognized DSN mutations, schema
+calls, and a criterion that both imports `persistence` and launches a process (`subprocess`,
+`os.system`/`popen`/`exec*`/`spawn*`, `asyncio` subprocess). Go keeps `OpenSession(ctx, dsn)`
+rollback scopes and owned committed records. Cost when broken: setup rolled back before the request
+it seeds (FxRates `20261024.051856`: six HTTP criteria 404 against a correct product), shared
+residue, or criteria testing an unprovisioned store.
 
 
 `2026-10-19` · Native Go statuses survive the outer executor. Skip, not-run and unavailable are UNVERIFIED; compilation errors and native failures remain failures with distinct error text. The outer process group timeout terminates descendants. Breaking this rule counts a skipped test as proof.
@@ -142,7 +146,11 @@ file-exists stubs), and rejects a plan where no story carries it. Deferred becau
 
 ## Open Actions
 
--
+- `2026-10-24` · Go criteria are not under the harness transaction: `drydock_go` runs native tests
+  in a separate process, so Go keeps `OpenSession` scopes and owned committed records. Decide
+  whether Go gets an equivalent harness-owned transaction.
+- `2026-10-24` · Re-run `drydock rigging compact` for `sqlite.md`, `postgres.md` and
+  `persistence.md`; their compacts are stale and builds fall back to the full files.
 
 ## Working Notes
 

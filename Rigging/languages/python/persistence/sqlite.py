@@ -37,20 +37,42 @@ class SqliteDriver(Driver):
     def __init__(self, dsn: str) -> None:
         self._path = _path_from(dsn)
         self._local = threading.local()
+        self._pinned: sqlite3.Connection | None = None
 
     def connect(self) -> sqlite3.Connection:
+        if self._pinned is not None:
+            return self._pinned
         connection = getattr(self._local, "connection", None)
         if connection is None:
-            if self._path != ":memory:":
-                Path(self._path).parent.mkdir(parents=True, exist_ok=True)
-            # Autocommit by default; an explicit BEGIN suspends it until ROLLBACK.
-            connection = sqlite3.connect(self._path, isolation_level=None)
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute("PRAGMA foreign_keys=ON")
+            connection = self._open()
             self._local.connection = connection
         return connection
 
+    def pin(self) -> sqlite3.Connection:
+        # Shared across threads on purpose; ``Database`` serializes every operation on it.
+        if self._pinned is None:
+            self._pinned = self._open(check_same_thread=False)
+        return self._pinned
+
+    def identity(self) -> str:
+        return self._path if self._path == ":memory:" else str(Path(self._path).resolve())
+
+    def _open(self, *, check_same_thread: bool = True) -> sqlite3.Connection:
+        if self._path != ":memory:":
+            Path(self._path).parent.mkdir(parents=True, exist_ok=True)
+        # Autocommit by default; an explicit BEGIN suspends it until ROLLBACK.
+        connection = sqlite3.connect(
+            self._path, isolation_level=None, check_same_thread=check_same_thread
+        )
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA foreign_keys=ON")
+        return connection
+
     def close(self) -> None:
+        if self._pinned is not None:
+            self._pinned.close()
+            self._pinned = None
+            return
         connection = getattr(self._local, "connection", None)
         if connection is not None:
             connection.close()

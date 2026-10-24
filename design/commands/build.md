@@ -42,14 +42,10 @@ runtime catalog/count probes, applies schema, verifies declared columns, keys, c
 indexes, and records `evidence/persistence-verification.json`; these probes are a precondition, and the persistence story verifies only on `DATABASE.md`'s own criteria. Later acceptance runs verify without
 applying DDL and refuse a missing or incompatible store. Verification starts once the DATABASE
 step has emitted `schema.sql` or `schema-verification.json`; a `persistence/` package alone, stood
-up by an earlier step, is not checked. Python `db_session()` and Go
-`OpenSession(ctx, dsn)` use one explicit rollback transaction on the configured store; ordinary
-application operations retain autocommit. Same-connection feature code receives the yielded
-store; no schema/commit/connection-lifetime escape is permitted. Expected operation failures use
-savepoints so PostgreSQL can continue inside the criterion. Multi-connection and durability
-criteria use committed, owned records with idempotent setup and checked cleanup. Plan rejects
-recognized DSN mutations and schema calls. Cost when broken: criteria test an unprovisioned store,
-leave shared residue, or claim durability they never tested.
+up by an earlier step, is not checked. Criterion isolation is one harness-owned rollback
+transaction per Python criterion (`2026-10-24`); see
+[acceptance_criteria](../topics/acceptance_criteria.md). Cost when broken: criteria test an
+unprovisioned store or leave shared residue.
 
 
 `2026-10-22` · **A DATABASE-only step is graded, not built.** When every story in a step

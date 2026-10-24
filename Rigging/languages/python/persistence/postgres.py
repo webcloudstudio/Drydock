@@ -40,17 +40,37 @@ class PostgresDriver(Driver):
     def __init__(self, dsn: str) -> None:
         self._dsn = dsn
         self._local = threading.local()
+        self._pinned: Any = None
 
     def connect(self) -> Any:
+        if self._pinned is not None:
+            return self._pinned
         connection = getattr(self._local, "connection", None)
         if connection is None:
-            connection = _driver_module().connect(self._dsn)
-            # Autocommit by default; an explicit BEGIN suspends it until ROLLBACK.
-            connection.autocommit = True
+            connection = self._open()
             self._local.connection = connection
         return connection
 
+    def pin(self) -> Any:
+        # Shared across threads on purpose; ``Database`` serializes every operation on it.
+        if self._pinned is None:
+            self._pinned = self._open()
+        return self._pinned
+
+    def identity(self) -> str:
+        return self._dsn
+
+    def _open(self) -> Any:
+        connection = _driver_module().connect(self._dsn)
+        # Autocommit by default; an explicit BEGIN suspends it until ROLLBACK.
+        connection.autocommit = True
+        return connection
+
     def close(self) -> None:
+        if self._pinned is not None:
+            self._pinned.close()
+            self._pinned = None
+            return
         connection = getattr(self._local, "connection", None)
         if connection is not None:
             connection.close()

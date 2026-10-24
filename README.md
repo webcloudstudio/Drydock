@@ -382,13 +382,13 @@ nonnegative row count, and declared columns, constraints and indexes pass catalo
 Subsequent acceptance runs verify that store without recreating it. Missing or incompatible schema
 fails the build with a persistence diagnostic; rebuild the DATABASE step after correcting its cause.
 
-Application operations retain autocommit. Python database criteria use
-`with persistence.testing.db_session() as db:`; Go criteria use `OpenSession(ctx, "")` and check
-the deferred cleanup error. These fixtures use the configured store, share one connection with
-feature operations, and roll back on success or failure. They never provision temporary stores.
-For HTTP, subprocess and durability criteria, `committed_session()` (Go:
-`OpenCommittedSession`) supplies the configured store with autocommit; the criteria own record
-cleanup. These criteria require committed, criterion-owned records with
-idempotent recovery and checked cleanup; rollback does not cover other connections or external
-side effects. `drydock plan verify` rejects recognized DSN overrides and schema application in
-criteria. `VERIFICATION.md` is an accepted standard release-gate Blueprint filename.
+Application operations retain autocommit. The acceptance harness owns isolation: it begins one
+transaction before each Python criterion and rolls it back when the criterion ends, pass or fail.
+Every database the criterion's process opens joins that transaction, including
+`persistence.testing.db_session()`, the application behind `web_client()`, and commands run
+through `cli_runner()`, so setup, behavior and readback see one another's writes and none
+persists. Criteria never commit or clean up, and assert relative to data already in the store. A
+process a criterion launches cannot see the transaction, so `drydock plan verify` rejects a
+criterion that both opens the store and launches a process. Go criteria use `OpenSession(ctx, "")`
+and check the deferred cleanup error. `drydock plan verify` also rejects recognized DSN overrides
+and schema application in criteria. `VERIFICATION.md` is an accepted standard release-gate Blueprint filename.

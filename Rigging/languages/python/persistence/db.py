@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import threading
 from typing import Any
 
@@ -38,6 +38,8 @@ __all__ = [
     "Table",
     "statements",
     "UnknownOperation",
+    "begin_acceptance_transaction",
+    "end_acceptance_transaction",
 ]
 
 VERBS = ("get", "list", "create", "update", "delete")
@@ -113,6 +115,14 @@ class Driver:
     returning = False
 
     def connect(self) -> Any:  # pragma: no cover - engine specific
+        raise NotImplementedError
+
+    def pin(self) -> Any:  # pragma: no cover - engine specific
+        """Serve one connection to every thread until ``close``. The acceptance harness's."""
+        raise NotImplementedError
+
+    def identity(self) -> str:  # pragma: no cover - engine specific
+        """Name the store, so two spellings of one DSN share one acceptance transaction."""
         raise NotImplementedError
 
     def close(self) -> None:  # pragma: no cover - engine specific
@@ -208,6 +218,68 @@ class TableAccess:
         return lambda **arguments: self._database.run(operation, arguments)
 
 
+class _AcceptanceTransaction:
+    """One transaction per store, shared by every ``Database`` this process opens; never committed.
+
+    The acceptance harness begins it before a criterion runs and rolls it back when the criterion
+    ends. The criterion's fixture, the application behind an in-process HTTP client, and an
+    in-process command all join it, so setup, behavior and readback see one another's writes and
+    none of them persists. A crash loses nothing: an engine discards an uncommitted transaction.
+    """
+
+    def __init__(self) -> None:
+        self.lock = threading.RLock()
+        self._drivers: dict[str, Driver] = {}
+
+    def join(self, driver: Driver) -> Driver:
+        with self.lock:
+            shared = self._drivers.get(driver.identity())
+            if shared is None:
+                cursor = driver.pin().cursor()
+                try:
+                    cursor.execute("BEGIN")
+                finally:
+                    cursor.close()
+                shared = self._drivers[driver.identity()] = driver
+            return shared
+
+    def rollback(self) -> None:
+        failures = []
+        with self.lock:
+            for identity, driver in self._drivers.items():
+                try:
+                    cursor = driver.pin().cursor()
+                    try:
+                        cursor.execute("ROLLBACK")
+                    finally:
+                        cursor.close()
+                except Exception as exc:  # noqa: BLE001 - every store is still closed
+                    failures.append(f"{identity}: {exc}")
+                finally:
+                    driver.close()
+            self._drivers.clear()
+        if failures:
+            raise PersistenceError("acceptance rollback failed: " + "; ".join(failures))
+
+
+_harness: _AcceptanceTransaction | None = None
+
+
+def begin_acceptance_transaction() -> None:
+    """Join every store this process opens from now on to one transaction the harness owns."""
+    global _harness
+    if _harness is None:
+        _harness = _AcceptanceTransaction()
+
+
+def end_acceptance_transaction() -> None:
+    """Roll back the harness's transaction on every store it joined."""
+    global _harness
+    harness, _harness = _harness, None
+    if harness is not None:
+        harness.rollback()
+
+
 class Database:
     """One store, presented to callers as declared tables with declared methods.
 
@@ -218,18 +290,24 @@ class Database:
     def __init__(self, dsn: str, schema: Schema, *, driver: Driver | None = None) -> None:
         self._rollback_owner = None
         self._schema = schema
-        self._driver = driver if driver is not None else open_driver(dsn)
+        driver = driver if driver is not None else open_driver(dsn)
+        self._harness = _harness
+        self._driver = self._harness.join(driver) if self._harness is not None else driver
         grouped = schema.by_table()
         for table in schema.tables:
             setattr(self, table.name, TableAccess(table, grouped.get(table.name, ()), self))
 
     @property
     def driver(self) -> Driver:
+        if self._harness is not None:
+            raise PersistenceError("driver access is forbidden inside the acceptance transaction")
         if self._rollback_owner is not None:
             raise PersistenceError("driver access is forbidden inside a rollback session")
         return self._driver
 
     def close(self) -> None:
+        if self._harness is not None:
+            return  # the acceptance harness owns the shared connection
         if self._rollback_owner is not None:
             raise PersistenceError("the rollback session owns connection lifetime")
         self._driver.close()
@@ -239,8 +317,13 @@ class Database:
         """Use this connection for setup, behavior and assertions; always roll back.
 
         Normal calls remain autocommitted. No schema creation, nested transaction,
-        driver escape, or cross-thread operation is allowed in this scope.
+        driver escape, or cross-thread operation is allowed in this scope. Under the acceptance
+        harness the scope is the harness's transaction, rolled back when the criterion ends, so
+        leaving it rolls nothing back.
         """
+        if self._harness is not None:
+            yield self
+            return
         if self._rollback_owner is not None:
             raise PersistenceError("nested rollback session")
         connection = self._driver.connect()
@@ -270,7 +353,7 @@ class Database:
 
     def execute_script(self, sql: str) -> None:
         """Apply generated DDL. The schema is built once, at the DATABASE build step."""
-        if self._rollback_owner is not None:
+        if self._rollback_owner is not None or self._harness is not None:
             raise PersistenceError("schema and transaction SQL are forbidden in rollback sessions")
         cursor = self._open("schema")
         try:
@@ -296,21 +379,25 @@ class Database:
             raise PersistenceError(f"{operation.identifier} requires a delete predicate")
         names = [name for name in operation.inputs if name in arguments]
         values = [arguments[name] for name in names]
-        cursor = self._open(operation.identifier)
-        try:
-            if self._rollback_owner is not None:
-                cursor.execute("SAVEPOINT drydock_operation")
-            result = self._dispatch(operation, cursor, names, values)
-            if self._rollback_owner is not None:
-                cursor.execute("RELEASE SAVEPOINT drydock_operation")
-            return result
-        except Exception as exc:  # noqa: BLE001 - translated at the boundary on purpose
-            if self._rollback_owner is not None:
-                cursor.execute("ROLLBACK TO SAVEPOINT drydock_operation")
-                cursor.execute("RELEASE SAVEPOINT drydock_operation")
-            raise PersistenceError(f"{operation.identifier} failed: {exc}") from exc
-        finally:
-            cursor.close()
+        # The harness's one connection serves the criterion and the application's request
+        # threads alike, so an operation holds it for its whole statement and savepoint.
+        with self._harness.lock if self._harness is not None else nullcontext():
+            scoped = self._rollback_owner is not None or self._harness is not None
+            cursor = self._open(operation.identifier)
+            try:
+                if scoped:
+                    cursor.execute("SAVEPOINT drydock_operation")
+                result = self._dispatch(operation, cursor, names, values)
+                if scoped:
+                    cursor.execute("RELEASE SAVEPOINT drydock_operation")
+                return result
+            except Exception as exc:  # noqa: BLE001 - translated at the boundary on purpose
+                if scoped:
+                    cursor.execute("ROLLBACK TO SAVEPOINT drydock_operation")
+                    cursor.execute("RELEASE SAVEPOINT drydock_operation")
+                raise PersistenceError(f"{operation.identifier} failed: {exc}") from exc
+            finally:
+                cursor.close()
 
     def _open(self, action: str) -> Any:
         """Return a cursor, translating a refused or failed connection."""

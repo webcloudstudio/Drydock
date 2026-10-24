@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261022 V12
+version: 20261024 V13
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -151,19 +151,21 @@ not a patch or a diff.
 
 **Acceptance store lifecycle.** The DATABASE step provisions and verifies the configured store
 once. Criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary database, apply DDL,
-or assume an empty store. Database criteria use `with db_session() as db:` (Go:
-`OpenSession(ctx, "")` with checked deferred cleanup) and pass that same database into feature
-operations. Setup, behavior and assertions run inside one transaction; the shipped fixture always
-rolls it back. Application operations outside that scope remain autocommitted. Never commit,
-close the owned connection, or open another connection inside the rollback scope.
+or assume an empty store. The store may hold data before any criterion runs: assert on records the
+criterion created, or on a count read before setup (`after == before + 5`), never on an absolute
+table count.
 
-HTTP, CLI/subprocess, background-work and commit/restart criteria use committed behavior instead.
-Use `persistence.testing.committed_session()` (Go: `OpenCommittedSession(ctx, "")`) for
-setup/readback/cleanup on the configured store; this helper closes connections, not business records.
-Each owns a stable criterion-specific identifier, reconciles only its own residue before setup,
-asserts setup success, checks only owned records, and uses `try/finally` (Go: checked `defer`) for
-cleanup through supported product interfaces. Cleanup failure fails the criterion; retries must
-work even when prior cleanup never ran. Immutable ledger records remain identified or receive
-supported reversal entries; never delete history or reset a shared store. Include independent
-commit/reconnect durability coverage. Database acceptance must not be replaced by a project test
+The acceptance harness owns isolation. It begins one transaction before each Python criterion and
+rolls it back when the criterion ends, pass or fail. Every database the criterion's process opens
+joins it: `db_session()`, the application behind `web_client()`, and commands run through
+`cli_runner()`. Setup, behavior and readback therefore see one another's writes, and none persists;
+leaving a `with db_session() as db:` block rolls nothing back. Seed with `with db_session() as db:`
+and pass that database into feature operations. Never commit, clean up, or open a transaction.
+
+A criterion that launches a process (`subprocess`, a server on a port, a shell script) cannot see
+that transaction. It does not open the store and does not depend on rows it wrote; exercise stored
+behavior in-process instead. Go criteria use `OpenSession(ctx, "")` with checked deferred cleanup,
+which rolls back its own transaction. Go HTTP, CLI and restart criteria use
+`OpenCommittedSession(ctx, "")` with a criterion-owned identifier and checked `defer` cleanup
+through supported product interfaces. Database acceptance must not be replaced by a project test
 count: runtime catalog and row-count evidence proves provisioning, feature criteria prove behavior.

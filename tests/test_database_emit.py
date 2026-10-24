@@ -11,6 +11,7 @@ import pytest
 from drydock.database_apply import DEFAULT_DSN, apply_schema
 from drydock.database_emit import PACKAGE, render_schema_module, write_persistence_package
 from drydock.errors import SpecificationError
+from drydock.paths import get_language_dir
 
 _DATABASE = """# DATABASE: Marina
 
@@ -323,6 +324,21 @@ def _run_in_build(build_dir: Path, script: str, env: dict[str, str] | None = Non
     )
 
 
+def _run_criterion(build_dir: Path, tmp_path: Path, script: str):
+    """Run a criterion the way acceptance does: through the shipped runner, harness flag set."""
+    criterion = tmp_path / "criterion.py"
+    criterion.write_text(script, encoding="utf-8")
+    runner = get_language_dir("python") / "acceptance" / "runner.py"
+    return subprocess.run(
+        [sys.executable, str(runner), str(criterion)],
+        cwd=build_dir,
+        env={"PYTHONPATH": str(build_dir), "DRYDOCK_ACCEPTANCE_TRANSACTION": "1"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 def test_the_generated_db_session_uses_the_provisioned_store(tmp_path: Path):
     build_dir = _emitted_build(tmp_path)
 
@@ -605,5 +621,82 @@ def test_committed_fixture_persists_across_connections_without_schema_setup(tmp_
         "    db.tickets.create(status='open', title='temporary')\n"
         "with committed_session() as db:\n"
         "    assert [r.title for r in db.tickets.list(status='open')] == ['durable']\n",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_harness_rollback_spans_the_whole_criterion(tmp_path, monkeypatch):
+    """FxRates 20261024.051856: setup in ``db_session()`` must survive to a later request."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    result = _run_criterion(
+        build,
+        tmp_path,
+        "import threading\n"
+        "from pathlib import Path\n"
+        "from persistence import open_database\n"
+        "from persistence.testing import committed_session, db_session\n"
+        "with db_session() as db:\n"
+        "    row = db.tickets.create(status='open', title='seeded')\n"
+        "with committed_session() as db:\n"
+        "    db.tickets.create(status='open', title='committed')\n"
+        "seen = []\n"
+        "def request():\n"
+        "    app = open_database(str(Path('data/app.db').resolve()))\n"
+        "    seen.extend(r.title for r in app.tickets.list(status='open'))\n"
+        "    app.close()\n"
+        "thread = threading.Thread(target=request)\n"
+        "thread.start()\n"
+        "thread.join()\n"
+        "assert seen == ['seeded', 'committed']\n",
+    )
+    assert result.returncode == 0, result.stderr
+    check = _run_in_build(
+        build,
+        "from persistence import open_database\n"
+        "assert open_database('data/app.db').tickets.list(status='open') == []\n",
+    )
+    assert check.returncode == 0, check.stderr
+
+
+@pytest.mark.parametrize("ending", ["raise AssertionError('failed')", "os._exit(17)"])
+def test_harness_rolls_back_a_failed_or_killed_criterion(tmp_path, monkeypatch, ending):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    result = _run_criterion(
+        build,
+        tmp_path,
+        "import os\nfrom persistence.testing import db_session\n"
+        "with db_session() as db:\n"
+        "    db.tickets.create(status='open', title='owned')\n"
+        f"{ending}\n",
+    )
+    assert result.returncode != 0
+    check = _run_in_build(
+        build,
+        "from persistence import open_database\n"
+        "assert open_database('data/app.db').tickets.list(status='open') == []\n",
+    )
+    assert check.returncode == 0, check.stderr
+
+
+def test_a_launched_process_does_not_inherit_the_harness(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    result = _run_criterion(
+        build,
+        tmp_path,
+        "import os, subprocess, sys\n"
+        "assert 'DRYDOCK_ACCEPTANCE_TRANSACTION' not in os.environ\n"
+        "child = subprocess.run([sys.executable, '-c', 'import os; "
+        'print(os.environ.get("DRYDOCK_ACCEPTANCE_TRANSACTION", "absent"))\'],\n'
+        "    capture_output=True, text=True)\n"
+        "assert child.stdout.strip() == 'absent'\n",
     )
     assert result.returncode == 0, result.stderr

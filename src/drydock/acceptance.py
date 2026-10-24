@@ -2483,6 +2483,8 @@ def run_programmatic_acceptance(
         "DRYDOCK_TARGET_DIR": str(target_dir),
         "DRYDOCK_BLUEPRINT_DIR": str(blueprint_dir),
         "PYTHONPATH": pythonpath,
+        # The runner owns each criterion's store transaction and rolls it back at the end.
+        "DRYDOCK_ACCEPTANCE_TRANSACTION": "1",
     }
     from drydock.database_apply import apply_schema
 

@@ -126,6 +126,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-24: Acceptance isolation is owned by the harness, not the criterion. Each Python
+  Programmatic Acceptance criterion runs inside one store transaction that the acceptance runner
+  begins before the criterion and rolls back when it ends, pass or fail. Every `Database` the
+  criterion's process opens joins it, including `persistence.testing.db_session()`, the
+  application behind an in-process `web_client()`, and commands run through `cli_runner()`, so a
+  request made after a `with db_session()` block now sees its setup. Criteria no longer commit or
+  clean up, and `committed_session()` is for project test suites. Processes a criterion launches
+  do not inherit the transaction, and `drydock plan verify` reports an `acceptance-store` defect
+  for a criterion that both imports `persistence` and launches a process. Go criteria keep their
+  `OpenSession` rollback scopes.
+
 - 2026-10-23: `drydock plan` exits `0` when it writes a plan that `plan verify` rejects. The
   Manifest stays `draft` with sub-state `unbuildable`, so Build still refuses it; `ERRORS.md`
   records the defects, and the command prints the report and

@@ -19,7 +19,10 @@ to import this package.
 from __future__ import annotations
 
 import ast
+import importlib
+import importlib.util
 import linecache
+import os
 import re
 import runpy
 import sys
@@ -43,6 +46,10 @@ VALUE_REPR_LIMIT = 400
 #: Names quoted from one failing line. A line with more operands than this is not a line whose
 #: values a reader is going to read.
 VALUE_NAME_LIMIT = 8
+#: Set by Drydock when it runs a criterion. The harness, not the criterion, owns the store
+#: transaction: every database the criterion's process opens joins one transaction that is rolled
+#: back when the criterion ends, pass or fail.
+TRANSACTION_FLAG = "DRYDOCK_ACCEPTANCE_TRANSACTION"
 
 
 def _statement_names(path: str, lineno: int) -> list[str]:
@@ -262,7 +269,48 @@ def _criterion_traceback(exc: BaseException, path: str):
     return tb
 
 
+def _begin_store_transaction() -> ModuleType | None:
+    """Begin the harness transaction when the build ships the persistence package.
+
+    The flag is removed before the criterion runs, so a process the criterion launches commits
+    normally against whatever store it names; it cannot join a transaction in another process.
+    """
+    if os.environ.pop(TRANSACTION_FLAG, "") != "1":
+        return None
+    try:
+        if importlib.util.find_spec("persistence") is None:
+            return None
+        db = importlib.import_module("persistence.db")
+    except Exception:  # noqa: BLE001 — a criterion importing a broken package fails on its own
+        return None
+    begin = getattr(db, "begin_acceptance_transaction", None)
+    if begin is None:
+        return None
+    begin()
+    return db
+
+
+def _end_store_transaction(db: ModuleType | None) -> str | None:
+    if db is None:
+        return None
+    try:
+        db.end_acceptance_transaction()
+    except Exception as exc:  # noqa: BLE001 — reported as the criterion's failure
+        return str(exc)
+    return None
+
+
 def main(argv: list[str]) -> int:
+    db = _begin_store_transaction()
+    code = _run(argv)
+    failure = _end_store_transaction(db)
+    if failure:
+        print(failure, file=sys.stderr)
+        return code or 1
+    return code
+
+
+def _run(argv: list[str]) -> int:
     path = argv[1]
     sys.argv = argv[1:]
     try:
