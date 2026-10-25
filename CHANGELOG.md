@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-24: UAT build-status snapshots color verified and built rows green with check marks,
+  question-blocked rows yellow with a warning mark, and failed or blocked rows red with a fail
+  mark. Color remains terminal-only; recorded child stdout and stderr remain plain text.
+
 - 2026-10-24: `helpers/list_failed_uat_runs.sh` lists runs with exact `result.json` status
   `failed` without changing evidence. It accepts `--uat-root`, prints sorted paths to stdout,
   and sends the count and unreadable-receipt warnings to stderr.

@@ -279,10 +279,21 @@ class StepConsole:
             return
         if self._snapshot:
             if (
-                line.startswith(("Steps:", "Buildable now:", "BLOCKED:", "STOPPED:"))
-                or "[failed]" in line
+                line.startswith(("Steps:", "Buildable now:", "BLOCKED:", "STOPPED:", "Failed ("))
+                or "[failed]" in line.lower()
+                or any(
+                    marker in line
+                    for marker in (
+                        "[done]",
+                        "[built]",
+                        "[review]",
+                        "[pending]",
+                        "[QUESTIONS]",
+                        "[FAILED]",
+                    )
+                )
             ):
-                self._chunk(source, text)
+                self._chunk(source, self._paint_status_line(text))
             return
         if "plan" in self._label:
             if line and set(line) == {"="}:
@@ -316,6 +327,28 @@ class StepConsole:
                     self._plan.clear()
                 return
         self._chunk(source, text)
+
+    def _paint_status_line(self, text: str) -> str:
+        """Add terminal-only status marks to the compact build snapshot."""
+        line = text.lstrip()
+        indent = text[: len(text) - len(line)]
+        if line.startswith(("BLOCKED:", "STOPPED:", "Failed (")):
+            return indent + self._paint("✗ " + line, _RED)
+
+        replacements = (
+            ("[done]", "✓ done", _GREEN),
+            ("[built]", "✓ built", _GREEN),
+            ("[review]", "~ review", _BLUE),
+            ("[pending]", "· pending", _DIM),
+            ("[QUESTIONS]", "⚠ QUESTIONS", "\x1b[33m"),
+            ("[FAILED]", "✗ FAILED", _RED),
+            ("[failed]", "✗ failed", _RED),
+        )
+        for token, replacement, color in replacements:
+            if token in line:
+                rendered = line.replace(token, self._paint(replacement, color))
+                return indent + rendered
+        return text
 
     def _chunk(self, source: str, text: str) -> None:
         if self._quiet or not text:

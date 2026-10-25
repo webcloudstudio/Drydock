@@ -30,6 +30,14 @@ Three properties define done (UAT gate model, 2026-08-14):
 
 ## Details
 
+`2026-10-24` · Compact build-status snapshots mark verified and built rows with green checks,
+question-blocked rows with a yellow warning, and failed or blocked rows with red failure marks.
+The UAT console paints only its terminal presentation; child command evidence remains plain.
+When acceptance case totals improve between repair calls, the build repair loop treats that as
+forward progress and continues within the configured repair budget. It stops on two consecutive
+flat passes by default (`repair_stall_limit`), not on an unchanged aggregate criterion count when
+individual conformance totals are improving.
+
 `2026-10-24` · Live step headers use uppercase command/positional argv instead of internal
 step labels. The full invocation, preserving argument case and options, remains on the next
 line. Counts use the option-free command within each kit: the first occurrence has no suffix;
