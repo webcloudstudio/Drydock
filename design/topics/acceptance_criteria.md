@@ -24,6 +24,13 @@ and measured something; everything else is reported, not charged.
 
 ## Details
 
+`2026-10-24` · Build grades declared criteria after a successful provider call even when the
+agent reports failure with no file changes; verification-only steps may report SUCCESS without
+edits. Prepassed and governed attribution rules remain unchanged. Evidence distinguishes bypassed
+grading from failed assertions. Static exit checks follow a local helper's single directly
+returned runner tuple only when every caller asserts its exit, and reject an exit rebound before
+assertion. See the build and plan Memory Files for the supported helper boundary.
+
 `2026-10-24` · Staged corpus probes recognize section/selection options and options whose
 parsed values feed `re.compile`, rather than treating the first option as a selector.
 Program and corpus-path arguments remain in the probe's complete argv. A canonical,

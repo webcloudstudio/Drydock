@@ -331,6 +331,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: `drydock build` grades no-op verification steps even when the agent reports
+  failure without changing files; a green step no longer spends its repair budget on empty
+  feedback. The build prompt permits verification without edits, and attempt evidence distinguishes
+  bypassed acceptance from failed checks. Existing prepassed and governed verification rules
+  remain in force. `plan verify` accepts a helper's directly returned `cli_runner` result when
+  every caller asserts the exit, while rejecting discarded or rebound exits. These corrections
+  address CsvStat's false terminal verification failure and recovered helper-call rejections.
+
 - 2026-10-24: Staged corpus probes in `drydock plan` and `plan verify` resolve
   `os.path.abspath("literal-path")` against the criterion working directory without evaluating
   criterion code or requiring the candidate to exist. Corpus paths, filters, and assertions remain

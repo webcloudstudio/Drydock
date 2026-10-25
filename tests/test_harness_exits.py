@@ -198,6 +198,47 @@ for name in ("A2", "A3"):
     assert unchecked_calls(code) == []
 
 
+_RETURNED_RUNNER = """from drydock_go import cli_runner
+def run(path):
+    with context():
+        return cli_runner(path)
+code, out, err = run("first.csv")
+assert code == 0
+code, out, err = run("second.csv")
+assert code == 3
+"""
+
+
+def test_returned_runner_exit_is_checked_by_every_caller():
+    assert unchecked_calls(_RETURNED_RUNNER) == []
+
+
+@pytest.mark.parametrize(
+    "old,new",
+    [
+        ("assert code == 3", "pass"),
+        ('code, out, err = run("second.csv")', 'run("second.csv")'),
+        ("assert code == 0", "code = 0\nassert code == 0"),
+        ('code, out, err = run("first.csv")', 'other = run\ncode, out, err = run("first.csv")'),
+        ("def run(path):", "def run(path, run=None):"),
+        ("assert code == 3", "assert code == 3\nrun = other"),
+        ("assert code == 3", "assert code == 3\nfrom other import run"),
+        ("assert code == 3", "assert code == 3\ndef run():\n    pass"),
+        ("    with context():", "    if condition:"),
+        (
+            "        return cli_runner(path)",
+            '        cli_runner("setup")\n        return cli_runner(path)',
+        ),
+    ],
+)
+def test_returned_runner_does_not_hide_unchecked_or_ambiguous_calls(old, new):
+    assert unchecked_calls(_RETURNED_RUNNER.replace(old, new))
+
+
+def test_uncalled_returned_runner_stays_unchecked():
+    assert unchecked_calls(_RETURNED_RUNNER.split('code, out, err = run("first.csv")')[0]) == [4]
+
+
 def test_a_discarded_or_rebound_exit_is_unchecked():
     code = """from cli.testing import cli_runner
 
@@ -316,6 +357,19 @@ def test_plan_verify_accepts_asserted_dictionary_results(tmp_path):
         "# FEATURE: Reports\n\n## Programmatic Acceptance\n\n"
         f"=== AC empty ===\nIntent: Every report exits zero.\n\n{code}=== END AC empty ===\n",
         encoding="utf-8",
+    )
+    result = verify("Demo", target)
+    assert result.exit_code() == 0, result.defects
+
+
+def test_plan_verify_accepts_returned_runner_results(tmp_path):
+    target = tmp_path / "Demo"
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+    code = "import contextlib\n" + _RETURNED_RUNNER.replace("context()", "contextlib.nullcontext()")
+    (blueprint / "FEATURE-Verification.md").write_text(
+        "# FEATURE: Verification\n\n## Programmatic Acceptance\n\n"
+        f"=== AC exits ===\nIntent: Every exit is checked.\n\n{code}=== END AC exits ===\n"
     )
     result = verify("Demo", target)
     assert result.exit_code() == 0, result.defects

@@ -1417,6 +1417,8 @@ class AttemptRecord:
     #: still be overturned — by a governed gate, a regression sweep, a dependency gate — and
     #: without this the record reads as a bare contradiction: failed, all criteria green.
     reason: str = ""
+    #: Observations returned by grading; zero means grading was bypassed, not red checks.
+    observed_checks: int | None = None
 
 
 #: Calls a block may spend and still be considered correctly sized: the initial build plus three
@@ -2120,12 +2122,17 @@ def _write_group_evidence(
         lines.append("")
     # A single pass that stopped for a stated reason still owes the reader that reason — a
     # terminal verdict reached on call 1 is exactly the case an operator will question.
-    if len(attempts) > 1 or any(record.stop_reason for record in attempts):
+    if len(attempts) > 1 or any(
+        record.stop_reason or (record.total_checks and record.observed_checks == 0)
+        for record in attempts
+    ):
         lines.append("## Repair attempts")
         for record in attempts:
             label = "initial build" if record.index == 0 else f"repair {record.index}"
             checks_note = (
-                f"{record.passed_checks}/{record.total_checks} checks"
+                f"checks not executed ({record.total_checks} declared)"
+                if record.total_checks and record.observed_checks == 0
+                else f"{record.passed_checks}/{record.total_checks} checks"
                 if record.total_checks
                 else "no checks"
             )
@@ -2146,10 +2153,14 @@ def _write_group_evidence(
         lines.append("")
     if agent_report is not None and (agent_report[0] or agent_report[1]):
         agent_summary, agent_detail = agent_report
-        lines.append("## Agent self-report (advisory)")
+        authoritative = failure_summary.startswith(_AGENT_REPORTED_PREFIX)
+        lines.append("## Agent self-report" + ("" if authoritative else " (advisory)"))
         lines.append(
-            "The build agent declared a failure. This is advisory only; the programmatic "
-            "acceptance above is the authority for this block's outcome."
+            "The build agent's failure report determined this block's outcome; "
+            "no deterministic acceptance verdict superseded it."
+            if authoritative
+            else "The build agent declared a failure. This report is advisory; "
+            "Drydock's execution and deterministic checks determine the block's outcome."
         )
         if agent_summary:
             lines.append(f"- summary: {agent_summary}")
@@ -3270,7 +3281,7 @@ def build_target(
                 provider_error=_result_provider_error(result),
             )
             # A build agent's self-declared FAILURE is advisory, not authoritative. When the
-            # agent still wrote files and the block carries programmatic acceptance criteria,
+            # block carries programmatic acceptance criteria, including an unchanged tree,
             # the deterministic gate below decides the outcome and produces a measured result.
             # This stops an agent from failing a block whose own acceptance criteria it actually
             # met by editorializing about work that is not this block's definition of done. With
@@ -3278,12 +3289,7 @@ def build_target(
             # non-zero exit, empty/no output) are not prefixed ``agent-reported failure`` and
             # stay terminal.
             agent_report = None
-            if (
-                status == "failed"
-                and (error or "").startswith(_AGENT_REPORTED_PREFIX)
-                and changed_files
-                and checks
-            ):
+            if status == "failed" and (error or "").startswith(_AGENT_REPORTED_PREFIX) and checks:
                 agent_report = _parse_agent_failure(summary)
                 _emit(
                     on_text,
@@ -3292,14 +3298,13 @@ def build_target(
                 )
                 state, status, error, failure_detail = "", "", None, ""
             elif status == "failed" and (error or "").startswith(_AGENT_REPORTED_PREFIX):
-                # A surviving agent-reported failure (no checks, or no files) carries the note
+                # A surviving agent-reported failure without checks carries the note
                 # into the repair feedback so a rerun sees what the agent claimed went wrong.
                 agent_report = _parse_agent_failure(summary)
             # An empty file delta is measured by content hash, so a step that rewrites an
             # already-correct file with identical bytes reports zero changes while having done
             # exactly the right thing. Treating that as terminal skips acceptance entirely,
-            # which also discards the agent's ``AC_BROKEN`` report — the one signal that stops
-            # a repair loop against a criterion no implementation can satisfy. With checks to
+            # which also discards the agent's ``AC_BROKEN`` evidence. With checks to
             # measure, let the deterministic gate decide; with none, an agent that changed
             # nothing has genuinely produced nothing and the failure stands.
             if status == "failed" and error == _NO_FILES_WRITTEN and checks:
@@ -3876,6 +3881,7 @@ def build_target(
                     stop_reason=stop_reason,
                     executed_check_ids=executed_check_ids,
                     reason=_clip(error or "", 160) if status == "failed" else "",
+                    observed_checks=len(acceptance),
                 )
             )
             lineage.record(

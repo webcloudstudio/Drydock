@@ -25,6 +25,13 @@ written.
 
 ## Details
 
+`2026-10-24` · `plan verify` recognizes a module-local, undecorated helper that directly
+returns one `cli_runner` tuple, optionally inside `with`, when every caller asserts its exit.
+Branching helpers, extra runner calls, escaped/rebound names, and unchecked callers retain
+`unchecked-call`. Rebinding the returned exit before its assertion also retains the defect.
+The analysis reuses the existing assertion checker without executing criterion code. This
+extends `1fd07d0` for CsvStat `20261025.001433`, whose fifteen valid helper calls required repair.
+
 `2026-10-24` · Staged corpus probes recognize section/selection options and options whose
 parsed values feed `re.compile`, rather than treating the first option as a selector.
 Program and corpus-path arguments remain in the probe's complete argv. A canonical,

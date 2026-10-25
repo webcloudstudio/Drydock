@@ -22,6 +22,7 @@ expects the criterion's value: a second load of the same file is a duplicate.
 from __future__ import annotations
 
 import ast
+import copy
 import csv
 import re
 import shlex
@@ -383,6 +384,21 @@ def _checked_calls(tree: ast.Module) -> list[_CheckedCall]:
             for call in (call for call in ast.walk(node.test) if _is_runner(call)):
                 results.append(_CheckedCall(call, True, _asserted_exit(node.test, None, call)))
             continue
+        targets = (
+            node.targets
+            if isinstance(node, (ast.Assign, ast.Delete))
+            else [node.target]
+            if isinstance(node, (ast.AnnAssign, ast.AugAssign))
+            else []
+        )
+        for target in targets:
+            for binding in ast.walk(target):
+                if (
+                    isinstance(binding, ast.Name)
+                    and isinstance(binding.ctx, (ast.Store, ast.Del))
+                    and binding.id in pending
+                ):
+                    results.append(_CheckedCall(pending.pop(binding.id), False, None))
         if isinstance(node, (ast.With, ast.For, ast.AsyncWith, ast.AsyncFor)):
             # Only the header belongs to this statement; the body is visited in turn.
             header = [*getattr(node, "items", []), getattr(node, "iter", None)]
@@ -412,6 +428,70 @@ def _checked_calls(tree: ast.Module) -> list[_CheckedCall]:
     return sorted(results, key=lambda item: (item.call.lineno, item.call.col_offset))
 
 
+def _checked_returned_calls(tree: ast.Module) -> set[ast.Call]:
+    """Follow a local helper's single returned runner tuple into every asserted caller.
+
+    Only straight-line helpers (optionally inside ``with``) returning one runner call
+    qualify. Escaped/rebound helper names, branches and unchecked callers retain the defect.
+    This never executes criterion code or borrows an unrelated assertion from another scope.
+    """
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    checked: set[ast.Call] = set()
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef) or function.decorator_list:
+            continue
+        nodes = list(ast.walk(function))
+        if any(
+            isinstance(node, (ast.If, ast.For, ast.While, ast.Try, ast.Match, ast.AsyncWith))
+            or (node is not function and isinstance(node, _SCOPES))
+            or isinstance(node, (ast.Yield, ast.YieldFrom, ast.Await))
+            for node in nodes
+        ):
+            continue
+        returns = [node for node in nodes if isinstance(node, ast.Return)]
+        runners = [node for node in nodes if _is_runner(node)]
+        if (
+            len(returns) != 1
+            or len(runners) != 1
+            or returns[0].value is not runners[0]
+            or _statements(function.body)[-1] is not returns[0]
+        ):
+            continue
+        name = function.name
+        # A call must resolve to this exact definition, including inside nested scopes.
+        if any(
+            (isinstance(node, ast.Name) and node.id == name and not isinstance(node.ctx, ast.Load))
+            or (isinstance(node, ast.arg) and node.arg == name)
+            or (isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == name)
+            or (isinstance(node, _SCOPES) and node is not function and node.name == name)
+            for node in ast.walk(tree)
+        ):
+            continue
+        uses = [node for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id == name]
+        if not uses or any(
+            not isinstance(parents.get(node), ast.Call)
+            or parents[node].func is not node
+            or node.lineno <= function.end_lineno
+            for node in uses
+        ):
+            continue
+        # Reuse the established exit assertion analysis with the helper calls represented as
+        # runner calls; source positions identify only these call sites in the copied tree.
+        positions = {(parents[node].lineno, parents[node].col_offset) for node in uses}
+        probe = copy.deepcopy(tree)
+        for node in ast.walk(probe):
+            if isinstance(node, ast.Call) and (node.lineno, node.col_offset) in positions:
+                node.func = ast.Name(id=RUNNER_NAME, ctx=ast.Load())
+        results = [
+            result
+            for result in _checked_calls(probe)
+            if (result.call.lineno, result.call.col_offset) in positions
+        ]
+        if len(results) == len(positions) and all(result.checked for result in results):
+            checked.add(runners[0])
+    return checked
+
+
 def unchecked_calls(code: str) -> list[int]:
     """Lines of ``cli_runner`` calls whose exit status no ``assert`` reads.
 
@@ -422,7 +502,12 @@ def unchecked_calls(code: str) -> list[int]:
         tree = ast.parse(code)
     except SyntaxError:
         return []
-    return sorted({item.call.lineno for item in _checked_calls(tree) if not item.checked})
+    returned = _checked_returned_calls(tree)
+    return sorted({
+        item.call.lineno
+        for item in _checked_calls(tree)
+        if not item.checked and item.call not in returned
+    })
 
 
 def go_run_calls(code: str) -> list[int]:

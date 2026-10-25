@@ -24,6 +24,15 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 
 ## Details
 
+`2026-10-24` · No-op verification steps run their declared acceptance even when the agent
+reports failure and changes no files. The report remains advisory; provider/execution failures
+remain terminal. Already-green criteria retain their existing PREPASSED attribution, and only a
+governed story gate can override that attribution. The build prompt permits SUCCESS without
+edits when the step is already satisfied. Attempt evidence labels bypassed grading as
+`checks not executed (<n> declared)` and labels an agent report advisory only when it did not
+determine the failure. This revises the file-delta restriction from `98c2f82`; it does not change
+the master specification. CsvStat `20261025.001433` previously spent seven calls without grading.
+
 `2026-10-24` · The normal `drydock_build_loop.sh` driver checks the resolved Target's
 `BLOCKERS.md` before building and before or after recovery diagnosis. Any blocker ends the
 driver with exit `1`, no further diagnosis/build call, and the blocked cause last. The parent
@@ -230,6 +239,11 @@ an unchanged rebuild against the same immutable criterion.
 -
 
 ## Actions
+
+- `2026-10-24` · CsvStat `20261025.001433`: local regressions cover no-op grading, measured
+  failed-check repairs, governed story verification, and bypassed-grading evidence. Ed's next
+  UAT must pass the verification step without empty repair calls; the diagnosis ledger records
+  the fix as unverified until that evidence exists.
 
 - `2026-10-20` · The acceptance-failure Recovery still says `drydock build <Target>` when the agent
   disputes the criterion in prose that neither `_defective_acceptance_claim` (`build_run.py`) nor

@@ -1988,13 +1988,9 @@ state: pending
 
         def _run(*a, **k):
             return SimpleNamespace(
-                ok=True,
-                text=(
-                    "RESULT: FAILURE\n"
-                    "FAILURE_SUMMARY: Full conformance requirement not met.\n"
-                    "FAILURE_DETAIL: The backend diverges from the spec.\n"
-                ),
-                stderr="",
+                ok=False,
+                text="Build agent process terminated unexpectedly.",
+                stderr="Build agent process terminated unexpectedly.",
                 execution_id="exec-fake",
             )
 
@@ -2007,7 +2003,7 @@ state: pending
         assert out.count("BUILD FAILED: ExampleTarget") == 1
         assert "(1 step)" in out
         assert "  FAILED  feature=feature-catalog  execution=exec-fake" in out
-        assert "The backend diverges from the spec." in out
+        assert "Build agent process terminated unexpectedly." in out
         assert "Story recovery (dependency order)" in out
         assert "drydock build ExampleTarget --story foundation --repair-attempts 6" in out
         assert "drydock build ExampleTarget --story service --repair-attempts 6" in out
@@ -2038,20 +2034,16 @@ state: pending
 
         def _build(*a, **k):
             return SimpleNamespace(
-                ok=True,
-                text=(
-                    "RESULT: FAILURE\n"
-                    "FAILURE_SUMMARY: Full conformance requirement not met.\n"
-                    "FAILURE_DETAIL: The backend diverges from the spec.\n"
-                ),
-                stderr="",
+                ok=False,
+                text="Build agent process terminated unexpectedly.",
+                stderr="Build agent process terminated unexpectedly.",
                 execution_id="exec-fake",
             )
 
         def _diagnose(*a, **k):
             return SimpleNamespace(
                 ok=True,
-                text="CAUSE: the build wrapped a library instead of writing the parser.\n"
+                text="CAUSE: the build agent process terminated unexpectedly.\n"
                 "DO: rerun drydock build ExampleTarget",
                 execution_id="exec-diag",
             )
@@ -2063,7 +2055,7 @@ state: pending
 
         assert rc == 1
         assert "A MAJOR ERROR HAS OCCURRED" in err
-        diagnosis = "CAUSE: the build wrapped a library instead of writing the parser."
+        diagnosis = "CAUSE: the build agent process terminated unexpectedly."
         assert diagnosis in (target / "ERRORS.md").read_text(encoding="utf-8")
         evidence = (target / "evidence" / "foundation.md").read_text(encoding="utf-8")
         assert "## Diagnosis" in evidence

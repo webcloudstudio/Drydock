@@ -3878,6 +3878,73 @@ def test_no_file_delta_is_advisory_when_acceptance_passes(tmp_path):
     assert any("no files changed (advisory)" in message for message in messages)
 
 
+@pytest.mark.parametrize("correct", [True, False])
+def test_noop_failure_report_is_graded_and_repairs_have_real_checks(tmp_path, correct):
+    """CsvStat's verification step must not loop on its mandated no-files failure report."""
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"))
+    build_dir.mkdir(parents=True, exist_ok=True)
+    (build_dir / "foundation.txt").write_text("ok\n" if correct else "bad\n")
+    runner = make_runner(
+        write_files=False,
+        text="RESULT: FAILED\nFAILURE_SUMMARY: No files written; verification only.\n",
+    )
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner, repair_attempts=6)
+    step = result.steps[0]
+    evidence = step.evidence_path.read_text()
+    assert "## Agent self-report (advisory)" in evidence
+    if correct:
+        assert len(runner.calls) == 1
+        assert step.status == "built"
+        assert step.state == "closed/implemented"
+        assert "PASS: foundation-file" in evidence
+    else:
+        assert (
+            len(runner.calls) == 3
+        )  # The two flat measured repair passes exhaust the stall limit.
+        assert step.error == "programmatic acceptance failed: foundation-file"
+        assert "foundation-file" in runner.calls[1]["prompt"]
+        assert "FAIL: foundation-file" in evidence
+
+
+def test_bypassed_acceptance_reports_not_executed(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(ok=False, text="provider failure", write_files=False),
+    )
+    evidence = result.steps[0].evidence_path.read_text()
+    assert "checks not executed (1 declared)" in evidence
+    assert "0/1 checks" not in evidence
+    assert result.steps[0].error == "LLM execution failed"
+
+
+def test_noop_failure_report_still_runs_the_governed_story_gate(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"))
+    build_dir.mkdir(parents=True, exist_ok=True)
+    (build_dir / "foundation.txt").write_text("ok\n")
+    _governed(
+        target_dir,
+        stages={
+            "foundation": (
+                sys.executable,
+                "-c",
+                "from pathlib import Path; assert Path('foundation.txt').read_text() == 'ok\\n'",
+            )
+        },
+    )
+    runner = make_runner(
+        write_files=False, text="RESULT: FAILED\nFAILURE_SUMMARY: No files written.\n"
+    )
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+    assert len(runner.calls) == 1
+    assert result.steps[0].state == "closed/verified"
+    assert _finding(target_dir, "foundation") is None
+
+
 def test_active_commander_guidance_is_injected_into_build_prompt(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
     write_decisions(

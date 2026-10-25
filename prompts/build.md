@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20261022 V9
+version: 20261024 V10
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 output: evidence summary
@@ -132,7 +132,10 @@ BLOCKERS:
    emits a Blocking decision. Omit the payload when no implementation decision was necessary.
 
 14. `FILES CHANGED` must list only files actually written in the build working
-   directory. If no files were written, use `RESULT: FAILED`.
+   directory. When the existing implementation already satisfies this step, report
+   `RESULT: SUCCESS`, list no changed files, and state the checks performed and their results.
+   A verification-only step requires no application changes. Drydock runs the declared
+   deterministic checks and decides the outcome independently of this report.
 15. On `RESULT: FAILED`, append two additional lines so the failure is actionable
    without opening logs. `FAILURE_SUMMARY` is one line naming the cause;
    `FAILURE_DETAIL` states what happened, why, and what to change before a rerun.

@@ -179,6 +179,12 @@ passes without the product remains `PREBUILD_PASSES` and cannot verify its story
 calculations compared with literal known answers are not flagged as retyped expressions;
 escaping checks still apply to the literal expectation.
 
+Verification steps can complete without file changes: `build` runs their declared checks even
+when the agent reports a no-op failure. Already-green criteria retain PREPASSED attribution;
+governed story gates retain their authority. Evidence labels bypassed grading as not executed.
+`plan verify` also recognizes a local helper that directly returns `cli_runner` when every caller
+asserts the returned exit code.
+
 | Stage | Command | What it does |
 |---|---|---|
 | **init** | `drydock init <Target>` | Initialize Workspace<br>**Creates:** `targets/<Target>` |
