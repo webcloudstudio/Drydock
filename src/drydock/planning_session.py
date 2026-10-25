@@ -4658,21 +4658,46 @@ def _carries_no_artifact(text: str) -> bool:
 _PROSE_REPLY_QUOTE_LIMIT = 4000
 
 
+def _stage_one_envelope_defect(text: str, result: CompletedRun) -> str:
+    """Name unresolved envelope damage without changing the rejected response."""
+    pairing = pair_artifact_delimiters(text)
+    defects = [f"{name}: missing closing artifact marker" for name in pairing.unclosed]
+    defects.extend(
+        f"{name}: closing marker has no opening artifact" for name in pairing.orphan_closes
+    )
+    defects.extend(
+        f"{name}: artifact closed before its body ended" for name in pairing.premature_closes
+    )
+    if not defects:
+        return ""
+    # Preserve existing deterministic recovery of legacy named delimiters. Invariant
+    # envelopes must close explicitly; a new opener never supplies the missing close.
+    if not any(_INVARIANT_OPEN_LINE_RE.match(line.strip()) for line in text.splitlines()):
+        try:
+            _parse_strict_blocks(text, result)
+        except SpecificationError:
+            pass
+        else:
+            return ""
+    return "\n".join(defects)
+
+
 def _artifact_retry_assembly(
     prompt_assembly: PromptAssembly,
     *,
     reply: str,
     unattended: bool,
     resumed: bool,
+    defect: str = "",
 ) -> PromptAssembly:
-    """Ask once more for the Stage 1 artifacts after a reply that carried none.
+    """Ask once more for Stage 1 after a prose-only or malformed-envelope reply.
 
     A resumed Claude session already holds the planning context, so it receives the instruction
     alone. Every other provider receives the unchanged original context with the instruction
     appended, which keeps the prefix cacheable.
     """
     quoted = reply.strip()
-    if len(quoted) > _PROSE_REPLY_QUOTE_LIMIT:
+    if not defect and len(quoted) > _PROSE_REPLY_QUOTE_LIMIT:
         quoted = quoted[:_PROSE_REPLY_QUOTE_LIMIT] + " …"
     policy = (
         "No Commander is available, and no prose reply reaches a person."
@@ -4682,13 +4707,27 @@ def _artifact_retry_assembly(
     lines = [
         "# Plan Stage 1 Retry",
         "",
-        "Your previous reply contained no artifact blocks, so Drydock wrote nothing.",
+        (
+            "Your previous reply had malformed artifact envelopes, so Drydock wrote nothing."
+            if defect
+            else "Your previous reply contained no artifact blocks, so Drydock wrote nothing."
+        ),
         policy,
         "Do not ask questions or restate concerns. Resolve each point you raised from the",
         "imported sources, Compass, Technology Stack, and Foundation Contracts; choose the",
         "narrowest reading consistent with them; record each material choice in",
         "DECISIONS.json with its system_choice.",
         "Reply now with only the artifact blocks the Agent Task requires, in its delimiter form.",
+        *(
+            [
+                "Return a complete replacement: TOPOLOGY.md first, then DECISIONS.json.",
+                *emission_contract_lines((TOPOLOGY_BLOCK, DECISIONS_BLOCK)),
+                "Correct these exact boundary defects:",
+                defect,
+            ]
+            if defect
+            else []
+        ),
         "",
         "Your previous reply:",
         "",
@@ -6348,16 +6387,23 @@ def create_plan(
 
         refresh_commanders_chair(target_dir)
         raise RecordedError(record)
-    if _carries_no_artifact(result.text):
-        # The model answered in prose instead of planning. One corrective call is cheaper than a
-        # rerun; a second prose reply falls through to the recorded contract failure below.
+    envelope_defect = _stage_one_envelope_defect(result.text, result)
+    if _carries_no_artifact(result.text) or envelope_defect:
+        # One shared correction allowance; a malformed reply to a prose correction
+        # (or the reverse) cannot start another retry.
         if on_text is not None:
-            on_text("[plan] reply carried no artifact blocks; asking once more for Stage 1\n")
+            if envelope_defect:
+                on_text(
+                    f"[plan] malformed Stage 1 envelopes; asking once more: {envelope_defect}\n"
+                )
+            else:
+                on_text("[plan] reply carried no artifact blocks; asking once more for Stage 1\n")
         retry_assembly = _artifact_retry_assembly(
             prompt_assembly,
             reply=result.text,
             unattended=unattended,
             resumed=claude_session is not None,
+            defect=envelope_defect,
         )
         retry_kwargs: dict[str, object] = {
             **initial_runner_kwargs,
@@ -6382,11 +6428,44 @@ def create_plan(
                 CompletedRun,
                 run(retry_assembly.rendered_text, target_dir, **retry_kwargs),
             )
-        except Exception:  # noqa: BLE001 - the original reply still faces the contract below
-            retry = None
-        if retry is not None and retry.ok and retry.text.strip():
-            result = retry
-            exec_id = getattr(result, "execution_id", None)
+        except Exception as exc:
+            stop = fatal_stop()
+            raise _record_plan_error(
+                target_dir,
+                classification="LLM execution failed",
+                detail=stop.message if stop is not None else str(exc),
+                execution_id=stop.execution_id if stop is not None else exec_id,
+                log_dir=log_dir,
+                recovery=f"Correct the provider or execution issue, then run: drydock plan {target}",
+            ) from exc
+        result = retry
+        exec_id = getattr(result, "execution_id", None)
+        stop = fatal_stop()
+        if stop is not None or not result.ok or not result.text.strip():
+            raise _record_plan_error(
+                target_dir,
+                classification="LLM execution failed",
+                detail=(
+                    stop.message
+                    if stop is not None
+                    else result.stderr.strip()
+                    or result.text.strip()
+                    or "empty topology retry response"
+                ),
+                execution_id=stop.execution_id if stop is not None else exec_id,
+                log_dir=log_dir,
+                recovery=f"Correct the provider or execution issue, then run: drydock plan {target}",
+            )
+        envelope_defect = _stage_one_envelope_defect(result.text, result)
+        if envelope_defect:
+            raise _record_plan_error(
+                target_dir,
+                classification="model artifact contract failed",
+                detail=f"Stage 1 correction exhausted: {envelope_defect}",
+                execution_id=exec_id,
+                log_dir=log_dir,
+                recovery=f"Inspect the topology retry evidence, then run: drydock plan {target}",
+            )
 
     validated_plan: BuildPlan | None = None
     validated_warnings: tuple[str, ...] = ()

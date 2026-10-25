@@ -3138,6 +3138,112 @@ _PROSE_REPLY = (
 )
 
 
+_BROKEN_STAGE_ONE = (
+    "=== BEGIN ARTIFACT TOPOLOGY.md ===\n## Declarations\n"
+    "## story foundation\nimplements: ARCHITECTURE.md\n"
+    "=== BEGIN ARTIFACT DECISIONS.json ===\n[]\n"
+)
+
+
+@pytest.mark.parametrize("provider", ["codex", "claude"])
+@pytest.mark.parametrize("closed", ["neither", "topology", "decisions"])
+def test_malformed_stage_one_is_resubmitted_once_with_exact_defects(tmp_path, provider, closed):
+    target_dir = _make_target(tmp_path)
+    calls = []
+    broken = _BROKEN_STAGE_ONE
+    if closed == "topology":
+        broken = broken.replace(
+            "=== BEGIN ARTIFACT DECISIONS.json ===",
+            "=== END ARTIFACT ===\n=== BEGIN ARTIFACT DECISIONS.json ===",
+        )
+    elif closed == "decisions":
+        broken += "=== END ARTIFACT ===\n"
+    replies = [broken, _llm_output()]
+    progress = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append((prompt, kwargs))
+        return FakeRun(text=replies.pop(0), execution_id=f"exec-{len(calls)}")
+
+    create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        llm_provider=provider,
+        on_text=progress.append,
+    )
+
+    assert len(calls) == 2
+    prompt, kwargs = calls[1]
+    assert kwargs["sub_command"] == "topology retry"
+    assert kwargs["parameters"]["initial_execution_id"] == "exec-1"
+    assert broken.strip() in prompt
+    for name in ("TOPOLOGY.md", "DECISIONS.json"):
+        if (closed, name) not in (("topology", "TOPOLOGY.md"), ("decisions", "DECISIONS.json")):
+            assert f"{name}: missing closing artifact marker" in prompt
+    assert "complete replacement" in prompt
+    assert any("malformed Stage 1 envelopes" in line for line in progress)
+    assert (target_dir / "MANIFEST.md").exists()
+    if provider == "claude":
+        assert kwargs["claude_resume_session_id"] == calls[0][1]["claude_session_id"]
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        (_BROKEN_STAGE_ONE, _BROKEN_STAGE_ONE),
+        (_PROSE_REPLY, _BROKEN_STAGE_ONE),
+        (_BROKEN_STAGE_ONE, _PROSE_REPLY),
+    ],
+)
+def test_stage_one_correction_budget_is_shared_across_response_faults(tmp_path, first, second):
+    target_dir = _make_target(tmp_path)
+    calls = []
+    replies = [first, second]
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs)
+        return FakeRun(text=replies.pop(0), execution_id=f"exec-{len(calls)}")
+
+    with pytest.raises(RecordedError) as caught:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(calls) == 2
+    assert caught.value.record.classification == "model artifact contract failed"
+    assert caught.value.record.execution_id == "exec-2"
+    assert not (target_dir / "MANIFEST.md").exists()
+    assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
+
+
+@pytest.mark.parametrize("failure", ["failed", "empty", "exception"])
+def test_stage_one_retry_provider_failure_keeps_the_retry_cause(tmp_path, failure):
+    target_dir = _make_target(tmp_path)
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return FakeRun(text=_BROKEN_STAGE_ONE, execution_id="exec-1")
+        if failure == "exception":
+            raise RuntimeError("provider connection failed")
+        return FakeRun(
+            ok=failure != "failed",
+            stderr="provider connection failed" if failure == "failed" else "",
+            execution_id="exec-2",
+        )
+
+    with pytest.raises(RecordedError) as caught:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(calls) == 2
+    assert caught.value.record.classification == "LLM execution failed"
+    assert (
+        "empty topology retry response" if failure == "empty" else "provider connection failed"
+    ) in caught.value.record.detail
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
 def test_a_prose_only_reply_is_asked_once_more_and_the_retry_is_planned(tmp_path):
     """ReadingList 20261014.014000: the model answered the planning prompt with questions and no
     artifacts, and the run stopped. One corrective call recovers it."""

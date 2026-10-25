@@ -347,6 +347,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-25: `drydock plan` resubmits a malformed Stage 1 topology response once with its
+  rejected output and exact artifact-boundary defects. Prose-only and malformed-envelope replies
+  share one correction allowance; another invalid response stops planning, and a retry provider
+  failure reports its own cause. The correction preserves strict validation and original evidence.
+
 - 2026-10-25: Planning names invalid `DATABASE.md` operation headings and the required uppercase
   ID and em-dash grammar, including invalid headings beside valid ones. Artifact parsing keeps
   bare acceptance closes inside their Blueprint for criterion validation instead of treating

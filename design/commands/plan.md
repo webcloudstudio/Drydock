@@ -25,6 +25,16 @@ written.
 
 ## Details
 
+`2026-10-25` · Stage 1 shares one corrective resubmission between prose-only replies and
+unresolved artifact-envelope damage. The malformed-envelope correction carries the rejected
+response and exact missing, orphaned, or premature boundary diagnostics and requests a complete
+replacement of `TOPOLOGY.md` and `DECISIONS.json`. Claude resumes its original session; other
+providers retain the original prompt context. No intermediate closing marker is synthesized.
+The replacement passes normal parsing, topology, and coverage validation; a second envelope
+failure records the retry execution and stops. Retry provider failures retain their own cause.
+Legacy named-delimiter recovery remains available. This extends `b2d8b7c` for FxRates
+`20261025.192942`; original execution evidence remains intact.
+
 `2026-10-25` · Database operation heading validation names every malformed level-three heading
 in `## Access Patterns`, including mixed-case IDs, even beside valid operations. Retry feedback
 states the uppercase ID, three-digit suffix, and em-dash grammar rather than claiming the
