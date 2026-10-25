@@ -1426,7 +1426,13 @@ class AttemptRecord:
 #: several times, which is a Manifest problem rather than a build problem.
 _SIZING_ADVISORY_CALLS = 4
 
-_REPAIR_FEEDBACK_CAP = 4000
+_REPAIR_FEEDBACK_CAP = 6000
+#: Characters of one check's failing-case inventory; the full list is in its output log.
+_FAILED_CASE_INVENTORY_CAP = 1000
+#: Case headers a conformance runner prints for a failure: the CommonMark ``spec_tests.py``
+#: ``Example N (lines a-b) Section`` form and pytest's ``FAILED path::test`` summary.
+_SPEC_EXAMPLE_RE = re.compile(r"^Example (?P<case>\d+) \(lines \d+-\d+\) (?P<group>.+?)\s*$")
+_PYTEST_FAILED_RE = re.compile(r"^(?:FAILED|ERROR) (?P<group>[^\s:]+)::(?P<case>\S+)")
 
 
 #: Names a block failed by its governed stage gate rather than by a model-authored criterion.
@@ -1575,6 +1581,74 @@ def _output_tail(result: AcceptanceRunResult, max_lines: int = 6) -> list[str]:
     source = result.stdout if result.stdout.strip() else result.stderr
     lines = [line.rstrip() for line in source.splitlines() if line.strip()]
     return lines[-max_lines:]
+
+
+def _failed_cases(result: AcceptanceRunResult) -> tuple[tuple[str, str], ...]:
+    """Return ``(group, case)`` for every failing case the check's runner named, in order.
+
+    A tail shows one failing case out of a corpus; the inventory shows them all, so a repair
+    pass can pick a root-cause cluster without rerunning the corpus to rediscover it. A
+    ``spec_tests.py --track`` header followed by ``fixed!`` reports a pass and is skipped.
+    """
+    lines = f"{result.stdout}\n{result.stderr}".splitlines()
+    cases: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for index, line in enumerate(lines):
+        match = _SPEC_EXAMPLE_RE.match(line) or _PYTEST_FAILED_RE.match(line)
+        if match is None:
+            continue
+        following = next((later.strip() for later in lines[index + 1:] if later.strip()), "")
+        if following == "fixed!":
+            continue
+        case = (match.group("group"), match.group("case"))
+        if case not in seen:
+            seen.add(case)
+            cases.append(case)
+    return tuple(cases)
+
+
+def _failed_case_lines(result: AcceptanceRunResult) -> list[str]:
+    """Render the failing-case inventory grouped by section, bounded per check."""
+    cases = _failed_cases(result)
+    if not cases:
+        return []
+    groups: dict[str, list[str]] = {}
+    for group, case in cases:
+        groups.setdefault(group, []).append(case)
+    lines = [f"    failing cases ({len(cases)}):"]
+    used = 0
+    shown = 0
+    for group, members in groups.items():
+        line = f"      {group}: {', '.join(members)}"
+        if used + len(line) > _FAILED_CASE_INVENTORY_CAP:
+            break
+        lines.append(line)
+        used += len(line)
+        shown += len(members)
+    if shown < len(cases):
+        lines.append(f"      … (+{len(cases) - shown} more cases in the full output)")
+    return lines
+
+
+def _write_failure_logs(
+    directory: Path, results: Iterable[AcceptanceRunResult]
+) -> dict[str, Path]:
+    """Write each failed check's complete captured output; return the path per check id.
+
+    The repair prompt carries a bounded excerpt. The full output lets the next pass read every
+    failing case instead of rerunning the declared scope, which for a corpus can outlast the
+    agent's command window. Each pass overwrites the previous pass's logs.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    paths: dict[str, Path] = {}
+    for result in results:
+        path = directory / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', result.check_id)}.log"
+        body = result.stdout.rstrip()
+        if result.stderr.strip():
+            body += "\n\n--- stderr ---\n" + result.stderr.rstrip()
+        path.write_text(body + "\n", encoding="utf-8")
+        paths[result.check_id] = path
+    return paths
 
 
 def _case_tally(result: AcceptanceRunResult) -> tuple[int, int] | None:
@@ -1775,6 +1849,22 @@ def _render_regression_detail(
     return "\n".join(lines)
 
 
+def _check_detail_lines(
+    result: AcceptanceRunResult, failure_logs: Mapping[str, Path] | None
+) -> list[str]:
+    """One failed check's assertion, output tail, failing-case inventory, and full-output log."""
+    lines = [f"    assertion: {_assertion_summary(result)}"]
+    tail = _output_tail(result)
+    if tail:
+        lines.append("    output:")
+        lines.extend(f"      {line}" for line in tail)
+    lines.extend(_failed_case_lines(result))
+    log = (failure_logs or {}).get(result.check_id)
+    if log is not None:
+        lines.append(f"    full output: {log}")
+    return lines
+
+
 def _render_repair_feedback(
     unit: BuildUnit,
     failed_checks: tuple[AcceptanceRunResult, ...],
@@ -1782,13 +1872,15 @@ def _render_repair_feedback(
     changed_files: tuple[str, ...],
     story_by_check: dict[str, PlanBlock],
     regressed_checks: tuple[AcceptanceRunResult, ...] = (),
+    failure_logs: Mapping[str, Path] | None = None,
 ) -> str:
     """Compose the repair-pass feedback appended as the prompt's recency anchor.
 
     The build directory already holds the previous attempt's partial work; this block
     tells the agent to iterate it toward green, names each failing check with its
-    distilled assertion and output tail, and echoes the agent's own failure note.
-    Content is capped so the repair prompt cannot itself trip the token gate.
+    distilled assertion, output tail, failing-case inventory, and full-output log, and
+    echoes the agent's own failure note. Content is capped so the repair prompt cannot
+    itself trip the token gate.
     """
     lines: list[str] = [
         "## Repair pass",
@@ -1799,7 +1891,10 @@ def _render_repair_feedback(
         "not weaken or remove any declared acceptance assertion, and keep every check",
         "that already passes green.",
         "",
-        "The diagnostic excerpts below are truncated. Before editing, rerun each failing",
+        "The diagnostic excerpts below are truncated. A check that names a `full output`",
+        "file carries the complete output of the run that graded the previous pass: read",
+        "it before editing instead of rerunning the declared scope to rediscover failures.",
+        "Otherwise, before editing, rerun each failing",
         "acceptance assertion from its authoritative specification and inspect the complete",
         "failure output. For a conformance suite, use its section or example filters to",
         "diagnose coherent root-cause clusters, then rerun the full declared scope. Fix the",
@@ -1828,11 +1923,7 @@ def _render_repair_feedback(
         ])
         for result in regressed_checks:
             lines.append(f"- {result.check_id} ({result.source}): {result.intent.strip()}")
-            lines.append(f"    assertion: {_assertion_summary(result)}")
-            tail = _output_tail(result)
-            if tail:
-                lines.append("    output:")
-                lines.extend(f"      {line}" for line in tail)
+            lines.extend(_check_detail_lines(result, failure_logs))
         lines.append("")
     exhausted = tuple(result for result in failed_checks if _resource_verdict(result))
     if exhausted:
@@ -1869,11 +1960,7 @@ def _render_repair_feedback(
             owner = f" (story {story.block_id})" if story is not None else ""
             intent = result.intent.strip() or result.check_id
             lines.append(f"- {result.check_id}{owner}: {intent}")
-            lines.append(f"    assertion: {_assertion_summary(result)}")
-            tail = _output_tail(result)
-            if tail:
-                lines.append("    output:")
-                lines.extend(f"      {line}" for line in tail)
+            lines.extend(_check_detail_lines(result, failure_logs))
         lines.append("")
     if excluded_checks:
         lines.extend([
@@ -3135,7 +3222,14 @@ def build_target(
                 )
             else:
                 seed_feedback = _render_repair_feedback(
-                    unit, resume_failed, None, (), story_by_check
+                    unit,
+                    resume_failed,
+                    None,
+                    (),
+                    story_by_check,
+                    failure_logs=_write_failure_logs(
+                        evidence_dir / "repair" / unit.block_id, resume_failed
+                    ),
                 )
                 feedback_checks = resume_failed
                 _emit(
@@ -3162,11 +3256,12 @@ def build_target(
                     f"repair: attempt {attempt}/{max_attempt} · "
                     f"{len(feedback_checks) or 'agent-reported'} failing check(s)",
                 )
-                # Keep every prior repair instruction in the conversation prefix.  That makes
-                # this pass a strict append, so Claude can resume the block session rather than
-                # starting over from the base prompt and rediscovering the failed work.
+                # Claude resumes the block session, so every prior repair instruction stays in
+                # the conversation prefix and this pass is a strict append. Other providers start
+                # each call fresh: stacking earlier passes would only resend stale tallies and
+                # notes, so the latest feedback replaces them on the base prompt.
                 active_assembly = _repair_prompt_assembly(
-                    active_assembly,
+                    active_assembly if claude_session is not None else prompt_assembly,
                     _render_repair_feedback(
                         unit,
                         feedback_checks,
@@ -3174,6 +3269,10 @@ def build_target(
                         changed_files,
                         story_by_check,
                         regressed_checks,
+                        failure_logs=_write_failure_logs(
+                            evidence_dir / "repair" / unit.block_id,
+                            (*feedback_checks, *regressed_checks),
+                        ),
                     ),
                 )
             if attempt == 0:

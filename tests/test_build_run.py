@@ -19,12 +19,15 @@ from drydock.build_run import (
     UNEXAMINED_FINDING,
     _assertion_summary,
     _classify_failure,
+    _failed_case_lines,
+    _failed_cases,
     _is_repairable,
     _render_repair_feedback,
     _resolve_step_selector,
     _select_build_unit,
     _settle_empty_selections,
     _ungate_acceptance_plan,
+    _write_failure_logs,
     build_target,
 )
 from drydock.decisions import Decision, write_decisions
@@ -5091,3 +5094,109 @@ def test_dispute_from_an_earlier_attempt_only_survives_while_check_fails(tmp_pat
     step = result.steps[0]
     assert step.reported_defective_acceptance == (() if healed else ("foundation-file",))
     assert (step.status == "failed") is not healed
+
+
+# CommonMark 20261025.023211: the repair prompt showed one failing example out of 122, the same
+# one for eight passes, so every pass reran the corpus to rediscover its work queue.
+
+
+def _spec_failure(example: int, section: str) -> str:
+    return (
+        f"Example {example} (lines {example}-{example + 4}) {section}\n"
+        "- foo\n--- expected HTML\n+++ actual HTML\n@@ -1 +1 @@\n-<p>a</p>\n+<p>b</p>\n\n"
+    )
+
+
+def _corpus_check(stdout: str) -> AcceptanceRunResult:
+    return AcceptanceRunResult(
+        check_id="block-parsing-conformance",
+        source="FEATURE-Block-Parsing.md",
+        intent="All supplied block cases pass.",
+        passed=False,
+        return_code=1,
+        stdout=stdout,
+        stderr="assert result.returncode == 0\nAssertionError",
+    )
+
+
+def test_repair_feedback_lists_every_failing_case_and_its_full_output(tmp_path):
+    from types import SimpleNamespace
+
+    stdout = (
+        _spec_failure(260, "List items")
+        + _spec_failure(301, "Lists")
+        + _spec_failure(264, "List items")
+        + "Example 7 (lines 7-11) Tabs\nfixed!\n"
+        + "248 passed, 3 failed, 0 errored, 369 skipped\n"
+    )
+    log = tmp_path / "block-parsing-conformance.log"
+    text = _render_repair_feedback(
+        SimpleNamespace(),
+        (_corpus_check(stdout),),
+        None,
+        (),
+        {},
+        failure_logs={"block-parsing-conformance": log},
+    )
+    assert "    failing cases (3):" in text
+    assert "      List items: 260, 264" in text
+    assert "      Lists: 301" in text
+    assert "      Tabs: 7" not in text
+    assert f"    full output: {log}" in text
+    assert "read\nit before editing" in text
+
+
+def test_failing_case_inventory_is_bounded_per_check():
+    stdout = "".join(_spec_failure(n, f"Section {n // 5}") for n in range(1, 401))
+    lines = _failed_case_lines(_corpus_check(stdout))
+    assert lines[0] == "    failing cases (400):"
+    assert lines[-1].startswith("      … (+") and "more cases in the full output" in lines[-1]
+    assert sum(len(line) for line in lines[1:-1]) <= 1000
+
+
+def test_pytest_failures_are_inventoried_by_file():
+    result = _corpus_check(
+        "FAILED tests/test_a.py::test_one - AssertionError\n"
+        "FAILED tests/test_a.py::test_two\n"
+        "ERROR tests/test_b.py::test_three\n"
+    )
+    assert _failed_cases(result) == (
+        ("tests/test_a.py", "test_one"),
+        ("tests/test_a.py", "test_two"),
+        ("tests/test_b.py", "test_three"),
+    )
+
+
+def test_failure_logs_hold_complete_output(tmp_path):
+    result = _corpus_check("".join(_spec_failure(n, "Lists") for n in range(1, 200)))
+    paths = _write_failure_logs(tmp_path / "repair" / "block-2", (result,))
+    path = paths["block-parsing-conformance"]
+    assert path == tmp_path / "repair" / "block-2" / "block-parsing-conformance.log"
+    body = path.read_text(encoding="utf-8")
+    assert body.count("Example ") == 199
+    assert "--- stderr ---\nassert result.returncode == 0" in body
+
+
+@pytest.mark.parametrize(("provider", "stacked"), [("claude", True), ("codex", False)])
+def test_repair_feedback_stacks_only_for_resumed_sessions(tmp_path, provider, stacked):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = make_attempt_runner(fix_at=2)
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=2,
+        llm_provider=provider,
+    )
+
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
+    last = runner.calls[2]["prompt"]
+    assert last.count("# Repair Feedback") == (2 if stacked else 1)
+    assert last.startswith(runner.calls[0]["prompt"])
+    log = target_dir / "evidence" / "repair" / "foundation" / "foundation-file.log"
+    assert log.is_file()
+    assert f"full output: {log}" in last
