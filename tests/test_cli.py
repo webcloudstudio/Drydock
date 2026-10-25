@@ -332,13 +332,25 @@ class TestHelpAndVersion:
         """Scoring output omits parsed JSON and provider command evidence."""
         _stream_stdout._at_line_start = True  # type: ignore[attr-defined]
         _stream_status_only('{"dimensions": {"build_quality": 0}}')
+        for fragment in (
+            "-only behaviour that",
+            '-004",\n      "verd',
+            "=0,",
+            '  "verdict": "MET",',
+            '    "evidence": "probe passed"',
+            "\n",
+        ):
+            _stream_status_only(fragment)
         _stream_status_only("  $ /bin/bash -lc 'pytest -q'")
         _stream_status_only("  -> exit 0")
         _stream_status_only("  [running] 30s elapsed, no provider output for 30s")
         _stream_status_only("AUTO-COMPACT: fresh")
+        _stream_status_only("[workspace] unexpected change\n")
+        _stream_status_only("[output] json repaired: code fence\n")
 
         assert capsys.readouterr().out == (
             "  [running] 30s elapsed, no provider output for 30s\nAUTO-COMPACT: fresh\n"
+            "[workspace] unexpected change\n[output] json repaired: code fence\n"
         )
 
     def test_help_shows_copyright(self):

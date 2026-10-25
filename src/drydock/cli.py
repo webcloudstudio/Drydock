@@ -134,9 +134,9 @@ def _stream_status_only(text: str) -> None:
     that JSON into the console. Codex command events are preserved in the raw LLM
     artifact; they are implementation evidence rather than scoring progress.
     """
-    if text.startswith(("  $ ", "  -> exit ")):
-        return
-    if text.startswith(_STREAM_STATUS_PREFIXES):
+    # Unlike the general renderer, this filter must not accept indentation or
+    # punctuation: JSON deltas can start with either, even halfway through a value.
+    if text.startswith(("AUTO-COMPACT:", "  [running] ", "[workspace] ", "[output] ")):
         _stream_stdout(text)
 
 

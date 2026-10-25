@@ -24,6 +24,11 @@ stamps its verdict onto one regenerated `SCORECARD.md`, which is the project's r
 
 ## Details
 
+`2026-10-25` · Scoring console progress accepts only explicit heartbeat, auto-compaction,
+workspace, and output-cleanup telemetry prefixes. Raw grader JSON deltas, including chunks
+starting with hyphens, equals signs, or indentation, are suppressed. The final parsed verdict
+listing and provider call headers remain visible; raw provider output remains in LLM artifacts.
+
 ### Syntax
 
 ```text

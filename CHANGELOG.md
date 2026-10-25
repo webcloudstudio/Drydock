@@ -347,6 +347,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-25: Scoring commands suppress grader JSON fragments beginning with punctuation or
+  indentation instead of displaying them as broken progress lines. Explicit provider telemetry
+  and the final verdict listing remain visible, including when called by `drydock uat`.
+
 - 2026-10-24: Planning and `drydock plan verify` reject conflicting `DATABASE.md` output DTO
   definitions before persistence generation. Admission and the Python emitter share class-name
   and field-type normalization; diagnostics identify both operations and their shapes and suggest
