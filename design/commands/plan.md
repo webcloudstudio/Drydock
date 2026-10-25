@@ -5,7 +5,7 @@
 | Version | 2026-10-15 V1 |
 | Description | Turn imported sources into Blueprints and a Manifest Build can execute without further interpretation. |
 | Route | plan |
-| Modules | `planning_session.py`, `plan_verify.py`, `plan_repair.py`, `plan_graph.py`, `plan_topology.py`, `database_contract.py`, `manifest.py`, `lineage.py` |
+| Modules | `planning_session.py`, `plan_verify.py`, `plan_repair.py`, `plan_graph.py`, `plan_topology.py`, `database_contract.py`, `manifest.py`, `lineage.py`, `acceptance_oracle.py`, `acceptance_requirements.py` |
 | Prompts | `plan_create.md`, `plan_create_speckit.md`, `plan_continue.md`, `plan_conform.md`, `plan_reuse.md`, `plan_repair.md`, `plan_artifact_waiver.md`, `BLUEPRINTS_CONTRACT.md`, `MANIFEST_CONTRACT.md` |
 | Tests | `tests/test_plan*.py`, `tests/test_planning_session.py`, `tests/test_database_*.py` |
 | Topics | [foundations](../topics/foundations.md), [acceptance_criteria](../topics/acceptance_criteria.md) |
@@ -24,6 +24,20 @@ written.
 - None.
 
 ## Details
+
+`2026-10-25` · Planning and `plan verify` reject an unsupplied literal formatted decimal
+expectation as `decimal-oracle` unless the resolved citation contains that exact answer.
+The static check shares acceptance's literal/input parsing, does not execute code, and does not
+prove arbitrary formula semantics. Stage 2 routes the defect through artifact repair; exhausted
+repair leaves the normal final buildability gate in force. `plan repair` leaves this authoring
+defect unrepaired without a model call: changing the oracle is outside mechanical repair.
+Numeric authoring derives an oracle from fixture inputs with source-defined rounding. AC tooling
+metadata belongs inside each AC block. Declaration advisories explicitly describe missing
+per-criterion metadata; selecting a project stack is separate. Route advisories acknowledge
+indirect suite coverage. Foundation client criteria do not probe later service endpoints.
+The continuation repeats the complete artifact terminator; protocol recovery is unchanged.
+Master specification unchanged. FxRates `20261025.200850` supplies the regression motivation.
+
 
 `2026-10-25` · Stage 1 shares one corrective resubmission between prose-only replies and
 unresolved artifact-envelope damage. The malformed-envelope correction carries the rejected
@@ -682,6 +696,11 @@ exist.
 
 
 ## Actions
+
+- `2026-10-25` · FxRates `20261025.200850`: local regressions cover decimal-oracle admission,
+  source citations, refusal of speculative mechanical repair, and owning-story failure summaries.
+  Ed's next clean UAT must use a fixture-derived conversion oracle and avoid malformed artifact
+  closes; retain `unverified` in the diagnosis ledger until later affected-stage evidence exists.
 
 - `2026-10-25` · FxRates `20261025.184822`: local regressions cover bare criterion closes,
   mixed-case and malformed operation headings, missing primary keys, and duplicate operations.

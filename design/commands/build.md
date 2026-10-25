@@ -24,6 +24,14 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 
 ## Details
 
+`2026-10-25` · CLI failure banners and stderr choose one representative per execution,
+preferring a story that owns a failed binding acceptance check over an earlier sibling that
+shares the block failure. Aggregate block status and Manifest states remain authoritative;
+no passing sibling is reclassified. A provider failure without an owned failing check retains
+its first story. Synthetic regressions cover a later conversion owner, independent executions,
+and failures with no owned check. FxRates `20261025.200850` previously named initialization
+as the cause of a conversion assertion failure.
+
 `2026-10-24` · Repair feedback renders actionable check diagnostics before excluded checks.
 Exclusions are summarized by count with pointers to `evidence/acceptance-status.json` and the
 block's pre-build observation instead of consuming the 4,000-character feedback budget with

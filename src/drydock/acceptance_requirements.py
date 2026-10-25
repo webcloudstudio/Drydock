@@ -156,7 +156,8 @@ def recommend_external_declarations(checks: tuple[ProgrammaticAcceptance, ...]) 
     """
     return tuple(
         f"{check.source} [{check.check_id}] uses undeclared {kind}={name}; "
-        f"consider declaring it in Rigging or TECHNOLOGY_STACK.md"
+        f"no per-criterion Requires declaration; project selection in Rigging or "
+        "TECHNOLOGY_STACK.md is separate"
         for check in checks
         for kind, name in undeclared_external_usage(check)
     )

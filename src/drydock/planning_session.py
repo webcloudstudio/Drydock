@@ -40,12 +40,14 @@ from drydock.acceptance import (
     escape_defects,
     fenced_acceptance_defect,
     parse_programmatic_acceptance_text,
+    resolve_citation,
     split_fused_acceptance_boundary,
     uncalled_function_defect,
     unresolved_globals,
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
 from drydock.acceptance_env import read_staged_assets, staged_asset_env_defects
+from drydock.acceptance_oracle import decimal_expectation_defects
 from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
     recommend_external_declarations,
@@ -2310,8 +2312,8 @@ def _integrity_check(
                 elif name.startswith("FEATURE-"):
                     warnings.append(
                         f"{block.block_id}: {name}: Programmatic Acceptance does not name "
-                        f"route(s) {detail}; exercise each provided route, naming its "
-                        "literal path"
+                        f"route(s) {detail}; verify indirect suite coverage or exercise "
+                        "the routes directly, naming their literal paths"
                     )
     for name, owners in sorted(spec_owners.items()):
         if len(owners) > 1:
@@ -2714,7 +2716,7 @@ def _staged_asset_env_defects(
 
 
 class CriteriaDefect(SpecificationError):
-    """A criterion that cannot pass as written, and can be repaired by rewriting it.
+    """A criterion that violates the authoring contract and needs a corrected artifact.
 
     Raised from plan validation so the artifact repair loop re-emits the owning specification.
     It is deliberately distinguishable from every other validation failure: when the repair
@@ -4112,7 +4114,18 @@ def _validate_plan_output(
     # Re-emit the owning Blueprint and validate it before writing the plan; terminal verify
     # remains the final defence if the repair budget is exhausted.
     kinded_criteria_defects: tuple[tuple[str, MalformedAcceptance], ...] = (
-        tuple(("acceptance-malformed", defect) for defect in malformed_acceptance)
+        tuple(
+            ("decimal-oracle", MalformedAcceptance(check.check_id, name, reason))
+            for name in sorted(blocks)
+            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+            for check in _acceptance_checks(blocks[name], source=name)
+            for reason in decimal_expectation_defects(
+                replace(check, cited_text=resolve_citation(check.cite, blueprint_dir))
+                if check.cite
+                else check
+            )
+        )
+        + tuple(("acceptance-malformed", defect) for defect in malformed_acceptance)
         + tuple(
             ("staged-asset-env", defect)
             for defect in _staged_asset_env_defects(blocks, blueprint_dir)
@@ -4161,7 +4174,7 @@ def _validate_plan_output(
     if kinded_criteria_defects:
         raise CriteriaDefect(
             _with_execution_evidence(
-                "Plan generation failed: an acceptance criterion cannot pass as written.\n  "
+                "Plan generation failed: an acceptance criterion violates the authoring contract.\n  "
                 + "\n  ".join(defect.rendered for _, defect in kinded_criteria_defects)
                 + "\n  No Blueprint or Manifest artifacts were written.",
                 result,

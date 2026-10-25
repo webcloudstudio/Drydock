@@ -347,6 +347,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-25: `drydock plan` and `plan verify` reject unsupplied literal formatted decimal
+  expectations (`decimal-oracle`) unless the cited source contains the exact answer. Numeric
+  acceptance authoring derives its oracle from fixture inputs and source-defined rounding;
+  mechanical `plan repair` reports this authoring defect without guessing or spending a call.
+  Build failure banners and stderr select the story owning the failed criterion within a grouped
+  execution. Planning advisories distinguish criterion declarations from project stack selection
+  and acknowledge indirect route coverage; authoring places Requires metadata inside AC blocks.
+
 - 2026-10-25: `drydock plan` resubmits a malformed Stage 1 topology response once with its
   rejected output and exact artifact-boundary defects. Prose-only and malformed-envelope replies
   share one correction allowance; another invalid response stops planning, and a retry provider

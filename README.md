@@ -182,6 +182,13 @@ checks separately.
 `init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`
 
 `plan verify` checks whether acceptance criteria can run; it does not establish product coverage.
+It also rejects an unsupplied literal formatted decimal expectation (`decimal-oracle`): derive
+numeric answers from fixture inputs with the source formula and rounding, or cite the source's
+exact known answer. The check establishes literal provenance, not arithmetic correctness.
+`plan repair` reports this authoring defect unchanged without a model call; regenerate or review
+the source-derived criterion before building. Failure banners and stderr identify the story
+owning the failed criterion when several stories share one execution.
+
 Staged corpus probes preserve literal corpus paths and section filters. `Probe Count: json` counts
 JSON array elements; use it with runners whose listing mode emits JSON, rather than counting output
 lines. Probes also resolve `os.path.abspath("literal-path")` against the criterion working

@@ -644,9 +644,9 @@ def repair(
     by_file: dict[str, list[Defect]] = {}
     items: list[RepairItem] = []
     for defect in found.defects:
-        if defect.kind == "unresolved-probe-arguments":
-            # Declaration edits cannot resolve body expressions; never spend a model call
-            # asking it to move the selector into Probe or to guess a runtime value.
+        if defect.kind in {"unresolved-probe-arguments", "decimal-oracle"}:
+            # Mechanical repair cannot resolve runtime expressions or establish a numeric
+            # oracle. Preserve the proof and report the need for source-based authoring.
             item = RepairItem(defect.filename, defect.check_id, "unrepaired", "", defect.detail)
             items.append(item)
             if on_item is not None:

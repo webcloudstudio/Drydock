@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261024 V35
+version: 20261025 V36
 ---
 
 ## Overview
@@ -183,6 +183,12 @@ Program and corpus-path options do not select cases. Preserve the criterion's ac
 filter and corpus path when declaring its probe; never change supplied read-only runners to
 accommodate a probe protocol.
 
+Put each `Requires:` declaration inside its `=== AC ... ===` block, before the Python body;
+repeat it for each criterion that needs it. A declaration before the opener belongs to no
+criterion. Selecting a framework in TECHNOLOGY_STACK.md does not declare the criterion's tools.
+A foundation criterion verifies its factory/client interface without invoking an endpoint owned
+by a later service story; endpoint criteria assert the exact required status, never 200-or-404.
+
 Nothing inside the body can move a boundary. A Markdown fence, a `##` line, a `###` line, or a
 `Requires:` line inside a string is ordinary content — which matters, because a target that
 processes markup will legitimately embed all of them in its proof. Write the body as plain Python;
@@ -227,6 +233,25 @@ A state oracle cannot pass against a stub and cannot fail because a runner print
 a string in captured output.
 
 ### The expected value must be one you could not get wrong
+
+For computed numeric output, derive the oracle from the fixture inputs using the source formula.
+Never hand-calculate a formatted decimal answer. Use `Decimal` for decimal contracts, preserve
+unrounded intermediate values, and apply the specified rounding only at the stated boundary.
+For example, with amount `"2.00"`, source rate `"2"`, and target rate `"5"`:
+
+```
+from decimal import Decimal, ROUND_HALF_EVEN
+expected = (Decimal(amount) * Decimal(target_rate) / Decimal(source_rate)).quantize(
+    Decimal("0.01"), rounding=ROUND_HALF_EVEN
+)
+assert body["result"] == f"{expected:.2f}"
+```
+
+Read `body` from the application response. This oracle is `5.00`; typing `10.00` invents a
+requirement. Plan rejects an unsupplied literal formatted decimal expectation (`decimal-oracle`)
+unless the cited source states that value. This provenance check does not prove a formula correct.
+Moving a guessed answer into a variable does not satisfy the authoring rule.
+
 
 Reading state back is half the rule. The other half is what you compare it *to*.
 

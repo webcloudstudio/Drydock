@@ -48,6 +48,7 @@ from drydock.acceptance import (
     uncalled_function_defect,
     unresolved_globals,
 )
+from drydock.acceptance_oracle import decimal_expectation_defects
 from drydock.acceptance_store import store_setup_defects
 from drydock.database_contract import (
     database_contract_defects,
@@ -537,6 +538,8 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
         criteria[path.name] = len(checks)
         for check in checks:
             checked_criteria += 1
+            for reason in decimal_expectation_defects(check):
+                defects.append(Defect(path.name, check.check_id, "decimal-oracle", reason))
             for reason in store_setup_defects(check.code):
                 defects.append(Defect(path.name, check.check_id, "acceptance-store", reason))
             if captures_without_reporting(check.code):

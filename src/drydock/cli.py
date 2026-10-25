@@ -2310,12 +2310,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
     log_dir = get_workspace() / "logs"
 
-    # Failures are collected here and rendered once at the end of the run, after the result
-    # line, so the last thing on screen is the diagnosis rather than a mid-stream banner the
-    # remaining step output scrolls away. The per-block progress and Definition of Done are
-    # streamed by build_target itself; report only harvests the failures for that closing block.
-    failures: list[BuildStepResult] = []
-    _fatal_shown: set[str] = set()
+    # Stream progress here; select failure representatives from the complete result so
+    # a later story owning the failing criterion can replace an earlier sibling.
     _reported_units: set[str] = set()
     _build_unit_ids: dict[str, str] = {}
     debug = bool(getattr(args, "debug", False))
@@ -2340,12 +2336,6 @@ def cmd_build(args: argparse.Namespace) -> int:
             print(f"  {outcome}  {kind}={unit_id}{state_label}{reference}{elapsed}")
         if _build_unit_ids.get(step.block_id, step.block_id) != step.block_id:
             print(f"    story={step.block_id}  state={step.state}")
-        if step.status == "failed":
-            # Stories in one block share a single execution: report it once.
-            fatal_key = step.execution_id or f"{step.block_id}:{step.error}"
-            if fatal_key not in _fatal_shown:
-                _fatal_shown.add(fatal_key)
-                failures.append(step)
 
     build_started = time.monotonic()
     print(f"Build: {args.Target}")
@@ -2484,7 +2474,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(
             _render_build_failures(
                 args.Target,
-                failures or result.failed(),
+                _failure_representatives(result.failed()),
                 hint=BUILD_FAILURE_HINT,
                 story_recovery=story_recovery,
             )
@@ -2512,7 +2502,7 @@ def cmd_build(args: argparse.Namespace) -> int:
                 f"build failed for {args.Target}: {len(result.failed())} step(s)",
                 tuple(
                     f"{step.block_id} — {step.state}" + (f": {step.error}" if step.error else "")
-                    for step in (failures or result.failed())
+                    for step in _failure_representatives(result.failed())
                 ),
             )
             record_status(
@@ -4947,6 +4937,27 @@ def _acceptance_recovery_lines(
         f"{indent}  to continue the build. This story resumes where it left off and is",
         f"{indent}  retried against the checks it failed.",
     ]
+
+
+def _failure_representatives(steps):
+    """Report each execution through its failing criterion's owner when available."""
+    groups = {}
+    for step in steps:
+        key = step.execution_id or step.container_block_id or step.block_id
+        previous = groups.get(key)
+        owns_failure = any(
+            not check.passed and not check.skipped and check.binding
+            for check in step.owned_acceptance
+        )
+        if previous is None or (
+            owns_failure
+            and not any(
+                not check.passed and not check.skipped and check.binding
+                for check in previous.owned_acceptance
+            )
+        ):
+            groups[key] = step
+    return list(groups.values())
 
 
 def _render_build_failures(
