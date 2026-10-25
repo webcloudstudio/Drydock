@@ -25,6 +25,14 @@ written.
 
 ## Details
 
+`2026-10-25` · Database operation heading validation names every malformed level-three heading
+in `## Access Patterns`, including mixed-case IDs, even beside valid operations. Retry feedback
+states the uppercase ID, three-digit suffix, and em-dash grammar rather than claiming the
+operations are absent. Bare `AC` and `END AC` names are reserved by both artifact parsers;
+id-less criterion closes remain in the Blueprint body for existing criterion validation and
+reported boundary recovery. This extends `299b702`'s namespace guard for FxRates
+`20261025.184822`; no identifier or criterion body is silently rewritten.
+
 `2026-10-24` · `DATABASE.md` admission and `plan verify` reject a shared Output DTO name
 with different ordered fields or emitted field types, including names that normalize to one
 Python class. The emitter uses the same output-row registry and normalization helpers in
@@ -664,6 +672,11 @@ exist.
 
 
 ## Actions
+
+- `2026-10-25` · FxRates `20261025.184822`: local regressions cover bare criterion closes,
+  mixed-case and malformed operation headings, missing primary keys, and duplicate operations.
+  Parser and retry-diagnostic fixes await Ed's later UAT evidence; provider authoring defects
+  remain recorded separately in `design/skills/ddk-uat.md`. Close on clean affected-stage evidence.
 
 - `2026-10-24` · CsvStat `20261025.011759`: local fixes address the five diagnosis ledger
   findings; Ed must verify a fresh run with valid CSV fixtures, post-build native checks,

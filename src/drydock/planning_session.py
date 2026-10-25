@@ -188,7 +188,7 @@ _INVARIANT_OPEN_LINE_RE = re.compile(
     rf"^===\s*BEGIN\s+ARTIFACT\s+{RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?)\s*===\s*$"
 )
 _INVARIANT_END_LINE_RE = re.compile(r"^===\s*END\s+ARTIFACT\s*===\s*$")
-_RESERVED_NAME_RE = re.compile(r"^(?:END\s+)?AC\s")
+_RESERVED_NAME_RE = re.compile(r"^(?:END\s+)?AC(?:\s|$)")
 
 _DELIMITER_OPEN = "open"
 _DELIMITER_CLOSE = "close"

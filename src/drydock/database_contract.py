@@ -813,6 +813,19 @@ def _pattern_blocks(text: str, source: str) -> list[tuple[re.Match[str], str]]:
     access_patterns = _section(text, "Access Patterns")
     if not access_patterns.strip():
         raise SpecificationError(f"{source}: missing required ## Access Patterns section")
+    invalid = [
+        heading.group(0).strip()
+        for heading in re.finditer(r"^###[ \t]+[^\n]+", access_patterns, re.MULTILINE)
+        if not _H3_RE.fullmatch(heading.group(0))
+    ]
+    if invalid:
+        raise SpecificationError(
+            f"{source}: invalid access-pattern heading(s): "
+            + "; ".join(f"`{heading}`" for heading in invalid)
+            + ". Each heading is `### FEATURE-DOMAIN-001 — Operation`: the identifier uses "
+            "uppercase letters, digits, and hyphens and ends in a three-digit number; "
+            "the separator is a literal em dash. Correct every invalid heading before retrying."
+        )
     matches = list(_H3_RE.finditer(access_patterns))
     if not matches:
         raise SpecificationError(

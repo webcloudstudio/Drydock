@@ -484,6 +484,22 @@ def test_pairing_ignores_ac_containers():
     assert pair_artifact_delimiters(text).closed == ("STORY-Login.md",)
 
 
+@pytest.mark.parametrize("closer", ["=== END AC ===", "=== END AC", "=== END AC login-1 ==="])
+def test_ac_closes_never_become_artifact_boundaries(closer):
+    body = f"=== AC login-1 ===\nassert True\n{closer}\n\n## Guardrails\nKeep this tail."
+    text = f"=== BEGIN ARTIFACT DATABASE.md ===\n{body}\n=== END ARTIFACT ===\n"
+
+    pairing = pair_artifact_delimiters(text)
+    assert pairing.closed == ("DATABASE.md",)
+    assert pairing.unclosed == pairing.orphan_closes == pairing.premature_closes == ()
+    assert parse_artifact_report(text, label="Test").blocks == {"DATABASE.md": body}
+
+
+def test_ac_prefix_in_a_real_filename_is_not_reserved():
+    text = "=== BEGIN ARTIFACT AC.md ===\nBody\n=== END ARTIFACT ===\n"
+    assert parse_artifact_report(text, label="Test").blocks == {"AC.md": "Body"}
+
+
 def test_the_emission_contract_is_rendered_from_the_grammar_constants():
     """One authority. A prompt that hand-types a delimiter cannot follow a grammar change."""
     lines = artifact_blocks.emission_contract_lines(("TOPOLOGY.md", "ARCHITECTURE.md"))

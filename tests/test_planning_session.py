@@ -706,6 +706,25 @@ def test_strict_blocks_keep_ac_containers_inside_their_blueprint():
     assert "=== AC login-1 ===" in blocks["STORY-Login.md"]
 
 
+@pytest.mark.parametrize("closer", ["=== END AC ===", "=== END AC"])
+def test_bare_ac_close_reaches_criterion_validation_without_losing_the_artifact(closer):
+    from drydock.acceptance import parse_delimited_acceptance
+
+    body = (
+        "# DATABASE: Rates\n\n## Programmatic Acceptance\n\n"
+        f"=== AC roundtrip ===\nIntent: Store a rate.\n\nassert True\n{closer}\n\n"
+        "## Guardrails\n\nKeep the supplied files read-only."
+    )
+    output = f"=== BEGIN ARTIFACT DATABASE.md ===\n{body}\n=== END ARTIFACT ===\n"
+    blocks = _parse_strict_blocks(output, FakeRun(text=output))
+
+    assert blocks == {"DATABASE.md": body}
+    assert ps._unpaired_artifact_names(output, blocks) == frozenset()
+    # Envelope parsing preserves the malformed proof; it does not silently validate it.
+    with pytest.raises(ValueError, match="never closed"):
+        parse_delimited_acceptance(blocks["DATABASE.md"], source="DATABASE.md")
+
+
 def _make_target(tmp_path: Path, *, analysis: str | None = _ANALYSIS) -> Path:
     target_dir = tmp_path / "Example"
     sources = target_dir / "blueprint" / "sources"

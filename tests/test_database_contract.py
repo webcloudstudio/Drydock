@@ -81,6 +81,45 @@ _INTERFACE = """# FEATURE: Order
 """
 
 
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "### FEATURE-CLI-Load-001 — Create order",
+        "### FEATURE-ORDER-01 — Create order",
+        "### FEATURE-ORDER-001 - Create order",
+        "### Create order",
+    ],
+)
+def test_invalid_operation_headings_name_the_bad_heading_and_required_grammar(heading):
+    text = _DATABASE.replace("### FEATURE-ORDER-001 — Create order", heading)
+
+    defects = database_contract_defects(text, source="Draft.md")
+
+    assert len(defects) == 1
+    assert f"Draft.md: invalid access-pattern heading(s): `{heading}`" in defects[0]
+    assert "uppercase letters" in defects[0]
+    assert "three-digit number" in defects[0]
+    assert "literal em dash" in defects[0]
+    assert "no named operation" not in defects[0]
+    # A valid sibling must not let a malformed operation disappear from the contract.
+    with pytest.raises(SpecificationError, match="invalid access-pattern heading"):
+        parse_database_contract(text)
+
+
+def test_all_invalid_operation_headings_are_reported_in_one_retry():
+    text = _DATABASE.replace("FEATURE-ORDER-001", "FEATURE-CLI-Load-001").replace(
+        "FEATURE-ORDER-002", "FEATURE-API-Health-002"
+    )
+    message = "\n".join(database_contract_defects(text))
+    assert "FEATURE-CLI-Load-001" in message
+    assert "FEATURE-API-Health-002" in message
+
+
+def test_a_flat_operation_table_still_reports_the_missing_heading_form():
+    text = "## Access Patterns\n\n| Operation | Owner |\n| rates.list | FEATURE-Rates.md |\n"
+    assert "no named operation" in database_contract_defects(text)[0]
+
+
 _SQLITE_SCHEMA = """# DATABASE: Registry
 
 ## `settings`
@@ -917,6 +956,63 @@ def test_a_placeholder_input_row_declares_no_field():
         "- `FEATURE-BOOK-001` — read: books.list - supplies: (none) - returns: `id`\n"
     )
     assert uses[0].supplies == ()
+
+
+def test_fxrates_database_retry_shapes_stay_rejected_until_the_contract_is_valid():
+    # Self-contained replay of 20261025.184822's list/stats, heading, and PK faults.
+    operation = """### FEATURE-RATE-001 — List stored rates
+
+| Field | Value |
+|---|---|
+| Owner | FEATURE-Rates.md |
+| Access | read |
+| Repository operation | `rates.list` |
+| Kind | list |
+| Compatibility | data |
+
+Input: RateQuery
+
+| Field | Type |
+|---|---|
+
+Output: Rate
+
+| Field | Type |
+|---|---|
+| date | TEXT |
+| currency | TEXT |
+| rate | TEXT |
+
+"""
+    schema = """## `rates`
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| date | TEXT NOT NULL | |
+| currency | TEXT NOT NULL | |
+| rate | TEXT NOT NULL | |
+
+- UNIQUE (date, currency)
+"""
+    valid = "## Access Patterns\n\n" + operation + schema
+    assert database_contract_defects(valid) == ()
+
+    missing_key = valid.replace("| id | INTEGER PK | |\n", "")
+    assert "rates declares 0 PK columns" in "\n".join(database_contract_defects(missing_key))
+
+    mixed_case = valid.replace("FEATURE-RATE-001", "FEATURE-CLI-Load-001")
+    assert "FEATURE-CLI-Load-001" in "\n".join(database_contract_defects(mixed_case))
+    assert "uppercase letters" in "\n".join(database_contract_defects(mixed_case))
+
+    stats = operation.replace("FEATURE-RATE-001", "FEATURE-RATE-002").replace(
+        "`rates.list`", "`rates.stats`"
+    )
+    duplicate = "## Access Patterns\n\n" + operation + stats + schema
+    assert "runs exactly what FEATURE-RATE-001 runs" in "\n".join(
+        database_contract_defects(duplicate)
+    )
+    assert database_contract_defects(valid) == ()
 
 
 def test_output_names_have_one_shape_before_database_admission():

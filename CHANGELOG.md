@@ -347,6 +347,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-25: Planning names invalid `DATABASE.md` operation headings and the required uppercase
+  ID and em-dash grammar, including invalid headings beside valid ones. Artifact parsing keeps
+  bare acceptance closes inside their Blueprint for criterion validation instead of treating
+  `END AC` as another artifact and reporting an incomplete envelope.
+
 - 2026-10-25: Scoring commands suppress grader JSON fragments beginning with punctuation or
   indentation instead of displaying them as broken progress lines. Explicit provider telemetry
   and the final verdict listing remain visible, including when called by `drydock uat`.

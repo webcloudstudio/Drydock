@@ -26,7 +26,9 @@ R = TypeVar("R")
 #: writes the end marker as ``(?:END )?`` would otherwise backtrack that group to empty and match
 #: ``=== END AC <id> ===`` with the name ``END AC <id>``, defeating a guard placed after it.
 #: Placed *before* an optional ``END``, or after a literal one, this rejects both spellings.
-RESERVED_BLOCK_NAMESPACE = r"(?!(?:END\s+)?AC\s)"
+#: Bare ``AC``/``END AC`` names are reserved too: an id-less proof close remains body text
+#: for criterion validation, rather than opening an artifact named ``END AC``.
+RESERVED_BLOCK_NAMESPACE = r"(?!(?:END\s+)?AC(?:\s|$))"
 
 #: The invariant-boundary form. The artifact name appears exactly once, at the open, where it is
 #: being typed deliberately; the close is a constant token with nothing to recall and nothing to
@@ -59,7 +61,7 @@ _IGNORABLE_OUTSIDE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 
-_RESERVED_NAME_RE = re.compile(r"^(?:END\s+)?AC\s")
+_RESERVED_NAME_RE = re.compile(r"^(?:END\s+)?AC(?:\s|$)")
 
 #: Stray text is narration a model wraps around intact artifact blocks ("I'll produce the analysis
 #: from the injected sources."). It is discarded and reported, never written. Outside text shaped
