@@ -407,7 +407,10 @@ class TestRefitTarget:
         assert normalized == []  # Failed conformance restores the ticket transaction.
         blockers = (target / "BLOCKERS.md").read_text(encoding="utf-8")
         assert "empty output" in blockers
-        assert f"- owner: refit {target.name}\n" in blockers and "- kind: decision\n" in blockers
+        from drydock.blockers import parse_blockers
+
+        assert parse_blockers(blockers).owner == f"refit {target.name}"
+        assert "- kind: decision\n" in blockers
 
     def test_conforms_ticket_and_patches_manifest(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))

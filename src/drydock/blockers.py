@@ -12,6 +12,7 @@ may raise one, and :func:`write_blockers` enforces that.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -57,7 +58,7 @@ _TITLES = {
 }
 
 _RESOLUTION_HEADING = "Commander Resolution"
-_SECTION_HEADINGS = ("Error", "Question", _RESOLUTION_HEADING)
+_SECTION_HEADINGS = ("Error", "Why blocked", "Question", _RESOLUTION_HEADING)
 _HEADER_RE = re.compile(r"^#\s+Blockers:\s*(?P<summary>.*?)\s*$", re.MULTILINE)
 _FIELD_RE = re.compile(r"^-\s+(?P<key>[A-Za-z-]+):\s*(?P<value>.*?)\s*$")
 _BLOCKER_RE = re.compile(
@@ -91,6 +92,7 @@ class Blocker:
     error: str = ""
     question: str = ""
     resolution: str = ""
+    explanation: str = ""
 
     @property
     def environmental(self) -> bool:
@@ -217,9 +219,16 @@ def reset_clock(message: str, declared: datetime | None) -> str | None:
 
 def _parse_declared(declared: str) -> datetime | None:
     try:
-        return datetime.strptime(declared, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        parsed = datetime.fromisoformat(declared.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else None
     except ValueError:
         return None
+
+
+def local_declared(declared: str) -> str:
+    """Render a recorded instant in the operator's local timezone, including its offset."""
+    parsed = _parse_declared(declared)
+    return parsed.astimezone().isoformat(timespec="seconds") if parsed else declared
 
 
 def may_auto_continue(blocker: Blocker, declared: str, now: datetime | None = None) -> bool:
@@ -265,19 +274,27 @@ def render_blockers(blockers: Blockers) -> str:
         f"# Blockers: {blockers.summary}",
         f"- target: {blockers.target}",
         f"- source: {blockers.source}",
-        f"- owner: {blockers.owner}",
-        f"- declared: {blockers.declared}",
-        f"- execution: {blockers.execution}",
-        f"- attempts: {blockers.attempts}",
+        f"- declared: {local_declared(blockers.declared)}",
+        "",
+        "<!-- drydock-state: "
+        + json.dumps({
+            "owner": blockers.owner,
+            "execution": blockers.execution,
+            "attempts": blockers.attempts,
+        })
+        + " -->",
     ]
     for item in blockers.blockers:
         lines += ["", f"## {item.blocker_id}: {item.title}", f"- kind: {item.kind}"]
         if item.environmental:
             lines += [f"- class: {item.blocker_class}", f"- auto-continue: {item.auto_continue}"]
-            lines += ["### Error", item.error.strip()]
+            lines += ["", "### Error", "", item.error.strip()]
+            if item.explanation:
+                lines += ["", "### Why blocked", "", item.explanation.strip()]
         else:
-            lines += ["### Question", item.question.strip()]
-        lines += [f"### {_RESOLUTION_HEADING}"]
+            lines += ["", "### Question", "", item.question.strip()]
+        if not item.environmental or item.resolution:
+            lines += ["", f"### {_RESOLUTION_HEADING}"]
         if item.resolution.strip():
             lines.append(item.resolution.strip())
     return "\n".join(lines).rstrip() + "\n"
@@ -322,6 +339,20 @@ def parse_blockers(text: str) -> Blockers:
         match = _FIELD_RE.match(line)
         if match and match.group("key").lower() in _HEADER_FIELDS:
             fields[match.group("key").lower()] = match.group("value")
+    state = re.search(r"<!-- drydock-state: (.*?) -->", header_text)
+    if state:
+        try:
+            metadata = json.loads(state.group(1))
+            if isinstance(metadata, dict):
+                fields.update({
+                    key: str(metadata[key])
+                    for key in ("owner", "execution", "attempts")
+                    if key in metadata
+                })
+        except (ValueError, TypeError):
+            pass
+    if declared := _parse_declared(fields.get("declared", "")):
+        fields["declared"] = declared.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         attempts = max(1, int(fields.get("attempts", "1")))
     except ValueError:
@@ -371,6 +402,7 @@ def _parse_blocker(match: re.Match[str]) -> Blocker:
         error=text_of("Error"),
         question=text_of("Question"),
         resolution=text_of(_RESOLUTION_HEADING),
+        explanation=text_of("Why blocked"),
     )
 
 
@@ -439,52 +471,43 @@ def primary_instruction(blockers: Blockers) -> str:
 def render_banner(blockers: Blockers, target: str = "", recovery: str = "") -> str:
     """The standard console banner: what blocks the Target, and the way back."""
     border = "=" * 72
-    heading = f"BLOCKED{f': {target}' if target else ''}  ·  {blockers.owner or 'no owner'}"
+    heading = f"BLOCKED: {target or blockers.target}"
     if blockers.declared:
-        heading += f"  ·  {blockers.declared}"
+        heading += f"  ·  {local_declared(blockers.declared)}"
     lines = [border, heading, border, "", f"  {blockers.summary}"]
     for item in blockers.blockers:
-        detail = (
-            f"{item.kind} · {item.blocker_class} · auto-continue {item.auto_continue}"
-            if item.environmental
-            else item.kind
-        )
-        lines += ["", f"  {item.blocker_id}: {item.title}  [{detail}]"]
+        lines += ["", f"  {item.title}", "", "  Error" if item.environmental else "  Question"]
         body = item.error if item.environmental else item.question
-        lines += [f"    {line}" for line in body.splitlines() if line.strip()]
+        lines += [f"    {line}" if line.strip() else "" for line in body.splitlines()]
+        if item.explanation:
+            lines += ["", "  Why blocked"]
+            lines += [
+                f"    {line}" if line.strip() else "" for line in item.explanation.splitlines()
+            ]
         if item.resolution:
             lines += ["    Commander Resolution:"]
             lines += [f"      {line}" for line in item.resolution.splitlines() if line.strip()]
     if recovery:
         lines += ["", "  Recovery", *(f"    {line.strip()}" for line in recovery.splitlines())]
     if blockers.source:
-        lines += ["", f"  Owner rerun: {blockers.source}"]
-    if blockers.environmental():
-        lines += [f"  Attempts: {blockers.attempts}"]
+        lines += ["", f"  Rerun after resolving the error: {blockers.source}"]
     lines.append(border)
     return "\n".join(lines)
 
 
 def render_refusal(target_dir: Path, command: str, recovery: str = "") -> str:
-    """Why ``command`` will not run: the banner, the file verbatim, and how to remove it."""
+    """Why ``command`` will not run, without duplicating the blocker file."""
     path = blockers_path(target_dir)
     blockers = read_blockers(target_dir)
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        text = f"(unreadable: {exc})"
     lines = [
         f"{command} refused: {target_dir.name} is blocked.",
         "",
         render_banner(blockers, target_dir.name, recovery) if blockers is not None else "",
         "",
-        f"Contents of {path}:",
-        "",
-        *(f"  {line}".rstrip() for line in text.splitlines()),
-        "",
-        "To continue, answer each Commander Resolution and rerun the owner",
-        f"({blockers.source if blockers and blockers.source else 'the owning command'}),"
-        " or remove the file:",
-        f"  rm '{path}'",
+        f"Blocker details: {path}",
     ]
+    if blockers and blockers.decisions():
+        lines += ["Answer the questions in Commander Resolution, then rerun the recorded command."]
+    else:
+        lines += ["Resolve the reported error, then rerun the command shown above."]
     return "\n".join(lines)

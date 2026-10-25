@@ -30,6 +30,14 @@ Three properties define done (UAT gate model, 2026-08-14):
 
 ## Details
 
+`2026-10-24` · A failed build's stage blocker preserves the child's stderr (stdout when stderr
+is empty or unavailable), up to 12,000 characters, with explicit truncation and both full evidence
+paths. Missing diagnostics are stated explicitly. The error names the command and exit code;
+`Why blocked` separately explains that the unfinished application prevents acceptance and scoring.
+The same diagnostic survives into the run's recorded error. Existing provider blockers still win.
+This fixes the hidden persistence-generation error in FxRates `20261025.014047`; it does not
+repair the inconsistent generated `Rate` DTO or change published evidence.
+
 `2026-10-24` · Terminal presentation is compacted in `uat_console.py`; child evidence and
 execution order are unchanged. Plan progress frames become one line per batch. Copyright,
 Git housekeeping, and Claude session ids are omitted. The three status commands still execute
@@ -216,6 +224,12 @@ authoring contract, and (b) a warning that may cost marks, never a hard gate.
    superseded, or open?
 
 ## Actions
+
+- `2026-10-24` · FxRates `20261025.014047` stops before a build-agent call because
+  `blueprint/DATABASE.md:118` declares `Rate` without `rate`, unlike the earlier three-field
+  `Rate` outputs. `database_emit_python.py:119` correctly rejects the conflict; determine why
+  planning/verification accepts it and reject or repair it before build. This is separate from
+  the fixed blocker presentation. Close on a focused contract regression and Ed's later UAT.
 
 - `2026-10-24` · CsvStat `20261025.011759`: local fixes address the five diagnosis ledger
   findings; Ed must verify a fresh run with valid CSV fixtures, post-build native checks,

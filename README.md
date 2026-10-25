@@ -287,6 +287,12 @@ as its primary instruction, then continues. Unattended, the owner reruns only wh
 is resolved and every environmental blocker may auto-continue (a timeout, an outage, or a rate
 limit past its stated reset), once. `plan --override` passes an analysis decision only.
 
+Blocker messages show local timestamps, the error, a separate explanation when supplied, and
+the command to rerun after resolution. Internal ownership, execution, and retry counters are
+stored in a machine-readable comment rather than displayed as header fields. Refused commands
+link to `BLOCKERS.md` without repeating its contents. A failed UAT build retains the child's
+diagnostic output and stdout/stderr evidence paths and explains why acceptance and scoring stop.
+
 Fatal provider failures exit `1` with the recorded blocker and error last on the console;
 planning does not turn them into generation stalls. UAT reports show recorded blockers and
 failed workflow attempts explicitly and distinguish conformance that was not executed from

@@ -337,6 +337,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: Failed UAT builds retain the child error and stdout/stderr evidence locations in
+  `BLOCKERS.md`, console output, and the recorded stop reason instead of replacing the cause with
+  a generic frontier message. A separate explanation states why the unfinished build stops
+  acceptance and scoring. Blocker timestamps use local time; console messages omit internal
+  ownership and retry metadata, duplicate file dumps, and empty environmental resolution fields.
+  Internal gate state remains persisted, including retry limits.
+
 - 2026-10-24: CsvStat-driven acceptance corrections keep unwritten native Go tests eligible
   after implementation, preserve actionable assertion failures ahead of excluded checks in
   bounded build repair feedback, and stop UAT receipt accounting from hiding failures when

@@ -1446,7 +1446,7 @@ def run_fixture(
                 "acceptance criteria still cannot run after one repair pass",
             )
 
-    def declare_stop(stage: str, reason: str) -> None:
+    def declare_stop(stage: str, reason: str, *, explanation: str = "") -> None:
         """Record the halt as an environmental blocker and announce it on the console."""
         target_dir = workspace / "targets" / fixture.target
         if not target_dir.is_dir():
@@ -1456,6 +1456,7 @@ def run_fixture(
         if stopped() is None:
             declared = now_utc()
             blocker = environmental_blocker(UAT_STAGE, reason, declared=declared, title=stage)
+            blocker = replace(blocker, explanation=explanation)
             existing = read_blockers(target_dir)
             write_blockers(
                 target_dir,
@@ -1611,9 +1612,12 @@ def run_fixture(
                 degraded.append(f"{stage}-build-{stage_passes} exited {built.returncode}")
                 declare_stop(
                     f"{stage}-build-{stage_passes}",
-                    f"The build exited {built.returncode} with work still on the frontier. "
-                    "Diagnose the failing block from its evidence before rerunning; a score "
-                    "taken over a partial build grades the absence, not the product.",
+                    build_failure_detail(built, fixture.target),
+                    explanation=(
+                        "The build did not complete. UAT stopped before acceptance tests and "
+                        "scoring because the application is unfinished. Resolve the build "
+                        "error above before rerunning UAT."
+                    ),
                 )
                 break
         # ``--check`` records Manifest verification completeness; it does not control the build
@@ -1847,6 +1851,31 @@ def render_status(fixture: UATFixture, run: str | None = None) -> str:
     completed = _successful_run_times(fixture)
     if completed:
         lines.extend(["", "Completed runs:", *completed])
+    return "\n".join(lines)
+
+
+def build_failure_detail(command: CommandResult, target: str) -> str:
+    """Preserve a failed build's diagnostics and their evidence locations in its blocker."""
+    lines = [f"drydock build {target} exited {command.returncode}."]
+    diagnostics = ""
+    for stream, value in (("stderr", command.stderr_path), ("stdout", command.stdout_path)):
+        if not value:
+            continue
+        try:
+            with Path(value).open(encoding="utf-8", errors="replace") as handle:
+                content = handle.read(12001)
+        except OSError:
+            continue
+        if content.strip():
+            diagnostics = f"{stream}:\n{content[:12000].strip()}"
+            if len(content) > 12000:
+                diagnostics += "\n[Excerpt truncated; full output is in the evidence file below.]"
+            break
+    lines += ["", diagnostics or "No diagnostic output was captured; inspect the command evidence."]
+    lines += ["", "Evidence:"]
+    for stream, value in (("stderr", command.stderr_path), ("stdout", command.stdout_path)):
+        if value:
+            lines.append(f"  {stream}: {value}")
     return "\n".join(lines)
 
 

@@ -1446,8 +1446,10 @@ Pattern: unwanted""",
         assert "blocker-sea-trials" in blockers
         assert "is missing Criterion" in blockers
         # Drydock writes the standard file: analyze owns it and raises a decision.
-        assert f"- owner: analyze {target_dir.name}\n" in blockers
-        assert "- kind: decision\n### Question\n" in blockers
+        from drydock.blockers import parse_blockers
+
+        assert parse_blockers(blockers).owner == f"analyze {target_dir.name}"
+        assert "- kind: decision\n\n### Question\n" in blockers
         assert not (target_dir / "SOUNDINGS.md").exists()
 
     def test_withheld_source_content_is_warned(self, tmp_path):

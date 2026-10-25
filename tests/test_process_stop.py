@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from drydock.blockers import (
     may_auto_continue,
     parse_blockers,
     read_blockers,
+    render_banner,
     render_blockers,
     reset_clock,
     write_blockers,
@@ -129,10 +131,11 @@ def test_the_file_round_trips_the_standard_format(tmp_path):
 
     text = path.read_text(encoding="utf-8")
     assert text.startswith("# Blockers: Rate Limit Hit\n- target: TestTarget\n")
-    assert "- owner: build TestTarget\n" in text and "- attempts: 1\n" in text
+    assert "- owner:" not in text and "- attempts:" not in text and "- execution:" not in text
+    assert "<!-- drydock-state:" in text
     assert "## blocker-001: Provider usage limit\n- kind: environmental\n" in text
-    assert "- class: provider rate limit\n- auto-continue: after 21:31\n### Error\n" in text
-    assert text.rstrip().endswith("### Commander Resolution")
+    assert "- class: provider rate limit\n- auto-continue: after 21:31\n\n### Error\n" in text
+    assert "### Commander Resolution" not in text
     assert read_blockers(tmp_path) == _rate_limited()
 
 
@@ -142,6 +145,36 @@ def test_only_analyze_and_refit_may_raise_a_decision_blocker(tmp_path):
         write_blockers(tmp_path, Blockers(**{**decision.__dict__, "owner": "build TestTarget"}))
     write_blockers(tmp_path, decision)
     write_blockers(tmp_path, Blockers(**{**decision.__dict__, "owner": "refit TestTarget"}))
+
+
+def test_blocker_time_is_local_and_retry_state_survives_round_trip(monkeypatch):
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        blockers = _rate_limited(attempts=2)
+        text = render_blockers(blockers)
+        assert "- declared: 2026-10-24T14:38:12-04:00" in text
+        assert parse_blockers(text) == blockers
+        assert not batch_may_run_owner(parse_blockers(text))
+        banner = render_banner(blockers)
+        assert "2026-10-24T14:38:12-04:00" in banner
+        assert "Attempts:" not in banner and "exec-1" not in banner
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+def test_legacy_blocker_header_still_preserves_owner_and_retry_limit():
+    old = (
+        "# Blockers: Timeout\n- target: TestTarget\n- source: drydock build TestTarget\n"
+        "- owner: build TestTarget\n- declared: 2026-10-24T18:38:12Z\n"
+        "- execution: exec-old\n- attempts: 2\n\n"
+        "## blocker-001: Timeout\n- kind: environmental\n- class: provider timeout\n"
+        "- auto-continue: yes\n### Error\ntimed out\n### Commander Resolution\n"
+    )
+    parsed = parse_blockers(old)
+    assert parsed.owner == "build TestTarget" and parsed.execution == "exec-old"
+    assert not batch_may_run_owner(parsed)
 
 
 def test_a_model_written_blocker_parses_as_a_decision():
@@ -371,7 +404,7 @@ def test_status_dashboard_ends_with_the_banner_and_its_recovery(
 
     assert rc == 0
     tail = out[out.index("BLOCKED: TestTarget") :]
-    assert "build TestTarget" in tail and "provider rate limit" in tail
+    assert "build TestTarget" in tail and "Provider usage limit" in tail
     assert "Wait for the provider limit to reset" in tail
 
 
@@ -472,7 +505,7 @@ def test_status_run_and_uat_ignore_the_block(tmp_target_root, isolated_config, m
     assert _gate(argv) is True
 
 
-def test_a_refusal_shows_the_file_and_how_to_remove_it(
+def test_a_refusal_shows_the_error_once_without_internal_metadata(
     tmp_target_root, isolated_config, monkeypatch
 ):
     target_dir = _target(tmp_target_root, monkeypatch)
@@ -482,9 +515,13 @@ def test_a_refusal_shows_the_file_and_how_to_remove_it(
 
     assert rc == 1
     assert "drydock plan refused: TestTarget is blocked." in err
-    assert f"Contents of {path}:" in err
-    assert "  - owner: build TestTarget" in err
-    assert f"rm '{path}'" in err
+    assert f"Blocker details: {path}" in err
+    assert "Contents of" not in err
+    assert "owner:" not in err and "Owner rerun" not in err and "Attempts:" not in err
+    assert "execution:" not in err and "auto-continue" not in err
+    assert err.count(USAGE_LIMIT) == 1
+    assert "Rerun after resolving the error: drydock build TestTarget" in err
+    assert "Commander Resolution" not in err
     assert path.is_file()
 
 

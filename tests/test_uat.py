@@ -1420,6 +1420,63 @@ def test_a_failed_build_stops_the_run(tmp_path: Path) -> None:
     assert result.score_exit_codes == {}
 
 
+def test_build_blocker_retains_child_error_and_explains_the_stop(tmp_path: Path) -> None:
+    from drydock.blockers import read_blockers, render_banner
+
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    base_runner, _ = _staged_runner(tmp_path, failing=("initial-build",))
+    error = (
+        "error: persistence: not generated — Conflicting Python row class Rate: "
+        "FEATURE-RATES-004 declares different Output fields than an earlier pattern of that name"
+    )
+
+    def runner(argv, cwd, env, output_dir, label):
+        result = base_runner(argv, cwd, env, output_dir, label)
+        if label.endswith("initial-build-1"):
+            Path(result.stderr_path).write_text(error + "\n", encoding="utf-8")
+        return result
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="fake",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 10, 24, tzinfo=UTC),
+    )
+    result = results[0]
+    blockers = read_blockers(Path(result.output_dir) / "workspace/targets/ReadingList")
+    assert blockers is not None
+    banner = render_banner(blockers)
+    assert error in banner and error in result.error
+    assert "Why blocked" in banner and "before acceptance tests and scoring" in banner
+    assert "10-initial-build-1.stderr.log" in banner
+    assert "10-initial-build-1.stdout.log" in banner
+    assert "Commander Resolution" not in banner
+
+
+@pytest.mark.parametrize(
+    "stderr", [None, "", "diagnostic " * 2000], ids=["missing", "empty", "large"]
+)
+def test_build_failure_excerpt_handles_missing_empty_and_large_streams(tmp_path, stderr):
+    from drydock.uat import build_failure_detail
+
+    err = tmp_path / "stderr.log"
+    out = tmp_path / "stdout.log"
+    if stderr is not None:
+        err.write_text(stderr, encoding="utf-8")
+    out.write_text("BUILD FAILED: criterion rate-delete", encoding="utf-8")
+    command = CommandResult(("drydock", "build", "Demo"), 1, 1, str(out), str(err), "build", ".")
+    detail = build_failure_detail(command, "Demo")
+    assert str(out) in detail and str(err) in detail
+    if stderr:
+        assert "Excerpt truncated" in detail and len(detail) < 13000
+    else:
+        assert "BUILD FAILED: criterion rate-delete" in detail
+
+
 @pytest.mark.parametrize("failed_stage", ["plan", "plan-repair", "initial-build-1"])
 def test_a_provider_block_ends_optional_steps_and_the_kit_sweep(tmp_path, failed_stage):
     from dataclasses import replace

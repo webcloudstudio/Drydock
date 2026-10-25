@@ -2568,7 +2568,7 @@ def test_a_blocked_target_chair_shows_the_block_in_place_of_its_overview(tmp_pat
     assert "<p>overview</p>" not in html
     assert "BLOCKED: FxRates · uat FxRates" in html
     assert "plan-repair" in html and "criteria still cannot run" in html
-    assert f"Contents of {path}" in html and "- owner: uat FxRates" in html
+    assert f"Contents of {path}" in html and "- source: drydock uat FxRates" in html
     assert f"rm '{path}'" in html
     assert 'id="chair-build"' in html
     assert with_stop_view(html, target) == html

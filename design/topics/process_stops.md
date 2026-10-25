@@ -26,6 +26,17 @@ failing block.
 
 ## Details
 
+`2026-10-24` · Operator presentation uses local timestamps with a UTC offset and separates
+the error, optional `Why blocked` explanation, recovery, and rerun command. Console banners omit
+owner, execution, attempts, kind/class, and auto-continue bookkeeping; refusals link to the file
+without duplicating it or recommending deletion as the error's remedy. Environmental blockers
+omit empty Commander Resolution sections; decisions retain their question and resolution.
+The file's owner, execution, and attempts now persist in a `drydock-state` JSON HTML comment;
+the parser also accepts earlier header fields and UTC dates. Retry caps, ownership gates,
+provider classifications, and resolution injection are unchanged. This presentation supersedes
+the visible-header and verbatim-console details in the historical rules below. No master
+specification edit is made; the existing specification divergence still applies.
+
 `2026-10-24` · Fatal-provider console output ends with the environmental blocker and its error.
 The CLI suppresses secondary generic and recorded-error reports when a fatal provider stop is
 latched, skips standoff diagnosis, flushes stdout, and prints the provider cause last on stderr.
