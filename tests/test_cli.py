@@ -1538,7 +1538,8 @@ class TestLlmOverrideFlags:
         # The failure is up front: no build banner should have printed.
         assert "BUILD COMMAND START" not in out
 
-    def test_plan_passes_cli_overrides(self, tmp_target_root, isolated_config, monkeypatch):
+    @pytest.mark.parametrize("debug", [False, True])
+    def test_plan_passes_cli_overrides(self, tmp_target_root, isolated_config, monkeypatch, debug):
         from types import SimpleNamespace
 
         run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
@@ -1572,7 +1573,10 @@ class TestLlmOverrideFlags:
                 quarterdeck_dir=target_dir / "QuarterDeck",
                 authored_files=(),
                 target_dir=target_dir,
-                warnings=(),
+                warnings=(
+                    "fixture warning remains visible",
+                    "removed acceptance criterion: old-check",
+                ),
                 plan_mode="full-rewrite",
                 conformed_files=(),
             )
@@ -1588,9 +1592,12 @@ class TestLlmOverrideFlags:
             "gpt-5.4",
             "--lineage-model",
             "gpt-5.6-luna",
+            *(["--debug"] if debug else []),
         )
 
         assert rc == 0, err
+        assert out.count("fixture warning remains visible") == 1
+        assert out.count("removed acceptance criterion: old-check") == 1
         assert seen["kwargs"]["llm_provider"] == "codex"
         assert seen["kwargs"]["model"] == "gpt-5.4"
         assert seen["kwargs"]["lineage_model"] == "gpt-5.6-luna"

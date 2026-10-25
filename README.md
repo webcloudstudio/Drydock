@@ -172,6 +172,13 @@ remain in the original execution evidence, and artifacts accepted in earlier bat
 
 ## Build workflow
 
+`plan` prints warning details in both normal and debug output. CSV success fixtures are authored
+with `csv.writer` so quoted values and padding obey the source's parser contract.
+A native Go test absent at baseline stays eligible to run after implementation; it cannot pass
+while absent. Build repair feedback places actionable failures before a summary of excluded
+checks. UAT receipts count failed assertions against the graded denominator and report unverified
+checks separately.
+
 `init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`
 
 `plan verify` checks whether acceptance criteria can run; it does not establish product coverage.

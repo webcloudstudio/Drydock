@@ -337,6 +337,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: CsvStat-driven acceptance corrections keep unwritten native Go tests eligible
+  after implementation, preserve actionable assertion failures ahead of excluded checks in
+  bounded build repair feedback, and stop UAT receipt accounting from hiding failures when
+  unverified checks are present. `drydock plan` prints warning details without `--debug` and
+  removes an obsolete debug-path import. Blueprint authoring guidance requires serialized CSV
+  success fixtures with padding inside quoted values; malformed CSV remains a rejection case.
+  Published UAT evidence and generated Target data remain unchanged.
+
 - 2026-10-24: `drydock build` grades no-op verification steps even when the agent reports
   failure without changing files; a green step no longer spends its repair budget on empty
   feedback. The build prompt permits verification without edits, and attempt evidence distinguishes

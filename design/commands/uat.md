@@ -43,6 +43,13 @@ its first three stderr lines (bounded read), run error, and manual attestations.
 can recover; only the final box states the recorded UAT result. Console summaries no longer dump
 Markdown artifact inventories. No execution, evidence, report, or exit-code contract changes.
 
+`2026-10-24` · Receipt assertion counts use `build_report.total_checks` as the graded
+PASS/FAIL denominator; it already excludes UNVERIFIED results. Failed assertions are
+`max(total_checks - passed_checks, 0)` and unverified results are counted separately. Temporary
+block-evidence regressions cover mixed failures/exclusions, all-unverified, and no-exclusion
+cases. This corrects CsvStat `20261025.011759` reporting zero failed assertions despite one FAIL;
+it changes no published receipt or evidence and does not establish the failing criterion's validity.
+
 `2026-10-24` · Read-only companion `helpers/list_failed_uat_runs.sh` uses the cleanup helper's
 exact `status: "failed"` selection and symlink exclusions. It prints sorted absolute paths,
 one per line, to stdout; counts and unreadable-receipt warnings go to stderr. `--uat-root`
@@ -209,6 +216,11 @@ authoring contract, and (b) a warning that may cost marks, never a hard gate.
    superseded, or open?
 
 ## Actions
+
+- `2026-10-24` · CsvStat `20261025.011759`: local fixes address the five diagnosis ledger
+  findings; Ed must verify a fresh run with valid CSV fixtures, post-build native checks,
+  complete actionable repair feedback, visible planning warnings, and accurate receipt counts.
+  Published evidence is unchanged; close on later clean stage evidence.
 
 - `2026-10-24` · `5e9962e` corrects the CsvStat `20261024.221659` report defects; both ledger
   rows are `unverified` pending later report evidence. Local proof: all 71 report tests pass,

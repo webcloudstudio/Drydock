@@ -3264,6 +3264,41 @@ def test_repair_feedback_says_ac_broken_stops_nothing():
     assert "sends the criterion back" not in text
 
 
+def test_excluded_checks_cannot_hide_a_later_assertion_in_repair_feedback():
+    from types import SimpleNamespace
+
+    excluded = tuple(
+        AcceptanceRunResult(
+            f"excluded-{index}",
+            "FEATURE.md",
+            "Native criterion " * 30,
+            False,
+            None,
+            "",
+            "",
+            error="excluded check: ERROR environment",
+            skipped=True,
+        )
+        for index in range(36)
+    )
+    failure = AcceptanceRunResult(
+        "profile-quoting-and-trim",
+        "FEATURE-ProfileOutput.md",
+        "Quoted CSV is accepted",
+        False,
+        1,
+        "",
+        'AssertionError: exit 3: bare " in non-quoted-field',
+    )
+    text = _render_repair_feedback(SimpleNamespace(), (*excluded, failure), None, (), {})
+    assert "profile-quoting-and-trim" in text
+    assert 'bare " in non-quoted-field' in text
+    assert "36 checks were excluded" in text
+    assert text.index("profile-quoting-and-trim") < text.index("Excluded checks")
+    assert "feedback truncated" not in text
+    assert len(text) < 4000
+
+
 # A repair pass that reads only "the check failed" tunes output to match an expectation. When
 # the code under test was killed for exhausting memory or time, no expectation is reachable
 # until the unbounded loop or allocation is fixed, so the resource fact must lead the feedback.

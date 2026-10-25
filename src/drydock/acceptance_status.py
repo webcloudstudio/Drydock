@@ -152,11 +152,15 @@ def classify_baseline(
         return CriterionStatus(STATUS_PREBUILD_PASSES, ERROR_CURRENT_TREE, digest, stamp)
     if error.startswith(MALFORMED_FAILURE_PREFIX):
         return CriterionStatus(STATUS_ERROR, ERROR_MALFORMED, digest, stamp, error)
-    if error.startswith(UNVERIFIED_FAILURE_PREFIX) and _reads_an_absent_path(observation.stderr):
+    if error == f"{UNVERIFIED_FAILURE_PREFIX}: not-run" or (
+        error.startswith(UNVERIFIED_FAILURE_PREFIX) and _reads_an_absent_path(observation.stderr)
+    ):
         # Before the build, a criterion opening a deliverable the story has not written yet
         # fails in its own frame exactly as one reading a missing kit file does. Recording it
         # ERROR would exclude it from every post-build run, so it could never pass; recorded
         # VALID it runs after the build, where a still-missing file is reported UNVERIFIED.
+        # Native Go tests not authored yet are the same absent deliverable; skip and
+        # unavailable remain environment errors, and post-build not-run never passes.
         return CriterionStatus(STATUS_VALID, ERROR_PRODUCT_MISSING, digest, stamp)
     if observation.skipped or error.startswith((SKIPPED_FAILURE_PREFIX, UNVERIFIED_FAILURE_PREFIX)):
         return CriterionStatus(STATUS_ERROR, ERROR_ENVIRONMENT, digest, stamp, error)

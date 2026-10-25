@@ -24,6 +24,14 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 
 ## Details
 
+`2026-10-24` · Repair feedback renders actionable check diagnostics before excluded checks.
+Exclusions are summarized by count with pointers to `evidence/acceptance-status.json` and the
+block's pre-build observation instead of consuming the 4,000-character feedback budget with
+repeated status messages. Regression and resource diagnostics retain priority. Native Go
+`not-run` at baseline records `VALID product-missing`, so newly written tests execute after the
+build; absent tests after the build still report `UNVERIFIED`. This extends the absent-file
+baseline distinction from `c6a910f` for CsvStat `20261025.011759`.
+
 `2026-10-24` · No-op verification steps run their declared acceptance even when the agent
 reports failure and changes no files. The report remains advisory; provider/execution failures
 remain terminal. Already-green criteria retain their existing PREPASSED attribution, and only a
@@ -239,6 +247,11 @@ an unchanged rebuild against the same immutable criterion.
 -
 
 ## Actions
+
+- `2026-10-24` · CsvStat `20261025.011759`: local fixes address the five diagnosis ledger
+  findings; Ed must verify a fresh run with valid CSV fixtures, post-build native checks,
+  complete actionable repair feedback, visible planning warnings, and accurate receipt counts.
+  Published evidence is unchanged; close on later clean stage evidence.
 
 - `2026-10-24` · CsvStat `20261025.001433`: local regressions cover no-op grading, measured
   failed-check repairs, governed story verification, and bypassed-grading evidence. Ed's next

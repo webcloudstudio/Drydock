@@ -2068,30 +2068,31 @@ def test_each_command_records_the_llm_executions_it_produced(tmp_path: Path) -> 
 # ── assertion attribution and decision carry-forward ──────────────────────────────────
 
 
-def test_an_unverified_assertion_is_not_also_charged_to_the_product(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("passed,failed,unverified", [(3, 0, 2), (44, 1, 36), (0, 0, 2), (1, 1, 0)])
+def test_assertion_outcomes_use_the_build_reports_graded_denominator(
+    tmp_path: Path, passed: int, failed: int, unverified: int
 ) -> None:
-    """``failed`` was ``total - passed``, which counted every harness defect twice: once as the
-    kit fault it is, and once as a product defect it is not."""
     from drydock import uat as uat_module
 
-    class _Report:
-        total_checks = 5
-        passed_checks = 3
-        unverified_checks = 2
-
-    monkeypatch.setattr(uat_module, "build_score_report", lambda *a, **k: _Report())
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    lines = ["# Evidence: Service", "", "## Post-build programmatic acceptance"]
+    for verdict, count in (("PASS", passed), ("FAIL", failed), ("UNVERIFIED", unverified)):
+        lines.extend(f"- {verdict}: {verdict.lower()}-{i} (FEATURE.md)" for i in range(count))
+    (evidence / "block-1.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     counts = uat_module._assertion_outcomes(tmp_path, "Demo", tmp_path / "llm.jsonl")
 
     assert counts == {
-        "passed": 3,
-        "failed": 0,
-        "unverified": 2,
-        "product_defects": 0,
-        "harness_defects": 2,
+        "passed": passed,
+        "failed": failed,
+        "unverified": unverified,
+        "product_defects": failed,
+        "harness_defects": unverified,
     }
-    assert counts["passed"] + counts["failed"] + counts["unverified"] == _Report.total_checks
+    assert (
+        counts["passed"] + counts["failed"] + counts["unverified"] == passed + failed + unverified
+    )
 
 
 def test_answered_decisions_carry_into_the_next_run(tmp_path: Path) -> None:

@@ -24,6 +24,14 @@ and measured something; everything else is reported, not charged.
 
 ## Details
 
+`2026-10-24` · Native Go `not-run` is `VALID product-missing` at baseline, extending
+`c6a910f`'s absent-file rule. Skip and unavailable retain `ERROR environment`; post-build
+not-run stays UNVERIFIED and cannot pass. A real temporary Go module regression observes the
+missing test, runs it unverified, writes the required test, and observes a pass through the same
+acceptance executor. Repair feedback summarizes excluded criteria after actionable diagnostics;
+receipts count unverified results outside the graded PASS/FAIL denominator. CSV success-fixture
+authoring uses a serializer and preserves the declared parser contract, including quoting rules.
+
 `2026-10-24` · Build grades declared criteria after a successful provider call even when the
 agent reports failure with no file changes; verification-only steps may report SUCCESS without
 edits. Prepassed and governed attribution rules remain unchanged. Evidence distinguishes bypassed

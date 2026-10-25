@@ -793,10 +793,9 @@ def _assertion_outcomes(target_dir: Path, target: str, records_path: Path) -> di
         return empty
     passed = report.passed_checks
     unverified = report.unverified_checks
-    # An UNVERIFIED assertion is neither passed nor failed. Subtracting only the passes charged
-    # every harness defect to the product as well, so a run could report one product defect and
-    # one harness defect for a single assertion that never ran.
-    failed = max(report.total_checks - passed - unverified, 0)
+    # The build report's denominator already excludes UNVERIFIED checks. Subtracting them
+    # again hides real failures whenever the block also contains harness defects.
+    failed = max(report.total_checks - passed, 0)
     return {
         "passed": passed,
         "failed": failed,

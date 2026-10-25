@@ -1387,6 +1387,11 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print(f"Elapsed: {_elapsed_text(time.monotonic() - plan_started)}")
     print(f"Review: {result.quarterdeck_dir}")
     _print_override_summary(getattr(result, "waivers", ()))
+    if result.warnings:
+        print()
+        print("Planning warnings:")
+        for warning in result.warnings:
+            print(f"  - {warning}")
     unbuildable = getattr(result, "unbuildable", "")
     if unbuildable:
         # Written, not buildable: the Manifest stays draft and Build refuses it. The exit is 0
@@ -1416,26 +1421,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
         print(f"Authored {len(result.authored_files)} Blueprint spec file(s):")
         for path in result.authored_files:
             print(f"  {path.relative_to(result.target_dir)}")
-    # A removed criterion changed the Blueprint the author is about to review, so it is
-    # reported above the graph rather than buried in the advisory list below it.
-    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER
-
-    removed = [w for w in result.warnings if ACCEPTANCE_REMOVED_MARKER in w]
-    if removed:
-        print()
-        print(f"⚠  Acceptance criteria removed ({len(removed)}):")
-        for warning in removed:
-            print(f"  - {warning}")
-        print("   These could never pass. Re-author them if the behavior still needs a gate.")
     print()
     _print_plan_blocks(result.plan)
     _print_plan_summary(result.plan)
-    remaining = [w for w in result.warnings if ACCEPTANCE_REMOVED_MARKER not in w]
-    if remaining:
-        print()
-        print("Planning warnings:")
-        for warning in remaining:
-            print(f"  - {warning}")
     print()
     if not unbuildable:
         print("Next step: review the manifest build tree in the Planning Session.")

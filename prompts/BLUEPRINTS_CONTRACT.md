@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261024 V33
+version: 20261024 V34
 ---
 
 ## Overview
@@ -187,6 +187,15 @@ Nothing inside the body can move a boundary. A Markdown fence, a `##` line, a `#
 `Requires:` line inside a string is ordinary content — which matters, because a target that
 processes markup will legitimately embed all of them in its proof. Write the body as plain Python;
 do not wrap it in a fence.
+
+Generate valid structured input with its standard serializer. For CSV success cases, use
+`csv.writer` with `lineterminator="\n"`; do not concatenate or replace quote characters to
+construct records. To test trimming and quoting together, pass padded values such as
+`"  red, green  "` to the writer so the padding stays inside the quoted field. Spaces outside
+quotes are CSV syntax, not decoded value padding. A success criterion follows the source's
+parser contract (including RFC 4180 when required); it never demands permissive parsing to
+accept a malformed fixture. For a strict CSV source contract, construct malformed records
+explicitly only in rejection criteria.
 
 Write `=== END AC {check-id} ===` for every `=== AC {check-id} ===` you open, with the same id.
 The end marker is not optional and the next opening marker does not stand in for it. Where the

@@ -1852,9 +1852,19 @@ def _render_repair_feedback(
         for result in exhausted:
             lines.append(f"- {result.check_id}: {result.error}")
         lines.append("")
-    if failed_checks:
+    excluded_checks = tuple(
+        result
+        for result in failed_checks
+        if (result.error or "").startswith(EXCLUDED_FAILURE_PREFIX)
+    )
+    actionable_checks = tuple(
+        result
+        for result in failed_checks
+        if not (result.error or "").startswith(EXCLUDED_FAILURE_PREFIX)
+    )
+    if actionable_checks:
         lines.append("### Still failing")
-        for result in failed_checks:
+        for result in actionable_checks:
             story = story_by_check.get(result.check_id)
             owner = f" (story {story.block_id})" if story is not None else ""
             intent = result.intent.strip() or result.check_id
@@ -1865,6 +1875,16 @@ def _render_repair_feedback(
                 lines.append("    output:")
                 lines.extend(f"      {line}" for line in tail)
         lines.append("")
+    if excluded_checks:
+        lines.extend([
+            "### Excluded checks — not executed",
+            f"{len(excluded_checks)} checks were excluded by their recorded acceptance status; "
+            "application edits cannot clear an exclusion.",
+            "In the Target directory, inspect evidence/acceptance-status.json and the block's "
+            "pre-build observation "
+            "for the original cause; exclusions are not failed product assertions.",
+            "",
+        ])
     if agent_report is not None and (agent_report[0] or agent_report[1]):
         lines.append("### Previous agent note")
         if agent_report[0]:

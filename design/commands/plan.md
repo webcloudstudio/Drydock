@@ -25,6 +25,13 @@ written.
 
 ## Details
 
+`2026-10-24` · `drydock plan` prints every warning's text before returning in normal and
+debug modes. The obsolete removed-criterion marker import is removed from the debug path.
+`BLUEPRINTS_CONTRACT.md` V34 directs valid CSV success fixtures through `csv.writer` with LF
+terminators and padding inside quoted values, preserving the source parser contract; manually
+malformed records belong only to rejection criteria. This is authoring guidance, not a new
+semantic CSV validator. The CsvStat `20261025.011759` generated fixture remains preserved.
+
 `2026-10-24` · `plan verify` recognizes a module-local, undecorated helper that directly
 returns one `cli_runner` tuple, optionally inside `with`, when every caller asserts its exit.
 Branching helpers, extra runner calls, escaped/rebound names, and unchecked callers retain
@@ -647,6 +654,15 @@ exist.
 
 
 ## Actions
+
+- `2026-10-24` · Repository-wide `ruff format --check src/ tests/` reports the pre-existing
+  chained replacement layout in `tests/test_database_contract.py:851`; changed files pass
+  formatting and repository lint passes. Close when that file's owner formats the existing code.
+
+- `2026-10-24` · CsvStat `20261025.011759`: local fixes address the five diagnosis ledger
+  findings; Ed must verify a fresh run with valid CSV fixtures, post-build native checks,
+  complete actionable repair feedback, visible planning warnings, and accurate receipt counts.
+  Published evidence is unchanged; close on later clean stage evidence.
 
 - `2026-10-24` · CommonMark `20261024.233753`: bounded literal-abspath resolution and
   unresolved-argument repair routing are verified locally in `test_acceptance.py` and

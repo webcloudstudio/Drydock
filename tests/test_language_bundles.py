@@ -71,6 +71,52 @@ def test_go_compile_error_remains_distinct(tmp_path, monkeypatch):
     assert "execution-error" in result.error
 
 
+@pytest.mark.skipif(shutil.which("go") is None, reason="Go toolchain required")
+def test_unwritten_native_test_runs_after_implementation(tmp_path, monkeypatch):
+    from drydock.acceptance import observe_programmatic_acceptance
+    from drydock.acceptance_status import (
+        ERROR_PRODUCT_MISSING,
+        STATUS_VALID,
+        classify_baseline,
+        excluded_criteria,
+        record_baseline_status,
+    )
+    from drydock.build_run import _run_valid_criteria
+
+    monkeypatch.setenv("GOCACHE", "/tmp/drydock-go-cache")
+    (tmp_path / "go.mod").write_text("module example.test/criteria\n\ngo 1.22\n")
+    (tmp_path / "sample.go").write_text("package criteria\n")
+    check = ProgrammaticAcceptance(
+        "native",
+        "FEATURE.md",
+        "The delivered native test passes",
+        'from drydock_go import run_test\nr = run_test("./", "TestDelivered")\nassert r.passed\n',
+    )
+
+    def run(checks):
+        return run_programmatic_acceptance(
+            checks, build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
+        )
+
+    (observation,) = observe_programmatic_acceptance(
+        (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
+    )
+    assert observation.error == "unverified acceptance: not-run"
+    status = classify_baseline(observation, check)
+    assert (status.status, status.error_code) == (STATUS_VALID, ERROR_PRODUCT_MISSING)
+    statuses = record_baseline_status(tmp_path / "evidence", {"native": status})
+    excluded = excluded_criteria(statuses, (check,))
+    assert not excluded
+    (still_absent,) = _run_valid_criteria((check,), excluded, run)
+    assert still_absent.skipped and not still_absent.passed
+
+    (tmp_path / "sample_test.go").write_text(
+        'package criteria\nimport "testing"\nfunc TestDelivered(t *testing.T) {}\n'
+    )
+    (delivered,) = _run_valid_criteria((check,), excluded, run)
+    assert delivered.passed, (delivered.error, delivered.stderr)
+
+
 def test_unavailable_native_tool_is_unverified(tmp_path):
     check = ProgrammaticAcceptance(
         "no-go",

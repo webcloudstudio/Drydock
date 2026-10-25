@@ -90,6 +90,18 @@ def test_missing_environment_is_an_error_not_a_red():
     assert (status.status, status.error_code) == (STATUS_ERROR, ERROR_ENVIRONMENT)
 
 
+def test_absent_native_test_is_product_missing_but_skip_and_unavailable_are_environment_errors():
+    for native_status, expected in (
+        ("not-run", (STATUS_VALID, ERROR_PRODUCT_MISSING)),
+        ("skip", (STATUS_ERROR, ERROR_ENVIRONMENT)),
+        ("unavailable", (STATUS_ERROR, ERROR_ENVIRONMENT)),
+    ):
+        status = classify_baseline(
+            _observation(skipped=True, error=f"unverified acceptance: {native_status}"), _check()
+        )
+        assert (status.status, status.error_code) == expected
+
+
 def test_an_absent_deliverable_read_in_the_check_frame_is_a_valid_red():
     # LayersTesting scaffold-pyproject: open("pyproject.toml") before the story writes it.
     status = classify_baseline(
