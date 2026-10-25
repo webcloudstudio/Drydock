@@ -179,6 +179,17 @@ in an Area that already holds a `recurred` row revises or removes that fix, not 
 | 2026-10-25 | LayersTesting | 20261025.160726 | 6ee2a85 | claude-haiku-5-5, claude-sonnet-5-5 | score release rc=1; root cause, specification-contaminated | Source INSTRUCTIONS.md:96 and st-003 require drop/recreate; first DATABASE planning output substitutes clear operations because schema is provisioned only at DATABASE step; generated DATABASE.md:19 and FEATURE-Init.md:18-19 retain that substitution; 160 story assertions pass but release detects retained probe_marker; accepts st-003 provides attribution without equivalent executable coverage | evidence/prompt_outputs/20261025.160927.753Z_layerstesting_plan_claude.output.txt:24 + generated FEATURE-Init.md:18-19 | | open |
 | 2026-10-25 | LayersTesting | 20261025.160726 | 6ee2a85 | claude-sonnet-5-5 | plan rc=0; independent, recovered | Malformed Database Interface entries in FEATURE-Count, FEATURE-Init and FEATURE-LedgerCore require rewriting from DATABASE.md; no causal link from syntax repair to the earlier initialization substitution is established | evidence/commands/04-plan.stdout.log:132-135 | | open |
 
+
+`2026-10-25` · Ed corrected LayersTesting acceptance intent: verify ledger data workflows,
+not schema replacement or database-engine functionality. The kit Sea Trials retire st-002
+(test-runner gate), st-003 (schema reset gate), and st-009 (implementation inspection), retain
+workflow criteria, and add transfer conservation and CLI results. Canonical/Python/Go source
+briefs define init as preparing an empty ledger without prescribing DDL; metadata says ledger
+reset. The grader remains required alongside behavioral criteria, not the sole release verdict.
+This supersedes the earlier recommendation to strengthen schema-replacement coverage; the
+historical run and its source-contract mismatch remain recorded unchanged. Existing run evidence
+is not rewritten. Future verification must use revised kit inputs.
+
 ## Decisions
 
 - None.
