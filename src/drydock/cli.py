@@ -714,7 +714,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
         for result in results:
             sys.stdout.flush()
             stream = sys.stderr if result.status != "passed" else sys.stdout
-            print(render_result(result), file=stream, flush=True)
+            print(render_result(result, stream=stream), file=stream, flush=True)
 
 
 def _sync_workspace_skills(workspace: Path) -> None:

@@ -30,6 +30,18 @@ Three properties define done (UAT gate model, 2026-08-14):
 
 ## Details
 
+`2026-10-24` · Live step headers use uppercase command/positional argv instead of internal
+step labels. The full invocation, preserving argument case and options, remains on the next
+line. Counts use the option-free command within each kit: the first occurrence has no suffix;
+subsequent occurrences show `[2]`, `[3]`, etc. A streaming first occurrence cannot anticipate
+whether a later repeat will occur. Hidden status snapshots do not consume visible counts.
+Child stdout `Next:` lines are suppressed, including fragmented lines. Headers and compacted
+plan progress are blue, successful completion rules green, and failure boxes red. Final UAT
+verdict boxes use the actual destination stream's color capability: green for a passed run,
+red otherwise. `NO_COLOR`, redirected streams, and limited terminals retain plain output.
+Quiet breadcrumbs, recorded labels, resume step numbers, child evidence, and execution are
+unchanged. This supersedes the earlier display of the snapshot's next action.
+
 `2026-10-24` · A failed build's stage blocker preserves the child's stderr (stdout when stderr
 is empty or unavailable), up to 12,000 characters, with explicit truncation and both full evidence
 paths. Missing diagnostics are stated explicitly. The error names the command and exit code;

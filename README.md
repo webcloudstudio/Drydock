@@ -301,6 +301,12 @@ repair step, and an environmental halt ends a multi-kit sweep before
 the next kit starts. Receipts, report links, and checkpoints precede the final blocker error,
 including with `--quiet`. The UAT repair loop also stops without starting a repair session and
 ends by repeating the recorded failure.
+
+Live UAT headers show uppercase commands, followed by the exact invocation. Repeated commands
+within a kit append `[2]`, `[3]`, and so on; the first occurrence has no suffix. Batch output
+omits `Next:` guidance. Terminals use blue for headers/progress, green for success, and red for
+failure; redirected output and `NO_COLOR` remain plain.
+
 `drydock_build_loop.sh` checks the Target's `BLOCKERS.md` before further build or diagnosis
 work and exits `1` with the blocked cause last; `drydock_runner.sh` propagates that halt.
 

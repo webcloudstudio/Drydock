@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 from datetime import datetime
 
+import pytest
+
 from drydock.uat_console import StepConsole, format_argv
 
 
@@ -40,12 +42,74 @@ def test_step_frames_child_output_with_stage_headers_and_a_gutter() -> None:
     console.finish(0, 64200)
 
     lines = stream.getvalue().splitlines()
-    assert lines[1].startswith("── Toml · step 9: analyze")
+    assert lines[1].startswith("── DRYDOCK ANALYZE TOML ")
     assert lines[1].endswith("14:03:11 ──")
     assert lines[2] == "   drydock analyze Toml"
     assert lines[3] == " │ Analyzing Blueprint"
     assert lines[4] == " ! warning: no stack"
     assert "OK   1m 4.2s" in lines[5]
+
+
+def test_command_headers_number_repeats_and_keep_exact_invocation_below() -> None:
+    console, stream = _console()
+    console.event("CommonMark: initial-build")
+    for count in (1, 2):
+        argv = ("/usr/bin/python3", "-m", "drydock", "build", "commonmark", "--override")
+        console.step(argv, f"{count + 9:02}-initial-build-{count}")
+        console.finish(0, 10)
+    console.event("AnotherKit: initial-build")
+    console.step(argv, "10-initial-build-1")
+
+    output = stream.getvalue()
+    assert "DRYDOCK BUILD COMMONMARK [2]" in output
+    assert "DRYDOCK BUILD COMMONMARK [1]" not in output
+    assert output.count("   drydock build commonmark --override\n") == 3
+    assert "initial-build-" not in output and "step 10" not in output
+    assert "[3]" not in output  # Counts reset at the next kit.
+
+
+def test_batch_next_lines_are_suppressed_even_when_fragmented() -> None:
+    console, stream = _console()
+    for label in ("10-initial-build-1", "11-after-initial-build-build-status"):
+        console.step(("drydock", "build", "commonmark"), label)
+        for char in "Next: drydock build commonmark\n":
+            console.chunk("stdout", char)
+        console.finish(0, 10)
+    assert "Next:" not in stream.getvalue()
+
+
+def test_hidden_status_failure_names_its_own_command() -> None:
+    console, stream = _console()
+    console.step(("drydock", "build", "commonmark"), "10-initial-build-1")
+    console.finish(0, 10)
+    console.step(("drydock", "status", "commonmark"), "12-after-initial-build-target-status")
+    console.finish(1, 10)
+    assert "STEP ERROR: DRYDOCK STATUS COMMONMARK" in stream.getvalue()
+
+
+@pytest.mark.parametrize("no_color", [False, True])
+def test_terminal_headers_successes_and_failures_use_semantic_colors(monkeypatch, no_color):
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    if no_color:
+        monkeypatch.setenv("NO_COLOR", "1")
+    stream = Terminal()
+    console = StepConsole(stream, width=60)
+    console.step(("drydock", "build", "commonmark"), "10-initial-build-1")
+    console.finish(0, 10)
+    console.step(("drydock", "build", "commonmark"), "14-initial-build-2")
+    console.finish(1, 10)
+    output = stream.getvalue()
+    if no_color:
+        assert "\x1b[" not in output
+    else:
+        assert "\x1b[34m── DRYDOCK BUILD COMMONMARK" in output
+        assert "\x1b[32m── DRYDOCK BUILD COMMONMARK" in output
+        assert "\x1b[31m" + "#" * 60 in output
 
 
 def test_partial_and_redrawn_lines_reach_the_terminal_unchanged() -> None:
@@ -167,7 +231,9 @@ def test_result_box_wraps_ascii_and_long_diagnostics() -> None:
     assert output.isascii()
 
 
-def test_final_result_names_actual_failure_instead_of_status_snapshot(tmp_path) -> None:
+def test_final_result_names_actual_failure_instead_of_status_snapshot(
+    tmp_path, monkeypatch
+) -> None:
     from drydock.uat import CommandResult, UATResult
     from drydock.uat_console import render_result
 
@@ -198,6 +264,9 @@ def test_final_result_names_actual_failure_instead_of_status_snapshot(tmp_path) 
     assert "step 10: initial-build-1" in output
     assert "conflicting row class Rate" in output
     assert "step 11" not in output
+    destination = io.StringIO()
+    monkeypatch.setattr("drydock.console.color_enabled", lambda stream: stream is destination)
+    assert render_result(result, stream=destination).startswith("\x1b[31m")
 
 
 def test_console_compaction_preserves_verbatim_evidence(tmp_path) -> None:
@@ -232,7 +301,9 @@ def test_console_compaction_preserves_verbatim_evidence(tmp_path) -> None:
     assert "STEP ERROR:" in stream.getvalue()
 
 
-def test_passing_expected_failure_keeps_recorded_verdict_and_manual_checks(tmp_path) -> None:
+def test_passing_expected_failure_keeps_recorded_verdict_and_manual_checks(
+    tmp_path, monkeypatch
+) -> None:
     from drydock.uat import UATResult
     from drydock.uat_console import render_result
 
@@ -259,3 +330,6 @@ def test_passing_expected_failure_keeps_recorded_verdict_and_manual_checks(tmp_p
     assert "Reported: expected conformance failure" in output
     assert "MANUAL TEST REQUIRED: Confirm the guardrail" in output
     assert "Last failed command" not in output
+    destination = io.StringIO()
+    monkeypatch.setattr("drydock.console.color_enabled", lambda stream: stream is destination)
+    assert render_result(result, stream=destination).startswith("\x1b[32m")

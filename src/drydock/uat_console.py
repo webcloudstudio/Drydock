@@ -25,6 +25,8 @@ from drydock.execution import format_ms
 _MAX_RULE_WIDTH = 96
 _MAX_ARGV_WIDTH = 140
 _RED = "\x1b[31m"
+_GREEN = "\x1b[32m"
+_BLUE = "\x1b[34m"
 _DIM = "\x1b[2m"
 _RESET = "\x1b[0m"
 
@@ -45,7 +47,7 @@ def result_box(heading: str, details: Sequence[str], *, width: int = 88) -> str:
     ])
 
 
-def render_result(result: UATResult) -> str:
+def render_result(result: UATResult, *, stream: TextIO | None = None) -> str:
     """Final recorded verdict, after checkpointing; failed probes are not run verdicts."""
     from drydock.uat import result_blockers
 
@@ -85,7 +87,10 @@ def render_result(result: UATResult) -> str:
         details.append(f"{'Reported' if result.status == 'passed' else 'Error'}: {result.error}")
     details.extend(result.degraded)
     details.extend(f"MANUAL TEST REQUIRED: {item}" for item in result.attestations)
-    return result_box(f"UAT {result.status.upper()}: {result.target}", details)
+    box = result_box(f"UAT {result.status.upper()}: {result.target}", details)
+    if console.color_enabled(stream if stream is not None else sys.stdout):
+        return f"{_GREEN if result.status == 'passed' else _RED}{box}{_RESET}"
+    return box
 
 
 class StepSink(Protocol):
@@ -128,6 +133,15 @@ def format_label(label: str) -> str:
     return label
 
 
+def command_heading(argv: Sequence[str]) -> str:
+    """Uppercase command and positional arguments, without invocation options."""
+    parts = list(argv)
+    if len(parts) >= 3 and parts[1:3] == ["-m", "drydock"]:
+        parts = ["drydock", *parts[3:]]
+    end = next((i for i, part in enumerate(parts) if i and part.startswith("-")), len(parts))
+    return format_argv(parts[:end]).upper()
+
+
 class StepConsole:
     """Frame and stream the output of each UAT child command onto one stream."""
 
@@ -148,6 +162,8 @@ class StepConsole:
         self._color = console.color_enabled(self._stream)
         self._kit = ""
         self._label = ""
+        self._heading = ""
+        self._occurrences: dict[str, int] = {}
         self._at_line_start = True
         self._open_source: str | None = None
         self._last_was_cr = False
@@ -170,6 +186,8 @@ class StepConsole:
         """
         with self._lock:
             kit, _, _stage = text.partition(": ")
+            if kit != self._kit:
+                self._occurrences.clear()
             self._kit = kit or text
             if self._quiet:
                 self._write(f"UAT: {text}\n")
@@ -186,11 +204,16 @@ class StepConsole:
             self._plan.clear()
             self._errors.clear()
             self._blocker_dump = False
+            self._heading = command_heading(argv)
             if self._quiet or self._hidden:
                 return
+            heading = self._heading
+            count = self._occurrences.get(heading, 0) + 1
+            self._occurrences[heading] = count
+            self._heading = heading + (f" [{count}]" if count > 1 else "")
             self._close_open_line()
             stamp = self._clock().strftime("%H:%M:%S")
-            self._write("\n" + self._rule(self._title(), stamp) + "\n")
+            self._write("\n" + self._paint(self._rule(self._title(), stamp), _BLUE) + "\n")
             self._write(self._paint(f"   {format_argv(argv)}\n", _DIM))
 
     def chunk(self, source: str, text: str) -> None:
@@ -214,7 +237,7 @@ class StepConsole:
             candidates = (
                 ("Contents of ", "=")
                 if source == "stderr"
-                else ("Drydock ", "Target - ", "git:", "Claude session: start id=")
+                else ("Drydock ", "Target - ", "git:", "Claude session: start id=", "Next:")
             )
             stripped = tail.lstrip()
             hold = source == "stdout" and (self._snapshot or self._hidden or "plan" in self._label)
@@ -245,6 +268,8 @@ class StepConsole:
             return
         if self._hidden:
             return
+        if line.startswith("Next:"):
+            return
         if (line.startswith("Drydock ") and "Copyright (c)" in line) or line.startswith((
             "Target - setup project workspace git store",
             "Target - committed project workspace git store",
@@ -254,7 +279,7 @@ class StepConsole:
             return
         if self._snapshot:
             if (
-                line.startswith(("Steps:", "Buildable now:", "Next:", "BLOCKED:", "STOPPED:"))
+                line.startswith(("Steps:", "Buildable now:", "BLOCKED:", "STOPPED:"))
                 or "[failed]" in line
             ):
                 self._chunk(source, text)
@@ -282,8 +307,11 @@ class StepConsole:
                 if key == "Batch Result":
                     self._chunk(
                         source,
-                        f"Plan: {self._plan['stage']} | "
-                        f"Blueprints {self._plan.get('Blueprints Created', '?')} | {value.strip()}\n",
+                        self._paint(
+                            f"Plan: {self._plan['stage']} | "
+                            f"Blueprints {self._plan.get('Blueprints Created', '?')} | {value.strip()}\n",
+                            _BLUE,
+                        ),
                     )
                     self._plan.clear()
                 return
@@ -339,13 +367,15 @@ class StepConsole:
                     + "\n"
                 )
             elif not self._hidden:
-                self._write(self._rule(self._title(), f"OK   {format_ms(elapsed_ms)}") + "\n")
+                self._write(
+                    self._paint(self._rule(self._title(), f"OK   {format_ms(elapsed_ms)}"), _GREEN)
+                    + "\n"
+                )
 
     # -- rendering --------------------------------------------------------------
 
     def _title(self) -> str:
-        parts = [part for part in (self._kit, format_label(self._label)) if part]
-        return console.render(" · ", self._tier).join(parts) or "step"
+        return self._heading or "STEP"
 
     def _rule(self, title: str, right: str) -> str:
         dash = console.render("─", self._tier)

@@ -152,6 +152,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-24: Live UAT step headers use uppercase commands and positional arguments, with
+  the exact invocation below. The first occurrence has no suffix; repeats within a kit append
+  `[2]`, `[3]`, and so on. Batch output omits child `Next:` guidance. Terminal headers and plan
+  progress are blue, successful completions and final verdicts green, and failures red;
+  redirected output and `NO_COLOR` remain plain. Evidence and execution labels are unchanged.
+
 - 2026-10-24: `drydock uat` shortens terminal output: plan progress uses one line per batch,
   redundant status views and housekeeping stay in evidence, and failed steps receive bordered
   error boxes. After reports and checkpointing, each kit ends with a prominent recorded verdict,
