@@ -2049,14 +2049,38 @@ def _literal_string(value: ast.expr, strings: dict[str, str]) -> str | None:
     return None
 
 
-def _string_vector(value: ast.expr, strings: dict[str, str]) -> tuple[str | None, ...] | None:
+def _probe_argument(value: ast.expr, strings: dict[str, str], root: Path | None) -> str | None:
+    """Resolve a literal path expression without evaluating criterion code."""
+    literal = _literal_string(value, strings)
+    if literal is not None or root is None:
+        return literal
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Attribute)
+        and value.func.attr == "abspath"
+        and isinstance(value.func.value, ast.Attribute)
+        and value.func.value.attr == "path"
+        and isinstance(value.func.value.value, ast.Name)
+        and value.func.value.value.id == "os"
+        and len(value.args) == 1
+        and not value.keywords
+        and isinstance(value.args[0], ast.Constant)
+        and isinstance(value.args[0].value, str)
+    ):
+        return os.path.abspath(root / value.args[0].value)
+    return None
+
+
+def _string_vector(
+    value: ast.expr, strings: dict[str, str], *, path_root: Path | None = None
+) -> tuple[str | None, ...] | None:
     if not isinstance(value, (ast.List, ast.Tuple)):
         return None
-    return tuple(_literal_string(item, strings) for item in value.elts)
+    return tuple(_probe_argument(item, strings, path_root) for item in value.elts)
 
 
 def _module_string_vectors(
-    tree: ast.Module, strings: dict[str, str]
+    tree: ast.Module, strings: dict[str, str], *, path_root: Path | None = None
 ) -> dict[str, tuple[str | None, ...]]:
     vectors: dict[str, tuple[str | None, ...]] = {}
     for node in tree.body:
@@ -2066,7 +2090,7 @@ def _module_string_vectors(
             and isinstance(node.targets[0], ast.Name)
         ):
             continue
-        if (vector := _string_vector(node.value, strings)) is not None:
+        if (vector := _string_vector(node.value, strings, path_root=path_root)) is not None:
             vectors[node.targets[0].id] = vector
     return vectors
 
@@ -2085,6 +2109,8 @@ def _call_command_vector(
     node: ast.Call,
     strings: dict[str, str],
     vectors: dict[str, tuple[str | None, ...]],
+    *,
+    path_root: Path | None = None,
 ) -> tuple[str | None, ...] | None:
     value = (
         node.args[0]
@@ -2093,7 +2119,7 @@ def _call_command_vector(
     )
     if isinstance(value, ast.Name):
         return vectors.get(value.id)
-    return _string_vector(value, strings) if value is not None else None
+    return _string_vector(value, strings, path_root=path_root) if value is not None else None
 
 
 def _staged_python_argument(command: tuple[str | None, ...], source_root: Path) -> Path | None:
@@ -2186,7 +2212,7 @@ _PROBE_TIMEOUT_SECONDS = 30
 
 
 def _recognized_staged_calls(
-    code: str, source_root: Path
+    code: str, source_root: Path, *, resolve_paths: bool = False
 ) -> list[tuple[Path, tuple[str | None, ...], int, int]]:
     """Every ``subprocess`` call whose literal command vector names a staged ``.py`` runner.
 
@@ -2201,13 +2227,39 @@ def _recognized_staged_calls(
     except (SyntaxError, ValueError):
         return []
     strings = _module_string_literals(tree)
-    vectors = _module_string_vectors(tree, strings)
     root = source_root.resolve()
+    # Only the canonical, unmodified os import permits syntactic abspath resolution.
+    os_imported = any(
+        isinstance(node, ast.Import)
+        and any(alias.name == "os" and alias.asname in (None, "os") for alias in node.names)
+        for node in tree.body
+    )
+    os_modified = any(
+        (
+            isinstance(node, ast.Name)
+            and node.id == "os"
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+        )
+        or (isinstance(node, ast.arg) and node.arg == "os")
+        or (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and ast.unparse(node).startswith("os.")
+        )
+        or (isinstance(node, ast.alias) and node.asname == "os" and node.name != "os")
+        or (
+            isinstance(node, ast.ImportFrom)
+            and any((alias.asname or alias.name) == "os" for alias in node.names)
+        )
+        for node in ast.walk(tree)
+    )
+    path_root = root if resolve_paths and os_imported and not os_modified else None
+    vectors = _module_string_vectors(tree, strings, path_root=path_root)
     calls: list[tuple[Path, tuple[str | None, ...], int, int]] = []
     for node in ast.walk(tree):
         if not _is_subprocess_call(node):
             continue
-        command = _call_command_vector(node, strings, vectors)
+        command = _call_command_vector(node, strings, vectors, path_root=path_root)
         if command is None:
             continue
         source = _staged_python_argument(command, source_root)
@@ -2276,11 +2328,12 @@ def selection_probe_reason(
 ) -> tuple[str, str] | None:
     """Judge whether a recognized staged-runner selector is proven to select at least one case.
 
-    Returns ``(kind, reason)`` for one of four hard defects, or ``None`` when no selector is
+    Returns ``(kind, reason)`` for one of five hard defects, or ``None`` when no selector is
     recognized or the declared probe proves a non-empty selection:
 
     - ``missing-selection-probe`` — a selector is recognized and no ``Probe:`` is declared.
     - ``invalid-selection-probe`` — ``Probe:``/``Probe Count:`` is malformed; nothing executes.
+    - ``unresolved-probe-arguments`` — command expressions remain unresolved; nothing executes.
     - ``probe-failed`` — the probe ran and exited nonzero, timed out, or its declared count
       protocol did not hold. A failed probe is never read as "zero selected".
     - ``empty-selection`` — the probe ran cleanly and counted zero cases.
@@ -2313,14 +2366,16 @@ def selection_probe_reason(
     # substitute a different command when a runtime argument cannot be resolved.
     source, command, index, _ = next(
         call
-        for call in _recognized_staged_calls(check.code, blueprint_dir)
+        for call in _recognized_staged_calls(check.code, blueprint_dir, resolve_paths=True)
         if call[0].relative_to(blueprint_dir.resolve()).as_posix() == runner and call[3] == lineno
     )
     arguments = command[index + 1 :]
     if any(argument is None for argument in arguments):
         return (
-            "invalid-selection-probe",
-            f"{where}: probe arguments cannot be statically resolved",
+            "unresolved-probe-arguments",
+            f"{where}: probe arguments cannot be statically resolved at runner argument "
+            + ", ".join(str(i + 1) for i, argument in enumerate(arguments) if argument is None)
+            + "; declaration-only repair cannot resolve command expressions",
         )
     argv = [sys.executable, str(source), *arguments, *probe_flags]
     try:

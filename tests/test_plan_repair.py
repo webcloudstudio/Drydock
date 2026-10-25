@@ -1057,3 +1057,28 @@ def test_probe_repair_cannot_drop_suite_or_change_assertions(tmp_path):
     assert not result.ok
     assert "other than Probe/Probe Count" in result.items[0].detail
     assert (target / "blueprint" / "FEATURE_Selector.md").read_text() == broken
+
+
+def test_unresolved_probe_arguments_do_not_spend_a_repair_call(tmp_path):
+    from tests.test_acceptance import _JSON_CORPUS_RUNNER
+
+    broken = _BROKEN_MISSING_PROBE.replace(
+        "Intent: Selects a conformance slice through the staged runner.\n",
+        "Intent: Selects a conformance slice through the staged runner.\n"
+        "Probe: --dump-tests\nProbe Count: json\n",
+    ).replace(
+        '"--select", "alpha"',
+        '"--program", "./missing", "--spec", str(object()), "-P", "alpha"',
+    )
+    target = _probe_target(tmp_path, FEATURE_Selector=broken)
+    (target / "blueprint/sources/run_probe.py").write_text(_JSON_CORPUS_RUNNER)
+    runner = _runner("")
+    progress = []
+    result = repair("Demo", target, runner=runner, on_text=progress.append)
+
+    assert not result.ok
+    assert not runner.calls
+    assert not result.files_changed
+    assert "declaration-only repair cannot resolve command expressions" in result.items[0].detail
+    assert "runner argument 4" in "".join(progress)
+    assert (target / "blueprint/FEATURE_Selector.md").read_text() == broken

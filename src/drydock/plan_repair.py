@@ -644,6 +644,15 @@ def repair(
     by_file: dict[str, list[Defect]] = {}
     items: list[RepairItem] = []
     for defect in found.defects:
+        if defect.kind == "unresolved-probe-arguments":
+            # Declaration edits cannot resolve body expressions; never spend a model call
+            # asking it to move the selector into Probe or to guess a runtime value.
+            item = RepairItem(defect.filename, defect.check_id, "unrepaired", "", defect.detail)
+            items.append(item)
+            if on_item is not None:
+                on_item(item)
+            emit(f"  ✗  {item.rendered}")
+            continue
         if defect.kind.startswith("database-"):
             # The persistence declaration is not a criterion; the criterion prompt cannot repair
             # it, and handing it one would rewrite DATABASE.md as an acceptance container. It

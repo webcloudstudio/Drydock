@@ -331,6 +331,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: Staged corpus probes in `drydock plan` and `plan verify` resolve
+  `os.path.abspath("literal-path")` against the criterion working directory without evaluating
+  criterion code or requiring the candidate to exist. Corpus paths, filters, and assertions remain
+  unchanged. Other unresolved command arguments now report `unresolved-probe-arguments` with
+  argument positions; `plan repair` leaves them unchanged without spending a model call on
+  declaration edits that cannot repair the command body. This corrects CommonMark's five
+  probe failures after the selector and JSON-count fix.
+
 - 2026-10-24: `drydock plan verify` identifies staged corpus selectors independently of
   program and corpus-path arguments and preserves the complete literal runner arguments when
   probing. `Probe Count: json` counts JSON array elements; empty arrays fail as empty selections,

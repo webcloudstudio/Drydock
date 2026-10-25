@@ -1927,8 +1927,9 @@ def test_probe_does_not_silently_drop_dynamic_corpus_arguments(tmp_path):
     from dataclasses import replace
 
     check = replace(check, code=check.code.replace("'corpus.json'", "runtime_corpus()"))
-    kind, _ = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
-    assert kind == "invalid-selection-probe"
+    kind, reason = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
+    assert kind == "unresolved-probe-arguments"
+    assert "runner argument 4" in reason
 
 
 def test_dynamic_selector_is_reported_beside_literal_program_and_corpus(tmp_path):
@@ -1949,3 +1950,85 @@ def test_json_probe_rejects_malformed_or_non_array_output(tmp_path, monkeypatch,
     )
     kind, _ = acceptance.selection_probe_reason(check, blueprint_dir=tmp_path)
     assert kind == "probe-failed"
+
+
+@pytest.mark.parametrize("vector_binding", [False, True])
+@pytest.mark.parametrize(
+    "pattern, expected", [("ATX headings", None), ("absent", "empty-selection")]
+)
+def test_probe_resolves_literal_abspath_without_launching_candidate(
+    tmp_path, vector_binding, pattern, expected
+):
+    from dataclasses import replace
+
+    check = _json_probe(tmp_path, pattern=pattern)
+    # The candidate is deliberately executable and would leave evidence if invoked.
+    candidate = tmp_path / "missing-product"
+    candidate.write_text("#!/bin/sh\ntouch candidate-ran\nexit 99\n")
+    candidate.chmod(0o755)
+    code = "import os\n" + check.code.replace(
+        "'./missing-product'", 'os.path.abspath("missing-product")'
+    )
+    if vector_binding:
+        code = code.replace("r = subprocess.run([", "argv = [").replace(
+            "])\nassert", "]\nr = subprocess.run(argv)\nassert"
+        )
+    result = acceptance.selection_probe_reason(replace(check, code=code), blueprint_dir=tmp_path)
+    assert (result[0] if result else None) == expected
+    assert not (tmp_path / "candidate-ran").exists()
+
+
+@pytest.mark.parametrize(
+    "expression, prefix",
+    [
+        ("os.path.abspath(runtime_path())", "import os\n"),
+        ('os.path.abspath("missing-product")', ""),
+        ('os.path.abspath("missing-product")', "import os\nos = other\n"),
+        ('os.path.abspath("missing-product")', "import os\nos.path.abspath = other\n"),
+    ],
+)
+def test_probe_does_not_evaluate_unknown_or_shadowed_path_expressions(
+    tmp_path, monkeypatch, expression, prefix
+):
+    from dataclasses import replace
+
+    check = _json_probe(tmp_path)
+    code = prefix + check.code.replace("'./missing-product'", expression)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("unresolved probe must not execute")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    kind, _ = acceptance.selection_probe_reason(replace(check, code=code), blueprint_dir=tmp_path)
+    assert kind == "unresolved-probe-arguments"
+
+
+def test_probe_abspath_preserves_exact_corpus_filter_and_product_path(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    check = _json_probe(tmp_path, pattern="ATX headings|Lists")
+    check = replace(
+        check,
+        code="import os\n"
+        + check.code.replace("'./missing-product'", 'os.path.abspath("missing-product")'),
+    )
+    seen = []
+
+    def listing(argv, **kwargs):
+        seen.append((argv, kwargs))
+        return subprocess.CompletedProcess(argv, 0, stdout='[{"section":"Lists"}]', stderr="")
+
+    monkeypatch.setattr(subprocess, "run", listing)
+    assert acceptance.selection_probe_reason(check, blueprint_dir=tmp_path) is None
+    argv, kwargs = seen[0]
+    assert argv[2:] == [
+        "--program",
+        str(tmp_path / "missing-product"),
+        "--spec",
+        "corpus.json",
+        "-P",
+        "ATX headings|Lists",
+        "--dump-tests",
+    ]
+    assert kwargs["cwd"] == tmp_path
+    assert kwargs["shell"] is False

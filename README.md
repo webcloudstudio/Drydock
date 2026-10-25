@@ -170,7 +170,10 @@ remain in the original execution evidence, and artifacts accepted in earlier bat
 `plan verify` checks whether acceptance criteria can run; it does not establish product coverage.
 Staged corpus probes preserve literal corpus paths and section filters. `Probe Count: json` counts
 JSON array elements; use it with runners whose listing mode emits JSON, rather than counting output
-lines. Probe repairs receive the implicated runner source and preserve the criterion's scope.
+lines. Probes also resolve `os.path.abspath("literal-path")` against the criterion working
+directory without evaluating criterion code. Other unresolved command expressions fail as
+`unresolved-probe-arguments` and are reported without a model repair call. Probe repairs receive
+the implicated runner source and preserve the criterion's scope.
 Criteria must observe the delivered application through its declared interfaces. A check that
 passes without the product remains `PREBUILD_PASSES` and cannot verify its story. String
 calculations compared with literal known answers are not flagged as retyped expressions;

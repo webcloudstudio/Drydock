@@ -26,9 +26,13 @@ and measured something; everything else is reported, not charged.
 
 `2026-10-24` · Staged corpus probes recognize section/selection options and options whose
 parsed values feed `re.compile`, rather than treating the first option as a selector.
-Program and corpus-path arguments remain in the probe's complete literal argv; unresolved
-arguments fail validation rather than being omitted. `Probe Count: json` counts JSON array
-items, including zero for `[]`; JSON arrays/objects are rejected under `lines`. Probe repair
+Program and corpus-path arguments remain in the probe's complete argv. A canonical,
+unmodified `import os` permits syntactic resolution of `os.path.abspath("literal-path")`
+against the criterion working directory, including argv bound to a module variable; no criterion
+expression is evaluated and the proof text is unchanged. Other unresolved arguments fail as
+`unresolved-probe-arguments`, naming their one-based runner-argument positions. `plan repair`
+reports these unchanged without a model call: declaration edits cannot repair body expressions.
+`Probe Count: json` counts JSON array items, including zero for `[]`; JSON arrays/objects are rejected under `lines`. Probe repair
 receives only the implicated runner source, preserves non-probe metadata, code and assertions,
 and changes listing flags/count formats for `probe-failed`; `empty-selection` retains scoped
 selector repair. `BLUEPRINTS_CONTRACT.md` requires flags and protocols the supplied runner
@@ -194,10 +198,11 @@ file-exists stubs), and rejects a plan where no story carries it. Deferred becau
 
 ## Actions
 
-- `2026-10-24` · CommonMark `20261024.231239` probe fixes require later live verification by
-  Ed: all scoped probes must inspect their declared section and corpus, JSON emptiness must
-  fail, and protocol repairs must retain scope; local proof is in `test_acceptance.py` JSON
-  corpus regressions and `test_plan_repair.py::test_probe_protocol_repair_receives_runner_and_preserves_scope`.
+- `2026-10-24` · CommonMark `20261024.233753`: bounded literal-abspath resolution and
+  unresolved-argument repair routing are verified locally in `test_acceptance.py` and
+  `test_plan_repair.py`; Ed's later run must pass all scoped probes without the same failure.
+  The earlier selector/JSON/runner-context defects are fixed in this run; delimiter generation
+  remains open in `design/skills/ddk-uat.md`.
 
 - `2026-10-24` · Go criteria are not under the harness transaction: `drydock_go` runs native tests
   in a separate process, so Go keeps `OpenSession` scopes and owned committed records. Decide
