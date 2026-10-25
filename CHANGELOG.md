@@ -343,6 +343,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-24: Planning and `drydock plan verify` reject conflicting `DATABASE.md` output DTO
+  definitions before persistence generation. Admission and the Python emitter share class-name
+  and field-type normalization; diagnostics identify both operations and their shapes and suggest
+  an operation-derived name for a distinct projection. Identical output contracts still share
+  one class. This fixes FxRates planning accepting `Rate` with three fields for reads/upserts
+  and two for delete; mutation return behavior is unchanged.
+
 - 2026-10-24: Failed UAT builds retain the child error and stdout/stderr evidence locations in
   `BLOCKERS.md`, console output, and the recorded stop reason instead of replacing the cause with
   a generic frontier message. A separate explanation states why the unfinished build stops

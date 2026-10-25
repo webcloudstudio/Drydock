@@ -11,17 +11,18 @@ a row dataclass per read or create; statements are constructed by the driver for
 
 from __future__ import annotations
 
-import re
 import shutil
 from pathlib import Path
 
 from drydock.database_contract import (
     AccessPattern,
+    output_row_defects,
     parse_database_contract,
     resolve_operation,
     schema_sql,
     sqlite_schema_tables,
 )
+from drydock.database_row_types import row_class_name, row_field_type
 from drydock.errors import SpecificationError
 from drydock.paths import get_database_dir, get_language_dir
 
@@ -45,82 +46,31 @@ _TESTING_MODULE = (get_language_dir("python") / "templates" / "testing.py.tmpl")
 )
 
 
-def _identifier(name: str) -> str:
-    """Turn a DTO name into a class name without inventing one when it is already usable."""
-    cleaned = "".join(part for part in name if part.isalnum() or part == "_")
-    if not cleaned or cleaned[0].isdigit():
-        cleaned = f"Row{cleaned}"
-    return cleaned[0].upper() + cleaned[1:]
-
-
-#: Declared DTO types, SQL or Python spelling, as the Python type a row field holds. Derived DTOs
-#: carry the column's SQL type, and an annotation of ``INTEGER`` names nothing in Python.
-_PYTHON_TYPES = {
-    "int": "int",
-    "integer": "int",
-    "int64": "int",
-    "bigint": "int",
-    "smallint": "int",
-    "str": "str",
-    "string": "str",
-    "text": "str",
-    "varchar": "str",
-    "char": "str",
-    "character varying": "str",
-    "date": "str",
-    "timestamp": "str",
-    "bool": "bool",
-    "boolean": "bool",
-    "float": "float",
-    "float64": "float",
-    "number": "float",
-    "real": "float",
-    "double precision": "float",
-    "numeric": "float",
-    "decimal": "float",
-    "bytes": "bytes",
-    "any": "object",
-    "object": "object",
-}
-
-
-def _python_type(declared: str) -> str:
-    """Map a declared field type to Python; a type outside the map is kept as written."""
-    value = declared.strip()
-    if not value:
-        return "object"
-    lowered = value.lower()
-    if lowered.endswith(" | none"):
-        return f"{_python_type(value[: -len(' | none')])} | None"
-    # A SQL column type such as VARCHAR(12) maps by its base name; the length is the schema's.
-    return _PYTHON_TYPES.get(re.sub(r"\s*\(.*\)$", "", lowered), value)
-
-
-def _row_classes(patterns: tuple[AccessPattern, ...]) -> dict[str, tuple[str, str]]:
+def _row_classes(
+    patterns: tuple[AccessPattern, ...], *, source: str = "DATABASE.md"
+) -> dict[str, tuple[str, str]]:
     """One dataclass per distinct output, keyed by pattern id.
 
     A create or update returns its declared Output row, as a read does, and a delete returns its
     Output built from the key it was given. Two patterns naming the same DTO share one class, and
     a name declared with two different field sets is refused. Field annotations are emitted in
-    Python as mapped by ``_python_type`` and never evaluated — ``from __future__ import annotations``
+    Python as mapped by ``row_field_type`` and never evaluated — ``from __future__ import annotations``
     keeps them strings — so a declared type outside the map is preserved rather than dropped.
     """
+    if defects := output_row_defects(patterns, source=source):
+        raise SpecificationError("; ".join(defects))
     emitted: dict[str, str] = {}
     by_pattern: dict[str, tuple[str, str]] = {}
     for pattern in patterns:
         # Every Kind returns its Output row when one is declared; a count or key otherwise.
         if not pattern.outputs:
             continue
-        name = _identifier(pattern.output_name or f"{pattern.identifier}Row")
+        name = row_class_name(pattern.output_name or f"{pattern.identifier}Row")
         annotations = "\n".join(
-            f"    {field.name}: {_python_type(field.type)}" for field in pattern.outputs
+            f"    {field.name}: {row_field_type(field.type)}" for field in pattern.outputs
         )
         body = f"@dataclass(frozen=True)\nclass {name}:\n{annotations}\n"
-        if emitted.setdefault(name, body) != body:
-            raise SpecificationError(
-                f"Conflicting Python row class {name}: {pattern.identifier} declares different "
-                "Output fields than an earlier pattern of that name"
-            )
+        emitted.setdefault(name, body)
         by_pattern[pattern.identifier] = (name, emitted[name])
     return by_pattern
 
@@ -131,7 +81,7 @@ def render_schema_module(text: str, *, source: str = "DATABASE.md") -> str:
     contract = parse_database_contract(text)
     columns_of = {table.name: table.columns for table in tables}
     tables_by_name = {table.name: table for table in tables}
-    rows = _row_classes(contract.patterns)
+    rows = _row_classes(contract.patterns, source=source)
 
     classes: list[str] = []
     seen: set[str] = set()

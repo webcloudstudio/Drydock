@@ -849,8 +849,11 @@ def test_a_list_output_that_wraps_its_rows_is_a_defect():
 def test_an_update_output_names_only_columns():
     # An update returns its Output row read back by key, so a count field names no column.
     updated = (
-        _READING_LIST.replace("| book_id | INTEGER | Identifier of the book to remove. |",
-                              "| id | INTEGER | |\n| title | TEXT | |")
+        _READING_LIST
+        .replace(
+            "| book_id | INTEGER | Identifier of the book to remove. |",
+            "| id | INTEGER | |\n| title | TEXT | |",
+        )
         .replace("| book_id |", "| id |")
         .replace("`books.delete`", "`books.update`")
     )
@@ -914,3 +917,82 @@ def test_a_placeholder_input_row_declares_no_field():
         "- `FEATURE-BOOK-001` — read: books.list - supplies: (none) - returns: `id`\n"
     )
     assert uses[0].supplies == ()
+
+
+def test_output_names_have_one_shape_before_database_admission():
+    from tests.test_database_emit import _rates_database
+
+    (defect,) = database_contract_defects(_rates_database())
+
+    assert "Conflicting Python row class Rate" in defect
+    assert "FEATURE-RATES-004 (`rates.delete`)" in defect
+    assert "FEATURE-RATES-001 (`rates.get`)" in defect
+    assert "(date: str, currency: str)" in defect
+    assert "(date: str, currency: str, rate: str)" in defect
+    assert "RatesDeleteOutput" in defect
+    assert "preserve its fields" in defect
+    assert database_contract_defects(_rates_database("RatesDeleteOutput")) == ()
+
+
+@pytest.mark.parametrize(
+    ("name", "fields", "conflict"),
+    [
+        ("Order", (("id", "UUID"), ("status", "OrderStatus")), False),
+        ("Order", (("id", "UUID"),), True),
+        ("Order", (("id", "str"), ("status", "OrderStatus")), True),
+        ("Order", (("status", "OrderStatus"), ("id", "UUID")), True),
+        ("O-rder", (("id", "UUID"),), True),
+        ("order", (("id", "UUID"),), True),
+        ("OrderIdentity", (("id", "UUID"),), False),
+    ],
+)
+def test_output_registry_checks_normalized_names_field_types_and_order(name, fields, conflict):
+    from dataclasses import replace
+
+    from drydock.database_contract import Field, output_row_defects
+
+    first, second = parse_database_contract(_DATABASE).patterns
+    second = replace(
+        second, output_name=name, outputs=tuple(Field(field, kind) for field, kind in fields)
+    )
+
+    assert bool(output_row_defects((first, second))) is conflict
+
+
+def test_output_registry_accepts_equivalent_emitted_field_types():
+    from dataclasses import replace
+
+    from drydock.database_contract import Field, output_row_defects
+
+    first, second = parse_database_contract(_DATABASE).patterns
+    first = replace(first, outputs=(Field("id", "INTEGER"), Field("status", "VARCHAR(20)")))
+    second = replace(second, outputs=(Field("id", "int"), Field("status", "str")))
+
+    assert output_row_defects((first, second)) == ()
+
+
+def test_output_conflicts_are_reported_beside_unreadable_schema_and_pattern_faults():
+    from tests.test_database_emit import _rates_database
+
+    text = (
+        _rates_database()
+        .replace(
+            "## Schemas",
+            """### FEATURE-RATES-005 — Incomplete
+
+| Field | Value |
+|---|---|
+| Owner | DATABASE.md |
+| Access | read |
+| Repository operation | `rates.other` |
+| Kind | list |
+| Compatibility | unchanged |
+
+## Schemas""",
+        )
+        .replace("| id | INTEGER PK |", "| id | UNKNOWN PK |")
+    )
+    defects = database_contract_defects(text)
+
+    assert any("Conflicting Python row class Rate" in defect for defect in defects)
+    assert any("FEATURE-RATES-005" in defect for defect in defects)

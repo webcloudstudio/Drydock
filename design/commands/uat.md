@@ -239,9 +239,10 @@ authoring contract, and (b) a warning that may cost marks, never a hard gate.
 
 - `2026-10-24` · FxRates `20261025.014047` stops before a build-agent call because
   `blueprint/DATABASE.md:118` declares `Rate` without `rate`, unlike the earlier three-field
-  `Rate` outputs. `database_emit_python.py:119` correctly rejects the conflict; determine why
-  planning/verification accepts it and reject or repair it before build. This is separate from
-  the fixed blocker presentation. Close on a focused contract regression and Ed's later UAT.
+  `Rate` outputs. Shared output-row validation now rejects this at admission and verification;
+  a fake-runner regression repairs it before freezing, and a temporary SQLite round trip uses
+  distinct `Rate` and `RatesDeleteOutput` classes. This is separate from the fixed blocker
+  presentation. The local fix is complete; close live verification on Ed's later clean UAT.
 
 - `2026-10-24` · CsvStat `20261025.011759`: local fixes address the five diagnosis ledger
   findings; Ed must verify a fresh run with valid CSV fixtures, post-build native checks,

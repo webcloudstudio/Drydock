@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from drydock.database_row_types import row_class_name, row_field_type
 from drydock.errors import SpecificationError
 
 _SECTION_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
@@ -1127,8 +1128,41 @@ def parse_database_contract(text: str, *, source: str = "DATABASE.md") -> Databa
     return DatabaseContract(tuple(patterns))
 
 
+def output_row_defects(
+    patterns: Iterable[AccessPattern], *, source: str = "DATABASE.md"
+) -> tuple[str, ...]:
+    """Judge shared Output names exactly as the Python emitter materializes them.
+
+    FxRates 20261025.014047 reused Rate for a full row and a delete key projection. The
+    emitter refused it, but admission froze the declaration first. Normalize both names and
+    annotations here so aliases cannot hide conflicts or reject equivalent field types.
+    """
+    declared: dict[str, tuple[tuple[tuple[str, str], ...], AccessPattern]] = {}
+    defects: list[str] = []
+    for pattern in patterns:
+        if not pattern.outputs:
+            continue
+        name = row_class_name(pattern.output_name or f"{pattern.identifier}Row")
+        shape = tuple((field.name, row_field_type(field.type)) for field in pattern.outputs)
+        previous_shape, previous = declared.setdefault(name, (shape, pattern))
+        if previous_shape == shape:
+            continue
+        suggested = _dto_name(pattern.operations[0].replace(".", "_")) + "Output"
+        fields = ", ".join(f"{field}: {kind}" for field, kind in shape)
+        prior_fields = ", ".join(f"{field}: {kind}" for field, kind in previous_shape)
+        defects.append(
+            f"{source}: Conflicting Python row class {name}: {pattern.identifier} "
+            f"(`{pattern.operations[0]}`) declares Output `{pattern.output_name}` "
+            f"({fields}), but {previous.identifier} (`{previous.operations[0]}`) "
+            f"declares ({prior_fields}). One Output type name has one ordered field/type "
+            f"definition. Give this distinct projection an operation-derived name such as "
+            f"`{suggested}`; preserve its fields and all callers' contracts."
+        )
+    return tuple(defects)
+
+
 def database_contract_defects(text: str, *, source: str = "DATABASE.md") -> tuple[str, ...]:
-    """Return every reason :func:`parse_database_contract` would reject ``text``, or ``()``.
+    """Return all parse and generation-contract defects in ``text``, or ``()``.
 
     The parser stops at the first bad pattern. A repair pass handed only that one fixes it and
     returns to find the next, so thirteen incomplete patterns cost thirteen passes against a
@@ -1154,6 +1188,7 @@ def database_contract_defects(text: str, *, source: str = "DATABASE.md") -> tupl
     duplicates = sorted({ident for ident in ids if ids.count(ident) > 1})
     if duplicates:
         defects.append(f"{source}: duplicate access-pattern identifier(s): {', '.join(duplicates)}")
+    defects.extend(output_row_defects(patterns, source=source))
     try:
         tables = sqlite_schema_tables(text, source=source, require_key=False)
     except SpecificationError:

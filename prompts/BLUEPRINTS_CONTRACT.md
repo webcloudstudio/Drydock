@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261024 V34
+version: 20261024 V35
 ---
 
 ## Overview
@@ -872,6 +872,15 @@ Each access pattern is its own `### FEATURE-<DOMAIN>-<NNN> — <Operation>` sect
 `| Field | Value |` table carrying Owner, Access, Repository operation, and Compatibility, followed
 by an `Input: <DTO>` and an `Output: <DTO>` field table. Never collapse the operations into one
 table of rows.
+
+An Output DTO name has one ordered field/type definition throughout `DATABASE.md`. Reuse a
+name only for the same record shape. For a distinct projection, derive a descriptive name
+from the complete repository operation: `rates.get` becomes `RatesGetOutput`, and
+`rates.delete` becomes `RatesDeleteOutput`. The latter may carry only `date` and `currency`
+while the former also carries `rate`; they never both use `Rate`. Preserve the required fields
+and caller expectations when repairing a name conflict. Do not add a field to a delete output
+merely to match another DTO, and do not add arbitrary numeric suffixes. Python class-name
+normalization also applies: spellings such as `Rate` and `R-ate` name the same generated class.
 
 `Owner` is the file name of the Feature that reaches this pattern — `FEATURE-ORDER.md` — and
 never a service, module, or layer name. Only a Feature owns data: a Screen renders it through a

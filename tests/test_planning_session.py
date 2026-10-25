@@ -7863,3 +7863,44 @@ def test_a_repeated_close_with_nothing_between_damages_nothing():
     text = "=== BEGIN ARTIFACT A.md ===\nbody\n=== END ARTIFACT ===\n\n=== END ARTIFACT ===\n"
 
     assert ps._unpaired_artifact_names(text, {"A.md": "body"}) == frozenset()
+
+
+def test_conflicting_row_contract_returns_to_database_authoring_before_freeze(tmp_path):
+    from drydock.database_emit_python import render_schema_module
+    from drydock.prompt_assembly import PromptAssembly
+    from tests.test_database_emit import _rates_database
+
+    prompts: list[str] = []
+    corrected = _rates_database("RatesDeleteOutput")
+
+    def runner(prompt_text, *_args, **_kwargs):
+        prompts.append(prompt_text)
+        body = _rates_database() if len(prompts) == 1 else corrected
+        return FakeRun(
+            text=f"=== BEGIN ARTIFACT DATABASE.md ===\n{body}\n=== END ARTIFACT ===\n",
+            execution_id=f"exec-{len(prompts)}",
+        )
+
+    result = ps._continue_short_plan(
+        {"TOPOLOGY.md": "One frozen database story."},
+        blocks_text="=== TOPOLOGY.md ===\nOne frozen database story.\n=== END TOPOLOGY.md ===\n",
+        prompt_assembly=PromptAssembly.single_prompt("CONTEXT\n"),
+        declared=(PlannedStory(story_id="database", implements="DATABASE.md"),),
+        target="Rates",
+        target_dir=tmp_path,
+        llm_provider="codex",
+        model=None,
+        log_dir=None,
+        runner=runner,
+        on_text=None,
+        attempts=3,
+        initial_execution_id="exec-topology",
+    )
+
+    assert len(prompts) == 2
+    assert "Conflicting Python row class Rate" in prompts[1]
+    assert "RatesDeleteOutput" in prompts[1]
+    assert "Your rejected DATABASE.md is attached" in prompts[1]
+    assert result.score.is_complete
+    assert result.blocks["DATABASE.md"] == corrected.strip()
+    assert "class RatesDeleteOutput:" in render_schema_module(result.blocks["DATABASE.md"])

@@ -26,6 +26,12 @@ was given.
 
 ## Details
 
+`2026-10-24` · Output DTO identity is validated before the persistence declaration freezes:
+one normalized Python class name has one ordered field/type shape. Planning and the emitter
+share normalization and the registry. Distinct projections receive operation-derived naming
+guidance; identical definitions may intentionally share a class. The mutation-return policy
+discussed below remains unchanged. See [plan](../commands/plan.md).
+
 ### Rules
 
 `2026-10-22` · Python and Go publish rollback fixtures over the configured, provisioned store; autocommit remains the application default. The lifecycle is governed by [acceptance_criteria](acceptance_criteria.md). Cost when broken: generated clients disagree with shipped fixtures.
@@ -145,7 +151,8 @@ the existing Marina_Luna-shaped plan still schedules.
   operation names and output DTO names are separate identities. One output type name must
   have one consistent ordered field/type definition. A new projection needs a distinct,
   descriptive name, not an arbitrary numeric suffix. Deterministic operation-derived names
-  and a shared registry validating normalized names/shapes are proposed, not implemented.
+  remain proposed as automatic naming policy; the shared registry validating normalized
+  Output names/shapes is now implemented as described above.
 - `2026-10-24` · Current Python mutation returns (`persistence/db.py:480-524`): create without
   an output DTO returns the inserted key; update/upsert/delete without one return affected
   row counts. With a DTO, update/upsert read back the stored row; delete constructs an output

@@ -110,6 +110,87 @@ def test_one_dto_name_with_two_field_sets_is_refused():
         render_schema_module(declared)
 
 
+def _rates_database(delete_output: str = "Rate") -> str:
+    """Synthetic FxRates-shaped declaration; never reads published UAT evidence."""
+    patterns = []
+    for index, verb in enumerate(("get", "list", "upsert", "delete"), 1):
+        inputs = "| date | str |\n| currency | str |\n"
+        if verb == "upsert":
+            inputs += "| rate | str |\n"
+        outputs = "| date | str |\n| currency | str |\n"
+        if verb != "delete":
+            outputs += "| rate | str |\n"
+        access = "read" if verb in ("get", "list") else "write"
+        match = "| Match | `date`, `currency` |\n" if verb != "list" else ""
+        output_name = delete_output if verb == "delete" else "Rate"
+        patterns.append(
+            f"### FEATURE-RATES-{index:03d} — {verb}\n\n"
+            "| Field | Value |\n|---|---|\n| Owner | DATABASE.md |\n"
+            f"| Access | {access} |\n| Repository operation | `rates.{verb}` |\n"
+            f"| Compatibility | unchanged |\n{match}\n"
+            f"Input: Rates{verb.title()}Input\n\n| Field | Type |\n|---|---|\n{inputs}\n"
+            f"Output: {output_name}\n\n| Field | Type |\n|---|---|\n{outputs}\n"
+        )
+    return (
+        "# DATABASE: Rates\n\n## Access Patterns\n\n"
+        + "".join(patterns)
+        + "## Schemas\n\n## `rates`\n\n| Field | Type |\n|---|---|\n"
+        "| id | INTEGER PK |\n| date | TEXT NOT NULL |\n"
+        "| currency | TEXT NOT NULL |\n| rate | TEXT NOT NULL |\n\n"
+        "- UNIQUE (date, currency)\n\n"
+        "## Programmatic Acceptance\n\n"
+        "=== AC rates-round-trip ===\nIntent: Declared operations store and retrieve a rate.\n\n"
+        "from persistence.testing import db_session\n\n"
+        "with db_session() as db:\n"
+        "    saved = db.rates.upsert(date='2099-12-31', currency='ZZZ', rate='1.23')\n"
+        "    assert saved.rate == '1.23'\n"
+        "    found = db.rates.get(date='2099-12-31', currency='ZZZ')\n"
+        "    assert found.rate == '1.23'\n"
+        "    rows = db.rates.list(date='2099-12-31', currency='ZZZ')\n"
+        "    assert len(rows) == 1 and rows[0].rate == '1.23'\n"
+        "    removed = db.rates.delete(date='2099-12-31', currency='ZZZ')\n"
+        "    assert removed.date == '2099-12-31'\n"
+        "    assert db.rates.get(date='2099-12-31', currency='ZZZ') is None\n"
+        "=== END AC rates-round-trip ===\n"
+    )
+
+
+def test_rates_distinct_delete_output_generates_both_row_contracts(tmp_path):
+    with pytest.raises(SpecificationError, match="Conflicting Python row class Rate"):
+        render_schema_module(_rates_database())
+
+    module = render_schema_module(_rates_database("RatesDeleteOutput"))
+    assert module.count("class Rate:") == 1
+    assert "class RatesDeleteOutput:\n    date: str\n    currency: str\n" in module
+    assert "row=RatesDeleteOutput," in module
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "DATABASE.md").write_text(_rates_database("RatesDeleteOutput"))
+    build = tmp_path / "build"
+    write_persistence_package(blueprint, build)
+    result = _run_in_build(
+        build,
+        """
+from pathlib import Path
+from persistence import open_database
+
+with open_database('rates.db') as db:
+    db.execute_script(Path('schema.sql').read_text())
+    saved = db.rates.upsert(date='2099-12-31', currency='ZZZ', rate='1.23')
+    assert type(saved).__name__ == 'Rate' and saved.rate == '1.23'
+    found = db.rates.get(date='2099-12-31', currency='ZZZ')
+    assert found == saved
+    assert db.rates.list(date='2099-12-31', currency='ZZZ') == [saved]
+    removed = db.rates.delete(date='2099-12-31', currency='ZZZ')
+    assert type(removed).__name__ == 'RatesDeleteOutput'
+    assert (removed.date, removed.currency) == ('2099-12-31', 'ZZZ')
+    assert db.rates.get(date='2099-12-31', currency='ZZZ') is None
+""",
+    )
+    assert result.returncode == 0, result.stderr
+
+
 _TEXT_KEY_DATABASE = """# DATABASE: Ledger
 
 ## Access Patterns

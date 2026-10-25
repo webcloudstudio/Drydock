@@ -25,6 +25,16 @@ written.
 
 ## Details
 
+`2026-10-24` · `DATABASE.md` admission and `plan verify` reject a shared Output DTO name
+with different ordered fields or emitted field types, including names that normalize to one
+Python class. The emitter uses the same output-row registry and normalization helpers in
+`database_row_types.py`; equivalent SQL/Python field spellings remain compatible. Diagnostics
+name both pattern IDs, operations and shapes, and recommend a complete-operation-derived
+Output name without changing the fields or callers' contracts. Stage 2 returns the rejected
+draft and defect to its existing retry before the declaration freezes. `BLUEPRINTS_CONTRACT.md`
+V35 states the naming rule. This extends `71d1533` for FxRates `20261025.014047` without changing
+mutation returns or the master specification.
+
 `2026-10-24` · `drydock plan` prints every warning's text before returning in normal and
 debug modes. The obsolete removed-criterion marker import is removed from the debug path.
 `BLUEPRINTS_CONTRACT.md` V34 directs valid CSV success fixtures through `csv.writer` with LF
@@ -655,10 +665,6 @@ exist.
 
 ## Actions
 
-- `2026-10-24` · Repository-wide `ruff format --check src/ tests/` reports the pre-existing
-  chained replacement layout in `tests/test_database_contract.py:851`; changed files pass
-  formatting and repository lint passes. Close when that file's owner formats the existing code.
-
 - `2026-10-24` · CsvStat `20261025.011759`: local fixes address the five diagnosis ledger
   findings; Ed must verify a fresh run with valid CSV fixtures, post-build native checks,
   complete actionable repair feedback, visible planning warnings, and accurate receipt counts.
@@ -681,10 +687,6 @@ exist.
   DupFind run must show no `unchecked-call` on SizeFilter or UnreadableFiles and no fenced
   criteria reaching `plan verify`. If artifact repair still writes fences, fix
   `_artifact_repair_assembly` (ledger row open) next.
-
-- `2026-10-24` · Format the existing replacement chain in
-  `tests/test_database_contract.py:851`; it is the remaining repository-wide
-  `ruff format --check src/ tests/` failure found during the DrydockStats formatting fix.
 
 - `2026-10-24` · A story before the DATABASE block may still declare `provides: persistence.*` (FxRates `20261024.073528` foundation `provides: persistence.open_database`), which tells its builder to deliver the generated package. `plan verify` does not check `provides:`; a MANIFEST.md defect has no repair route in `plan repair`, so the check belongs where topology assigns `provides:`.
 

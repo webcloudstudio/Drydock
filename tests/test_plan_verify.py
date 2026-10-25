@@ -1341,3 +1341,23 @@ def test_a_function_reached_from_top_level_is_not_a_defect(tmp_path):
     result = verify("Demo", _target(tmp_path, FEATURE_Helper=_CALLED_HELPER))
 
     assert result.defects == ()
+
+
+def test_conflicting_output_rows_fail_cli_verification_before_generation(
+    tmp_path, monkeypatch, capsys
+):
+    from drydock import cli
+    from tests.test_database_emit import _rates_database
+
+    target = _target(tmp_path, DATABASE=_rates_database())
+    monkeypatch.setattr("drydock.config.require_target_dir", lambda _t: target)
+
+    assert cli.cmd_plan_verify("Demo") == 1
+    output = capsys.readouterr().out
+    assert "Conflicting Python row class Rate" in output
+    assert "RatesDeleteOutput" in output
+    assert any(defect.kind == "database-contract" for defect in verify("Demo", target).defects)
+
+    (target / "blueprint/DATABASE.md").write_text(_rates_database("RatesDeleteOutput"))
+    assert cli.cmd_plan_verify("Demo") == 0
+    assert verify("Demo", target).ok
