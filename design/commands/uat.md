@@ -245,6 +245,10 @@ authoring contract, and (b) a warning that may cost marks, never a hard gate.
 
 ## Working Notes
 
+- `2026-10-24` · Ed strongly prefers the pink and green highlighting and explicitly requests
+  more of it. The affected surface (terminal, web reports/QuarterDeck, or chat change display)
+  is pending clarification; preserve this preference in subsequent presentation work.
+
 - **Deferred: per-branch stall (P-3a, 2026-08-14).** A failed block would stop only its dependents
   while independent branches keep building, so one run reports every independent defect. Deferred
   as an efficiency gain, not a convergence fix; `build_run` still stops at the first failed block.

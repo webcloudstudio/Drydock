@@ -141,4 +141,18 @@ the existing Marina_Luna-shaped plan still schedules.
 
 ## Working Notes
 
+- `2026-10-24` · Persistence naming/return discussion after FxRates `20261025.014047`:
+  operation names and output DTO names are separate identities. One output type name must
+  have one consistent ordered field/type definition. A new projection needs a distinct,
+  descriptive name, not an arbitrary numeric suffix. Deterministic operation-derived names
+  and a shared registry validating normalized names/shapes are proposed, not implemented.
+- `2026-10-24` · Current Python mutation returns (`persistence/db.py:480-524`): create without
+  an output DTO returns the inserted key; update/upsert/delete without one return affected
+  row counts. With a DTO, update/upsert read back the stored row; delete constructs an output
+  from caller-supplied match values, or returns None if nothing matched. It does not retrieve
+  the deleted row. `database_contract.py:_derived_dtos` currently synthesizes a key DTO for
+  delete. Ed questions the need for write-output DTOs and asks whether writes can return
+  None. A simpler explicit mutation-return policy remains under discussion; do not treat
+  this question as approval to change runtime contracts. Correct the DTO collision during
+  admission regardless of the eventual mutation-return choice.
 -
