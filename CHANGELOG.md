@@ -152,6 +152,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-24: `drydock uat` shortens terminal output: plan progress uses one line per batch,
+  redundant status views and housekeeping stay in evidence, and failed steps receive bordered
+  error boxes. After reports and checkpointing, each kit ends with a prominent recorded verdict,
+  blocked state, failed command, and diagnostic, including with `--quiet`. Readiness probes are
+  labelled `NOT READY`. Full stdout/stderr logs and run behavior are preserved.
+
 - 2026-10-24: `design/` is redefined as Drydock's Memory Files, the persistent project memory
   shared by every session and provider. AGENTS.md `## Memory Files` replaces `## Design` with an
   index, one format, and completion gates. Every Memory File is `# MEMORY: <name>`, a Field/Value

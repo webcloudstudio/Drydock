@@ -58,6 +58,13 @@ Drydock imports your source material, defines stories using agile best practices
 
 ## Drydock UAT Examples
 
+UAT console output condenses plan progress and shows one build-status summary in place of the
+three captured status views. Copyright banners, Git housekeeping, and session ids are suppressed
+in the terminal; complete child stdout/stderr remain in `evidence/commands/`. Failed commands
+appear in `#`-bordered boxes. After report links and checkpointing, each kit ends with a boxed
+recorded verdict, execution/acceptance states, and any blocked state, failed command, or error.
+The final verdict also appears with `--quiet`; a failed readiness probe is labelled `NOT READY`.
+
 Read-only listing: `bash helpers/list_failed_uat_runs.sh` prints failed-run paths, one per line.
 Use `--uat-root <path>` for another kit root. Counts and unreadable-receipt warnings go to stderr.
 It uses the same exact `status: "failed"` selection as the cleanup helper below.

@@ -1,22 +1,23 @@
 """Live console framing for the child commands a UAT run executes.
 
-A UAT run is a long sequence of full Drydock commands. Reporting only the stage name leaves an
-operator unable to tell progress from a stall, so every child's output is written through to the
-terminal as it arrives, framed by a header and a footer that name the stage and time it.
-
-Fidelity is the constraint: a chunk is written exactly as the child produced it. The gutter is
-inserted only at the start of a line, so a progress line that redraws itself with a carriage
-return still redraws, and a line without a trailing newline still appears.
+Child evidence remains verbatim on disk. The terminal suppresses housekeeping and duplicate
+status views, condenses plan progress, and highlights failures independently of color.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
+import textwrap
 import threading
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Protocol, TextIO
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, TextIO
+
+if TYPE_CHECKING:
+    from drydock.uat import UATResult
 
 from drydock import console
 from drydock.execution import format_ms
@@ -26,6 +27,65 @@ _MAX_ARGV_WIDTH = 140
 _RED = "\x1b[31m"
 _DIM = "\x1b[2m"
 _RESET = "\x1b[0m"
+
+
+def result_box(heading: str, details: Sequence[str], *, width: int = 88) -> str:
+    """An ASCII frame remains conspicuous in terminals and redirected logs alike."""
+    width = max(24, min(width, 96))
+    lines = [heading, *details]
+    wrapped = [
+        part
+        for line in lines
+        for part in textwrap.wrap(line, width=width - 4, break_on_hyphens=False) or [""]
+    ]
+    return "\n".join([
+        "#" * width,
+        *(f"# {line:<{width - 4}} #" for line in wrapped),
+        "#" * width,
+    ])
+
+
+def render_result(result: UATResult) -> str:
+    """Final recorded verdict, after checkpointing; failed probes are not run verdicts."""
+    from drydock.uat import result_blockers
+
+    details = [
+        f"Run: {result.run_id} | Execution: {result.execution_status} | "
+        f"Acceptance: {result.acceptance_status}",
+        f"Verdict: expected {result.expected_verdict}, observed {result.observed_verdict}",
+    ]
+    if blockers := result_blockers(result):
+        details.append(f"BLOCKED: {result.target} | {blockers.summary}")
+    if result.status != "passed":
+        failed = next(
+            (
+                command
+                for command in reversed(result.commands)
+                if command.returncode and not command.label.endswith(("-status", "-ready"))
+            ),
+            None,
+        )
+        if failed:
+            details.append(
+                f"Last failed command: {format_label(failed.label)} (exit {failed.returncode})"
+            )
+            details.append(format_argv(failed.argv))
+            if failed.stderr_path:
+                try:
+                    with Path(failed.stderr_path).open(
+                        encoding="utf-8", errors="replace"
+                    ) as handle:
+                        diagnostic = handle.read(4096)
+                    details.extend(
+                        line.strip() for line in diagnostic.splitlines()[:3] if line.strip()
+                    )
+                except OSError:
+                    pass  # The recorded run error remains authoritative when a log is absent.
+    if result.error:
+        details.append(f"{'Reported' if result.status == 'passed' else 'Error'}: {result.error}")
+    details.extend(result.degraded)
+    details.extend(f"MANUAL TEST REQUIRED: {item}" for item in result.attestations)
+    return result_box(f"UAT {result.status.upper()}: {result.target}", details)
 
 
 class StepSink(Protocol):
@@ -91,6 +151,13 @@ class StepConsole:
         self._at_line_start = True
         self._open_source: str | None = None
         self._last_was_cr = False
+        self._pending: dict[str, str] = {}
+        self._emitted: dict[str, int] = {}
+        self._snapshot = False
+        self._hidden = False
+        self._blocker_dump = False
+        self._plan: dict[str, str] = {}
+        self._errors: list[str] = []
 
     # -- context ----------------------------------------------------------------
 
@@ -112,7 +179,14 @@ class StepConsole:
     def step(self, argv: Sequence[str], label: str) -> None:
         with self._lock:
             self._label = label
-            if self._quiet:
+            self._snapshot = label.endswith("-build-status")
+            self._hidden = label.endswith(("-target-status", "-workspace-status"))
+            self._pending.clear()
+            self._emitted.clear()
+            self._plan.clear()
+            self._errors.clear()
+            self._blocker_dump = False
+            if self._quiet or self._hidden:
                 return
             self._close_open_line()
             stamp = self._clock().strftime("%H:%M:%S")
@@ -120,6 +194,102 @@ class StepConsole:
             self._write(self._paint(f"   {format_argv(argv)}\n", _DIM))
 
     def chunk(self, source: str, text: str) -> None:
+        if self._quiet or not text:
+            return
+        with self._lock:
+            pending = self._pending.get(source, "") + text
+            parts = re.split(r"(\r\n|\r|\n)", pending)
+            emitted = self._emitted.get(source, 0)
+            for index in range(0, len(parts) - 1, 2):
+                line = parts[index] + parts[index + 1]
+                if emitted:
+                    self._chunk(source, line[emitted:])
+                    self._remember_error(source, line)
+                else:
+                    self._line(source, line)
+                emitted = 0
+            tail = parts[-1]
+            # Unknown output streams immediately, including unfinished progress lines. Only
+            # recognized presentation records wait for a newline before being compacted.
+            candidates = (
+                ("Contents of ", "=")
+                if source == "stderr"
+                else ("Drydock ", "Target - ", "git:", "Claude session: start id=")
+            )
+            stripped = tail.lstrip()
+            hold = source == "stdout" and (self._snapshot or self._hidden or "plan" in self._label)
+            hold = hold or (source == "stderr" and self._blocker_dump)
+            hold = hold or any(
+                prefix.startswith(stripped) or stripped.startswith(prefix) for prefix in candidates
+            )
+            if tail and (emitted or not hold):
+                self._chunk(source, tail[emitted:])
+                emitted = len(tail)
+            self._pending[source] = tail
+            self._emitted[source] = emitted
+
+    def _remember_error(self, source: str, text: str) -> None:
+        if source == "stderr" and text.strip() and len(self._errors) < 4:
+            self._errors.append(text.strip())
+
+    def _line(self, source: str, text: str) -> None:
+        line = text.strip()
+        if source == "stderr":
+            if (self._snapshot or self._hidden) and line.startswith("Contents of "):
+                self._blocker_dump = True
+            if self._blocker_dump:
+                return
+            if line and not set(line) <= {"="}:
+                self._remember_error(source, text)
+                self._chunk(source, text)
+            return
+        if self._hidden:
+            return
+        if (line.startswith("Drydock ") and "Copyright (c)" in line) or line.startswith((
+            "Target - setup project workspace git store",
+            "Target - committed project workspace git store",
+            "git:",
+            "Claude session: start id=",
+        )):
+            return
+        if self._snapshot:
+            if (
+                line.startswith(("Steps:", "Buildable now:", "Next:", "BLOCKED:", "STOPPED:"))
+                or "[failed]" in line
+            ):
+                self._chunk(source, text)
+            return
+        if "plan" in self._label:
+            if line and set(line) == {"="}:
+                return
+            if line.startswith("PLAN PROGRESS"):
+                self._plan = {"stage": line.removeprefix("PLAN PROGRESS").strip(" ·")}
+                return
+            key, separator, value = line.partition(":")
+            if (
+                separator
+                and key
+                in {
+                    "Topology Created",
+                    "Blueprints Created",
+                    "Manifest Created",
+                    "Blueprints Remaining",
+                    "Batch Result",
+                }
+                and self._plan
+            ):
+                self._plan[key] = value.strip()
+                if key == "Batch Result":
+                    self._chunk(
+                        source,
+                        f"Plan: {self._plan['stage']} | "
+                        f"Blueprints {self._plan.get('Blueprints Created', '?')} | {value.strip()}\n",
+                    )
+                    self._plan.clear()
+                return
+        self._chunk(source, text)
+
+    def _chunk(self, source: str, text: str) -> None:
         if self._quiet or not text:
             return
         with self._lock:
@@ -143,13 +313,33 @@ class StepConsole:
 
     def finish(self, returncode: int, elapsed_ms: int) -> None:
         with self._lock:
+            for source, pending in self._pending.items():
+                if pending:
+                    if self._emitted.get(source):
+                        self._remember_error(source, pending)
+                    else:
+                        self._line(source, pending)
+            self._pending.clear()
             if self._quiet:
                 return
             self._close_open_line()
-            outcome = f"exit {returncode}   {format_ms(elapsed_ms)}"
-            line = self._rule(self._title(), outcome)
-            self._write(self._paint(line, _RED) if returncode else line)
-            self._write("\n")
+            if returncode:
+                detail = [f"Command exited {returncode} | {format_ms(elapsed_ms)}", *self._errors]
+                heading = "NOT READY" if self._label.endswith("-ready") else "STEP ERROR"
+                self._write(
+                    self._paint(
+                        result_box(
+                            f"{heading}: {self._title()}",
+                            detail,
+                            width=self._width
+                            or min(shutil.get_terminal_size((88, 24)).columns, 88),
+                        ),
+                        _RED,
+                    )
+                    + "\n"
+                )
+            elif not self._hidden:
+                self._write(self._rule(self._title(), f"OK   {format_ms(elapsed_ms)}") + "\n")
 
     # -- rendering --------------------------------------------------------------
 

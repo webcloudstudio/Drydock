@@ -30,6 +30,19 @@ Three properties define done (UAT gate model, 2026-08-14):
 
 ## Details
 
+`2026-10-24` · Terminal presentation is compacted in `uat_console.py`; child evidence and
+execution order are unchanged. Plan progress frames become one line per batch. Copyright,
+Git housekeeping, and Claude session ids are omitted. The three status commands still execute
+and record full evidence; only build-status totals, frontier, next action, and failed rows are
+shown on stdout. Snapshot stderr retains the blocker explanation but omits the duplicate raw
+`BLOCKERS.md` dump. Nonzero children receive a `#`-bordered `STEP ERROR` box, except readiness
+probes (`NOT READY`). Ordinary partial lines and carriage-return progress continue streaming.
+After checkpointing, every result, including `--quiet`, ends with a boxed recorded verdict,
+execution and acceptance states, blocker summary, last failed non-status/non-readiness command,
+its first three stderr lines (bounded read), run error, and manual attestations. A step failure
+can recover; only the final box states the recorded UAT result. Console summaries no longer dump
+Markdown artifact inventories. No execution, evidence, report, or exit-code contract changes.
+
 `2026-10-24` · Read-only companion `helpers/list_failed_uat_runs.sh` uses the cleanup helper's
 exact `status: "failed"` selection and symlink exclusions. It prints sorted absolute paths,
 one per line, to stdout; counts and unreadable-receipt warnings go to stderr. `--uat-root`

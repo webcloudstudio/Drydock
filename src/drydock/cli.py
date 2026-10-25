@@ -637,8 +637,8 @@ def _uat_resume_selection(args: argparse.Namespace, uat_root: Path) -> tuple[str
 def cmd_uat(args: argparse.Namespace) -> int:
     """Run known project fixtures through an isolated unattended lifecycle."""
     from drydock.config import get_effort, get_model, get_workspace
-    from drydock.uat import make_streaming_runner, render_stop, render_summary, run_uat
-    from drydock.uat_console import StepConsole
+    from drydock.uat import make_streaming_runner, run_uat
+    from drydock.uat_console import StepConsole, render_result
 
     workspace = get_workspace().resolve()
     uat_root = args.uat_root.resolve() if args.uat_root is not None else workspace / "uat"
@@ -699,23 +699,22 @@ def cmd_uat(args: argparse.Namespace) -> int:
         )
         if not args.quiet:
             print()
-            print(render_summary(results, uat_root))
+            for result in results:
+                print(
+                    f"{result.target}: {result.elapsed_ms / 1000:.1f}s | "
+                    f"{result.build_passes} build pass(es) | {result.usage['calls']} LLM call(s)"
+                )
         passed = sum(result.status == "passed" for result in results)
         print(f"UAT: {passed}/{len(results)} kit(s) passed")
-        # A passing kit can still owe a manual test. Print it after the tally, where it survives
-        # --quiet: a prohibition nobody was told about is a prohibition nobody checks.
-        for result in results:
-            for attestation in result.attestations:
-                print(f"  MANUAL TEST REQUIRED: {result.fixture}: {attestation}")
         for result in results:
             print(f"Report: {Path(result.output_dir) / 'README.md'}")
         return 0 if passed == len(results) else 1
     finally:
         checkpoint_kit_repositories(kits)
         for result in results:
-            if message := render_stop(result):
-                sys.stdout.flush()
-                print(message, file=sys.stderr, flush=True)
+            sys.stdout.flush()
+            stream = sys.stderr if result.status != "passed" else sys.stdout
+            print(render_result(result), file=stream, flush=True)
 
 
 def _sync_workspace_skills(workspace: Path) -> None:

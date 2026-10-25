@@ -308,6 +308,16 @@ def test_uat_prints_the_halt_after_reports_and_checkpointing(
     write_blockers(target_dir, _rate_limited())
     result = SimpleNamespace(
         status="failed",
+        run_id="fake",
+        elapsed_ms=1000,
+        build_passes=1,
+        usage={"calls": 1},
+        execution_status="ERROR",
+        acceptance_status="NOT_RUN",
+        expected_verdict="PASSED",
+        observed_verdict="ERROR",
+        commands=(),
+        degraded=(),
         target="TestTarget",
         fixture="TestTarget",
         output_dir=str(case),
@@ -332,7 +342,9 @@ def test_uat_prints_the_halt_after_reports_and_checkpointing(
 
     text = console.getvalue()
     assert text.index("Report:") < text.index("Checkpoint saved") < text.index("BLOCKED:")
-    assert text.rstrip().endswith(f"Error: {result.error}")
+    assert "UAT FAILED: TestTarget" in text
+    assert "Error: TestTarget: stopped at build: provider rate limit:" in text
+    assert text.rstrip().endswith("#" * 88)
 
 
 def test_ready_reports_a_block_and_ends_the_build_loop(
