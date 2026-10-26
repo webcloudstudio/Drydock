@@ -147,6 +147,7 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
 
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "must-not-propagate")
+    monkeypatch.setenv("DATABASE_URL", "canonical-store")
     text_chunks = []
     streamed_events = []
 
@@ -157,6 +158,7 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
         model="sonnet",
         command_name="plan-create",
         parameters={"spec": "Example", "block": 3},
+        environment={"DATABASE_URL": "disposable-store", "OPENAI_API_KEY": "must-not-propagate"},
         on_text=text_chunks.append,
         on_event=streamed_events.append,
         prompt_assembly=PromptAssembly(
@@ -173,6 +175,9 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
     assert process.stdin.getvalue() == "Reply READY"
     assert process.kwargs["cwd"] == tmp_path
     assert "ANTHROPIC_API_KEY" not in process.kwargs["env"]
+    assert "OPENAI_API_KEY" not in process.kwargs["env"]
+    assert process.kwargs["env"]["DATABASE_URL"] == "disposable-store"
+    assert os.environ["DATABASE_URL"] == "canonical-store"
     assert text_chunks == ["READY"]
     assert result.ok
     assert result.text == "READY"

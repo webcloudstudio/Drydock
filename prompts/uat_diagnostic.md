@@ -1,20 +1,42 @@
 ---
 name: uat_diagnostic
 description: Investigate warnings, errors, recovered defects, and downstream failures in a running or completed Drydock UAT run, including a successful run.
-version: 20261024 V7
+version: 20261026 V8
 intent: Assess operational success and clean execution separately, trace upstream warnings and errors through later artifacts and failures, and recommend the earliest corrective work supported by preserved evidence.
 command: operator diagnostic prompt
-output: A five-section diagnosis of about 250 words in single-line bullets, ending in a prioritized action list.
+output: A concise diagnosis with an assistant-owned Assumptions Review, evidence-backed findings, and prioritized actions.
 ---
 
 # Diagnose the Latest Drydock UAT Run
 
 Act as Drydock's Principal Developer. Diagnose the UAT run requested by the operator, including a
-running run or a successful run with warnings. This is working software: investigate only. Do not edit code, specifications, prompts,
-tests, generated Target data, or UAT evidence, and do not rerun the UAT. The one write is the
-diagnosis ledger described below. Recommend changes only after
+running run or a successful run with warnings. Default scope is investigation and the diagnosis ledger only. Do not rerun UAT or alter its
+published evidence. Code, prompt and test repairs require Ed's explicit authorization; an
+explicit request to repair supplies that authorization without a second confirmation. For an
+authorized repair, follow AGENTS.md, perform the Assumptions Review below before edits, implement
+and test the supported correction, update memory/changelog, and commit. Never edit the master
+specification without its separate block-specific authorization. Recommend changes only after
 the evidence establishes a cause. Preserve the distinction between a product defect, a Drydock
 defect, a UAT-kit defect, a provider/model failure, and an expected control-flow exit.
+
+## Assumptions Review — owned by the assistant
+
+Before diagnosis conclusions or authorized edits, read the affected command/topic memory's
+Current contract, Intent and Guardrails, plus the source requirements and relevant ledger rows.
+State a short review in the output: approved goal and source authority; applicable invariants;
+resource owners and allowed mutations; established facts versus uncertain assumptions; the
+smallest test that could falsify the diagnosis. Cite the governing files. This is the assistant's
+work, not a questionnaire for Ed. Ask Ed only when approved inputs conflict or a material product
+decision cannot be resolved from them; continue independent authorized work.
+
+Use three dispositions: a proved violation of an explicit contract is a defect; a proved allowed
+operation is permitted; everything unproved is uncertainty. Unrecognized syntax or provenance
+alone is not a defect and never authorizes changed assertions, rounding, normalization, broader
+permissions or weakened gates. Informational uncertainty alone does not make a run unclean.
+Keep uncertain causal claims labeled as such. An invariant is not enforced merely because its
+text was read or present in the agent prompt: identify the enforcing code and negative test, or
+record the missing enforcement. Persist unresolved assumptions and follow-ups in the owning
+memory file during authorized repair.
 
 ## Start Here
 
@@ -97,7 +119,8 @@ header defines the columns and Outcome values.
    `independent`, or `reporting`; give it Fix empty and Outcome `open`. A consequence of a recorded
    cause gets no row. This includes warnings and recovered defects in successful or running runs;
    successful recovery never excuses a defect from the ledger or closes it as fixed.
-6. Change nothing else in earlier rows, and write no other file. Commit the ledger alone.
+6. Change only Fix/Outcome in earlier rows. In investigation mode write no other file and
+   commit the ledger alone; authorized repairs also commit their implementation and memory updates.
 
 ## Audit Specification Integrity First
 
@@ -136,7 +159,7 @@ implementation, and acceptance gates. Before blaming implementation or the model
 
 ## Output Contract
 
-Return exactly five sections, in this order, under these headings. Every bullet is one short
+Return the following sections in order under these headings (Reporting Defects may be omitted). Every bullet is one short
 sentence on one line. No paragraphs, no run-on sentences, no restated analysis. The whole report
 targets 250 words: a reader who can diagnose the run themselves needs the facts and the file
 paths, not the reasoning that produced them. Include every material finding even when the report
@@ -146,6 +169,12 @@ must exceed that target.
 
 One line: the run id, recorded status, cleanliness (`clean`, `not clean`, or `undetermined`), and
 terminal stage with its exit code, or pending completion when the receipt is absent.
+
+### Assumptions Review
+
+Short bullets stating the goal/source authority, applicable invariants and state owners, uncertain
+assumptions, and the discriminating verification, with links to the governing memory/contract.
+Ed supplies only unresolved decisions; the assistant performs this review.
 
 ### Root Cause
 

@@ -25,6 +25,26 @@ post-failure diagnosis in `diagnose.py`.
 
 ## Details
 
+### Current contract
+
+| Concern | Contract |
+|---|---|
+| Authority | Approved intent and current command/topic contracts; preserved evidence establishes observed facts. |
+| Preconditions | Assistant performs assumptions review before conclusions or authorized edits. |
+| Mutations | Default investigation plus ledger; implementation only within Ed's explicit repair authorization. |
+| Invariants | Distinguish proved defects, allowed behavior and uncertainty; memory/prompt presence is not enforcement. |
+| Recovery | Deterministic resource failures retain owner-specific recovery and do not spend a model call to invent another action. |
+| Proof | Failure classification/recovery tests and regression evidence falsifying the proposed cause. |
+
+Historical dated entries follow; where behavior has changed, this current contract and the
+newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · Managed-state violation, persistence verification failure and disposable-store
+precheck failure have deterministic owner recovery and bypass standoff model diagnosis.
+The UAT diagnostic prompt includes an assistant-owned Assumptions Review; explicit repair scope
+is honored without a second permission round. Unrecognized provenance or other static uncertainty
+alone is neither a proved defect nor evidence of an unclean run.
+
 ### Syntax
 
 ```text

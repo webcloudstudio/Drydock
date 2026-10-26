@@ -51,7 +51,7 @@ from drydock.acceptance import (
     unresolved_globals,
 )
 from drydock.acceptance_oracle import (
-    decimal_expectation_defects,
+    decimal_provenance_advisories,
     ordered_expectation_defects,
     process_readiness_defect,
 )
@@ -172,7 +172,6 @@ OPERATION_UNDECLARED = "operation-undeclared"
 # These faults need source-aware authoring or graph changes, outside mechanical AC repair.
 AUTHORING_DEFECTS = frozenset({
     "unresolved-probe-arguments",
-    "decimal-oracle",
     "ordered-oracle",
     "process-readiness",
     "acceptance-order",
@@ -647,8 +646,8 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
         every_check.extend(checks)
         for check in checks:
             checked_criteria += 1
-            for reason in decimal_expectation_defects(check):
-                defects.append(Defect(path.name, check.check_id, "decimal-oracle", reason))
+            for reason in decimal_provenance_advisories(check):
+                warnings.append(f"{path.name} [{check.check_id}]: {reason}")
             for reason in ordered_expectation_defects(check, database_text):
                 defects.append(Defect(path.name, check.check_id, "ordered-oracle", reason))
             if (reason := process_readiness_defect(check.code)) is not None:

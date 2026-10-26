@@ -53,16 +53,17 @@ class TestLoadPrompt:
         with pytest.raises(DrydockError, match="prompt not found"):
             load_prompt("does_not_exist")
 
-    def test_uat_diagnostic_is_read_only_and_evidence_first(self):
+    def test_uat_diagnostic_reviews_assumptions_and_requires_explicit_repair_scope(self):
         prompt = load_prompt("uat_diagnostic")
 
         assert prompt.name == "uat_diagnostic"
-        assert "Do not edit code" in prompt.body
+        assert "Default scope is investigation" in prompt.body
+        assert "explicit request to repair supplies that authorization" in prompt.body
         assert "result.json" in prompt.body
         assert "evidence/llm.jsonl" in prompt.body
         assert "LINEAGE.json" in prompt.body
         assert "specification-contaminated" in prompt.body
-        assert "exactly five sections" in prompt.body
+        assert "### Assumptions Review" in prompt.body
         assert "### Root Cause" in prompt.body
         assert "design/skills/ddk-uat.md" in prompt.body
         assert "write no other file" in prompt.body

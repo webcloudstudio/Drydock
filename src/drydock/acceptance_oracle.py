@@ -13,12 +13,12 @@ from drydock.acceptance import (
 )
 
 
-def decimal_expectation_defects(check: ProgrammaticAcceptance) -> tuple[str, ...]:
-    """Require an input or source for a literal formatted decimal expectation.
+def decimal_provenance_advisories(check: ProgrammaticAcceptance) -> tuple[str, ...]:
+    """Report unrecognized provenance without judging or rewriting the expected value.
 
-    This checks the provenance of the oracle, not the correctness of arbitrary arithmetic.
-    Derived expressions remain the author's responsibility. Integer counts/statuses and
-    nonnumeric contract tokens retain their existing rules.
+    A decimal can occur inside a serialized fixture rather than as a separate AST literal.
+    Exact tokens in supplied text suppress this advisory; that is not proof of correctness.
+    Failure to recognize input is uncertainty, never evidence for a new formula or rounding.
     """
     try:
         tree = ast.parse(check.code)
@@ -31,13 +31,16 @@ def decimal_expectation_defects(check: ProgrammaticAcceptance) -> tuple[str, ...
         if isinstance(node, ast.Constant)
         and isinstance(node.value, str)
         and re.fullmatch(r"[+-]?\d+\.\d+", node.value)
-        and node.value not in supplied
+        and not any(
+            re.search(r"(?<![\w.+-])" + re.escape(node.value) + r"(?![\w.])", text)
+            for text in supplied
+        )
         and node.value not in (check.cited_text or "")
     )
     return tuple(
-        f"decimal expectation {value!r} has no input or cited source; derive the expected "
-        "value from fixture inputs using the source formula and explicit rounding, or cite "
-        "the source's exact known answer"
+        f"decimal expectation {value!r}: provenance unknown to static analysis; review against "
+        "the source contract if needed; this is not a defect and does not authorize changing "
+        "the value, precision or rounding"
         for value in values
     )
 

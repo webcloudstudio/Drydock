@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261026 V39
+version: 20261026 V40
 ---
 
 ## Overview
@@ -273,9 +273,12 @@ assert body["result"] == f"{expected:.2f}"
 ```
 
 Read `body` from the application response. This oracle is `5.00`; typing `10.00` invents a
-requirement. Plan rejects an unsupplied literal formatted decimal expectation (`decimal-oracle`)
-unless the cited source states that value. This provenance check does not prove a formula correct.
-Moving a guessed answer into a variable does not satisfy the authoring rule.
+requirement. Preserve published text exactly when the source requires a round trip; do not add
+rounding or normalization merely to make an oracle look derived. Static analysis reports
+unrecognized decimal provenance as an advisory, never as proof of an invalid expectation or a
+reason to rewrite it. Known fixture values may be embedded in CSV, JSON, ZIP members or other
+serialized inputs. A derived expression is also not proof of a correct formula: source intent
+remains the authority. Moving a guessed answer into a variable does not establish correctness.
 
 
 Reading state back is half the rule. The other half is what you compare it *to*.

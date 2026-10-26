@@ -24,6 +24,25 @@ and measured something; everything else is reported, not charged.
 
 ## Details
 
+### Current contract
+
+| Concern | Contract |
+|---|---|
+| Authority | Source-derived behavior and independent governed evidence. |
+| Scope | Each criterion is isolated; project pytest outside the harness has different transaction ownership. |
+| Invariants | Preserve supplied published text; do not infer a formula or new precision from unrecognized provenance. |
+| Uncertainty | Static provenance limitations are advisory and cannot change expected values or charge a product defect. |
+| State | Harness rollback remains canonical acceptance isolation; agent-call SQLite stores are disposable and independently provisioned. |
+| Proof | Serialized-fixture round trips, schema/state isolation and negative oracle regressions. |
+
+Historical dated entries follow; where behavior has changed, this current contract and the
+newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · Unrecognized decimal provenance is advisory, with no semantic repair. Serialized
+fixture round trips preserve exact text. Agent test DSNs are disposable for SQLite; canonical
+acceptance still uses its harness-owned lifecycle. A private pre-call store snapshot is retained
+on detected mutation, never automatically restored over possible concurrent writers.
+
 `2026-10-26` · Staged selection probes share their executable validator between source-aware
 planning admission and `plan verify`; a rejected expression can be reauthored inside the bounded
 artifact repair loop before serialization and lineage. Mechanical repair preserves its narrower

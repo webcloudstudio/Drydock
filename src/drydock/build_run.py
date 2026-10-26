@@ -109,6 +109,7 @@ from drydock.build_plan import (
     set_applied_specs,
     stale_applied_specs,
 )
+from drydock.build_state import AgentStore, database_owner, persistence_recovery
 from drydock.config import (
     DEFAULT_REPAIR_ATTEMPTS,
     blueprint_dir_for,
@@ -441,6 +442,7 @@ class BuildStepResult:
     evidence_path: Path | None = None
     error: str | None = None
     failure_detail: str = ""
+    recovery: str = ""
     written_files: tuple[str, ...] = ()
     pre_acceptance: tuple[AcceptanceObservation, ...] = ()
     acceptance: tuple[AcceptanceRunResult, ...] = ()
@@ -3329,6 +3331,7 @@ def build_target(
             _emit(on_text, call_line)
             _emit(on_text, f"{_clock()}  calling {llm_provider}/{attempt_model or '-'} …")
             execution_started_at = lineage_now()
+            agent_store = AgentStore(resolved_build_dir, target_dir)
             try:
                 runner_kwargs: dict[str, object] = {
                     "llm": llm_provider,
@@ -3357,21 +3360,33 @@ def build_target(
                             attempt_model,
                         )
                     )
-                result = run(
-                    active_assembly.rendered_text,
-                    resolved_build_dir,
-                    **runner_kwargs,
-                )
+                with agent_store:
+                    if agent_store.environment:
+                        runner_kwargs["environment"] = agent_store.environment
+                        _emit(on_text, "state: agent tests use a fresh disposable SQLite store")
+                    result = run(
+                        active_assembly.rendered_text,
+                        resolved_build_dir,
+                        **runner_kwargs,
+                    )
             except Exception as exc:
                 evidence_path = evidence_dir / f"{unit.block_id}.md"
+                state_fault = not agent_store.ready or bool(agent_store.violation)
+                detail = agent_store.violation or str(exc)
                 write_error_record(
                     target_dir,
                     command="build",
-                    phase="LLM execution",
-                    classification="LLM execution failed",
-                    detail=str(exc),
+                    phase="managed state precheck" if state_fault else "LLM execution",
+                    classification="test store isolation failed"
+                    if state_fault
+                    else "LLM execution failed",
+                    detail=detail,
                     evidence=evidence_path,
-                    recovery=f"Inspect the execution evidence, then run: drydock build {target}",
+                    recovery=(
+                        persistence_recovery(target, database_owner(plan), detail)
+                        if state_fault
+                        else f"Inspect the execution evidence, then run: drydock build {target}"
+                    ),
                     state="Error",
                 )
                 from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
@@ -3426,6 +3441,9 @@ def build_target(
                 stderr=str(getattr(result, "stderr", "") or ""),
                 provider_error=_result_provider_error(result),
             )
+            if agent_store.violation:
+                state, status = "closed/failed", "failed"
+                error, failure_detail = "managed-state violation", agent_store.violation
             # A build agent's self-declared FAILURE is advisory, not authoritative. When the
             # block carries programmatic acceptance criteria, including an unchanged tree,
             # the deterministic gate below decides the outcome and produces a measured result.
@@ -3928,7 +3946,11 @@ def build_target(
                     for gate in gate_results.values()
                     if gate.blocks
                 )
-            runtime_schema = apply_schema(resolved_build_dir, verify_only=True)
+            runtime_schema = (
+                None
+                if agent_store.violation
+                else apply_schema(resolved_build_dir, verify_only=True)
+            )
             if early := premature_artifacts(resolved_build_dir):
                 _emit(
                     on_text,
@@ -4220,6 +4242,7 @@ def build_target(
                 f"acceptance — consider decomposing this block",
             )
         finding = _failure_finding(status, error, result, acceptance)
+        step_recovery = ""
         if status == "failed":
             failure_state = (
                 "Failed"
@@ -4256,19 +4279,33 @@ def build_target(
                     f"Run: drydock plan repair {target}\n"
                     "  Repair confirmed mechanical defects, then verify before rebuilding."
                 )
+            persistence_failure = error in {
+                "persistence verification failed",
+                "managed-state violation",
+            }
+            if persistence_failure:
+                step_recovery = persistence_recovery(target, database_owner(plan), failure_detail)
             write_error_record(
                 target_dir,
                 command="build",
-                phase="build step" if failure_state == "Failed" else "LLM execution",
+                phase=(
+                    "managed state verification"
+                    if persistence_failure
+                    else "build step"
+                    if failure_state == "Failed"
+                    else "LLM execution"
+                ),
                 classification=error or "build failed",
                 detail=failure_detail or finding or "The build block did not complete.",
                 execution_id=execution_id,
                 evidence=evidence_path,
                 recovery=(
-                    acceptance_recovery
+                    step_recovery
+                    or acceptance_recovery
                     or f"Review the evidence, correct the failure, then run: {rebuild_cmd}"
                     if failure_state == "Failed"
-                    else f"Inspect the execution evidence, correct the execution issue, then run: {rebuild_cmd}"
+                    else step_recovery
+                    or f"Inspect the execution evidence, correct the execution issue, then run: {rebuild_cmd}"
                 ),
                 state=failure_state,
             )
@@ -4542,6 +4579,7 @@ def build_target(
                 evidence_path=evidence_path,
                 error=step_error,
                 failure_detail=step_failure_detail,
+                recovery=step_recovery,
                 written_files=changed_files,
                 pre_acceptance=pre_acceptance,
                 acceptance=acceptance,

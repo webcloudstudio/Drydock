@@ -5,7 +5,7 @@
 | Version | 2026-10-15 V1 |
 | Description | Execute the dependency-ready frontier of `MANIFEST.md` one block at a time and close each story only on evidence the model did not write. |
 | Route | build |
-| Modules | `build.py`, `build_run.py`, `build_plan.py`, `acceptance.py`, `artifact_blocks.py`, `lineage.py`, `model_config.py` |
+| Modules | `build.py`, `build_run.py`, `build_state.py`, `build_plan.py`, `acceptance.py`, `artifact_blocks.py`, `lineage.py`, `model_config.py` |
 | Prompts | `build.md` |
 | Tests | `tests/test_build*.py`, `tests/test_acceptance*.py`, `tests/test_lineage*.py` |
 | Topics | [acceptance_criteria](../topics/acceptance_criteria.md), [foundations](../topics/foundations.md) |
@@ -23,6 +23,32 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 - None.
 
 ## Details
+
+### Current contract
+
+| Concern | Contract |
+|---|---|
+| Authority | Approved Blueprints, source constraints and generated foundation contracts. |
+| Preconditions | Buildable plan, delivered prerequisites and provisioned persistence after its owner step. |
+| Mutations | Agent changes implementation; development tests use disposable SQLite state after provisioning. |
+| Invariants | Canonical managed state and unrelated records survive; model SUCCESS is advisory; generated criteria do not override source intent. |
+| Recovery | Retain private pre-call store snapshot on detected mutation; never automatically overwrite concurrent state; identify DATABASE owner. |
+| Proof | Real temporary-store write/deletion/concurrency regressions and build integration; PostgreSQL/per-test/process isolation remain explicit gaps. |
+
+Historical dated entries follow; where behavior has changed, this current contract and the
+newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · `build_state.AgentStore` isolates agent-call SQLite tests after persistence
+provenance exists. It provisions a fresh schema in a unique `.drydock-tests` subdirectory and
+passes both DSNs only to the provider child, without changing the parent process environment.
+Managed canonical stores inside the build tree receive a private SQLite backup under Target
+`evidence/managed-state`; main-file/WAL changes retain the backup and stop as managed-state
+violation before acceptance. No automatic restore clobbers concurrent data. External SQLite
+stores are not read or backed up; agent tests still receive a disposable store. PostgreSQL is
+unchanged, and per-test isolation within an agent call remains the project's fixture obligation.
+Recovery identifies the DATABASE owner and requires data preservation before continuation;
+post-call persistence failures use managed state verification phase. Inline diagnosis does not
+replace this deterministic action. See stabilization for remaining resource classes.
 
 `2026-10-25` · The build prompt requires a current-file read before contextual patches
 and a reread/rebased patch after a verification failure. A repeated stale patch is not a repair.

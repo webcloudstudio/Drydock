@@ -25,6 +25,26 @@ written.
 
 ## Details
 
+### Current contract
+
+| Concern | Contract |
+|---|---|
+| Authority | Approved source requirements and selected stack; source-defined text and formulas are preserved. |
+| Preconditions | Approved stack and reviewed analysis; executable interfaces and prerequisite ownership declared. |
+| Mutations | Author Blueprints/topology; bounded corrective authoring for proved defects only. |
+| Invariants | Unknown decimal provenance never blocks or triggers repair; probes and declared interface dependencies use deterministic gates. |
+| Recovery | Mechanical repair handles supported mechanics; source/graph defects return to Plan without weakening coverage. |
+| Proof | Oracle, whole-plan, probe and dependency regressions; static checks do not establish model convergence. |
+
+Historical dated entries follow; where behavior has changed, this current contract and the
+newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · Decimal provenance is an advisory (`decimal_provenance_advisories`), not an
+admission defect. Exact decimal tokens in supplied serialized strings suppress the advisory,
+without proving the expected formula correct. Unknown provenance no longer triggers artifact
+repair or a numeric rewrite. This supersedes the 2026-10-25 decimal-oracle hard gate and prevents
+FxRates `20261026.173232`'s valid published-text oracle becoming six-place normalization.
+
 `2026-10-26` · Planning reliability follow-through for CommonMark `20261026.173709`:
 merged-output authoring validation runs the same `selection_probe_reason` as terminal verification
 before writing the plan or attributing lineage. All five probe defect kinds enter the existing

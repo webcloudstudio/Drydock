@@ -40,7 +40,6 @@ from drydock.acceptance import (
     escape_defects,
     fenced_acceptance_defect,
     parse_programmatic_acceptance_text,
-    resolve_citation,
     selection_probe_reason,
     selector_recognition,
     split_fused_acceptance_boundary,
@@ -50,7 +49,6 @@ from drydock.acceptance import (
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
 from drydock.acceptance_env import read_staged_assets, staged_asset_env_defects
 from drydock.acceptance_oracle import (
-    decimal_expectation_defects,
     ordered_expectation_defects,
     process_readiness_defect,
 )
@@ -4128,17 +4126,6 @@ def _validate_plan_output(
     # remains the final defence if the repair budget is exhausted.
     kinded_criteria_defects: tuple[tuple[str, MalformedAcceptance], ...] = (
         tuple(
-            ("decimal-oracle", MalformedAcceptance(check.check_id, name, reason))
-            for name in sorted(blocks)
-            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
-            for check in _acceptance_checks(blocks[name], source=name)
-            for reason in decimal_expectation_defects(
-                replace(check, cited_text=resolve_citation(check.cite, blueprint_dir))
-                if check.cite
-                else check
-            )
-        )
-        + tuple(
             ("ordered-oracle", MalformedAcceptance(check.check_id, name, reason))
             for name in sorted(blocks)
             if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")

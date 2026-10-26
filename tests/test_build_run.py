@@ -5403,3 +5403,64 @@ def test_repair_loop_sends_measured_case_losses_to_the_next_agent(tmp_path):
     )
     assert result.steps[0].status == "built"
     assert "3 -> 2 passing cases (-1)" in prompts[2]
+
+
+@pytest.mark.parametrize("tamper", [False, True])
+def test_agent_store_writes_are_isolated_and_deletion_stops_with_owner_recovery(
+    tmp_path, monkeypatch, tamper
+):
+    import sqlite3
+
+    from drydock.database_apply import SchemaApplication
+    from drydock.errors import read_error_record
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    target, build = _setup(tmp_path)
+    (build / "data").mkdir(parents=True)
+    canonical = build / "data/app.db"
+    with sqlite3.connect(canonical) as db:
+        db.execute("CREATE TABLE records (value TEXT)")
+        db.execute("INSERT INTO records VALUES ('existing')")
+    (build / ".drydock-persistence.json").write_text('{"source":"DATABASE.md"}')
+
+    def provision(build_dir, *, env):
+        with sqlite3.connect(env["DATABASE_URL"]) as db:
+            db.execute("CREATE TABLE records (value TEXT)")
+        return SchemaApplication(True, "provisioned")
+
+    monkeypatch.setattr("drydock.build_state.apply_schema", provision)
+    # This test measures agent isolation, not the independently tested schema-catalog verifier.
+    monkeypatch.setattr("drydock.build_run.apply_schema", lambda *a, **kw: None)
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs)
+        test_path = Path(kwargs["environment"]["DATABASE_URL"])
+        assert test_path != canonical
+        with sqlite3.connect(test_path) as db:
+            assert db.execute("SELECT COUNT(*) FROM records").fetchone()[0] == 0
+            db.execute("INSERT INTO records VALUES ('test')")
+        _write_markers(prompt, working_directory)
+        if tamper:
+            canonical.unlink()
+        return FakeResult(text=_success_report(changed=("db.built",)))
+
+    result = build_target("Demo", target, build_dir=build, runner=runner, step_id="foundation")
+    assert len(calls) == 1
+    if tamper:
+        assert result.exit_code() == 1
+        step = result.steps[0]
+        assert step.error == "managed-state violation"
+        assert "DATABASE story `foundation`" in step.recovery
+        record = read_error_record(target)
+        assert record.phase == "managed state verification"
+        assert "--step block-6" not in record.recovery
+        snapshots = list((target / "evidence/managed-state").glob("*/app.db"))
+        assert len(snapshots) == 1
+        with sqlite3.connect(snapshots[0]) as db:
+            assert db.execute("SELECT value FROM records").fetchall() == [("existing",)]
+    else:
+        assert result.exit_code() == 0
+        with sqlite3.connect(canonical) as db:
+            assert db.execute("SELECT value FROM records").fetchall() == [("existing",)]

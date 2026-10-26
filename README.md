@@ -188,11 +188,9 @@ checks separately.
 `init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`
 
 `plan verify` checks whether acceptance criteria can run; it does not establish product coverage.
-It also rejects an unsupplied literal formatted decimal expectation (`decimal-oracle`): derive
-numeric answers from fixture inputs with the source formula and rounding, or cite the source's
-exact known answer. The check establishes literal provenance, not arithmetic correctness.
-`plan repair` reports this authoring defect unchanged without a model call; regenerate or review
-the source-derived criterion before building. Failure banners and stderr identify the story
+Unrecognized decimal provenance is advisory: values may come from serialized fixtures or
+source-defined computations that static analysis cannot recognize. It neither blocks the plan nor
+triggers a rewrite. Preserve published text exactly; apply only source-required transformations. Failure banners and stderr identify the story
 owning the failed criterion when several stories share one execution.
 
 Staged corpus probes preserve literal corpus paths and section filters. `Probe Count: json` counts
@@ -538,3 +536,9 @@ versions recorded in the application lockfile.
 New UAT receipts expose `assertions.passed`, `failed`, `unverified`, and
 `defect_ownership_undetermined`; the last counts failed plus unverified checks. Check outcomes alone
 do not establish whether a product, criterion, source, or environment is defective.
+
+Planning/build reliability work is tracked in [the stabilization pass](design/topics/stabilization.md).
+The assistant owns assumptions review. SQLite build-agent calls receive fresh disposable test
+stores; detected canonical-store changes stop the block and retain a private recovery snapshot.
+Recovery never automatically overwrites possible concurrent state. Per-test fixture isolation,
+PostgreSQL and other external resources remain separate obligations documented in that plan.

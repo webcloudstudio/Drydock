@@ -25,6 +25,25 @@ fixes already sit in the implicated area.
 
 ## Details
 
+### Current contract
+
+| Concern | Contract |
+|---|---|
+| Review owner | Assistant reads current contracts, states assumptions/invariants/state owners and identifies a falsifying test. |
+| Ed's role | Decide only material product conflicts or unknown intent that the approved inputs cannot settle. |
+| Default scope | Investigate and update ledger; explicit repair authorization permits requested implementation under AGENTS.md. |
+| Findings | Proved violation, proved permitted operation or uncertainty; distinguish clean execution from status. |
+| Recovery | Trace the earliest cause and resource owner; do not accommodate an incorrect upstream oracle in later code. |
+| Proof | Preserved evidence plus local regressions; only later clean affected-stage evidence marks a fix verified. |
+
+Historical dated entries follow; where behavior has changed, this current contract and the
+newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · Diagnostic prompt V8 prints Assumptions Review after Verdict and distinguishes
+proven constraints from uncertainty. Default invocation remains investigation plus ledger; an
+explicit user repair request authorizes the requested code/prompt/test changes under repository
+rules. It never authorizes UAT execution/evidence mutation or blanket master-specification edits.
+
 | Column | Content |
 |---|---|
 | Area | The file and function where the cause lives; rows in one Area are read together |

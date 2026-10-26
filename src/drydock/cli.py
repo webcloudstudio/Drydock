@@ -5186,11 +5186,14 @@ def _render_build_failures(
                 if tally is not None:
                     lines.append(f"      Result tally: {tally[0]} passed, {tally[1]} failed")
             lines.append("    Recovery")
-            lines.extend(
-                _acceptance_recovery_lines(
-                    target, indent="      ", blueprint_repair=_requests_blueprint_repair(step)
+            if getattr(step, "recovery", ""):
+                lines.extend(f"      {line}" for line in step.recovery.splitlines())
+            else:
+                lines.extend(
+                    _acceptance_recovery_lines(
+                        target, indent="      ", blueprint_repair=_requests_blueprint_repair(step)
+                    )
                 )
-            )
         if step.agent_blockers:
             lines += [
                 "    agent blockers:",
@@ -5213,7 +5216,12 @@ def _render_build_failures(
         for step in steps
     )
     lines += ["", "  Next"]
-    if acceptance_failed:
+    state_recovery = next(
+        (getattr(step, "recovery", "") for step in steps if getattr(step, "recovery", "")), ""
+    )
+    if state_recovery:
+        lines.extend(f"    {line}" for line in state_recovery.splitlines())
+    elif acceptance_failed:
         lines += _acceptance_recovery_lines(
             target,
             indent="    ",

@@ -195,7 +195,6 @@ def test_interface_provider_alternatives_self_use_and_cycles():
         "acceptance-order",
         "persistence-order",
         "interface-dependency",
-        "decimal-oracle",
         "ordered-oracle",
         "process-readiness",
         "criteria-missing",

@@ -172,11 +172,20 @@ One shape, first established by `drydock rigging compact`:
 ## Memory Files
 
 `design/` holds Drydock's Memory Files: persistent project memory shared by every session and
-provider. Precedence: code > Memory Files > `docs/Drydock_Specification.md`.
+provider. Approved user requirements and constraints govern correctness. Code establishes current
+implementation, Memory Files preserve decisions/contracts, and the specification describes the
+user-facing contract; record disagreements instead of adopting implementation behavior as intent.
 `docs/Drydock_Specification.md` is a user-facing document and should be correct but need not be
 complete or explanatory.
 
-- Read the Memory File of every command, skill, or topic you change before editing it.
+- Read the Memory File of every command, skill, or topic you change before editing it, including
+  its Current contract, Intent, Guardrails and linked topics. Before edits, state the applicable
+  invariants, resource owners, material uncertainties and discriminating verification. This
+  assumptions review is the assistant's responsibility; ask Ed only for unresolved decisions.
+- Keep a concise `### Current contract` at the start of Details for actively changed subjects:
+  authority, preconditions, allowed mutations, invariants, failure/recovery and proof. Historical
+  entries follow it. Proved violations are defects; unproved claims remain uncertainty and do
+  not authorize semantic rewrites or additional permissions.
 - Write what a later session needs into its Memory File before the session ends. Never leave it in
   chat.
 - Keep project state out of provider-private memory. That holds only Ed's preferences.
@@ -202,7 +211,7 @@ row here or breaks the format.
 | Subject | Memory File | Primary modules (`src/drydock/`) or skill |
 |---|---|---|
 | `analyze` | `design/commands/analyze.md` | `analyze.py`, `sea_trials.py`, `technology_stack.py` |
-| `build` | `design/commands/build.md` | `build.py`, `build_run.py`, `build_plan.py`, `model_config.py` |
+| `build` | `design/commands/build.md` | `build.py`, `build_run.py`, `build_state.py`, `build_plan.py`, `model_config.py` |
 | `config` | `design/commands/config.md` | `config.py`, `model_config.py`, `calibration.py` |
 | `diagnose` | `design/commands/diagnose.md` | `diagnose*.py`, `ac_repair.py` |
 | `document` | `design/commands/document.md` | `target_documentation.py`, `readme_generate.py` |
@@ -225,6 +234,7 @@ row here or breaks the format.
 | *Process stops* | `design/topics/process_stops.md` | `blockers.py`, `llm.py` (`fatal_stop`), `cli.py` (stop gate) |
 | *Language-agnostic Targets* | `design/topics/language_agnostic.md` | `technology_stack.py`, `Rigging/languages/` |
 | *Planner step validation* | `design/topics/planner_step_validation.md` | `planning_session.py` |
+| *Stabilization* | `design/topics/stabilization.md` | Reusable contracts, state inventory, frozen regression cases and staged release validation |
 | *Build lifecycle* | `design/topics/lifecycle.md` | `lifecycle.py`, `uat.py` (`run_fixture`) |
 | `/ddk-uat` skill | `design/skills/ddk-uat.md` | `prompts/uat_diagnostic.md` |
 

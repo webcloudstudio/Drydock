@@ -26,6 +26,25 @@ was given.
 
 ## Details
 
+### Current contract
+
+| Concern | Contract |
+|---|---|
+| Authority | Selected Rigging foundation contracts and approved source interfaces. |
+| Ownership | Foundation owners provide interfaces, schema and lifecycle; consumers do not replace them. |
+| Invariants | One declared provider per applicable contract; consumed interfaces have prerequisite paths; generated acceptance lives in the owning Blueprint. |
+| State | DATABASE provisions canonical stores; disposable agent-test schemas are provisioned separately by Drydock. |
+| Limits | Managed SQLite detection/snapshots do not constitute an OS sandbox or remote-store isolation. |
+| Proof | Foundation/graph, generated persistence and managed-state regressions. |
+
+Historical dated entries follow; where behavior has changed, this current contract and the
+newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · Canonical provisioning remains owned by DATABASE. Disposable SQLite agent-test
+stores are separately schema-provisioned by Drydock, never created by changing canonical schema
+or inferring that source intent permits test cleanup. Runtime ownership enforcement and its
+remaining boundaries are documented in `build_state.py` and the stabilization contract.
+
 `2026-10-26` · Manifest/Blueprint authoring contracts now agree with the reader: executable
 Programmatic Acceptance is authored in each owning Blueprint and referenced by Manifest fields.
 The planner reviews semantic prerequisites, while Drydock computes the schedule and rejects

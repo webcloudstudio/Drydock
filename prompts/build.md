@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20261026 V12
+version: 20261026 V13
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 output: evidence summary
@@ -78,6 +78,13 @@ Operating contract:
    fixture, passing its connection into the feature. Other connections and durability tests use
    criterion-owned records, idempotent setup and checked cleanup through supported interfaces.
    Never replace the configured store, reapply schema, or delete unrelated business records.
+   When Drydock supplies a disposable SQLite store in DATABASE_URL/DATABASE_PATH, use those
+   inherited values for development tests. Each agent call receives a fresh provisioned test
+   store. Never delete a default database path to clean test failures. Project tests still need
+   fixture-owned setup and cleanup so repeated tests in the same call do not depend on order.
+   A managed-state violation stops the block and retains a recovery snapshot; do not restore or
+   reprovision shared state yourself. Preserve published text even when a conflicting criterion
+   requests formatting: report the source conflict and its evidence instead of changing semantics.
    Where a staged authoritative suite already covers a surface, use it as the coverage;
    do not duplicate its cases. Any invocation must respect this step's declared scope.
    Do not run the unscoped entry point for a `Suite: scoped` story, or run a suite this

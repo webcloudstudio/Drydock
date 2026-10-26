@@ -42,6 +42,9 @@ MAX_DIAGNOSIS_LINES = 6
 #: Classification prefixes produced by ``build_run._classify_failure`` that already carry their own
 #: structured remediation. Diagnosing them spends a call to repeat what Drydock already printed.
 BLOCKED_PREFIXES = (
+    "managed-state violation",
+    "persistence verification failed",
+    "test store isolation failed",
     "dependency legitimacy gate failed",
     "programmatic acceptance failed",
     "provider rate limit",

@@ -2133,6 +2133,7 @@ def run_prompt(
     claude_session_id: str | None = None,
     claude_resume_session_id: str | None = None,
     output_format: OutputFormat | None = None,
+    environment: Mapping[str, str] | None = None,
 ) -> LlmResult:
     """Run a fully assembled prompt and persist reproducible execution evidence.
 
@@ -2311,6 +2312,7 @@ def run_prompt(
     )
 
     process_env = os.environ.copy()
+    process_env.update(environment or {})
     process_env.pop("ANTHROPIC_API_KEY", None)
     process_env.pop("OPENAI_API_KEY", None)
     process_env.pop("OPENAI_BASE_URL", None)
