@@ -1,8 +1,13 @@
 DIR=/mnt/c/Users/barlo/projects/drydock
-for kit in "$DIR"/uat/*/; do
-    [ -e "$kit/.git" ] || continue
+LIST="CommonMark CsvStat DrydockStats DupFind FxRates LayersTesting Quakes README.md ReadingList Toml jq"
+set -x
+for kit in $LIST
+do
+    echo $kit
+    [ ! -e "$kit/.git" ] || continue
+    cd $DIR/uat/$kit
     echo "== $kit"
-    git -C "$kit" add --all
-    git -C "$kit" commit -m "updated"
-    git -C "$kit" push
+    git add --all
+    git commit -m "updated"
+    cd $DIR
 done
