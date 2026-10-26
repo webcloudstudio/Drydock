@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-26 V3 |
+| Version | 2026-10-26 V4 |
 | Description | Bounded UAT stabilization plan with historical proposal dispositions, truthful verdicts, state ownership and a frozen ten-kit release gate. |
 | Modules | `acceptance_oracle.py`, `planning_session.py`, `build_state.py`, `build_run.py`, `diagnose.py` |
 | Prompts | `uat_diagnostic.md`, `build.md`, `BLUEPRINTS_CONTRACT.md` |
@@ -174,6 +174,63 @@ gates from model criteria; `proof_integrity.py` records why speculative analyzer
 SHA handling. These establish mechanisms, not complete protection. In particular, compaction's
 mtime fast path still needs a changed-content/newer-derivative regression before calling freshness
 proved. Existing code and tests must be re-read at implementation time.
+
+### WP0 baseline and finding matrix
+
+`2026-10-26` · Initial state: HEAD `32a35ff`, clean tree. `.venv` Python 3.12.13, editable
+`drydock` 0.8.0 from `src/`, pytest-xdist 3.8.0, hatchling importable, `uv.lock` present. Ruff
+0.15.2 is not in `.venv`; it resolves from `~/.local/bin`, and `bin/test.sh` lints `.` rather than
+`src/ tests/`. No gate was run: WP0 changes no code. Candidate identity is not yet established.
+
+UAT-access audit: pytest collects no test that reads published `uat/`. `tests/uat_corpus.py`
+`_regenerate`, run only as `python tests/uat_corpus.py`, globs `uat/*/runs/*` read-only (F21).
+
+Ledger inventory (`design/skills/ddk-uat.md`, 198 rows): 34 `fixed`, 93 `unverified`, 55 `open`,
+16 `recurred`. Every open/recurred row maps to one finding below; `unverified` rows stay with
+their fixes and close only on Ed's evidence. Rows are cited as Kit run (FX FxRates, RL
+ReadingList, LT LayersTesting, CM CommonMark, DF DupFind, CS CsvStat, DS DrydockStats, JQ jq).
+Status: **covered** local regression exists, needs candidate rerun · **open** no fix ·
+**confirmed** open defect re-read in current code · **undetermined** cause not established.
+Ed verification is pending for every row.
+
+| Id | P | Requirement → earliest owner | Ledger evidence | Status | WP |
+|---|---|---|---|---|---|
+| F01 | P0 | Console, Manifest and status report the persisted per-story state → `build_run`/`cli`/`plan_repair` | RL 1022.195456 (console verified vs implemented); FX 1026.011843 (unrun criteria read verified); DS 1026.011913 (stale plan error after repair); FX 1024.051856 (`AC_BROKEN` not printed) | RL row covered (`build_run.py:4566` per-block state); others open | WP1 |
+| F02 | P0 | An unexecuted or undeclared-tool check never becomes PASS → acceptance/`plan_graph` | DS 1026.011913, CM 1026.173709 (undeclared `executable`); FX 1026.011843 | open; unavailable-prerequisite regression exists | WP1 |
+| F03 | P0 | Generated project tests never write the canonical store → language testing adapter | FX 1026.173232 (`cli_runner` against application DSN) | per-call isolation covered (`938021a`); per-test open | WP3 |
+| F04 | P0 | Acceptance runs against a schema-provisioned store; schema evidence is deterministic → `database_apply`/`plan_verify` | RL 1022.195456 ×2; LT 1020.145335; RL 1022.220045 (recurred `9a71e69`) | open/recurred | WP3/WP1 |
+| F05 | P0 | Build agents never mutate Drydock's own manifests → executor environment | FX 1024.073528 (recurred, `39e4e10`; `test_llm.py:774`) | covered, recurred once; needs proof | WP3 |
+| F06 | P1 | In-plan criteria gate equals terminal `plan verify` → `planning_session.kinded_criteria_defects` | LT 1021.235036; JQ 1021.020003; FX 1024.015228 | `0ab6649` claims parity; audit | WP2 |
+| F07 | P1 | Checked-call analysis accepts caller-asserted helpers → `harness_exits`/`acceptance` | CS 1025.001433 (recurred `1688130`); DS 1026.011913 ×2 | open | WP2 |
+| F08 | P1 | Malformed artifacts recover within budget with a targeted, differing retry → `artifact_blocks`/`planning_session` | FX 1024.172824, DF 1024.183232 ×2, CM 1026.173709; recurred: LT 1021.173113, CM 1024.231239/233753, FX 1025.014047/184822/200850/230142 | provider defect recorded; recovery covered by `56a363c`/`683c3ee`; audit | WP2/WP4 |
+| F09 | P1 | Unattended refusals are refuted correctly and stalls state why → `plan_blocked._refutation`, stall detail | LT 1022.121722 (recurred); FX 1023.234755 ×3 | open | WP4 |
+| F10 | P1 | DATABASE authoring defects get exact corrective feedback → `database_contract` | FX 1024.162029/172824 (recurred), FX 1025.184822 ×3; LT 1025.160726 ×2; LT 1020.132808 | partly covered (`f63494c`); audit | WP2 |
+| F11 | P1 | Topology covers every analyzed id with a legal owner; stacks have foundations → `plan_topology`/`plan_graph` | FX 1024.183153, 1025.014047 (recurred), 1025.192942, 1025.230142 (recurred), 1026.011843 | open | WP2 |
+| F12 | P1 | Build receives governed source context → `build.py` context roots | FX 1026.011843 block-3 | confirmed: `build.py:138-139` roots omit `blueprint/sources/` | WP2 |
+| F13 | P1 | Repair loop measures regression, stalls on no progress, keeps attempt history, routes next step → `build_run`/`cli` | RL 1022.231143 ×2 (constant `BUILD_FAILURE_HINT`, confirmed `build_run.py:165`); CM 1025.023211 ×4; DS 1026.011913 | open | WP4 |
+| F14 | P1 | `plan repair` handles every authored criterion form and keeps the model's reason → `plan_repair` | DF 1024.183232 ×3 | open | WP2/WP4 |
+| F15 | P1 | Parsed policy fields promise only implemented effects → `gate_policy`/`sea_trials` | FX 1026.011843 (`Consequence` parsed, `fold` ignores) | open | WP1 |
+| F16 | P2 | Diagnostics name the failing span, assertion and ids → `output_format`/`cli`/`lineage_attribution` | RL 1023.022430; FX 1024.070101; LT 1020.161323; DF 1024.183232 (comma-only `stories=` split, confirmed `lineage_attribution.py:117`) | open | WP4 |
+| F17 | P2 | Provider auth/quota stops are classified as provider stops → `llm` | LT 1021.141704; CS 1024.221659 | open | WP4 |
+| F18 | P1 | Refit pending-source and no-frontier stop are truthful → `refit`/`uat` | RL 1014.031551 ×2 | undetermined / open | WP4 |
+| F19 | — | Causes not established | LT 1020.132808, 1020.161323; RL 1014.040547 | undetermined; needs Ed-requested evidence | — |
+| F20 | P2 | Plan artifact names and citations satisfy validation → `planning_session`/`validate_specification` | RL 1022.195456 (`VERIFICATION.md`); DF 1024.080843 | open | WP2 |
+| F21 | P2 | No repository script reads published `uat/` implicitly → `tests/uat_corpus.py` | WP0 audit | open; not run | WP5 |
+| F22 | P0 | Represented stores have tested isolation → `AgentStore`, Go harness | PostgreSQL pass-through (WP3.6); Go criteria outside harness transaction (`acceptance_criteria.md` Action) | gap; release impact depends on kit profiles | WP3 |
+| F23 | P1 | Stale compacts never reach assembly → `rigging_compact._fresh_sibling` | `acceptance_criteria.md` Action (stale `sqlite`/`postgres`/`persistence` compacts) | open; mtime fast path unproved | WP2 |
+
+Capability profiles, inferred from ledger text only (unconfirmed; `uat/` not read):
+
+| Kit | Language | Interfaces | Store | Conformance/grader |
+|---|---|---|---|---|
+| FxRates | Python | CLI, FastAPI HTTP | SQLite | grader, `sh` |
+| ReadingList | Python | HTTP app server | SQLite | refit, `import --update` |
+| LayersTesting | Python | CLI | SQLite; PostgreSQL engine seen 2026-10-20 | grader |
+| CommonMark | Python | library | none seen | spec corpus, `sh` |
+| CsvStat, DupFind | Go | CLI | none seen | grader |
+| DrydockStats | Go/Python unclear | CLI | none seen | grader, `sh` |
+| jq, Quakes | unclear | unclear | unclear | corpus (jq) |
+| tenth kit | unknown | | | |
 
 ### Execution contract
 
@@ -383,7 +440,7 @@ then commit. No repeated approval is needed for ordinary work in an authorized e
 
 | Work package | Status at this planning revision | Closure evidence |
 |---|---|---|
-| WP0 | Open | Baseline/proposal review recorded; complete finding and capability matrix still required. |
+| WP0 | Partial `2026-10-26` | Baseline, UAT-access audit and F01–F23 matrix recorded; capability profiles await Ed's kit list. |
 | WP1 | Open | Existing snapshot/governed-gate mechanisms and unavailable-prerequisite regression found; truth table not audited. |
 | WP2 | Partial, historical local coverage | `0ab6649` planning/probe/dependency fixes and decimal regressions exist; candidate rerun and remaining audits required. |
 | WP3 | Partial, historical local coverage | `938021a` / `tests/test_build_state.py`; per-test isolation and remaining represented-state proofs open. |
@@ -408,13 +465,18 @@ PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m pytest -q -n auto
 
 ## Questions
 
-- None.
+- `2026-10-26` · Which ten kits form the release matrix, and what language, interfaces and store
+  does each use? The ledger names nine; the tenth and the jq/Quakes/DrydockStats profiles are
+  unknown. Whether LayersTesting still selects PostgreSQL decides if F22 blocks release. Closes
+  with Ed's list or his request to read the kit configuration under `uat/`.
 
 ## Actions
 
-- `2026-10-26` · Execute WP0's complete finding/capability matrix when Ed requests implementation;
-  review baseline `7586152` and historical proposal dispositions above. Closes with owned,
-  prioritized release findings and explicit deferred scope.
+- `2026-10-26` · WP0 remainder: confirm capability profiles (Question above), then mark which
+  findings each kit exercises. F19 rows need Ed-requested evidence inspection. Closes with a
+  complete capability matrix.
+- `2026-10-26` · Next slice per priority: P0 F01/F02/F15 (WP1 truth table) and F03/F04/F05/F22
+  (WP3), then F12 as the smallest confirmed P1 defect.
 - `2026-10-26` · WP1–WP4 implementation/proof remain open: truthful verdicts, recurring plan
   defects, generated per-test isolation, represented state protection and bounded recovery.
   Existing regression files/commits above are starting evidence, not completion of these packages.
