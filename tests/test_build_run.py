@@ -2106,6 +2106,46 @@ dependencies = ["missing-package>=1.0"]
     assert "missing-package [missing]" in evidence
 
 
+def test_unavailable_acceptance_prerequisite_fails_the_block_instead_of_verifying_it(
+    tmp_path, monkeypatch
+):
+    """FxRates 20261026.011843: block-3 closed verified with 20 criteria never executed."""
+    import types
+
+    import drydock.build_run as br
+
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _spec("DB SPEC CONTENT").replace(
+            "Intent: The step implementing this Blueprint built it.\n",
+            "Intent: The step implementing this Blueprint built it.\n\n"
+            "Requires: python-package=httpx; scope=test\n",
+        ),
+        encoding="utf-8",
+    )
+    checks_seen: list[tuple[str, ...]] = []
+
+    def fake_acceptance(checks, **kwargs):
+        checks_seen.append(tuple(check.check_id for check in checks))
+        return ()
+
+    monkeypatch.setattr(br, "requirement_available", lambda requirement, build_dir: False)
+    monkeypatch.setattr(
+        br,
+        "provision_uv_environment",
+        lambda build_dir: types.SimpleNamespace(
+            interpreter=Path(sys.executable), provisioning_result="synced", detail=""
+        ),
+    )
+    monkeypatch.setattr(br, "run_programmatic_acceptance", fake_acceptance)
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert checks_seen == []
+    assert result.steps[0].status == "failed"
+    assert result.steps[0].error == "authorized acceptance prerequisite unavailable"
+    assert _state(target_dir, "foundation") == "closed/failed"
+
+
 def test_dependency_legitimacy_gate_blocks_new_package_and_skips_applied_updates(
     tmp_path, monkeypatch
 ):

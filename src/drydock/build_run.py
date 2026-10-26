@@ -3783,7 +3783,11 @@ def build_target(
                                 failure_detail = _render_ac_failure_chain(
                                     unit, failed_checks, story_by_check
                                 )
-                        else:
+                        elif status != "failed":
+                            # No missed check verifies the block only when the checks ran. A
+                            # gate that failed before them (an unavailable prerequisite, failed
+                            # provisioning) left nothing measured; erasing it here closed FxRates
+                            # 20261026.011843 block-3 verified with 20 criteria never executed.
                             state, status, error = "closed/verified", "built", None
                             failure_detail = ""
                         # ── Regression sweep ─────────────────────────────────────────────
