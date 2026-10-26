@@ -25,6 +25,19 @@ written.
 
 ## Details
 
+`2026-10-26` · Planning imports `plan_verify.render` and `plan_verify.verify`, including the
+validator's transitive module imports, after input/stack gates and before any model call or plan
+rewrite. The same function bindings serve terminal verification. `ImportError` (including
+`ModuleNotFoundError`) records `internal planning import failed` in `ERRORS.md`; startup failures
+use phase `import precheck`, render `PRECHECK FAILURE`, and exit 1 without automatic model
+diagnosis. Validation, artifact-repair, outside-text candidate validation, and terminal
+verification import failures retain the internal classification and installation/fresh-process
+recovery rather than blaming input or model output. An import error stops additional artifact
+repair calls. Existing plans survive precheck failure; a plan already written before terminal
+verification remains on disk. This addresses LayersTesting `20261026.161555`; preloading the
+validator is not isolation against arbitrary source edits during execution. No UAT evidence or
+master specification is changed.
+
 `2026-10-25` · Story acceptance is scoped to capabilities available at its computed build block.
 `plan verify` reports `acceptance-order` when a statically resolved `cli_runner` command matches
 `provides: <executable> <subcommand>` on a later-block story and no provider is available in the
@@ -832,6 +845,14 @@ exist.
   record now names the last rejection and any standing blocked Blueprints.
 
 ## Working Notes
+
+- `2026-10-26` · Import precheck repair verification: planning, verifier and memory-contract run
+  completed with 489 passes and one new test-fixture failure (the repair returned an unchanged
+  draft and never reached revalidation). The fixture now changes the draft; both initial/repair
+  import-failure cases pass on rerun. The 51 selected CLI tests pass, including precheck exit 1,
+  correct banner and no automatic model diagnosis. Repository lint, changed-file formatting and
+  diff checks pass. Tests use temporary Targets and fake runners; no UAT or provider call was
+  run. The two LayersTesting `20261026.161555` ledger findings remain pending Ed's clean UAT.
 
 - `2026-10-26` · Dependency/reporting cleanup verification: full regression run completed with
   4,517 passed, two skipped and seven failures. Four refit expectations were updated to preserve

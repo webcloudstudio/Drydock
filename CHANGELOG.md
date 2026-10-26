@@ -386,6 +386,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-26: `drydock plan` prechecks validator imports before calling a model or rewriting a
+  plan. An incompatible installation now exits 1 with `PRECHECK FAILURE` and an internal-error
+  record instead of failing only after Blueprint generation. Import errors during validation
+  stop model repair and identify an internal planning failure; recovery directs the operator to
+  repair the installation and start a fresh process from a consistent checkout. Precheck errors
+  do not trigger automatic model diagnosis. This addresses LayersTesting `20261026.161555`.
+
 - 2026-10-25: Planning instructions place function acceptance before downstream CLI integration
   gates. `drydock plan verify` rejects literal CLI calls whose declared command provider builds
   in a later block (`acceptance-order`), including calls through local forwarding helpers and

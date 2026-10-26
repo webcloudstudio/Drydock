@@ -5234,7 +5234,7 @@ def _render_build_failures(
 
 
 def _render_recorded_error(record, *, target: str | None = None) -> str:
-    """Format a post-LLM failure for the terminal: the diagnostic itself, not just a filename."""
+    """Format a recorded failure for the terminal: the diagnostic, not just a filename."""
     width = 72
     border = "=" * width
     indent = "  "
@@ -5274,6 +5274,8 @@ def _render_recorded_error(record, *, target: str | None = None) -> str:
         if plan_challenge_failed
         else f"POST-LLM FAILURE  ·  {record.command}  ·  {record.classification}"
     )
+    if record.phase == "import precheck":
+        heading = f"PRECHECK FAILURE  ·  {record.command}  ·  {record.classification}"
     lines = [border, heading, border, ""]
     if plan_challenge_failed:
         lines += [indent + f"Classification: {record.classification}", ""]
@@ -6117,7 +6119,7 @@ def main(argv: list[str] | None = None) -> None:
                     )
                 exit_code = 1
                 deterministic_validation = (
-                    exc.record.phase == "post-output validation"
+                    exc.record.phase in {"post-output validation", "import precheck"}
                     or "validation failed" in exc.record.classification.lower()
                 )
                 if not deterministic_validation and fatal_stop() is None:

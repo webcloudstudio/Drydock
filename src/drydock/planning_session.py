@@ -4566,12 +4566,13 @@ def _record_plan_error(
     execution_id: str | None,
     log_dir: Path | None,
     recovery: str,
+    phase: str = "post-output validation",
 ) -> RecordedError:
-    """Persist one post-output plan failure and refresh its QuarterDeck projection."""
+    """Persist one plan failure and refresh its QuarterDeck projection."""
     record = write_error_record(
         target_dir,
         command="plan",
-        phase="post-output validation",
+        phase=phase,
         classification=classification,
         detail=detail,
         execution_id=execution_id,
@@ -4582,6 +4583,30 @@ def _record_plan_error(
 
     refresh_commanders_chair(target_dir)
     return RecordedError(record)
+
+
+def _record_plan_import_error(
+    target_dir: Path,
+    *,
+    target: str,
+    exc: ImportError,
+    log_dir: Path | None,
+    execution_id: str | None = None,
+    phase: str = "post-output validation",
+) -> RecordedError:
+    return _record_plan_error(
+        target_dir,
+        classification="internal planning import failed",
+        detail=f"{type(exc).__name__}: {exc}",
+        execution_id=execution_id,
+        log_dir=log_dir,
+        phase=phase,
+        recovery=(
+            "Repair or finish updating the Drydock installation and verify its planner imports. "
+            "Use a consistent checkout without source edits during execution, then start a "
+            f"fresh process: drydock plan {target}"
+        ),
+    )
 
 
 def _conflict_challenge_assembly(
@@ -6017,6 +6042,14 @@ def _approve_outside_text_candidate(
         validated_plan, validated_warnings = _validate_plan_output(
             exc.blocks, blueprint_dir, result, source_text=result.text, project=target
         )
+    except ImportError as validation_exc:
+        raise _record_plan_import_error(
+            target_dir,
+            target=target,
+            exc=validation_exc,
+            log_dir=log_dir,
+            execution_id=execution_id,
+        ) from validation_exc
     except Exception as validation_exc:
         raise _record_plan_error(
             target_dir,
@@ -6210,6 +6243,16 @@ def create_plan(
     # progress callback deliberately suppresses raw plan chatter, and a bypassed gate must never
     # depend on --debug to be seen.
     waivers.extend(WaivedGate(kind=PLAN_DECISION, subject=label) for label in required_decisions)
+
+    # Resolve validation and its transitive imports before any model call or plan rewrite.
+    # Loading it only after authoring can combine a cached dependency with edited source.
+    try:
+        from drydock.plan_verify import render as render_verify
+        from drydock.plan_verify import verify as verify_plan
+    except ImportError as exc:
+        raise _record_plan_import_error(
+            target_dir, target=target, exc=exc, log_dir=log_dir, phase="import precheck"
+        ) from exc
 
     plan_path = target_dir / "MANIFEST.md"
     prior_manifest = _read_if(plan_path)
@@ -6889,6 +6932,10 @@ def create_plan(
                 project=target,
             )
             blocks = candidate_blocks
+        except ImportError as exc:
+            raise _record_plan_import_error(
+                target_dir, target=target, exc=exc, log_dir=log_dir, execution_id=exec_id
+            ) from exc
         except Exception as exc:
             repair_exc = exc
             repair_succeeded = False
@@ -6987,7 +7034,12 @@ def create_plan(
                     except Exception as next_exc:
                         repair_exc = next_exc
                         break
-            if allow_diagnostic_recovery and continue_attempts > 0 and not repair_succeeded:
+            if (
+                allow_diagnostic_recovery
+                and continue_attempts > 0
+                and not repair_succeeded
+                and not isinstance(repair_exc, ImportError)
+            ):
                 repaired_blocks = dict(blocks)
                 pass_budget = _repair_pass_budget(
                     repair_exc, _PLAN_BLUEPRINT_BATCH_SIZE, continue_attempts
@@ -7074,6 +7126,8 @@ def create_plan(
                             )
                         except Exception as next_exc:
                             repair_exc = next_exc
+                            if isinstance(next_exc, ImportError):
+                                break
                             pass_budget = _extended_repair_budget(
                                 pass_budget,
                                 repair_pass,
@@ -7108,14 +7162,19 @@ def create_plan(
                         project=target,
                         enforce_criteria=False,
                     )
-                except Exception:
-                    pass
+                except Exception as next_exc:
+                    if isinstance(next_exc, ImportError):
+                        repair_exc = next_exc
                 else:
                     blocks = repaired_blocks
                     blocks_text = None
                     repair_succeeded = True
             if not repair_succeeded:
                 exc = repair_exc
+                if isinstance(exc, ImportError):
+                    raise _record_plan_import_error(
+                        target_dir, target=target, exc=exc, log_dir=log_dir, execution_id=exec_id
+                    ) from exc
                 record = write_error_record(
                     target_dir,
                     command="plan",
@@ -7266,10 +7325,12 @@ def create_plan(
     # rather than raised: ``plan`` writes, ``plan verify`` judges, ``plan repair`` fixes, so
     # ``drydock plan verify <T> || drydock plan repair <T>`` follows a successful plan. No waiver
     # applies — neither ``--override`` nor an unattended run can make a defect buildable.
-    from drydock.plan_verify import render as render_verify
-    from drydock.plan_verify import verify as verify_plan
-
-    buildability = verify_plan(target, target_dir)
+    try:
+        buildability = verify_plan(target, target_dir)
+    except ImportError as exc:
+        raise _record_plan_import_error(
+            target_dir, target=target, exc=exc, log_dir=log_dir, execution_id=exec_id
+        ) from exc
     if not buildability.ok:
         set_plan_state(plan_path, "draft")
 

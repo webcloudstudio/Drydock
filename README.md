@@ -261,6 +261,10 @@ ai  drydock refit             MyApp            # Blueprint drift -> affected bui
 ```
 
 `drydock plan` freezes the topology before authoring Blueprints in batches of at most five.
+Before any model call or plan rewrite, it prechecks the plan validator's imports. An import
+failure exits 1 with `PRECHECK FAILURE` and an `ERRORS.md` record identifying an internal planning
+failure. Import failures during validation also stop model repair and direct the operator to
+repair the installation and retry in a fresh process from a consistent checkout.
 Each Claude Blueprint batch starts with the original planning inputs, frozen topology and
 decisions, current work ledger, and cumulative database declaration where present. Earlier
 batch conversations are not carried forward. Stage 1 corrective calls still resume their session.

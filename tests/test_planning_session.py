@@ -766,6 +766,91 @@ def _mark_built(target_dir: Path, *spec_names: str, manifest: str | None = None)
     (target_dir / "MANIFEST.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+@pytest.mark.parametrize("error_type", [ImportError, ModuleNotFoundError])
+def test_plan_import_precheck_fails_before_runner_or_plan_rewrite(
+    tmp_path, monkeypatch, error_type
+):
+    import builtins
+
+    target_dir = _make_target(tmp_path)
+    manifest = target_dir / "MANIFEST.md"
+    manifest.write_text("existing plan must survive\n", encoding="utf-8")
+    real_import = builtins.__import__
+
+    def broken_import(name, *args, **kwargs):
+        if name == "drydock.plan_verify":
+            raise error_type("cannot import name 'transport_conflicts'")
+        return real_import(name, *args, **kwargs)
+
+    def forbidden_runner(*args, **kwargs):
+        pytest.fail("an import precheck failure must not call a model")
+
+    monkeypatch.setattr(builtins, "__import__", broken_import)
+    with pytest.raises(RecordedError, match="internal planning import failed") as raised:
+        create_plan("Example", "Example", tmp_path, runner=forbidden_runner)
+
+    record = raised.value.record
+    assert record.phase == "import precheck"
+    assert record.execution_id == ""
+    assert f"{error_type.__name__}: cannot import name" in record.detail
+    assert "fresh process: drydock plan Example" in record.recovery
+    assert "model artifact" not in record.recovery
+    assert manifest.read_text(encoding="utf-8") == "existing plan must survive\n"
+    assert "internal planning import failed" in (target_dir / "ERRORS.md").read_text()
+
+
+@pytest.mark.parametrize("repair_first", [False, True])
+def test_plan_import_failure_during_validation_stops_artifact_repair(
+    tmp_path, monkeypatch, repair_first
+):
+    target_dir = _make_target(tmp_path)
+    calls = []
+
+    def runner(*args, **kwargs):
+        calls.append(kwargs)
+        assert len(calls) <= (2 if repair_first else 1)
+        return FakeRun(
+            text=_llm_output()
+            if len(calls) == 1
+            else _feature_block().replace("# FEATURE: Status", "# FEATURE: Revised Status")
+        )
+
+    def broken_validation(*args, **kwargs):
+        if repair_first and len(calls) == 1:
+            raise SpecificationError("FEATURE-Status.md needs repair")
+        raise ImportError("cannot import name 'transport_conflicts' for FEATURE-Status.md")
+
+    monkeypatch.setattr(ps, "_validate_plan_output", broken_validation)
+    with pytest.raises(RecordedError, match="internal planning import failed") as raised:
+        create_plan("Example", "Example", tmp_path, runner=runner, allow_diagnostic_recovery=True)
+
+    record = raised.value.record
+    assert len(calls) == (2 if repair_first else 1)
+    assert record.phase == "post-output validation"
+    assert record.execution_id == "exec-fake"
+    assert "ImportError: cannot import name" in record.detail
+    assert "fresh process" in record.recovery
+    assert "model artifact" not in record.recovery
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
+def test_plan_import_failure_during_terminal_verification_preserves_plan(tmp_path, monkeypatch):
+    from drydock import plan_verify
+
+    target_dir = _make_target(tmp_path)
+
+    def broken_verify(*args, **kwargs):
+        raise ModuleNotFoundError("No module named 'validator_dependency'")
+
+    monkeypatch.setattr(plan_verify, "verify", broken_verify)
+    with pytest.raises(RecordedError, match="internal planning import failed") as raised:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert "ModuleNotFoundError: No module named" in raised.value.record.detail
+    assert (target_dir / "MANIFEST.md").is_file()
+    assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+
+
 def test_authors_specs_compass_and_manifest(tmp_path):
     target_dir = _make_target(tmp_path)
     result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))

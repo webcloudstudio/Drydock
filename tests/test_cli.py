@@ -3735,6 +3735,41 @@ class TestStatus:
         assert rc == 2
 
 
+def test_plan_import_precheck_reports_failure_without_diagnostic_model(
+    isolated_config, tmp_target_root, monkeypatch
+):
+    from drydock import cli
+    from drydock.errors import ErrorRecord, RecordedError
+
+    def fail_precheck(*args, **kwargs):
+        raise RecordedError(
+            ErrorRecord(
+                command="plan",
+                phase="import precheck",
+                timestamp="t",
+                classification="internal planning import failed",
+                detail="ImportError: cannot import name 'transport_conflicts'",
+                recovery="Verify planner imports, then start a fresh process: drydock plan Example",
+            )
+        )
+
+    def forbidden_diagnosis(*args, **kwargs):
+        pytest.fail("an import precheck failure must not request model diagnosis")
+
+    monkeypatch.setattr(cli, "_dispatch", fail_precheck)
+    monkeypatch.setattr(cli, "_process_stop_gate", lambda args: True)
+    monkeypatch.setattr(cli, "_prepare_target_repository", lambda args: None)
+    monkeypatch.setattr(cli, "_standoff_diagnosis", forbidden_diagnosis)
+
+    rc, out, err = run_cli("plan", "Example")
+
+    assert rc == 1
+    assert "PRECHECK FAILURE  ·  plan  ·  internal planning import failed" in err
+    assert "POST-LLM FAILURE" not in err
+    assert "transport_conflicts" in err
+    assert "fresh process" in err
+
+
 def test_render_recorded_error_keeps_indented_code_lines_intact():
     # An acceptance failure chain is structure, not prose. Reflowing it to 72 columns split the
     # failing assertion across two lines mid-regex, which is precisely the line the reader needs.
