@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-26 V2 |
-| Description | Self-implementing work plan for explicit contracts, tested state ownership and reusable regressions before the ten-kit release gate. |
+| Version | 2026-10-26 V3 |
+| Description | Bounded UAT stabilization plan with historical proposal dispositions, truthful verdicts, state ownership and a frozen ten-kit release gate. |
 | Modules | `acceptance_oracle.py`, `planning_session.py`, `build_state.py`, `build_run.py`, `diagnose.py` |
 | Prompts | `uat_diagnostic.md`, `build.md`, `BLUEPRINTS_CONTRACT.md` |
 | Tests | `tests/test_acceptance_oracle.py`, `tests/test_build_state.py`, `tests/test_build_run.py`, `tests/test_plan_reliability.py` |
@@ -37,11 +37,13 @@ The release gate remains Ed's ten-project UAT matrix.
 | Validation | Proved violations block; proved allowed behavior proceeds; unsupported inference stays unknown. |
 | Mutable state | Every resource has an owner, scope, permitted mutations, cleanup and failure action. |
 | Recovery | Preserve evidence and data; route recovery to the owner; never silently overwrite possible concurrent writes. |
-| Proof | Unit/command regressions precede bounded live experiments, which precede the fixed ten-kit release matrix. |
-| Execution | When Ed asks to execute this plan, the assistant proceeds through ordered work packages, commits verified slices, and stops only at named safety boundaries or unresolved product decisions. |
+| Proof | Deterministic regressions precede the fixed ten-kit release matrix; any separately authorized live experiment supplements them. |
+| Execution | This revision plans the work; an execution request starts WP0 and prioritized release slices, each verified and committed locally. |
 | Limit | Passing deterministic tests does not establish model convergence or undeclared semantic dependencies. |
 
-### Completed technical slice
+### Previously implemented technical slice
+
+These are recorded mechanisms from earlier work, not verification of the next candidate.
 
 - Decimal provenance is advisory. Exact numeric tokens embedded in supplied fixture text are
   recognized without format-specific parsers; unknown provenance cannot trigger artifact repair.
@@ -63,6 +65,9 @@ The release gate remains Ed's ten-project UAT matrix.
   repair authorization permits the requested code work under repository rules.
 
 ### State inventory to complete
+
+This is the resource catalogue. WP0/WP3 mark which rows are represented in the release matrix,
+which protections exist and which gaps block those paths; unrepresented adapters stay deferred.
 
 | State | Scope and isolation | Owner / required verification |
 |---|---|---|
@@ -106,223 +111,295 @@ tests; deleted managed store and surviving backup; missing-store owner recovery;
 artifact retry; missing transport/tool prerequisites; interrupted execution and resume; valid
 replan preserving already accepted work. These cover failure classes across projects.
 
-### Self-implementing stabilization plan
+### Stabilization assessment and scope
 
-This section is an execution contract for the next implementation session, not a proposal to
-discuss. Ed's request to create this plan authorizes the implementing agent to complete the
-reversible code, prompt, test, README, changelog and Memory File work below, run local deterministic
-verification, and commit each coherent slice. Do not stop after writing a task list or ask Ed to
-approve ordinary implementation choices. Ask only if approved requirements conflict or a material
-product decision cannot be derived from the current contracts. Record unresolved technical cases
-as uncertainty and continue independent work.
+`2026-10-26` · Review baseline: `7586152` (`Make stabilization plan implementation-ready`),
+clean working tree. The approach is sound: establish contracts, reproduce failures without model
+calls, correct the owning boundary, then validate one candidate with Ed's ten-kit matrix. V2's
+weaknesses were an unbounded resource-hardening gate, insufficient attention to truthful closure
+and release evidence, and no disposition of the July proposals. This revision bounds the release
+scope and inserts those missing proofs. It changes the implementation plan, not product behavior.
 
-The executor owns the assumptions review: read this Current contract and all linked command/topic
-memories, inspect the relevant source and existing tests, then record the approved goal, state
-owners, mutations, known facts, uncertain claims and falsifying tests before each capability slice.
-Treat only proved violations of explicit contracts as defects. A proved allowed behavior proceeds;
-everything else remains uncertainty. Never change expected product semantics to silence a checker.
+The request in this session is to review and update the plan. Execution begins when Ed requests
+implementation; the plan itself does not grant new permissions. During execution, complete
+ordinary implementation, verification and local commits without phase-by-phase approval.
+
+**Release scope:** existing supported command paths and the capabilities required by the current
+ten-kit matrix. Fix demonstrated contract violations and shared mechanisms that cause them. Do
+not implement every historical feature or every possible resource adapter. A missing declaration
+is uncertainty, not proof that a Target has no state or that a dependency does not exist.
+
+**Priority:** P0 data/evidence preservation and false verification; P1 recurring planning,
+execution, repair and recovery failures; P2 diagnostics and bounded performance defects. A P2
+item becomes a release blocker only when it violates an approved contract or prevents assessment.
+Record lower-priority unrelated work; keep it outside the candidate.
+
+### Historical proposal disposition
+
+Read [July assessment](../../docs/drydock_planning/INDEX.md) and its twelve feature documents,
+plus the earlier [archived assessment](../../docs/drydock_planning/archive/20260726-224601/INDEX.md)
+and its thirteen proposals. These are generated assessments, not approved requirements or current
+implementation evidence. DDF ids change meanings between assessments; identify proposals by
+path/title, never id alone. Keep the originals unchanged. Each row below has an execution home;
+"audit" means inspect current code and tests before deciding whether a defect remains.
+
+| July proposal (file number in `docs/drydock_planning/`) | Disposition for stabilization |
+|---|---|
+| [01 — proof execution](../../docs/drydock_planning/FEATURE-01-declare-and-enforce-a-proof-execution-contract.md) | Retain setup/readiness, isolated state, timeout, teardown and truthful executed/unexecuted evidence in WP1/WP3. Reuse current outcome vocabulary; do not copy the proposed new heading syntax or status enum. |
+| [02 — staged/resumable planning](../../docs/drydock_planning/FEATURE-02-split-plan-creation-into-a-skeleton-pass-and-resumable-per-f.md) | Current topology, continuation and bounded artifact repair already address parts of this. Audit preservation and interruption in WP2/WP4; do not replace the planner or introduce old `--file`/`--continue` proposals by assumption. |
+| [03 — interface grammar](../../docs/drydock_planning/FEATURE-03-typed-interface-point-grammar-for-provides-consumes-and-acce.md) | Retain exact declared provider/consumer ordering and source-defined stages in WP2. Current graph matches declared strings; retain legal external inputs. Defer namespaced grammar and new `CONTRACT` type. |
+| [04 — derived evidence](../../docs/drydock_planning/FEATURE-04-derive-build-evidence-from-the-build-directory-rather-than-f.md) | Retain measured changes, command outcomes and independent gate facts in WP1. Reject the blanket empty-diff failure and automatic restoration rules: verification-only steps and concurrent writes are valid current cases. |
+| [05 — RED/vacuity](../../docs/drydock_planning/FEATURE-05-enforce-red-before-green-and-widen-the-vacuity-taxonomy.md) | Retain conservative proof-integrity checks and honest pre/post reporting in WP1. Do not reinstate a blocking prepass or blacklist `isinstance`, existence or indirect calls without proving a contract violation. |
+| [06 — context budget](../../docs/drydock_planning/FEATURE-06-compute-and-enforce-a-per-block-context-budget-at-plan-time.md) | Audit measured size/grouping and actual provider-limit classification in WP2/WP4. Current over-target markers are advisory; defer a new hard budget, Manifest fields and split CLI. |
+| [07 — refit reconciliation](../../docs/drydock_planning/FEATURE-07-give-refit-tickets-executable-acceptance-and-reconcile-them.md) | Regress the existing UAT refit path and its evidence in WP4. Defer automatic parent-spec rewriting, archival and new drift semantics. |
+| [08 — one story gate](../../docs/drydock_planning/FEATURE-08-collapse-the-double-acceptance-gate-into-one-executable-stor.md) | Audit current acceptance references and persisted story states in WP1/WP2. Current governed `ACCEPTANCE.json` authority supersedes the proposal that generated Blueprint proofs alone verify every story. |
+| [09 — enforcement claims](../../docs/drydock_planning/FEATURE-09-bind-every-prompt-enforcement-claim-to-a-named-validator-and.md) | Retain claim → enforcer → negative/positive test mapping in WP0/WP4. Use a small evidence table; defer a universal invariant registry and sentence-scanning CLI. |
+| [10 — negative/auth paths](../../docs/drydock_planning/FEATURE-10-obligate-negative-path-and-authorization-acceptance.md) | Retain negative tests required by approved sources for represented capabilities. Defer `SECURITY`, `Auth`/`Roles` headers and inferred universal authorization requirements. |
+| [11 — prompt I/O](../../docs/drydock_planning/FEATURE-11-validate-prompt-frontmatter-against-the-artifact-i-o-matrix.md) | Audit actual injected inputs, prompt registry and source/wheel parity in WP2/WP4/WP5. Header presence alone proves no injection. Defer similarity thresholds and new prompt-validation CLI. |
+| [12 — brownfield baseline](../../docs/drydock_planning/FEATURE-12-add-a-baseline-mode-so-drydock-can-plan-against-code-that-al.md) | Defer baseline import/verify modes and reset flags. Preserve existing accepted work and valid no-op execution in WP1/WP4. |
+
+Additional archived proposals: deterministic plan admission/repair belongs in WP2; required
+negative/guardrail evidence is audited against current Sea Trials policy in WP1, without restoring
+retired `Required`/`Consequence` semantics; Python/Go runtime availability belongs in WP1/WP5,
+without inventing a runtime plugin system; compact provenance belongs in WP2; bounded repeated
+build attempts belong in WP4. New `POLICY` types and fleet assertions remain deferred. Archive
+recommendations overlapping the twelve rows receive the same disposition.
+
+Current-code anchors that invalidate a wholesale July implementation:
+`plan_graph.interface_dependency_defects` validates reachable declared providers;
+`plan_graph.measure_stories` explicitly marks excess size without refusal;
+`build_run._snapshot_files` measures file changes; `build_run.build_target` distinguishes governed
+gates from model criteria; `proof_integrity.py` records why speculative analyzers were removed;
+`lifecycle.Policy` bounds build passes; `rigging_compact._fresh_sibling` has both mtime and source
+SHA handling. These establish mechanisms, not complete protection. In particular, compaction's
+mtime fast path still needs a changed-content/newer-derivative regression before calling freshness
+proved. Existing code and tests must be re-read at implementation time.
+
+### Execution contract
+
+Before each slice, record the approved behavior, owner, allowed mutations, invariants, observed
+facts, uncertainty, falsifying test and valid neighbor. Read the owning command/topic contracts,
+source, prompts and tests. Extend an existing mechanism before introducing another. A successful
+recovery remains evidence of a generating defect when that defect is proved.
 
 #### Fixed boundaries
 
-- Never run, resume, report or mutate `drydock uat`; never write, stage or run git under `uat/`.
-  Ed runs the ten-kit matrix. Do not read its evidence unless Ed requests it for that session.
-- Never edit `docs/Drydock_Specification.md` without separate block-specific authorization.
-- Do not make live provider/model calls, use API-key generation, incur metered charges, or start a
-  full project build as a substitute for deterministic regressions. Use injected/fake runners.
-  A later bounded live command experiment requires its own explicit authorization.
-- Work only in the repository checkout and synthetic temporary directories outside `uat/`.
-  Preserve unrelated working-tree edits. Commit only task files and inspect the staged diff.
-- Keep each phase small and independently verifiable. After a phase passes, update its tests,
-  owning Memory Files, this topic's Actions, and `CHANGELOG.md`, then commit locally. Do not push.
-- If a check cannot run because its tool is unavailable or hangs, record the exact command and
-  condition, use an available equivalent only if it proves the same property, and continue other
-  independent phases. Never report an unrun check as passing.
+- Never invoke `drydock uat` in any form. Never write, stage or run Git inside `uat/`; inspect
+  published evidence only when Ed requests it. Use the design ledger and synthetic fixtures here.
+- Never edit `docs/Drydock_Specification.md` without block-specific authorization. Record any
+  disagreement in the owning Memory File; a historical proposal does not resolve it.
+- No live model/provider calls, API-key generation, charges or full project builds in deterministic
+  verification. Any bounded live experiment needs applicable explicit authorization.
+- Use the checkout and private temporary resources outside `uat/`. Preserve unrelated work,
+  imported sources, governed acceptance, canonical data and previously accepted implementation.
+  Stage only task files; inspect every staged diff; commit locally; do not push.
+- Prove test paths before running them. A script/test that reaches published `uat/` is a defect:
+  report it and stop that verification. Synthetic UAT orchestration tests use fake children and
+  temporary kit roots; they never execute the UAT command.
+- Detection, prevention and recovery are separate claims. Hashes and prompts do not sandbox
+  arbitrary agent tools. Never automatically restore over changed data or reset a worktree.
+- An unavailable, hanging or failed required check keeps its gate open. Record command, cause,
+  owner and rerun; continue independent work, but do not advance the release candidate as passed.
 
-#### Work package 0 — establish the candidate and evidence map
+#### WP0 — freeze scope and map evidence
 
-1. Record `git status`, HEAD, Python version, dependency lock state and available test/lint/package
-   tools. Preserve pre-existing edits. Identify the candidate revision for this stabilization run.
-2. Read Current contracts, Guardrails, Intent and relevant dated entries in this topic and the
-   build, plan, diagnose, acceptance-criteria, foundations and `/ddk-uat` Memory Files. Read the
-   corresponding prompts, implementations and tests before changing them.
-3. Build an evidence map from the existing FxRates and CommonMark design-ledger findings already
-   recorded here. Include: serialized decimal false positive and normalization regression;
-   unresolved dynamic probe arguments and verify/repair routing; provider/consumer ordering;
-   generated project tests writing to canonical persistence; managed SQLite deletion and wrong
-   owner recovery; and provider-success/state-verification phase confusion. Link each finding to
-   its current regression test or mark the missing regression. Do not inspect UAT data.
-4. Reuse existing test fixtures first. Create `tests/fixtures/regressions/<case-id>/` only for
-   inputs that existing Python tests cannot preserve clearly. Each added case must have a small
-   `case.json` with stable id, contract, source hash/excerpt, consumed inputs, expected disposition,
-   expected state mutations, recovery owner, reproduction command and relevant prompt/tool
-   versions. Use synthetic data and injected model output; never freeze credentials, live DBs,
-   provider homes, caches, virtual environments, full transcripts or timestamps as semantics.
+1. Record HEAD, clean/dirty paths, Python/interpreter, dependency/lock state, test/lint/package
+   availability and installed/source package identity. Candidate identity is the eventual final
+   verified commit, not the initial HEAD. Preserve the initial state for comparison.
+2. Read build, plan, diagnose, uat, score, acceptance-criteria, foundations, lifecycle and `/ddk-uat`
+   memories plus affected linked topics. Reconcile documented and implemented contracts explicitly.
+3. Create one finding table here: id, priority, source requirement, earliest failing owner/stage,
+   evidence/commit, minimal reproduction, negative test, valid neighbor, fix commit, local result,
+   affected kit capabilities and Ed verification status. Separate a proved defect from uncertainty.
+   Map all open/recurred ledger findings; do not limit the inventory to the latest two incidents.
+4. Seed the map with decimal normalization, unresolved probes, omitted source ordering, canonical
+   test writes/deletion/recovery, false verified closure after unavailable tooling, missing source
+   context, malformed artifact recovery, and console/persisted-state disagreement. Reuse existing
+   tests; classify an existing fix as locally covered, needing proof, or recurred before rewriting.
+5. Map the ten-kit capability profiles from authorized non-evidence configuration or Ed-provided
+   data. Missing profiles do not block independent tests, but the matrix must be complete before
+   release. Do not inspect `uat/` to obtain them without Ed's request.
 
-**Exit:** every known ledger finding maps to a test or an explicit missing-test task; baseline
-tool availability and unrelated edits are recorded. A full project or live model is not required.
+**Exit:** bounded release backlog, capability/resource matrix, existing regression links and
+explicit missing tests. Every item has an owner and closure proof. Counts from earlier commits
+are historical evidence; they are not the new candidate's baseline.
 
-#### Work package 1 — make oracle and plan admission semantics durable
+#### WP1 — make execution, closure and verdict evidence truthful (P0)
 
-1. Retain the current behavior that exact numeric text in a serialized fixture does not trigger a
-   false defect and unknown decimal provenance is advisory. Add/retain table-driven regressions
-   for CSV, JSON and XML text, exact text preservation, a genuinely unsupported literal, a derived
-   expression, and a contradictory source-backed expectation.
-2. Prove the checker does not silently accept semantic correctness it cannot establish: advisory
-   cases must remain visible; source contradictions must still block through the relevant explicit
-   contract; no formatter or repair path may add precision, quantization, rounding or normalization.
-3. Preserve probe admission and verify's shared static argument resolution, mechanical-versus-
-   authoring repair classification, exact consumed-interface dependency checks, and owner-specific
-   replan guidance. Add one valid neighbor for each rejected probe/order case.
-4. Assert user-facing diagnostics name the actionable stage once and do not recommend repeating a
-   repair command that cannot address the defect. Tests must inject provider output and prove no
-   provider call occurs for a purely mechanical advisory or validation failure.
+1. Establish the current truth table from build/score/UAT contracts. For each path, assert child
+   return code, provider outcome, declared/selected/executed check counts, criterion outcomes,
+   governed-gate outcome, per-story persisted state, console state and release receipt agree.
+   Preserve separate dimensions; a provider success is not successful verification.
+2. Cover provider success with failed/absent acceptance setup, missing transport/tool, zero-case
+   selection, malformed/unreadable criteria, skipped/timeout checks, partial governed coverage,
+   mixed covered/uncovered siblings, and a valid verification-only/no-diff step. An unexecuted
+   check never becomes PASS; no governed proof never becomes governed verification. Preserve
+   existing legal `implemented` versus `verified`, prepassed and diagnostic-only classifications.
+3. Separate assertion failure from diagnosed defect ownership. Source-backed Sea Trials and
+   governed acceptance retain their current authority. No static uncertainty, missing proof or
+   model-authored criterion silently becomes a product defect or a new release prohibition.
+4. Regress score/release/receipt behavior using synthetic evidence and fake graders: malformed
+   output, unknown/missing/duplicate trials, grader failure, legitimate advisory and actual governed
+   failure. Retired policy fields must not promise effects the runtime ignores; record conflicts
+   without silently reviving old gate rules. Never weaken an existing gate to make a kit pass.
+5. Retain deterministic measured file/command facts separately from model narrative. Verify
+   missing/false `FILES CHANGED`, tracked/untracked changes and no-op success. An empty diff alone
+   does not determine correctness. Repair prompts may change implementation, not governed oracles.
 
-**Exit:** focused acceptance, planning-session and CLI tests pass twice; the same semantic outputs
-and exit codes appear on both runs; no source requirement is weakened.
+**Exit:** truth-table regressions pass; all represented no-run/partial/failure paths retain truthful
+states and owner-specific causes. Locally fixed ledger rows remain `unverified` pending Ed's run.
 
-#### Work package 2 — isolate project tests within an agent call
+#### WP2 — prevent recurring plan and oracle defects (P1)
 
-1. Trace how generated projects select their database DSN, initialize schema, run pytest and clean
-   up fixtures. Determine whether the project has one test process, subprocesses or parallel tests;
-   do not infer isolation from the acceptance harness's rollback behavior.
-2. Implement the narrowest common test-fixture contract that gives each test an isolated disposable
-   store (or an isolated namespace/transaction where the database semantics require it), while
-   keeping cross-connection behavior testable. Do not copy live business rows into test state.
-3. Ensure fixture setup/teardown runs on pass, assertion failure, collection failure and process
-   interruption where the harness can observe it. Use unique paths/namespaces; never delete or
-   recreate the configured canonical store as cleanup.
-4. Add regressions with at least two tests that write the same logical key, a cross-connection
-   assertion, test failure cleanup, parallel execution if supported, and a pre/post canonical
-   sentinel. Run the same case twice and prove unrelated rows and canonical bytes/state survive.
-5. Update the build prompt and generated test guidance only after the fixture behavior is enforced
-   and tested. A prompt prohibition alone does not satisfy this package.
+1. Preserve decimal text from serialized CSV/JSON/XML fixtures. Cover exact source values,
+   unknown provenance, derived expressions and source-backed contradiction; no new rounding,
+   quantization or normalization. Advisory remains visible and never triggers semantic repair.
+2. Retain admission/verify parity for supported probe arguments, empty selection, executable tools,
+   scoped/full suites, required foundation interfaces and dependency paths. Give every rejection a
+   valid neighbor. Unknown/external dependencies stay legal where current contracts allow them;
+   omitted source-defined stages require authoring feedback, not guessed domain edges.
+3. Exercise a complete synthetic plan with injected outputs: initial defect, bounded correction,
+   corrected admission, revalidation, exhaustion and recovery recommendation. Existing legal work
+   survives malformed/truncated output. Repeating mechanical repair never substitutes for source
+   authoring. Do not merely test the same helper through two wrappers.
+4. Prove consumed source/context exists in the assembled prompt with correct path/provenance;
+   foundation/provider first use precedes consumers; stack/runtime/test transport selections agree.
+   Preserve source-required incremental delivery even when the graph permits grouping.
+5. Audit compact freshness against changed bytes with unchanged timestamps and a newer stale
+   derivative. If stale content can reach assembly, repair the existing freshness mechanism and
+   use full source or the supported explicit recovery; do not add an unrequested model call.
+6. Regress current size accounting, deduplication and grouping at the configured target. Keep
+   advisory oversize behavior. Distinguish a target estimate from an actual provider context limit;
+   no new hard ceiling or public schema is authorized by the July recommendation.
 
-**Exit:** generated project tests can exercise shared application behavior without cross-test data
-leaks, and canonical configured data is unchanged on every success/failure path. If the supported
-database cannot provide the required isolation, record the precise unsupported case and stop that
-adapter; do not claim universal support.
+**Exit:** complete synthetic authoring/verify regressions pass and repeat with stable semantic
+outputs; defects route to their earliest legal owner without rewriting approved requirements.
 
-#### Work package 3 — close local state ownership gaps
+#### WP3 — protect represented state and isolate generated tests (P0/P1)
 
-For every row in **State inventory to complete**, inspect the actual mutation paths and enforcement
-code. Add a negative test before describing a guard as implemented. Deliver these slices in order:
+1. Complete the state inventory for actual release paths. For each resource record owner, scope,
+   mutation entry points, protection level (prevented/detected/recoverable/unsupported), enforcing
+   code, negative/positive test and residual risk. An unrepresented remote service is deferred;
+   a represented destructive path cannot be released on a prompt promise.
+2. First deliver the demonstrated SQLite path. Keep per-agent-call isolation and private backups;
+   verify deletion, modification, WAL writes, provider exception, failed provisioning, missing
+   canonical store, concurrent writer and backup access/ignore behavior. Never overwrite current
+   data; provisioning an empty DB is not recovery. Preserve DATABASE-owner routing.
+3. Enforce per-test isolation through the existing generated foundation/testing adapter for the
+   selected language and runner. Use a temporary file/namespace when independent connections or
+   subprocesses are required; rollback of one connection does not isolate another. Do not prescribe
+   pytest for Go or invent a universal fixture protocol. Test two cases writing the same key,
+   cross-connection access, assertion/collection failure, supported parallel workers and two runs
+   against a canonical sentinel. Update templates and prompts with the enforcing code.
+4. Trace governed acceptance separately: preserve its canonical schema-verification and
+   rollback/committed lifecycle. Disposable development-test DSNs must not silently redirect the
+   independent gate away from the application being assessed.
+5. For represented file, config, Git, environment and process paths, verify authorized mutations,
+   unchanged governed inputs/unrelated work, child-only environment, owned scratch cleanup,
+   secret redaction, bounded readiness/timeout and termination of owned children. Port allocation
+   must avoid a bind/release race where the harness owns the listener; no promise that every
+   sequential check receives a different numeric port.
+6. PostgreSQL remains a declared product capability, but `AgentStore` currently passes it through
+   without isolation. Mark this gap explicitly. If a release path uses it, deliver and test the
+   narrow namespace/fixture adapter or stop unsafe test execution before the agent call and report
+   the unsupported case. If unrepresented, record the limitation outside this candidate; do not
+   claim universal DB isolation or disable unrelated supported commands.
 
-1. **Managed SQLite lifecycle:** strengthen the existing per-call disposable store and pre-call
-   snapshot tests for deletion, modification, WAL-only writes, provider exception, schema setup
-   failure, missing canonical store, concurrent writer and backup permissions/ignore rules. Never
-   restore automatically over changed state. Verify owner recovery does not suggest rebuilding a
-   consumer block.
-2. **Governed files, Git and manifests:** capture the authorized mutation set for an agent call;
-   prove source inputs, unrelated user edits, dependency locks and previously accepted work remain
-   unchanged. Test authorized implementation writes and reject unauthorized source/metadata
-   changes. Do not reset a worktree to recover from a partial failure.
-3. **Environment, CWD, temporary files and caches:** pass task-local child environments without
-   mutating the parent; isolate working directories and scratch paths; redact secrets from stored
-   evidence; prove cleanup on exceptional exit. Preserve caches only when their owner and reuse
-   semantics are explicit.
-4. **Processes, ports and services:** inventory subprocess creation and termination. Add owned
-   process-group cleanup, dynamic port allocation and bounded readiness/termination tests where
-   Drydock starts services. Prove no child survives failure or interruption and no fixed port is
-   left occupied. Do not start a real service in tests unless it is local, temporary and bounded.
-5. **External databases, queues, object stores and network:** default tests to fakes or isolated
-   local namespaces. Add an adapter only where the configured service and cleanup contract are
-   explicit. Never probe or delete an operator's remote resource to test isolation. Until an
-   adapter is verified, fail closed before the model call when safe isolation is required and report
-   the exact unsupported resource.
-6. **Lifecycle locks, journals and resume:** test repeated invocation, interruption at each
-   mutation boundary, recovery and resume. Keep accepted work and evidence; ensure a retry is
-   idempotent and points to the earliest legal owner/stage.
+**Exit:** represented mutable resources have tested protection and recovery; no canonical-data
+mutation is disguised as test cleanup. Unsupported cases and confinement limits are explicit.
+Hard-kill cleanup uses owned leftovers and next-run reclamation where teardown cannot execute;
+never promise `finally` runs after an unobservable process kill.
 
-If full OS-level confinement is unavailable, be precise: lifecycle snapshot/detection is evidence,
-not prevention. Implement only protections the process boundary actually enforces. Add a residual
-limit and owner-specific recovery instead of claiming that prompts or hashes sandbox arbitrary
-child commands.
+#### WP4 — bound recovery and align prompts with enforcement (P1)
 
-**Exit:** every state class is either protected by tested code or explicitly unsupported with a
-fail-closed condition, owner, recovery and test. No resource is silently classified as isolated.
+1. Use fake children to cover lifecycle plan/verify/repair/build/refit/test/score sequencing,
+   standing blockers, provider limit, actual context limit, timeout, repeated no-progress calls,
+   restart and interruption at persistence/journal boundaries. Inspect current bounds before adding
+   counters. Keep UAT `diagnose_attempts=0`; changing that policy is Ed's existing open decision,
+   not a prerequisite for this stabilization pass.
+2. Prove retry budgets terminate in the supported lifecycle and cannot accidentally reset inside
+   its loop. Record any separate manual-invocation limit; do not silently invent a durable global
+   budget, automatic model escalation or a new reopen command.
+3. Recovery identifies owner/stage, preserved evidence, safe prerequisite and next legal command.
+   Preserve accepted work on replan/resume; deterministic persistence/provider failures must not
+   be overwritten by model prose or spend a diagnosis call to restate known facts.
+4. For each changed prompt claim, map source contract → assembled input → enforcing function →
+   negative and positive regression. Label authoring advice as such. Prompt string/header tests
+   supplement execution tests; they do not prove isolation, repair, injection or cleanup.
+5. Keep the diagnosis loop concise: Assumptions Review, cause/uncertainty, upstream owner, proof
+   and authorized repair. Audit relevant prompt/contract conflicts without expanding the master
+   specification or copying a growing prohibition catalogue across prompts.
 
-#### Work package 4 — harden prompt clarity and the diagnosis loop
+**Exit:** represented failure/recovery paths terminate, preserve evidence and accepted work, and
+report the next actionable stage consistently. Enforcement claims have executable evidence.
 
-1. Keep rules grouped by explicit authority, preconditions, allowed mutation, invariant, failure
-   action and verification. Separate proactive rules for proved requirements from authoring advice;
-   label intermediate cases as uncertain rather than silently turning them into policy.
-2. For `build.md`, require reading current contracts and source before edits, preserving exact
-   product semantics, using isolated test resources, reporting observed progress/results, and
-   stopping on unsupported resource/state boundaries. Keep the model prompt concise; link shared
-   state policy to the relevant contract instead of copying a growing rule catalogue everywhere.
-3. For `uat_diagnostic.md` and `/ddk-uat`, keep investigation as default, repair authorization
-   from an explicit repair request, and the assistant-owned Assumptions Review as a required report
-   section. Ensure diagnosis distinguishes proved defect, allowed operation and uncertainty, and
-   does not put routine assumptions work back on Ed.
-4. Add prompt-header, prompt-structure and output-contract tests for each rule. Test that the
-   diagnosis's deterministic state recovery cannot be overwritten by inline model prose.
-5. Review wording for conflicts, duplicated rules, absolute claims unsupported by runtime
-   enforcement, and conditions with no owner or test. Fix the source of each conflict and link
-   related Memories; do not amend the master specification.
+#### WP5 — verify and freeze the candidate
 
-**Exit:** prompt/contract tests pass; every mandatory prompt rule names its source and enforcing
-test or is labeled as authoring guidance with its enforcement limitation.
+1. Audit selected tests, fixtures and entry points for published-UAT access and live subprocesses
+   before running. Use the declared environment with its interpreter first on PATH. Run focused
+   tests per slice; repeat state-sensitive cases cold/warm, including failure and interruption,
+   comparing semantic results rather than timestamps, temporary names or nondeterministic bytes.
+2. Run required repository gates after the final slice: full deterministic suite, lint, formatting
+   and package build/smoke. Inspect `bin/test.sh` before using it. Install/extract the built wheel
+   in a private temporary directory; verify imports, prompts, Rigging and resource versions match
+   source. No dependency download or live provider is part of the smoke test.
+3. Record command, environment, exit code, counts and revision for each gate. All required gates
+   must pass before candidate freeze; an unavailable gate is an open action, not an exception
+   that converts a partial run into release readiness.
+4. Inspect diff/status/staged contents, record remaining limitations and commit verified slices.
+   Identify the final candidate commit/package/config and capability coverage. Any subsequent
+   implementation change invalidates affected proof and produces a new candidate identity.
 
-#### Work package 5 — reusable cross-project test suite and package proof
+**Exit:** one identifiable candidate passes every required local gate. Required unsupported or
+unverified release capabilities remain blockers; deliberately deferred features are listed apart.
 
-1. Keep regressions capability-based, not project-copy-based. For each of the ten release kits,
-   later map its capability profile to these cases using an authorized kit manifest; do not duplicate
-   entire generated Targets. If kit names or profiles are unavailable without UAT access, leave the
-   mapping as Ed-owned input and finish all independent capability tests.
-2. Run focused tests for every changed capability, then the full deterministic suite, lint,
-   format check and package build/smoke. Use the repo's declared Python environment and commands.
-   Record exact command, exit code and counts. If a command hangs, diagnose the cause and rerun a
-   bounded, equivalent check; do not quietly omit it.
-3. Repeat state-sensitive and semantic regression cases twice, including cold and warm temporary
-   state. Inject deletion, concurrent modification, provider exception, malformed output and
-   interruption. Compare contract-level results, not nondeterministic paths/timestamps.
-4. Install/extract the built wheel in a clean temporary location and verify imports, prompt
-   resources, headers and rules match the source package. Remove only the temporary build artifacts
-   created by this task.
-5. Review full diff, `git diff --check`, status, ignored/untracked files and the commit contents.
-   Commit each coherent slice locally with a descriptive message and no attribution; never push.
+#### WP6 — Ed's release matrix and closure
 
-**Exit:** all deterministic gates available in the repository pass, or each unavailable gate has a
-recorded reason and a concrete rerun command. No live provider usage is part of this package.
+1. Ed pins candidate commit, package digest/install location, Python/tool versions, provider/model
+   and settings, source/kit revisions, acceptance inputs and dependency resolution. The ten kits
+   run against that candidate without implementation edits. No bulk/resume syntax is invented;
+   derive actual operator commands from the current CLI before handoff.
+2. Record each kit's planning, build, acceptance, recovery and isolation observations separately.
+   Model convergence is established here, not by fake-runner tests. Preserve release gates and
+   record proved defective warnings/recovered errors as well as terminal failures; expected
+   advisories and static uncertainty alone do not establish an unclean run.
+3. After Ed supplies results and requests evidence inspection, diagnose the earliest cause and
+   minimize any new failure into a local regression before changing code. Update ledger Fix and
+   Outcome under its rules; only clean affected-stage evidence verifies a fix.
+4. A changed candidate reruns affected local gates and the ten-kit matrix before release closure.
+   A failure with a named follow-up is a useful handoff, not a passed release or completed plan.
 
-#### Work package 6 — release handoff (Ed runs UAT)
+**Exit:** all ten kits satisfy the existing release contract on one frozen candidate; every
+release-blocking finding is closed by evidence. Otherwise keep the release open with a named
+owner, minimal reproduction and next slice. Deterministic success never substitutes for UAT.
 
-1. Publish the candidate commit(s), supported compatibility matrix, passed checks, unresolved
-   limitations and exact next commands in this Memory File and the completion report.
-2. Before UAT, Ed pins one commit/package/config/provider setup. Ed runs the actual ten-kit matrix
-   using supported CLI syntax. No implementation edits occur during that candidate's comparison.
-3. For each result, classify planning, build, acceptance, recovery and resource-isolation status
-   separately. Preserve existing acceptance gates. Uncertainty alone is not a defective warning;
-   any proved contract violation or unexplained recovery prevents a clean release.
-4. After Ed supplies results, the assistant reads only the requested evidence, updates the
-   diagnosis ledger's Fix/Outcome fields, and closes a finding only after the affected stage proves
-   the cause no longer recurs. A new code change reopens proof for its affected capabilities.
+### Continuation and progress record
 
-**Exit:** Ed's ten-kit matrix passes on one frozen candidate, or every failed kit has a minimal
-reproducible case, a named owner and a specific next implementation slice. No local test result is
-represented as UAT completion.
+Execute WP0 first, then prioritize P0 items across WP1/WP3 before P1 slices. WP2, WP3 and WP4
+may proceed independently once their owners/inputs are mapped; do not postpone verdict integrity
+until universal resource hardening is complete. Finish WP1–WP4 release scope before WP5/WP6.
+After each slice update the finding table, owning Memories, Actions and changelog as applicable,
+then commit. No repeated approval is needed for ordinary work in an authorized execution session.
 
-#### Continuation protocol
+| Work package | Status at this planning revision | Closure evidence |
+|---|---|---|
+| WP0 | Open | Baseline/proposal review recorded; complete finding and capability matrix still required. |
+| WP1 | Open | Existing snapshot/governed-gate mechanisms and unavailable-prerequisite regression found; truth table not audited. |
+| WP2 | Partial, historical local coverage | `0ab6649` planning/probe/dependency fixes and decimal regressions exist; candidate rerun and remaining audits required. |
+| WP3 | Partial, historical local coverage | `938021a` / `tests/test_build_state.py`; per-test isolation and remaining represented-state proofs open. |
+| WP4 | Partial, historical mechanisms | Lifecycle budgets and recovery exist; interruption/loop/claim coverage audit open. |
+| WP5 | Open | No implementation-candidate gate run in this documentation session. |
+| WP6 | Ed-owned, open | No UAT execution or published evidence inspection in this session. |
 
-When an agent is asked to execute this plan, it must start with Work package 0, then continue to
-the next unfinished package in order without asking for phase-by-phase approval. It may defer a
-package only for an explicit external dependency, a safety boundary above, or a genuine unresolved
-product decision; it must name the exact blocker and finish independent work. Keep this file's
-Actions current after every committed slice. Do not mark the plan complete while any implementation
-package, verification gate or Ed-owned release step remains.
-
-Suggested local commands (from the checkout; none invokes UAT):
+Suggested commands after the WP5 safety audit (implementation session, from the checkout):
 
 ```bash
 PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m pytest -q -n auto tests/test_acceptance_oracle.py tests/test_build_state.py tests/test_plan_reliability.py tests/test_build_run.py tests/test_diagnose.py
 PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m pytest -q -n auto
-ruff check src/ tests/
-ruff format --check src/ tests/
+.venv/bin/ruff check src/ tests/
+.venv/bin/ruff format --check src/ tests/
 .venv/bin/python -m hatchling build
 ```
-
-UAT commands are run only by Ed, using the actual ten kit names and the supported CLI syntax;
-do not invent a bulk flag or run an unverified resume against a stale generated plan.
 
 ## Decisions
 
@@ -335,14 +412,14 @@ do not invent a bulk flag or run an unverified resume against a stale generated 
 
 ## Actions
 
-- `2026-10-26` · The next execution starts at Work package 0 in the self-implementing plan above
-  and continues in order without phase-by-phase approval. Code, prompt and test work is authorized;
-  Ed retains the ten-kit UAT release gate.
-- `2026-10-26` · Work packages 2–3 remain open: per-test fixture isolation, remaining local state
-  ownership, and any explicitly supported remote-store adapters. Each state class needs a negative
-  test or an explicit unsupported/fail-closed disposition.
-- `2026-10-26` · Work packages 5–6 remain open: package/lint verification in a usable environment,
-  then Ed's frozen ten-kit release matrix. The 490 focused tests do not close these gates.
+- `2026-10-26` · Execute WP0's complete finding/capability matrix when Ed requests implementation;
+  review baseline `7586152` and historical proposal dispositions above. Closes with owned,
+  prioritized release findings and explicit deferred scope.
+- `2026-10-26` · WP1–WP4 implementation/proof remain open: truthful verdicts, recurring plan
+  defects, generated per-test isolation, represented state protection and bounded recovery.
+  Existing regression files/commits above are starting evidence, not completion of these packages.
+- `2026-10-26` · WP5 requires passing local candidate gates; WP6 requires Ed's complete frozen
+  ten-kit matrix. No historical test count, unavailable check or named follow-up closes either.
 
 ## Working Notes
 

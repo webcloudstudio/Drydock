@@ -169,6 +169,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-26: Documentation: stabilization planning now bounds work to existing release
+  capabilities, records dispositions for the July proposals against current contracts, and prioritizes
+  truthful verification, source-preserving repair, test-state isolation and bounded recovery.
+  Local candidate gates must pass before Ed runs the frozen ten-kit matrix; historical proposals
+  do not authorize new gates, schema changes or automatic source reconciliation.
+
 - 2026-10-26: Planning preserves delivery gates when grouping work: only independent ready
   stories share a new build block, while started blocks retain their resume identity. Token-cost
   packing still applies within the ready frontier without an acceptance-count cap. Planning
