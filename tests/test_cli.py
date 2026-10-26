@@ -3004,8 +3004,8 @@ class TestRefit:
         assert plan.node("home").block == 1
         assert [plan.node(f"screen-home-refit-{number:03d}").block for number in (1, 2, 3)] == [
             2,
-            2,
-            2,
+            3,
+            4,
         ]
 
 

@@ -61,7 +61,9 @@ zero or one database engine may be selected. Two languages are refused.
 | 6 | `application` | every service and screen, ordered by `depends:` only |
 
 Tiers 1–5 publish contracts; tier 6 publishes nothing. Declaring no tier is tier 6. Two tiers may
-share a block when the packer finds savings above `block_min_savings` (default 1000 tokens).
+share a block when both are ready before the block starts and the packer finds savings above
+`block_min_savings` (default 1000 tokens). A declared dependency must finish in an earlier block
+for newly grouped work (2026-10-26); existing started groups remain intact for resume.
 *Broken:* a prohibition where a cost function belongs.
 
 `2026-09-20` · **The Rigging file owns the foundation's shape.** `**Foundation:** <kind>` in the

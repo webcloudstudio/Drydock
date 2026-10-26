@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261025 V52
+version: 20261026 V53
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -15,6 +15,9 @@ Declare lower-level function tests against the interface that story provides. Pl
 criteria after all invoked commands exist, preserving end-to-end coverage on those later stories.
 For example, pure filters precede reports: filter stories test filter functions, then report stories
 verify the filters through report output. Do not make filters depend on reports that depend on them.
+When a staged runner requires an executable or API entry point, establish that invocation
+interface before the scoped implementation stories. Its initial acceptance proves only the
+interface contract; later stories add behavior and gate their own slices through it.
 Declare each concrete CLI command as `provides: <executable> <subcommand>` so verification can compare
 its availability with criterion invocations; do not claim an unimplemented command on an earlier story.
 
@@ -97,6 +100,10 @@ inaccurate, contradictory, incomplete, or assigns content to the wrong owner. Wh
 necessary, split, merge, move, replace, or reorder the affected scope. Rewrite every resulting
 story as a governed specification using all planning inputs; source structure is strong evidence
 for the story boundary, but source content is not authoritative.
+
+Preserve source-defined algorithms and interface invariants in the owning story
+instructions and Blueprint. Do not reduce an algorithm to "pass the suite" or a list of syntax
+features: state the required processing rules and the interface later stories consume.
 
 When the analysis is too coarse, refine it into smaller spec scopes. When it is too fine, merge it
 into the smallest durable spec structure that preserves correctness and clear ownership.
@@ -656,10 +663,10 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   declaration lines, and it `depends` on every implementation story. Without
   that declaration a full-suite run is rejected. **Only the terminal story runs the whole suite.**
 - A story that owns behavior the suite covers gates on its own slice: the runner scoped by its
-  selector to the cases that story implements, executing them, asserting exit `0`. Size the
-  selector with the runner's list mode while planning and record the case count in the criterion's
-  `Intent:`, so a selector that silently reaches into unbuilt stories is caught here rather than
-  mid-build. An unbounded run of the suite from any non-terminal story, without `Suite: full`, is
+  selector to the cases that story implements, executing them, asserting exit `0`. Declare the
+  runner's list-mode selector as `Probe:` and its output format as `Probe Count:`; Drydock runs
+  the selection probe during verification. Do not execute tools or invent a selected count
+  while authoring the plan. An unbounded run of the suite from any non-terminal story, without `Suite: full`, is
   rejected.
 - A pure harness staging story — one that proves the runner is staged and starts, implements none
   of the behavior under test, and gates no correctness — is the single exception: it invokes the
@@ -691,7 +698,8 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 - Do not emit `block:`. Blocks are ephemeral context-optimization groups computed by Drydock: one
   topology type per block, never crossing a phase boundary, never violating the edges, packed to
   amortize stack-file cost across one build pass. Context economy comes from blocks, not from
-  feature grouping.
+  feature grouping. Only stories ready before a block starts can share it; a dependent story
+  is built and graded after its prerequisites, never in their agent call.
 - Declare `depends:` as genuine input requirements only. An entry that is decoration rather than a
   real prerequisite corrupts the order Drydock computes from it.
 

@@ -46,8 +46,13 @@ def test_regrouping_preserves_started_blocks_and_chains_pending_work(state):
         block_size_fn=lambda members: 100 + 50 * len(members),
     )
     assert not result.fatal
-    assert [block.story_ids for block in result.blocks] == [("original",), ("r1", "r2", "r3")]
-    assert [s.block for s in result.stories] == [7, 8, 8, 8]
+    assert [block.story_ids for block in result.blocks] == [
+        ("original",),
+        ("r1",),
+        ("r2",),
+        ("r3",),
+    ]
+    assert [s.block for s in result.stories] == [7, 8, 9, 10]
 
 
 def test_regrouping_does_not_cross_started_work():
@@ -64,7 +69,12 @@ def test_regrouping_does_not_cross_started_work():
         block_size_fn=lambda members: 100 + 50 * len(members),
     )
     assert not result.fatal
-    assert [block.story_ids for block in result.blocks] == [("original",), ("r1", "r2", "r3")]
+    assert [block.story_ids for block in result.blocks] == [
+        ("original",),
+        ("r1",),
+        ("r2",),
+        ("r3",),
+    ]
 
     # A fixed block between two pending stories is still an ordering barrier.
     declared[2] = story("r2", block=3, state="implemented", depends=("r1",))
@@ -299,7 +309,7 @@ def test_block_ends_when_the_next_divisible_story_would_pass_the_target():
     assert [b.over_target for b in blocks] == [False, False]
 
 
-def test_optimizer_prefers_shared_context_and_unlocks_dependents_inside_block():
+def test_optimizer_preserves_dependency_gates_despite_shared_context():
     ordered = (
         story("seed", stack=("common.md",)),
         story("unrelated", stack=("other.md",)),
@@ -312,8 +322,8 @@ def test_optimizer_prefers_shared_context_and_unlocks_dependents_inside_block():
 
     _, blocks = group_blocks(ordered, target_tokens=1000, min_savings=0, block_size_fn=cost)
 
-    assert blocks[0].story_ids == ("seed", "dependent", "unrelated")
-    assert blocks[0].size_tokens == 330
+    assert [block.story_ids for block in blocks] == [("seed", "unrelated"), ("dependent",)]
+    assert blocks[0].size_tokens == 220
 
 
 # A merge is worth taking only when the shared context it saves is worth having. Ranking merges
@@ -536,3 +546,32 @@ def test_guidance_has_no_runtime_foundation_but_tiered_stacks_still_do():
     assert not defects
     _, defects = assign_stack_modes((story("ui", stack=("bootstrap5.md",)),))
     assert [d.code for d in defects] == ["unfounded-stack"]
+
+
+@pytest.mark.parametrize("language", ["python.md", "go.md"])
+def test_delivery_chain_keeps_scoped_gates_before_full_suite(language):
+    ordered = (
+        story("foundation", story_type="foundational", stack=(language,)),
+        story("data", depends=("foundation",), stack=(language,)),
+        story("api", depends=("data",), stack=(language,)),
+        story("release", depends=("data", "api"), stack=(language,)),
+    )
+    _, blocks = group_blocks(
+        ordered, block_size_fn=lambda members: 10000 + len(members), min_savings=1
+    )
+    assert [block.story_ids for block in blocks] == [
+        ("foundation",),
+        ("data",),
+        ("api",),
+        ("release",),
+    ]
+
+
+def test_started_multi_story_block_is_preserved_as_a_resume_unit():
+    ordered = (
+        story("a", block=4, state="closed/failed"),
+        story("b", block=4, depends=("a",)),
+        story("c", depends=("b",)),
+    )
+    _, blocks = group_blocks(ordered, preserve_existing=True, min_savings=0)
+    assert [block.story_ids for block in blocks] == [("a", "b"), ("c",)]

@@ -476,12 +476,13 @@ def group_blocks(
     deliberately not: a block receives their union and pays for shared files once. Selection is
     deterministic by shared-context savings, incremental cost, then declaration order.
 
-    Nothing else is forbidden. A merge that pays is taken and a merge that does not is declined
+    Only stories ready before this block starts may merge. A dependency is a delivery gate,
+    not work to assume finished inside the same agent call. A merge that does not pay is declined
     on its arithmetic, which is why ``min_savings`` exists: a merge saving less than that buys
     nothing and widens the context one model call must hold, so it is no merge at all.
 
-    Assembled token cost is the only bound on a block. The number of acceptance criteria a block
-    owes is not a reason to split it.
+    Assembled token cost bounds independent ready work. The number of acceptance criteria
+    a block owes is not a reason to split it.
 
     ``preserve_existing`` retains every block containing non-pending work as an indivisible
     dependency barrier. Only wholly pending blocks are regrouped; new numbers follow the
@@ -554,13 +555,12 @@ def group_blocks(
             )
 
         while True:
-            active_done = completed | current_ids
             candidates = [
                 known[sid]
                 for sid in remaining - current_ids
                 if sid not in frozen
                 and _partition_key(known[sid]) == key
-                and all(dep in active_done or dep not in known for dep in known[sid].depends)
+                and all(dep in completed or dep not in known for dep in known[sid].depends)
             ]
             ranked: list[tuple[int, int, int, PlannedStory, int]] = []
             for candidate in candidates:

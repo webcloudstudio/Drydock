@@ -43,12 +43,19 @@ and failures with no owned check. FxRates `20261025.200850` previously named ini
 as the cause of a conversion assertion failure.
 
 
-`2026-10-25` · **One `status` line per LLM call, printed after grading.** The pre-call `fixing=`
-echo is removed. `    status  <passed>/<checks>  <id>(<cases passed>/<cases selected> +N),...`
-lists each failed binding check; the denominator is the cases that check selected, and `+N` is
-the movement since the last measured call (a resumed block's live pre-run is the first base;
-omitted with no earlier measurement). An ungraded call prints `    status  not measured — <cause>`.
-*Broken:* identical pre/post lines read as a stalled loop, and a scoped slice reads `/655`.
+`2026-10-26` · **Measured status is grouped by story.** Each call prints the total passing
+check count, then each owning story and each check's PASS/FAIL/DISPUTED/UNVERIFIED result.
+Suite tallies are labeled `cases=<passed>/<selected> passed` with `change=<signed count>`
+relative to the preceding measurement. Case counts remain per check: overlapping scopes are
+never added into a story or project case total. Checks without tallies show only their outcome.
+An ungraded call still prints `status not measured` with its cause.
+
+`2026-10-26` · **One acceptance verdict belongs to Drydock.** The build agent reads existing
+failure logs, changes implementation, and runs targeted tests. It need not repeat every declared
+acceptance suite before Drydock executes those same checks. Silence from a running suite does not
+establish a hang. Repair feedback gives measured case decreases priority over remaining failures;
+previous agent notes remain advisory. This revises the duplicate full-scope execution instructions
+in build prompt V11 and the repair preamble. No timeout, acceptance gate, or budget is weakened.
 
 `2026-10-25` · **An agent's interrupted verification is advisory, like its self-reported
 failure.** With checks declared, deterministic acceptance still runs and decides the pass.
@@ -294,6 +301,14 @@ an unchanged rebuild against the same immutable criterion.
 
 ## Actions
 
+- `2026-10-26` · CommonMark convergence review: story status, regression feedback and one
+  deterministic acceptance owner are implemented with synthetic build regressions. Ed must
+  verify live convergence across the UAT kits; local tests do not establish model compliance.
+  Automatic best-candidate restoration is deferred: counts do not identify which cases changed,
+  and restoring an application tree must preserve generated files and evidence. Close this action
+  only on measured clean runs, or an explicit decision to retain the current repair policy.
+
+
 - `2026-10-25` · CommonMark `20261025.023211`: interrupted-verification grading, last-measured
   stall comparison, and scoped case denominators are fixed locally
   (`test_interrupted_agent_verification_is_still_graded_and_counts_as_progress`). Unverified:
@@ -322,5 +337,13 @@ an unchanged rebuild against the same immutable criterion.
   Deferred: reverses the `90757da` decision that the claim is evidence, not a verdict.
 
 ## Working Notes
+
+- `2026-10-26` · Dependency/reporting cleanup verification: full regression run completed with
+  4,517 passed, two skipped and seven failures. Four refit expectations were updated to preserve
+  sequential ticket gates; two stale status/feedback expectations were corrected; one checkout
+  casing failure was retested from canonical `drydock`. All seven and four additional regressions
+  pass in the final 11-case run. Prompt/memory contracts: 83 passed. Lint, changed-file formatting,
+  wheel build and packaged prompt smoke pass. No UAT or provider call was run. Concurrent gate
+  prerequisite work remains outside this change's commit and verification claim.
 
 -

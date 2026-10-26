@@ -169,6 +169,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-26: Planning preserves delivery gates when grouping work: only independent ready
+  stories share a new build block, while started blocks retain their resume identity. Token-cost
+  packing still applies within the ready frontier without an acceptance-count cap. Planning
+  guidance retains source-defined algorithms and interfaces in the owning stories. Build progress
+  groups checks by story and labels per-check case counts and deltas explicitly. Repair feedback
+  prioritizes measured case losses; the agent runs targeted tests and Drydock owns complete
+  deterministic acceptance, removing duplicate mandatory suite runs from the build contract.
+
 - 2026-10-25: `drydock build` prints one `status` line per LLM call after grading, replacing the
   pre-call `fixing=` line and the post-call `acceptance=` line:
   `status  2/5  block-parsing-conformance(248/286 +16),...`. Each failed check shows cases passing,

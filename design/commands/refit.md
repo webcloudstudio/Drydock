@@ -57,9 +57,11 @@ type, kind, stack, context, and rules, adds the Blueprint and earlier tickets to
 screen, or behavior to the owning Blueprint, asks one question when ownership is unclear, and calls
 `refit add`. `drydock init` syncs it into the workspace.
 
-`2026-09-22` · **Refit optimizes pending work without breaking chains.** Shared files count once,
-compact context is preferred, consecutive tickets may share a block. A block with any non-pending
-story is frozen; optimization failure rolls back the transaction, including a newly added ticket.
+`2026-10-26` · **Refit preserves dependency gates when optimizing pending work.** Shared files
+count once and compact context is preferred. Successive tickets depend on one another and therefore
+occupy separate new blocks; only independent ready tickets can share one. A legacy block with any
+non-pending story is frozen, including its pending members. Optimization failure rolls back the
+transaction, including a newly added ticket. This uses the same dependency-frontier grouping as Plan.
 
 `2026-09-12` · **Change tickets are normalized, not applied.** `blueprint/changes/TICKET-*.md`
 (the `change_ticket_directory`, Target-relative) is normalized by one call per ticket with exactly

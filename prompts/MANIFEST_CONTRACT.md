@@ -1,7 +1,7 @@
 ---
 name: Manifest Contract
 description: Contract governing the format, story types, field semantics, lifecycle states, block grouping, and execution rules for `MANIFEST.md` — the single generated executable build plan for a Drydock Target.
-version: 20260801 V14
+version: 20261026 V15
 ---
 
 ## Overview
@@ -76,7 +76,7 @@ A feature is a story that depends on its member stories, carries acceptance crit
 assembly and intent instructions instead of implementation instructions. Same node, same execution
 path, different content shape. When its member stories complete, the feature story runs and is made
 to pass like any other story, so integration testing is a real build step rather than an implicit
-hope. A feature story is preferably placed in the same block as its members.
+hope. A feature story runs in a later block after its members have passed their gates.
 
 ### Story
 
@@ -197,26 +197,20 @@ contract and has no internal order — a service and a screen are ranked against
 `depends:` alone. A file or story with no `**Tier:**` belongs to tier 6, which is how a service
 stays free to land either side of the interface tier.
 
-Each foundation is its own story. Ordering the tiers forbids nothing: two tiers may legally share
-a block, and what keeps them apart is that they share no context, so the packer finds no saving
-in merging them. The tiers state what is built into what; `depends:` enforces it.
+Each foundation is its own story. Tiers describe responsibility; declared dependencies
+establish delivery gates between blocks.
 
 ### Blocks
 
-A **block** is a set of stories optimized for context: sized to amortize fixed stack-file cost
-across one build run, never crossing stacks. Blocks are an optimization output, not a taxonomy. UI
-stories group together whether or not they belong to the same Agile feature. Context economy comes
-from blocks, not from feature grouping.
+A **block** groups independent ready stories to share stack and context files in one agent call.
+Drydock computes the groups from the declared graph and measured assembled prompt cost.
 
-Blocks are ephemeral, Manifest-only, regenerated every run, and computed by Drydock:
-
-- **Hard:** one topology type per block; never cross a phase boundary; never violate the edges
-- **Objective:** amortize stack-file cost across the most stories that still fit one build pass
-
-The mechanism behind the no-cross-stack guardrail is stack creep from Rigging. Mixing topology types
-in one block forces every stack file each type needs into the block, so it pays for context neither
-half uses and the build agent reads instructions for work it is not doing. This is the reason story
-types exist: they are the block-partition key.
+- Stories share a topology type, phase, and screen/non-screen work kind.
+- Every known prerequisite belongs to an earlier block; selecting a story does not make its
+  dependents ready inside the same block.
+- Compatible stories share the union of their stack and context files, counted once, within
+  configured token limits and minimum savings. Criterion count does not bound a block.
+- A started block keeps its members and number for resume; only wholly pending work is regrouped.
 
 ### Builder and consumer mode
 

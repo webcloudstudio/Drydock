@@ -1597,7 +1597,7 @@ def _failed_cases(result: AcceptanceRunResult) -> tuple[tuple[str, str], ...]:
         match = _SPEC_EXAMPLE_RE.match(line) or _PYTEST_FAILED_RE.match(line)
         if match is None:
             continue
-        following = next((later.strip() for later in lines[index + 1:] if later.strip()), "")
+        following = next((later.strip() for later in lines[index + 1 :] if later.strip()), "")
         if following == "fixed!":
             continue
         case = (match.group("group"), match.group("case"))
@@ -1630,9 +1630,7 @@ def _failed_case_lines(result: AcceptanceRunResult) -> list[str]:
     return lines
 
 
-def _write_failure_logs(
-    directory: Path, results: Iterable[AcceptanceRunResult]
-) -> dict[str, Path]:
+def _write_failure_logs(directory: Path, results: Iterable[AcceptanceRunResult]) -> dict[str, Path]:
     """Write each failed check's complete captured output; return the path per check id.
 
     The repair prompt carries a bounded excerpt. The full output lets the next pass read every
@@ -1776,43 +1774,32 @@ def _quantitative_acceptance_progress(
 def _attempt_acceptance_summary(
     acceptance: tuple[AcceptanceRunResult, ...],
     baseline: Mapping[str, int] | None = None,
+    story_by_check: Mapping[str, PlanBlock] | None = None,
 ) -> str:
-    """Render the one operator-facing ``status`` line measured after an LLM call.
-
-    Each failed check reads ``id(passed/total +N)``: the cases passing now, the cases that check
-    selected, and the movement since the last measured call. ``+N`` is omitted when no earlier
-    measurement of that check exists.
-    """
-    passed = sum(1 for result in acceptance if result.passed)
-    skipped = tuple(result for result in acceptance if result.skipped)
-    missed = tuple(result for result in acceptance if not result.passed and not result.skipped)
-    failed = tuple(result for result in missed if result.binding)
-    disputed = tuple(result for result in missed if not result.binding)
-    line = f"    status  {passed}/{len(acceptance)}"
-    if failed:
-        line += "  " + _acceptance_failure_details(failed, baseline)
-    if skipped:
-        line += "  skipped=" + ",".join(result.check_id for result in skipped)
-    if disputed:
-        line += "  disputed=" + ",".join(result.check_id for result in disputed)
-    return line
-
-
-def _acceptance_failure_details(
-    failed: tuple[AcceptanceRunResult, ...],
-    baseline: Mapping[str, int] | None = None,
-) -> str:
-    """Render failed AC ids with ``(passed/total +N)`` case tallies when available."""
-    details: list[str] = []
-    for result in failed:
-        tally = _case_tally(result)
-        cases = ""
-        if tally is not None:
-            prior = (baseline or {}).get(result.check_id)
-            delta = f" {tally[0] - prior:+d}" if prior is not None else ""
-            cases = f"({tally[0]}/{tally[1]}{delta})"
-        details.append(f"{result.check_id}{cases}")
-    return ",".join(details)
+    """Report checks by owning story; suite cases are never summed across checks."""
+    passed = sum(result.passed for result in acceptance)
+    lines = [f"    status  {passed}/{len(acceptance)} checks passed"]
+    owners: dict[str, list[AcceptanceRunResult]] = {}
+    for result in acceptance:
+        story = (story_by_check or {}).get(result.check_id)
+        owner = story.block_id if story is not None else "unassigned"
+        owners.setdefault(owner, []).append(result)
+    for owner, results in owners.items():
+        lines.append(
+            f"      story={owner}  {sum(r.passed for r in results)}/{len(results)} checks passed"
+        )
+        for result in results:
+            detail = f"        check={result.check_id}  {result.outcome}"
+            tally = _case_tally(result)
+            if tally is not None:
+                detail += f"  cases={tally[0]}/{tally[1]} passed"
+                prior = (baseline or {}).get(result.check_id)
+                if prior is not None:
+                    detail += f"  change={tally[0] - prior:+d}"
+            lines.append(detail)
+    if any(_case_tally(result) is not None for result in acceptance):
+        lines.append("      Case counts are per check; scopes may overlap and are not additive.")
+    return "\n".join(lines)
 
 
 def _passed_case_counts(acceptance: tuple[AcceptanceRunResult, ...]) -> dict[str, int]:
@@ -1891,6 +1878,7 @@ def _render_repair_feedback(
     story_by_check: dict[str, PlanBlock],
     regressed_checks: tuple[AcceptanceRunResult, ...] = (),
     failure_logs: Mapping[str, Path] | None = None,
+    case_baseline: Mapping[str, int] | None = None,
 ) -> str:
     """Compose the repair-pass feedback appended as the prompt's recency anchor.
 
@@ -1903,21 +1891,20 @@ def _render_repair_feedback(
     lines: list[str] = [
         "## Repair pass",
         "",
-        "A previous build pass wrote partial work into BUILD_DIRECTORY and did not pass",
-        "every deterministic acceptance check. Iterate the existing files in",
-        "BUILD_DIRECTORY to make the checks below pass. Do not restart from scratch, do",
-        "not weaken or remove any declared acceptance assertion, and keep every check",
-        "that already passes green.",
+        "Repair the existing implementation against the measured failures below.",
+        "Keep the specifications and staged assets fixed. Restore regressed behavior first;",
+        "preserve passing behavior while fixing the underlying cause.",
         "",
-        "The diagnostic excerpts below are truncated. A check that names a `full output`",
-        "file carries the complete output of the run that graded the previous pass: read",
-        "it before editing instead of rerunning the declared scope to rediscover failures.",
-        "Otherwise, before editing, rerun each failing",
-        "acceptance assertion from its authoritative specification and inspect the complete",
-        "failure output. For a conformance suite, use its section or example filters to",
-        "diagnose coherent root-cause clusters, then rerun the full declared scope. Fix the",
-        "general parser or renderer behavior; do not add example-specific exceptions. Keep",
-        "working through failing examples while the deterministic tally is improving.",
+        "The diagnostic excerpts below are truncated. Read each named `full output` log",
+        "before editing; it is the complete previous deterministic result. If no log is",
+        "available, run the failing check to obtain its diagnostics. Use section or example",
+        "filters to diagnose coherent root-cause clusters, then test the changed behavior",
+        "and its neighbors. Do not add example-specific exceptions.",
+        "",
+        "Drydock runs every declared acceptance check after this call. Do not repeat all",
+        "acceptance suites merely to return a verdict. If you run a suite, wait for completion",
+        "or its declared timeout; silence alone is not evidence of a hang. Report unfinished",
+        "verification accurately. An earlier agent note is advisory; measured results govern.",
         "",
         "If a check below cannot pass however the code is written — the command it runs",
         "succeeds and the assertion still fails — report it with `AC_BROKEN: <check-id>`",
@@ -1926,6 +1913,23 @@ def _render_repair_feedback(
         "so keep the code correct and every other check green.",
         "",
     ]
+    falling = tuple(
+        result
+        for result in failed_checks
+        if (tally := _case_tally(result)) is not None
+        and (prior := (case_baseline or {}).get(result.check_id)) is not None
+        and tally[0] < prior
+    )
+    if falling:
+        lines.extend(["### Case regressions — restore these first", ""])
+        for result in falling:
+            tally = _case_tally(result)
+            prior = (case_baseline or {})[result.check_id]
+            lines.append(
+                f"- {result.check_id}: {prior} -> {tally[0]} passing cases "
+                f"({tally[0] - prior:+d}); inspect the previous edit before adding behavior."
+            )
+        lines.append("")
     if regressed_checks:
         # A regression outranks this block's own red criteria. The block already had working
         # code for these and deleted or broke it, so the repair is a restoration, not a new
@@ -3148,6 +3152,7 @@ def build_target(
         last_measured: AttemptRecord | None = None
         # Passing cases per check at the last measurement: the base of each ``+N`` on ``status``.
         case_baseline: dict[str, int] = {}
+        repair_case_baseline: dict[str, int] = {}
         # Loop invariant: each attempt runs one full LLM pass and grades it. A failed pass
         # whose classification is repairable, whose deterministic acceptance score improved,
         # and whose budget remains feeds its diagnostics back and re-runs against the persisted
@@ -3297,6 +3302,7 @@ def build_target(
                             evidence_dir / "repair" / unit.block_id,
                             (*feedback_checks, *regressed_checks),
                         ),
+                        case_baseline=repair_case_baseline,
                     ),
                 )
             if attempt == 0:
@@ -3846,8 +3852,11 @@ def build_target(
                         if checks:
                             _emit(
                                 on_text,
-                                _attempt_acceptance_summary(acceptance, case_baseline),
+                                _attempt_acceptance_summary(
+                                    acceptance, case_baseline, story_by_check
+                                ),
                             )
+                            repair_case_baseline = dict(case_baseline)
                             case_baseline.update(_passed_case_counts(acceptance))
                             if disputed_checks:
                                 # Loud, because silence here would read as coverage the run does

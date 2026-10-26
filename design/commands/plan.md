@@ -342,11 +342,19 @@ three times the configured repair count. `2026-09-18` A defect between two files
 `2026-08-01` · **Drydock computes order; the model declares only `depends:`.** Blocks come from
 `group_blocks`; every story is in exactly one block; `Ungrouped` is fatal.
 
-`2026-10-23` · **Only assembled token cost bounds a block.** Within a partition (phase, type,
-screen/non-screen, language initialization), a ready story merges while the block stays under
-`prompt_target_tokens` and the merge saves at least `block_min_savings`. Acceptance criteria
-count is not a bound. Cost when broken: the 5-criteria cap built ReadingList `20261023.144538`
-as 14 single-story blocks of 3–11K tokens, one model call per story.
+`2026-10-26` · **Dependency gates precede context savings.** A newly computed block packs
+only stories whose prerequisites belong to earlier blocks. Selecting a story no longer unlocks
+its dependents inside that same build call. Independent ready stories still merge according to
+assembled token cost, `prompt_target_tokens`, and `block_min_savings`; no criterion-count cap is
+introduced. Started blocks remain frozen for resume, including their pending members. This revises
+the 2026-10-23 cost-only boundary after CommonMark placed both parsers and terminal verification
+in one execution/repair unit. Genuine dependency chains now require more calls and independently
+measured gates. Planning retains source-defined algorithms and consumed interface invariants in
+story instructions and owning Blueprints rather than reducing them to conformance objectives.
+The runner invocation interface precedes the scoped stories that use it. Tool-free planning
+declares selection probes; `plan verify` executes them, so authoring neither runs tools nor
+invents selected counts. Manifest Contract V15 removes obsolete same-block assembly guidance
+and documents the stack-union packing already implemented.
 
 `2026-10-23` · **No planned block reaches the model's escalation limit.** The absolute ceiling
 (`plan_stack.block_limit_tokens`) is `prompt_warning_tokens`, lowered to 90% of
@@ -744,6 +752,16 @@ exist.
 
 ## Actions
 
+- `2026-10-26` · CommonMark complexity review: two distinct causes must stay separate.
+  Stage 1 collapsed nine proposed behaviors into two parser stories; deterministic grouping then
+  merged these with their dependent executable and terminal gate. Dependency-frontier grouping
+  fixes the second mechanism; preserving source algorithms improves the first authoring contract.
+  Semantic atomicity is not proved by counting covered IDs or assertions. Do not add a universal
+  story-size heuristic or kit-specific parser exception. Verify newly planned Python, Go, API,
+  persistence and conformance kits through Ed's clean UAT runs. Existing started plans keep their
+  original grouping, so resuming the old CommonMark block cannot validate new grouping.
+
+
 - `2026-10-25` · DrydockStats `20261026.011913` (diagnosis `0c9e92e`): acceptance-order guard
   and Stage 1/2 authoring guidance have deterministic regression coverage in
   `tests/test_acceptance_order.py` and `tests/test_plan_verify.py`; 227 targeted tests pass.
@@ -814,6 +832,14 @@ exist.
   record now names the last rejection and any standing blocked Blueprints.
 
 ## Working Notes
+
+- `2026-10-26` · Dependency/reporting cleanup verification: full regression run completed with
+  4,517 passed, two skipped and seven failures. Four refit expectations were updated to preserve
+  sequential ticket gates; two stale status/feedback expectations were corrected; one checkout
+  casing failure was retested from canonical `drydock`. All seven and four additional regressions
+  pass in the final 11-case run. Prompt/memory contracts: 83 passed. Lint, changed-file formatting,
+  wheel build and packaged prompt smoke pass. No UAT or provider call was run. Concurrent gate
+  prerequisite work remains outside this change's commit and verification claim.
 
 - `2026-10-25` · FxRates follow-through verification: full suite observed 4486 passes, two
   skips, and two environment failures (editable package path `drydock` versus caller `Drydock`,

@@ -121,6 +121,12 @@ drydock config set drydock_build_directory "$PROJECTS"
 drydock config show
 ```
 
+Build progress reports checks under their owning story. A suite's `cases=passed/selected`
+and signed `change` belong to that check; scoped and full-suite case counts may overlap.
+Newly planned dependent stories build after their prerequisites have been graded; independent
+ready stories may share a block. Started blocks retain their grouping when resumed.
+The build agent diagnoses and runs targeted tests; Drydock executes the declared acceptance gates.
+
 Bounds on a build's acceptance runs are configurable, and each is also a `drydock build` and
 `drydock uat` flag that overrides the configured value for one run.
 

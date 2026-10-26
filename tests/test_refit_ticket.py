@@ -140,12 +140,10 @@ def test_parse_ticket_name():
     assert parse_ticket_name("SCREEN-A.md") is None
 
 
-def test_successive_tickets_group_by_inherited_context_without_moving_built_work(
-    tmp_path, isolated_config
-):
+def test_successive_tickets_preserve_dependency_gates_and_built_work(tmp_path, isolated_config):
     target = _target(tmp_path)
     manifest_path = target / "MANIFEST.md"
-    # No stack savings: the inherited rules and context alone must justify this grouping.
+    # Shared context cannot remove the delivery gates between successive tickets.
     manifest_path.write_text(
         _MANIFEST.replace("stack: python.md", "rules: local-rules.md"), encoding="utf-8"
     )
@@ -158,7 +156,7 @@ def test_successive_tickets_group_by_inherited_context_without_moving_built_work
 
     plan = DrydockManifest.load(manifest_path, compatibility=True)
     nodes = [plan.node(ticket.story_id) for ticket in tickets]
-    assert [node.block for node in nodes] == [3, 3, 3]
+    assert [node.block for node in nodes] == [3, 4, 5]
     assert [node.depends for node in nodes] == [
         ("home-screen",),
         (tickets[0].story_id,),
@@ -179,7 +177,9 @@ def test_new_ticket_does_not_join_a_partially_built_block(tmp_path, isolated_con
     second = add_ticket(target, "SCREEN-HOME", "# Second\n")
     path = target / "MANIFEST.md"
     plan = DrydockManifest.load(path, compatibility=True)
-    assert plan.node(first.story_id).block == plan.node(second.story_id).block
+    # Preserve a legacy group once any member has started.
+    plan.set_fields(second.story_id, block=str(plan.node(first.story_id).block))
+    plan.set_metadata(blocks="3")
     plan.set_fields(first.story_id, state="closed/implemented")
     plan.save()
     before = DrydockManifest.load(path, compatibility=True)
@@ -219,8 +219,9 @@ def test_plain_refit_regroups_existing_unbuilt_tickets(tmp_path, isolated_config
     second = add_ticket(target, "SCREEN-HOME", "# Second\n")
     path = target / "MANIFEST.md"
     plan = DrydockManifest.load(path, compatibility=True)
-    plan.set_fields(second.story_id, block="4")
-    plan.set_metadata(blocks="4")
+    # Recompute a wholly pending legacy group using the dependency frontier.
+    plan.set_fields(second.story_id, block="3")
+    plan.set_metadata(blocks="3")
     plan.save()
 
     def no_agent(*args, **kwargs):
@@ -230,7 +231,8 @@ def test_plain_refit_regroups_existing_unbuilt_tickets(tmp_path, isolated_config
 
     assert result.exit_code() == 0
     after = DrydockManifest.load(path, compatibility=True)
-    assert after.node(first.story_id).block == after.node(second.story_id).block == 3
+    assert after.node(first.story_id).block == 3
+    assert after.node(second.story_id).block == 4
 
 
 def test_plain_refit_restores_manifest_on_optimization_failure(

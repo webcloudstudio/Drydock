@@ -12,12 +12,13 @@ from pathlib import Path
 import pytest
 
 from drydock.acceptance import MEMORY_FAILURE_PREFIX, UNVERIFIED_FAILURE_PREFIX, AcceptanceRunResult
-from drydock.build_plan import parse_build_plan, stale_applied_specs
+from drydock.build_plan import PlanBlock, parse_build_plan, stale_applied_specs
 from drydock.build_run import (
     INTERRUPTED_VERIFICATION_PREFIX,
     PREPASSED_FINDING,
     UNEXAMINED_FINDING,
     _assertion_summary,
+    _attempt_acceptance_summary,
     _classify_failure,
     _failed_case_lines,
     _failed_cases,
@@ -1155,7 +1156,7 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     assert "RED: foundation-file" in evidence
     assert "## Post-build programmatic acceptance" in evidence
     assert "PASS: foundation-file" in evidence
-    assert "    status  1/1" in messages
+    assert any(message.startswith("    status  1/1 checks passed") for message in messages)
     assert not any("Unit Tests" in message for message in messages)
 
 
@@ -2816,10 +2817,10 @@ assert score == 4
 
     assert result.steps[0].status == "built"
     assert calls == [0, 1, 2, 3]
-    assert "    status  0/1  conformance(1/4)" in messages
-    assert "    status  0/1  conformance(2/4 +1)" in messages
-    assert "    status  0/1  conformance(3/4 +1)" in messages
-    assert "    status  1/1" in messages
+    assert "check=conformance  FAIL  cases=1/4 passed" in "\n".join(messages)
+    assert "check=conformance  FAIL  cases=2/4 passed  change=+1" in "\n".join(messages)
+    assert "check=conformance  FAIL  cases=3/4 passed  change=+1" in "\n".join(messages)
+    assert any(message.startswith("    status  1/1 checks passed") for message in messages)
 
 
 def test_repair_loop_counts_subcase_progress_a_silent_criterion_never_printed(tmp_path):
@@ -2871,10 +2872,10 @@ assert report["summary"]["fail"] == 0
 
     assert result.steps[0].status == "built"
     assert calls == [0, 1, 2, 3]
-    assert "    status  0/1  conformance(1/4)" in messages
-    assert "    status  0/1  conformance(2/4 +1)" in messages
-    assert "    status  0/1  conformance(3/4 +1)" in messages
-    assert "    status  1/1" in messages
+    assert "check=conformance  FAIL  cases=1/4 passed" in "\n".join(messages)
+    assert "check=conformance  FAIL  cases=2/4 passed  change=+1" in "\n".join(messages)
+    assert "check=conformance  FAIL  cases=3/4 passed  change=+1" in "\n".join(messages)
+    assert any(message.startswith("    status  1/1 checks passed") for message in messages)
 
 
 def test_interrupted_agent_verification_is_still_graded_and_counts_as_progress(tmp_path):
@@ -2929,7 +2930,7 @@ assert score == 4
     assert result.steps[0].status == "built"
     assert len(prompts) == 4
     assert "agent interrupted its own verification (advisory) " in "\n".join(messages)
-    assert "    status  0/1  conformance(2/4 +1)" in messages
+    assert "check=conformance  FAIL  cases=2/4 passed  change=+1" in "\n".join(messages)
     assert not any(line.startswith("    status  not measured") for line in messages)
     assert not any("no acceptance progress" in line for line in messages)
     # The pass after the interruption is handed the measured failure, not an empty queue.
@@ -3226,7 +3227,8 @@ def test_console_shows_what_a_failed_check_was_doing(tmp_path):
 
     console = "\n".join(messages)
     assert "    status  0/1" in console
-    assert "suite-conformance(365/368)" in console
+    assert "story=foundation" in console
+    assert "check=suite-conformance  FAIL  cases=365/368 passed" in console
     assert "suite-conformance: The scoped conformance suite passes." in console
     # Both streams reach the screen: the tally that makes the defect legible, and the
     # runner's own note about what it was invoked against.
@@ -5245,7 +5247,7 @@ def test_repair_feedback_lists_every_failing_case_and_its_full_output(tmp_path):
     assert "      Lists: 301" in text
     assert "      Tabs: 7" not in text
     assert f"    full output: {log}" in text
-    assert "read\nit before editing" in text
+    assert "before editing; it is the complete previous deterministic result" in text
 
 
 def test_failing_case_inventory_is_bounded_per_check():
@@ -5302,3 +5304,102 @@ def test_repair_feedback_stacks_only_for_resumed_sessions(tmp_path, provider, st
     log = target_dir / "evidence" / "repair" / "foundation" / "foundation-file.log"
     assert log.is_file()
     assert f"full output: {log}" in last
+
+
+def test_attempt_status_attributes_each_check_to_its_story_without_summing_cases():
+    from dataclasses import replace
+
+    results = tuple(
+        AcceptanceRunResult(
+            check_id=check,
+            source=source,
+            intent="",
+            passed=False,
+            return_code=1,
+            stdout=f"{passed} passed, {total - passed} failed",
+            stderr="",
+        )
+        for check, source, passed, total in (
+            ("blocks", "BLOCKS.md", 261, 286),
+            ("inlines", "INLINES.md", 252, 356),
+            ("whole", "VERIFY.md", 526, 655),
+        )
+    )
+    owners = {
+        r.check_id: PlanBlock("story", n, r.check_id, owner, "pending")
+        for n, (r, owner) in enumerate(
+            zip(results, ("block_parser", "inline_parser", "release")), 1
+        )
+    }
+    text = _attempt_acceptance_summary(
+        results, {"blocks": 282, "inlines": 311, "whole": 606}, owners
+    )
+    assert (
+        "story=block_parser  0/1 checks passed\n        check=blocks  FAIL  cases=261/286 passed  change=-21"
+        in text
+    )
+    assert (
+        "story=inline_parser  0/1 checks passed\n        check=inlines  FAIL  cases=252/356 passed  change=-59"
+        in text
+    )
+    assert (
+        "story=release  0/1 checks passed\n        check=whole  FAIL  cases=526/655 passed  change=-80"
+        in text
+    )
+    assert "not additive" in text
+    # Passing, disputed and unverified checks remain visible under the same owner.
+    variants = (
+        replace(results[0], passed=True),
+        replace(results[1], binding=False),
+        replace(results[2], skipped=True),
+    )
+    text = _attempt_acceptance_summary(variants, story_by_check=owners)
+    assert "1/3 checks passed" in text
+    for outcome in ("PASS", "DISPUTED", "UNVERIFIED"):
+        assert outcome in text
+
+
+def test_repair_feedback_prioritizes_lost_cases_before_remaining_work():
+    from types import SimpleNamespace
+
+    failure = AcceptanceRunResult(
+        "conformance", "FEATURE.md", "", False, 1, "526 passed, 129 failed", ""
+    )
+    text = _render_repair_feedback(
+        SimpleNamespace(), (failure,), None, (), {}, case_baseline={"conformance": 606}
+    )
+    assert "606 -> 526 passing cases (-80)" in text
+    assert text.index("Case regressions") < text.index("Still failing")
+    assert "Drydock runs every declared acceptance check" in text
+    assert "silence alone is not evidence of a hang" in text
+
+
+def test_repair_loop_sends_measured_case_losses_to_the_next_agent(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "## Programmatic Acceptance\n\n=== AC conformance ===\n"
+        "Intent: All four supplied cases pass.\n\n"
+        "from pathlib import Path\n"
+        'score = int(Path("score.txt").read_text())\n'
+        'print(f"{score} passed, {4-score} failed")\n'
+        "assert score == 4\n=== END AC conformance ===\n",
+        encoding="utf-8",
+    )
+    prompts = []
+
+    def runner(prompt, working_directory, **kwargs):
+        prompts.append(prompt)
+        score = (3, 2, 4)[kwargs["parameters"]["attempt"]]
+        (Path(working_directory) / "score.txt").write_text(str(score), encoding="utf-8")
+        return FakeResult(text=_success_report(changed=("score.txt",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=2,
+    )
+    assert result.steps[0].status == "built"
+    assert "3 -> 2 passing cases (-1)" in prompts[2]
