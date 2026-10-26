@@ -1626,8 +1626,9 @@ class TestLlmOverrideFlags:
         assert rc == 0, err
         assert seen["kwargs"]["conform"] is False
 
-    def test_an_unbuildable_plan_exits_zero_and_names_the_verify_repair_loop(
-        self, tmp_target_root, isolated_config, monkeypatch
+    @pytest.mark.parametrize("recovery", ["drydock plan repair Proj", "drydock plan Proj"])
+    def test_an_unbuildable_plan_exits_zero_and_preserves_recovery_scope(
+        self, tmp_target_root, isolated_config, monkeypatch, recovery
     ):
         # ``plan`` writes, ``plan verify`` judges, ``plan repair`` fixes. FxRates
         # 20261024.015228 halted on plan's exit 1 before its own repair stage could run.
@@ -1652,7 +1653,7 @@ class TestLlmOverrideFlags:
                 warnings=(),
                 plan_mode="full-rewrite",
                 conformed_files=(),
-                unbuildable="plan verify: Proj\n  1 criteria cannot run as written\n",
+                unbuildable=f"plan verify: Proj\n  1 criteria cannot run as written\n  Run: {recovery}\n",
             )
 
         monkeypatch.setattr("drydock.planning_session.create_plan", fake_create_plan)
@@ -1662,7 +1663,10 @@ class TestLlmOverrideFlags:
         assert rc == 0, err
         assert "Plan written but not buildable" in out
         assert "1 criteria cannot run as written" in out
-        assert "drydock plan verify Proj || drydock plan repair Proj" in out
+        assert f"Run: {recovery}" in out
+        assert "|| drydock plan repair" not in out
+        if recovery == "drydock plan Proj":
+            assert "drydock plan repair Proj" not in out
 
     def test_plan_rejects_a_cross_provider_lineage_model(self):
         rc, _out, err = run_cli(

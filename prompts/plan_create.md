@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261026 V54
+version: 20261026 V55
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -10,16 +10,30 @@ output: TOPOLOGY.md, DECISIONS.json
 
 # Agent for: planning session synthesis
 
-Every story's acceptance gate uses only capabilities delivered in its own build block or earlier.
-Declare lower-level function tests against the interface that story provides. Place CLI integration
-criteria after all invoked commands exist, preserving end-to-end coverage on those later stories.
-For example, pure filters precede reports: filter stories test filter functions, then report stories
-verify the filters through report output. Do not make filters depend on reports that depend on them.
-When a staged runner requires an executable or API entry point, establish that invocation
-interface before the scoped implementation stories. Its initial acceptance proves only the
-interface contract; later stories add behavior and gate their own slices through it.
-Declare each concrete CLI command as `provides: <executable> <subcommand>` so verification can compare
-its availability with criterion invocations; do not claim an unimplemented command on an earlier story.
+## Authoring method and guardrails
+
+1. Read the source's behavior, processing stages and ordering constraints before choosing story
+   boundaries. Preserve required algorithms and stage invariants in the owning instructions.
+2. Give each story one delivered capability and a concrete interface. Name required product
+   interfaces in `consumes:` using the provider's exact `provides:` name, and declare a `depends:`
+   path to that provider. An executable's existence does not supply every behavior behind it.
+3. Turn source-required sequencing into dependency edges, including prerequisites needed by the
+   acceptance fixtures. For example, a formatter consumes parsed records, not merely the CLI
+   that launches it. Independent stories may share a block; dependent work needs separate gates.
+4. Author acceptance against the delivered interface. If a corpus slice requires later features,
+   test the current capability directly and put the cross-feature examples on a later integration
+   story. Keep their coverage; do not invent dependencies that cycle back to a consumer.
+5. Review the declaration for missing source stages, undeclared inputs and acceptance that needs
+   future work. Drydock validates the declaration and computes order, blocks and stack modes.
+
+These are reusable planning rules. Do not add project-specific exemptions or claim that passing
+static verification proves product correctness. Stage 1 emits the topology and decisions only;
+Stage 2 authors the specifications and executable criteria under `BLUEPRINTS_CONTRACT.md`.
+
+Establish a staged runner's executable/API interface before its scoped implementation stories;
+its initial acceptance proves only that interface contract. Declare each concrete CLI command as
+`provides: <executable> <subcommand>` so verification can compare its availability with invocations.
+Do not claim commands before their implementation or require later behavior in an earlier gate.
 
 Map each required technical or behavioral ID in structured `SEA_TRIALS.md` into the implementing
 story's `accepts:` field. Never invent or rename Sea Trial IDs. Do not tag a Programmatic
@@ -98,8 +112,9 @@ decomposition and the default work breakdown. Preserve their proposed story boun
 source filenames unless the complete planning context shows that a story is non-atomic,
 inaccurate, contradictory, incomplete, or assigns content to the wrong owner. When correction is
 necessary, split, merge, move, replace, or reorder the affected scope. Rewrite every resulting
-story as a governed specification using all planning inputs; source structure is strong evidence
-for the story boundary, but source content is not authoritative.
+story as a governed specification using all planning inputs. Source structure informs story
+boundaries; resolve source requirements using the declared precedence rather than copying the
+source document layout into the work graph.
 
 Preserve source-defined algorithms and interface invariants in the owning story
 instructions and Blueprint. Do not reduce an algorithm to "pass the suite" or a list of syntax
@@ -899,11 +914,10 @@ Required action:
 - Do not emit empty authored files.
 - Keep the Blueprint authoritative and durable; keep execution state in `MANIFEST.md`.
 
-Do not audit your own output for delimiter balance, block completeness, topological consistency, or
-frontier non-emptiness. Drydock checks all of it deterministically after the response and reports a
-precise defect. Spend your budget on the four jobs that require judgment: authoring specification
-content, authoring programmatic acceptance alongside it, resolving source and stack conflicts by
-precedence, and surfacing questions and build failure modes.
+Review the authored relationships and emit complete artifacts with exact delimiters. Do not
+compute the schedule or claim validation results: Drydock checks structure, graph consistency
+and buildability after the response. Use returned defects to correct their owning declarations
+or criteria without weakening source requirements.
 
 The governing contracts, planning artifacts, and source materials follow below.
 

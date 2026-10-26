@@ -26,6 +26,12 @@ was given.
 
 ## Details
 
+`2026-10-26` · Manifest/Blueprint authoring contracts now agree with the reader: executable
+Programmatic Acceptance is authored in each owning Blueprint and referenced by Manifest fields.
+The planner reviews semantic prerequisites, while Drydock computes the schedule and rejects
+known consumed interfaces without a prerequisite path. Source-stage sequencing remains explicit
+in authored dependencies; a shared launcher alone does not supply its later behaviors.
+
 `2026-10-25` · First-use stack mode excludes a file only when it declares `Type: guidance`,
 no foundation kind, and no foundation tier (absent/application). This removes common.md's false
 unfounded-stack warning while keeping Bootstrap's explicit interface tier and FastAPI's runtime

@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261026 V19
+version: 20261026 V20
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -145,9 +145,9 @@ Forbidden:
 - touching a criterion that was not named in its own block;
 - editing any other part of a specification.
 
-If a criterion asserts something you believe is wrong about the product, **repair it anyway and
-say nothing**. A criterion that runs and fails is useful evidence. A criterion that cannot run is
-none. Build-time repair handles the rest.
+Preserve the product requirement and assertion intent. Mechanical repair does not decide a new
+expected outcome, move coverage or change dependencies. If the named defect requires those
+changes, follow Impossible repair and state the required source-aware authoring action.
 
 ## Impossible repair
 

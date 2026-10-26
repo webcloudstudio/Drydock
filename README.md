@@ -200,7 +200,17 @@ JSON array elements; use it with runners whose listing mode emits JSON, rather t
 lines. Probes also resolve `os.path.abspath("literal-path")` against the criterion working
 directory without evaluating criterion code. Other unresolved command expressions fail as
 `unresolved-probe-arguments` and are reported without a model repair call. Probe repairs receive
-the implicated runner source and preserve the criterion's scope.
+the implicated runner source and preserve the criterion's scope. Planning now applies this same
+probe validator before finalizing the plan and sends rejected criteria through bounded source-aware
+artifact repair. An exhausted authoring repair leaves the Manifest draft. Recovery advice directs
+source/ordering defects to `drydock plan <Target>` and mechanical defects to `plan repair`.
+
+Declared product interfaces also constrain the work graph: when `consumes:` exactly matches a
+`provides:` entry, the consumer needs a direct or transitive prerequisite path to a provider.
+External inputs remain valid, and independent stories may still share a block. The planner must
+carry source-required stages into these declarations; static validation cannot infer omitted
+semantics. Executable criteria live in each owning Blueprint's Programmatic Acceptance section;
+the Manifest references them through `implements:` and `acceptance:`.
 Criteria must observe the delivered application through its declared interfaces. A check that
 passes without the product remains `PREBUILD_PASSES` and cannot verify its story. String
 calculations compared with literal known answers are not flagged as retyped expressions;
@@ -217,7 +227,7 @@ asserts the returned exit code.
 | **init** | `drydock init <Target>` | Initialize Workspace<br>**Creates:** `targets/<Target>` |
 | **import** | `drydock import <Target>` | import source material<br>**Creates:** `targets/<Target>/sources` |
 | **analyze** | `drydock analyze <Target>` | Decompose into stories, acceptance criteria, questions, and blockers.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, questionnaires. |
-| **plan** | `drydock plan <Target>` | Create story blueprints and a graph datbase.<br>**Creates:** `blueprints/` and `MANIFEST.md`.<br>`drydock plan verify <Target>` reports acceptance criteria that cannot run; `drydock plan repair <Target>` makes them runnable in one pass. Citation repair receives numbered source context, preserves the proof, and revalidates the citation; already-binding numeric and plain-text expectations require resolving citations without literal derivation. Go CLI criteria use `drydock_go.cli_runner(*args)` with separate string arguments; planning routes `go run`, direct package-directory launches, and invalid list/tuple arguments through artifact repair before writing the plan. Structured CLI output criteria parse CSV/JSON and assert declared data against fixture inputs. |
+| **plan** | `drydock plan <Target>` | Create story blueprints and a graph datbase.<br>**Creates:** `blueprints/` and `MANIFEST.md`.<br>`drydock plan verify <Target>` reports acceptance criteria that cannot run; `drydock plan repair <Target>` repairs supported mechanical faults; source-authoring and dependency faults require replanning. Citation repair receives numbered source context, preserves the proof, and revalidates the citation; already-binding numeric and plain-text expectations require resolving citations without literal derivation. Go CLI criteria use `drydock_go.cli_runner(*args)` with separate string arguments; planning routes `go run`, direct package-directory launches, and invalid list/tuple arguments through artifact repair before writing the plan. Structured CLI output criteria parse CSV/JSON and assert declared data against fixture inputs. |
 | **build** | `drydock build <Target>` | Executes the refit-reconciled Manifest frontier, gated by deterministic acceptance criteria. Failure reports show the complete block acceptance tally and retain criterion disputes across repairs, directing verification before another build. It exits with an error when any applied Blueprint changed or disappeared; run `drydock refit <Target>` first. Test-scoped Python acceptance dependencies are automatically authorized; runtime dependencies and external executables remain governed.<br>**Creates:** `\$drydock_build_directory/<Target>` with working software. |
 | **refit** | `drydock refit <Target>` | Reconcile edited Blueprints to the Manifest dependency graph; reset only their affected build frontier. Change tickets remain available for additive work. `drydock refit add <Target> <Blueprint> <File>` appends the next REFIT ticket, `blueprint/<Blueprint>_refit_<NNN>.md`, and its Manifest story with inherited context, stack, and Rigging rules. Both commands automatically optimize unbuilt work in computed Manifests by shared context savings, including tickets from earlier calls. Started blocks retain their membership and numbering.<br>**Updates:** `MANIFEST.md`; continue with a `build`. |
 

@@ -41,6 +41,8 @@ from drydock.acceptance import (
     fenced_acceptance_defect,
     parse_programmatic_acceptance_text,
     resolve_citation,
+    selection_probe_reason,
+    selector_recognition,
     split_fused_acceptance_boundary,
     uncalled_function_defect,
     unresolved_globals,
@@ -155,6 +157,7 @@ from drydock.prompt_assembly import (
     contextual_fenced_parts,
     contextual_markdown_parts,
     estimate_tokens,
+    fenced_body,
     lines_part,
     part,
     section_heading_part,
@@ -4165,6 +4168,14 @@ def _validate_plan_output(
         )
         + tuple(("acceptance-malformed", defect) for defect in malformed_acceptance)
         + tuple(
+            (kind, MalformedAcceptance(check.check_id, name, reason))
+            for name in sorted(blocks)
+            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+            for check in _acceptance_checks(blocks[name], source=name)
+            if (probe := selection_probe_reason(check, blueprint_dir=blueprint_dir)) is not None
+            for kind, reason in (probe,)
+        )
+        + tuple(
             ("staged-asset-env", defect)
             for defect in _staged_asset_env_defects(blocks, blueprint_dir)
         )
@@ -5123,14 +5134,19 @@ def _artifact_repair_assembly(
         "Drydock accepted the Plan response shape but rejected the emitted Blueprint artifact(s)",
         "below. Repair only the deterministic defect. Preserve all unrelated content, contracts,",
         "headings, decisions, and acceptance assertions byte-for-byte where possible.",
-        "Do not remove or weaken a valid assertion while adding a missing one. Every artifact with",
-        "a programmatic surface retains at least two concrete Python acceptance assertions. Every",
+        "Preserve valid assertions and the required behavior coverage. Keep a supplied-suite gate",
+        "as a suite gate; never add vacuous assertions to satisfy a count. Every",
         "DECISIONS.json is the sole decision disclosure surface; do not emit Markdown question sections.",
         "Each criterion is an isolated script: import or assign every name inside that criterion,",
         "including Decimal and rounding constants. Declare every external import and transport",
         "inside its AC block. Preserve published text without converting it into an arithmetic oracle.",
         "Derive expected row order from fixture data and the declared sort keys, including ties.",
         "Server-start criteria use bounded endpoint/port readiness probes and retain diagnostics.",
+        "For a selection-probe defect, preserve the product, corpus path, selected scope and",
+        "assertions. Author runner arguments as string literals or literal string bindings;",
+        'canonical os.path.abspath("literal-path") with import os is also supported. Avoid',
+        "getcwd f-strings, dynamic imports and runtime argument construction. Use only listing",
+        "flags and count formats the supplied runner implements; never remove the probe.",
         "",
         *emission_contract_lines(names),
         "",
@@ -5176,6 +5192,21 @@ def _artifact_repair_assembly(
             f"Original {name}, in the same form your reply must use:",
             wrap_artifact(name, blocks[name]),
         ])
+    if target_dir is not None:
+        blueprint_dir = target_dir / "blueprint"
+        runners = {
+            recognized[0]
+            for name in names
+            for check in _acceptance_checks(blocks[name], source=name)
+            if (recognized := selector_recognition(check.code, blueprint_dir)) is not None
+        }
+        for relative in sorted(runners):
+            path = blueprint_dir / relative
+            lines.extend([
+                "",
+                f"Read-only runner contract: {relative}",
+                fenced_body(path.read_text(encoding="utf-8"), language="python"),
+            ])
     return PromptAssembly(parts=(lines_part("Plan artifact repair", lines, kind="repair"),))
 
 
@@ -6247,6 +6278,7 @@ def create_plan(
     # Resolve validation and its transitive imports before any model call or plan rewrite.
     # Loading it only after authoring can combine a cached dependency with edited source.
     try:
+        from drydock.plan_verify import recovery_commands
         from drydock.plan_verify import render as render_verify
         from drydock.plan_verify import verify as verify_plan
     except ImportError as exc:
@@ -7369,7 +7401,7 @@ def create_plan(
             detail=render_verify(buildability),
             execution_id=exec_id,
             evidence=log_dir,
-            recovery=f"Run: drydock plan repair {target}",
+            recovery="\n".join(f"Run: {command}" for command in recovery_commands(buildability)),
             detail_limit=None,
         )
         _refresh_chair(target_dir)

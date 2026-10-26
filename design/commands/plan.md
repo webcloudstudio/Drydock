@@ -25,6 +25,47 @@ written.
 
 ## Details
 
+`2026-10-26` · Planning reliability follow-through for CommonMark `20261026.173709`:
+merged-output authoring validation runs the same `selection_probe_reason` as terminal verification
+before writing the plan or attributing lineage. All five probe defect kinds enter the existing
+bounded, source-aware artifact repair loop. Re-emitted repairs are revalidated; exhaustion retains
+the normal draft/unbuildable result. Repair context includes each implicated runner once, never
+the corpus or unrelated sources. The resolver remains restricted to literals, literal bindings
+and canonical `os.path.abspath("literal-path")`; authoring uses those forms instead of expanding
+an evaluator for every model-generated expression. Mechanical repair still cannot rewrite an
+unresolved command expression.
+
+`plan_graph.interface_dependency_defects` requires a direct or transitive `depends` path to an
+exactly named `provides` owner for each `consumes` entry with a provider in the graph. Self-use,
+any reachable alternative provider and external inputs without a provider remain legal. The same
+check runs in Stage 1 graph admission and `plan verify` on existing typed Manifests. Dependencies
+are never inferred from prose, file names or domain-specific rules; omitted source semantics
+remain an authoring limitation. Independent ready stories still group normally.
+
+`requires_replanning` owns the mechanical/source-authoring boundary, shared by repair execution,
+verifier recovery commands and persisted planning recovery. Unresolved probe arguments, ordering,
+interface dependencies, oracle/readiness faults, missing criteria/operation coverage and database
+faults recommend `plan`, not an ineffective mechanical retry. Mixed faults list both commands.
+
+Prompt review corrects conflicting responsibility statements: the model reviews source stages,
+interfaces and semantic prerequisites while Drydock computes and validates the schedule. Services
+are reorderable only within their prerequisites. Programmatic Acceptance lives in its owning
+Blueprint, referenced by Manifest `implements`/`acceptance`, not in Manifest assertion blocks.
+Stage 1 carries a short ordered authoring method; continuation carries the supported probe forms
+and criterion/artifact delimiter distinction. Mechanical repair no longer says to repair a
+suspected incorrect criterion silently. Master specification unchanged; no UAT evidence is edited.
+Regression coverage includes complete temporary-Target correction/exhaustion, valid-plan repeat,
+probe admission/verification parity, transitive/alternative providers and unchanged independent
+story grouping. This establishes local contracts, not live model convergence or ten-kit release
+acceptance.
+
+Local verification: 23 reliability regressions pass; the final focused planning/CLI run passes
+34 tests. The full suite reports 4556 passed and 2 skipped with one obsolete prompt wording
+assertion; that assertion now checks source precedence, and all 83 prompt/header/design tests
+pass on rerun. Lint, repository formatting (288 files) and diff checks pass. Wheel and sdist build;
+isolated wheel imports/prompt versions pass, and packaged Python modules and prompts match source
+byte-for-byte. No model calls or UAT runs were made.
+
 `2026-10-26` · Planning imports `plan_verify.render` and `plan_verify.verify`, including the
 validator's transitive module imports, after input/stack gates and before any model call or plan
 rewrite. The same function bindings serve terminal verification. `ImportError` (including
@@ -178,7 +219,8 @@ drydock plan verify <Target>     deterministic, read-only, no LLM call
 drydock plan repair <Target>     one LLM pass making unrunnable criteria runnable
 ```
 
-Intended workflow: `drydock plan <Target> && { drydock plan verify <Target> || drydock plan repair <Target>; }`.
+Workflow: run `drydock plan <Target>`, then `drydock plan verify <Target>` and follow its
+defect-specific recovery commands. CLI completion and status preserve that recovery scope.
 
 `--plan-override-model` replaces `--model` and the configured default for every `plan` form. It is
 read before parsing, in any operand position, and refused with exit `2` by every command except
@@ -490,7 +532,7 @@ any `:` in the name) is refused the same way, naming the line and the `| Field |
 *Broken:* FxRates `20261024.162029` wrote fields inline, declared no Input fields, and was told
 only that its Match fields were "not Input fields" for three passes.
 
-`2026-10-24` · **No criterion imports `persistence` before the DATABASE step.** `plan verify` refuses (`persistence-order`, routed to `plan repair`) a criterion that imports `persistence` in a Blueprint implemented by a story whose `block:` precedes that of the story implementing `DATABASE.md`. A story in the DATABASE block is not earlier. *Broken:* FxRates `20261024.073528` put `architecture-boundary` (`open_database("").rates`) on `foundation`, block 1; its builder hand-wrote `schema.sql`, and block-1 failed unexecuted.
+`2026-10-24` · **No criterion imports `persistence` before the DATABASE step.** `plan verify` refuses (`persistence-order`, routed to source-aware `plan`) a criterion that imports `persistence` in a Blueprint implemented by a story whose `block:` precedes that of the story implementing `DATABASE.md`. A story in the DATABASE block is not earlier. *Broken:* FxRates `20261024.073528` put `architecture-boundary` (`open_database("").rates`) on `foundation`, block 1; its builder hand-wrote `schema.sql`, and block-1 failed unexecuted.
 
 `2026-10-23` · **Foundational stories carry no `covers:` or `accepts:`.** `parse_topology` drops
 both from a `type: foundational` story and from the story implementing `DATABASE.md`. The Feature
@@ -764,6 +806,11 @@ exist.
 
 
 ## Actions
+
+- `2026-10-26` · Reliability changes for CommonMark `20261026.173709` are verified with temporary
+  Targets and injected runners. Ed's fresh ten-kit release matrix must show clean planning and
+  complete builds; static checks cannot prove undeclared source dependencies or model convergence.
+  Do not mark ledger findings fixed from unit tests alone.
 
 - `2026-10-26` · CommonMark complexity review: two distinct causes must stay separate.
   Stage 1 collapsed nine proposed behaviors into two parser stories; deterministic grouping then

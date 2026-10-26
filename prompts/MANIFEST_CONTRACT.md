@@ -1,7 +1,7 @@
 ---
 name: Manifest Contract
 description: Contract governing the format, story types, field semantics, lifecycle states, block grouping, and execution rules for `MANIFEST.md` — the single generated executable build plan for a Drydock Target.
-version: 20261026 V15
+version: 20261026 V16
 ---
 
 ## Overview
@@ -49,12 +49,12 @@ The Manifest is a list of stories. A `type` field is the only variation.
 | Type | Contains | Runs |
 |---|---|---|
 | `foundational` | Foundation and scaffolding | Early; work depends on it |
-| `service` | Everything that does work | Reorderable |
+| `service` | Everything that does work | After its prerequisites |
 | `feature` | Acceptance criteria plus assembly and intent; no implementation instructions | After its members |
 
 Foundational work is structure and scaffolding. Standing up S3 and proving the connection is
 architecture. Everything S3 subsequently does is a service. Everything that is not architecture is
-a service, and services are reorderable because they carry no structural debt. Much of what source
+a service. Services may be reordered only when their declared prerequisites permit it. Much of what source
 material labels architecture is service work: the web server and the database are foundation; a
 voice service interpreter is a service wearing an architecture filename.
 
@@ -149,9 +149,16 @@ The model authors relationships, the actual topology (the story dependency graph
 topology (phases), and Programmatic Acceptance. Drydock verifies all of it, groups blocks, orders
 the work, and serializes the Manifest.
 
-The model never sorts, never checks its own consistency, and never reasons about a position in an
-order it has not computed. It states what each story requires and provides; Drydock does the rest.
+The model declares and reviews what each story requires and provides, including source-required
+processing order and prerequisites exercised by acceptance. It does not compute the schedule.
+Drydock validates the declaration and computes order and grouping.
 Contradictions become a deterministic error with a precise message instead of a shape failure.
+
+Use the same exact interface name in a provider's `provides:` and its consumer's `consumes:`.
+When an interface has a provider in this plan, the consumer has a direct or transitive `depends:`
+path to a provider. External inputs without a provider remain legal. A shared executable alone
+does not declare the processing stages behind it; preserve their input/output contracts and
+source-required dependency edges. File order is not a dependency.
 
 `drydock plan create` therefore does not emit this file. It emits a flat `TOPOLOGY.md` declaration
 carrying the Model-authored fields below — one `## story <id>` heading per governed specification,
@@ -232,8 +239,9 @@ builder-when-it-should-be-consumer merely costs tokens.
 
 Acceptance lives in one place per audience:
 
-- **Programmatic Acceptance** — executable assertions carrying pass/fail state. Lives in
-  `MANIFEST.md`. Not human-readable, not human-editable, regenerated wholly by every plan run.
+- **Programmatic Acceptance** — executable assertions authored in each owning Blueprint's
+  `## Programmatic Acceptance` section. The Manifest references that Blueprint with `implements:`
+  and declares `acceptance: yes`; execution evidence carries the measured results.
 - **User Acceptance** — human-readable intent. Lives in the Blueprint specification.
 
 The discriminator for every other fact is the same question: **does the fact describe the artifact
@@ -242,9 +250,9 @@ or the schedule?**
 | Fact | Home | Why |
 |---|---|---|
 | `Provides`, `Consumes`, `Depends On` | Blueprint header | Describe the file — what it offers and requires |
-| Story `type` | Manifest | Computed, machine-focused |
+| Story `type` | Topology, projected into Manifest | Authored responsibility |
 | `Phase` | Manifest | Describes when the file is built, not the file |
-| Programmatic Acceptance | Manifest | Machine-focused; nobody should hand-edit it |
+| Programmatic Acceptance | Owning Blueprint | Executable checks authored with the behavior |
 | User Acceptance, `## Questions` | Blueprint | Human intent |
 
 Durability is not a discriminator: the Blueprint does not survive a replan. Only the `## Questions`

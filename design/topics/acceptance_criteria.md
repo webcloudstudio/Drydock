@@ -24,6 +24,13 @@ and measured something; everything else is reported, not charged.
 
 ## Details
 
+`2026-10-26` · Staged selection probes share their executable validator between source-aware
+planning admission and `plan verify`; a rejected expression can be reauthored inside the bounded
+artifact repair loop before serialization and lineage. Mechanical repair preserves its narrower
+scope. Recovery routing is shared with execution so authoring faults recommend replanning.
+The probe contract explicitly names supported literal arguments and canonical abspath; runtime
+f-strings are not evaluated to prove selection. Prompt examples use supported path forms.
+
 `2026-10-25` · Ordered-oracle and process-readiness checks live in
 `acceptance_oracle.py` and run at admission and verification without executing proofs. Ordered
 rows are checked only when the declared keys, projected columns, and fixture values are statically

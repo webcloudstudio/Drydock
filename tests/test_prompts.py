@@ -241,7 +241,8 @@ class TestInputTokens:
         assert "completed planning decomposition and the default work breakdown" in normalized
         assert "Preserve their proposed story boundaries and mapped" in normalized
         assert "split, merge, move, replace, or reorder the affected scope" in normalized
-        assert "source content is not authoritative" in normalized
+        assert "resolve source requirements using the declared precedence" in normalized
+        assert "source content is not authoritative" not in normalized
         assert "planning seed, not as the final artifact" not in normalized
 
     def test_build_prompt_requires_dependency_verification_before_install(self):

@@ -1,7 +1,7 @@
 ---
 name: plan_continue
 description: Stage 2 Blueprint authoring instruction appended after plan_create has accepted and frozen a complete TOPOLOGY.md declaration.
-version: 20261025 V9
+version: 20261026 V10
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
 output: A bounded batch of Blueprint specification files
@@ -70,6 +70,23 @@ Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated 
   that precedes report implementations tests filtering directly; the later reports also verify
   the filters through their CLI output. Never replace product execution with a local substitute,
   drop end-to-end coverage, or introduce a dependency cycle to make an early gate pass.
+
+## Acceptance authoring review
+
+For each criterion, identify the delivered interface, required setup, source-derived expectation
+and failure diagnostics before writing code. Keep imports and tooling declarations inside the
+criterion. Close it with `=== END AC <id> ===`; that token never closes an artifact.
+
+For staged corpus checks, follow `BLUEPRINTS_CONTRACT.md`: declare `Suite: scoped`, a supported
+listing `Probe:` and its `Probe Count:` protocol. Use literal runner arguments or literal string
+bindings, including the product and corpus paths. With `import os`, canonical
+`os.path.abspath("program")` is also supported. Do not construct probe arguments with getcwd
+f-strings, dynamic imports or runtime expressions. Drydock runs listing probes; you author them
+without tools and never invent counts. Print captured output before asserting the runner's exit.
+
+The frozen topology is the availability contract. A criterion must not require an undeclared
+later capability merely because the same executable eventually exposes it. Author direct checks
+for this story's interface and preserve cross-feature coverage on its declared integration story.
 
 ## Blocked Blueprints
 

@@ -2,12 +2,12 @@
 
 Paired with ``drydock plan verify``::
 
-    drydock plan verify <Target> || drydock plan repair <Target>
+    drydock plan verify <Target>
+    # Follow its recovery commands: mechanical repair or source-aware replanning.
 
-Verification is free, so it runs every time; repair costs one model call, so the ``||`` idiom
-pays for it only when verify's exit status says the plan is not fit to build — i.e. only when
-there is a defect. Verify's warnings (advisories) are never sent to repair and never trigger a
-call on their own; repairing an advisory is out of this command's scope.
+Verification reports the applicable recovery scope. Repair makes model calls only for supported
+mechanical faults; source-authoring and graph faults remain unchanged and require replanning.
+Warnings alone never trigger a repair call; repairing an advisory is outside this command's scope.
 
 One call for the whole pass, not one call per file. Every defective criterion across every
 Blueprint file is sent in a single request, each as its own minimal fenced block. Citation repair
@@ -60,7 +60,13 @@ from drydock.acceptance import (
 from drydock.errors import SpecificationError
 from drydock.harness_exits import go_cli_defect
 from drydock.llm import failure_detail, run_prompt
-from drydock.plan_verify import CRITERIA_MISSING, OPERATION_UNTESTED, Defect, verify
+from drydock.plan_verify import (
+    CRITERIA_MISSING,
+    OPERATION_UNTESTED,
+    Defect,
+    requires_replanning,
+    verify,
+)
 from drydock.prompt_assembly import (
     PromptAssembly,
     PromptPart,
@@ -644,13 +650,10 @@ def repair(
     by_file: dict[str, list[Defect]] = {}
     items: list[RepairItem] = []
     for defect in found.defects:
-        if defect.kind in {
-            "unresolved-probe-arguments",
-            "decimal-oracle",
-            "ordered-oracle",
-            "process-readiness",
-            "acceptance-order",
-        }:
+        if requires_replanning(defect.kind) and not (
+            defect.kind.startswith("database-")
+            or defect.kind in {CRITERIA_MISSING, OPERATION_UNTESTED}
+        ):
             # Mechanical repair cannot resolve runtime expressions or establish a numeric
             # oracle. Preserve the proof and report the need for source-based authoring.
             item = RepairItem(defect.filename, defect.check_id, "unrepaired", "", defect.detail)

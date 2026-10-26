@@ -10,10 +10,11 @@ consumed the detection.
 
 So this command consumes it. It is read-only and deterministic — no model, no build directory, no
 network — and its exit status is the whole verdict: zero when the Blueprint is fit to build,
-non-zero when a defect will cost build calls to discover. The intended use is a two-line workflow
-in which the repair call is only paid for when it is needed::
+non-zero when a defect will cost build calls to discover. Run verification and follow the
+defect-specific recovery commands it reports::
 
-    drydock plan verify <Target> || drydock plan repair <Target>
+    drydock plan verify <Target>
+    # Follow its recovery commands: mechanical repair or source-aware replanning.
 
 What it refuses to judge. Whether a criterion is *correct* — whether its expected value matches
 what the product should do — is not decidable from the text, and the analyzers that tried to
@@ -166,6 +167,34 @@ OPERATION_UNTESTED = "operation-untested"
 
 #: Defect kind for a criterion calling a repository operation ``DATABASE.md`` does not declare.
 OPERATION_UNDECLARED = "operation-undeclared"
+
+
+# These faults need source-aware authoring or graph changes, outside mechanical AC repair.
+AUTHORING_DEFECTS = frozenset({
+    "unresolved-probe-arguments",
+    "decimal-oracle",
+    "ordered-oracle",
+    "process-readiness",
+    "acceptance-order",
+    "persistence-order",
+    "interface-dependency",
+    CRITERIA_MISSING,
+    OPERATION_UNTESTED,
+})
+
+
+def requires_replanning(kind: str) -> bool:
+    """One repair-scope policy for execution, terminal advice and persisted recovery."""
+    return kind.startswith("database-") or kind in AUTHORING_DEFECTS
+
+
+def recovery_commands(result: VerifyResult) -> tuple[str, ...]:
+    commands = []
+    if any(not requires_replanning(defect.kind) for defect in result.defects):
+        commands.append(f"drydock plan repair {result.target}")
+    if any(requires_replanning(defect.kind) for defect in result.defects):
+        commands.append(f"drydock plan {result.target}")
+    return tuple(commands)
 
 
 #: Defect kind for a criterion importing ``persistence`` on a story built before DATABASE.
@@ -795,6 +824,20 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
     defects.extend(_story_criteria_defects(target_dir, criteria))
     defects.extend(_persistence_order_defects(target_dir))
     defects.extend(_cli_order_defects(target_dir))
+    manifest = target_dir / "MANIFEST.md"
+    if manifest.is_file():
+        from drydock.build_plan import parse_build_plan
+        from drydock.plan_graph import interface_dependency_defects
+        from drydock.plan_topology import stories_from_manifest
+
+        try:
+            stories = stories_from_manifest(parse_build_plan(manifest).blocks)
+        except SpecificationError:
+            stories = ()  # Manifest parse failures belong to the plan reader.
+        defects.extend(
+            Defect("MANIFEST.md", defect.story_id, defect.code, defect.message)
+            for defect in interface_dependency_defects(stories)
+        )
     defects.extend(persistence_defects(blueprint_dir))
     if criteria.get("DATABASE.md"):
         # A DATABASE.md with no criterion is reported once, as criteria-missing.
@@ -835,9 +878,5 @@ def render(result: VerifyResult) -> str:
         lines.append(
             f"       {', '.join(where[:_WARNING_DETAIL_LIMIT])}, and {len(where) - _WARNING_DETAIL_LIMIT} more"
         )
-    if any(not defect.kind.startswith("database-") for defect in result.defects):
-        lines.append(f"  Run: drydock plan repair {result.target}")
-    if any(defect.kind.startswith("database-") for defect in result.defects):
-        # ``plan repair`` rewrites acceptance criteria only; the declaration is Plan's to repair.
-        lines.append(f"  Run: drydock plan {result.target}")
+    lines.extend(f"  Run: {command}" for command in recovery_commands(result))
     return "\n".join(lines)

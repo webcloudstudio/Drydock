@@ -11,15 +11,14 @@ The discriminator for where a fact lives: **does the fact describe the artifact 
 | Fact | Home | Why |
 |---|---|---|
 | ``Provides``, ``Consumes``, ``Depends On`` | Blueprint header | Describe the file — what it offers and requires |
-| Story ``type`` | Manifest | Computed, machine-focused |
+| Story ``type`` | Topology, projected into Manifest | Authored responsibility |
 | ``Phase`` | Manifest | Describes when the file is built, not the file |
-| Programmatic Acceptance | Manifest | Machine-focused; nobody should hand-edit it |
+| Programmatic Acceptance | Owning Blueprint | Authored executable checks |
 | User Acceptance, ``DECISIONS.json`` | Target | Human intent and planning disclosures |
 
-``Phase`` never touches disk in the Blueprint. Programmatic Acceptance is executable assertions
-carrying pass/fail state and is regenerated wholly by every plan run; User Acceptance is
-human-readable intent and stays in the Blueprint specification. Splitting by audience gives each
-one home and removes the duplication of the same fact in both files.
+``Phase`` never touches disk in the Blueprint. Programmatic Acceptance is authored with the
+behavior in the owning Blueprint; the Manifest references it through ``implements:`` and
+``acceptance:``. User Acceptance also stays in the Blueprint. Execution results live in evidence.
 """
 
 from __future__ import annotations

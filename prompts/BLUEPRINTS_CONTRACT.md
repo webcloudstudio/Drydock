@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261026 V38
+version: 20261026 V39
 ---
 
 ## Overview
@@ -169,7 +169,12 @@ line is the proof body, taken character for character to the matching end marker
 
 `Probe:`/`Probe Count:` are required together whenever the body invokes a staged runner with a
 literal selection option (a flag choosing a subset of an imported corpus, such as `--sections` or
-`--select`). Drydock re-invokes that same runner with all literal arguments, including corpus
+`--select`). All runner arguments after the staged script must be statically resolvable: use
+string literals or module-level literal string bindings for the product, corpus and selector.
+Canonical `os.path.abspath("literal-path")` is supported with an unmodified `import os`.
+Do not use getcwd f-strings, dynamic imports or runtime argument construction; they can run in
+Python but Drydock cannot use them to prove the selected corpus before Build.
+Drydock re-invokes that same runner with all literal arguments, including corpus
 paths and selector options, plus the `Probe:` flag(s) appended — flags that make the runner list or count the matched cases with no
 candidate present, e.g. `--list`. `Probe Count:` names how to read the probe's stdout: `lines`
 (one selected case per non-blank line) or `summary` (the count is the leading integer of the
@@ -696,7 +701,7 @@ import sys
 result = subprocess.run(
     [sys.executable, "tests/run_suite.py", "--sections", "headings,lists"],
     capture_output=True, text=True,
-    env={**os.environ, "RUNNER": f"{os.getcwd()}/program"},
+    env={**os.environ, "RUNNER": os.path.abspath("program")},
 )
 print(result.stdout)
 print(result.stderr, file=sys.stderr)

@@ -1395,17 +1395,17 @@ def cmd_plan(args: argparse.Namespace) -> int:
     unbuildable = getattr(result, "unbuildable", "")
     if unbuildable:
         # Written, not buildable: the Manifest stays draft and Build refuses it. The exit is 0
-        # because the plan was written; ``plan verify`` judges it and ``plan repair`` fixes it.
+        # because the plan was written; verification names the applicable repair scope.
         print()
         print("⚠  Plan written but not buildable — the Manifest is draft and Build refuses it.")
         print(unbuildable.rstrip())
-        print(f"Next step: drydock plan verify {args.Target} || drydock plan repair {args.Target}")
+        print("Next step: follow the recovery command(s) in the verification result above.")
     if not getattr(args, "debug", False):
         record_status(
             target_dir,
             "PLAN CREATED",
             passed=True,
-            detail="unbuildable: run plan repair" if unbuildable else "",
+            detail="unbuildable: follow verification recovery" if unbuildable else "",
             command=f"drydock plan {args.Target}",
         )
         return 0
@@ -1431,7 +1431,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         target_dir,
         "PLAN CREATED",
         passed=True,
-        detail="unbuildable: run plan repair" if unbuildable else "",
+        detail="unbuildable: follow verification recovery" if unbuildable else "",
         command=f"drydock plan {args.Target}",
     )
     return 0
@@ -3935,10 +3935,9 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock plan <Target>          — create the Blueprint specs and MANIFEST.md\n"
             "drydock plan verify <Target>   — report acceptance criteria that cannot run\n"
             "                                   (deterministic, read-only, no LLM call)\n"
-            "drydock plan repair <Target>   — one LLM pass making those criteria runnable\n\n"
-            "verify is free and repair is not, so the intended workflow pays for repair only\n"
-            "when it is needed:\n"
-            "    drydock plan verify <Target> || drydock plan repair <Target>"
+            "drydock plan repair <Target>   — one LLM pass repairing mechanical criteria defects\n\n"
+            "Run plan verify first and follow its recovery commands. Mechanical faults use\n"
+            "plan repair; source-authoring and dependency faults require plan."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

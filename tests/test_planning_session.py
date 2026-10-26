@@ -130,9 +130,9 @@ def test_plan_prompt_declares_strict_artifact_contract():
     assert "The response is processed by a deterministic parser." in prompt
     assert "Now the Manifest." in prompt
     # Shape conformance is a checker, not an instruction: the prompt no longer asks the model to
-    # audit its own delimiters, block completeness, or topological consistency. Drydock measures
+    # compute the schedule or claim validation success. Drydock measures
     # all of it against the declared output contract after the response.
-    assert "Do not audit your own output for delimiter balance" in prompt
+    assert "Review the authored relationships" in prompt
     assert "Before responding, verify:" not in prompt
 
 

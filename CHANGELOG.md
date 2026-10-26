@@ -386,6 +386,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-26: Planning validates staged selection probes before finalization and lineage using
+  the same gate as `plan verify`; rejected criteria enter bounded source-aware artifact repair
+  with only the implicated runner source. Exhausted repairs retain draft/unbuildable state.
+  Declared consumed interfaces require a prerequisite path to a provider, preserving independent
+  story grouping. Shared recovery policy routes authoring and graph faults to replanning instead
+  of repeatedly recommending mechanical repair. Planning prompts clarify source-stage and
+  interface dependencies, supported probe arguments, authoring review versus computed schedule,
+  and Blueprint ownership of executable acceptance.
+
 - 2026-10-26: `drydock plan` prechecks validator imports before calling a model or rewriting a
   plan. An incompatible installation now exits 1 with `PRECHECK FAILURE` and an internal-error
   record instead of failing only after Blueprint generation. Import errors during validation

@@ -18,8 +18,8 @@ The model decides everything requiring judgment and states what each story requi
 this module proves the result is internally consistent and refuses it otherwise. A contradiction
 becomes a deterministic defect with a precise message instead of a shape failure.
 
-The model never sorts, never checks its own consistency, and never reasons about a position in an
-order it has not computed.
+The model reviews source semantics and declares relationships. Python validates consistency and
+computes the schedule; the model never assigns computed positions or groups.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from dataclasses import dataclass, field, replace
 #: The Manifest is a list of stories; ``type`` is the only variation.
 #:
 #: ``foundational`` — foundation and scaffolding; runs early because work depends on it.
-#: ``service``      — everything that does work; reorderable, carries no structural debt.
+#: ``service``      — everything that does work; ordered by declared prerequisites.
 #: ``feature``      — an assembly story: acceptance plus assembly and intent, no implementation
 #:                    instructions; runs after its members.
 #:
@@ -272,6 +272,44 @@ def verify_graph(stories: Sequence[PlannedStory]) -> tuple[GraphDefect, ...]:
             )
 
     defects.extend(verify_two_topologies(stories))
+    defects.extend(interface_dependency_defects(stories))
+    return tuple(defects)
+
+
+def interface_dependency_defects(stories: Sequence[PlannedStory]) -> tuple[GraphDefect, ...]:
+    """A declared product interface must be delivered through a prerequisite path.
+
+    Compare exact interface names only. External inputs without a declared provider remain
+    legal; no prose, filename or domain heuristic invents edges. A story may use its own
+    interface, and any reachable provider satisfies an interface with several providers.
+    """
+    known = _index(stories)
+    providers: dict[str, set[str]] = {}
+    for story in stories:
+        for interface in story.provides:
+            providers.setdefault(interface, set()).add(story.story_id)
+    defects = []
+    for story in stories:
+        reachable = {story.story_id}
+        pending = list(story.depends)
+        while pending:
+            dependency = pending.pop()
+            if dependency in reachable or dependency not in known:
+                continue
+            reachable.add(dependency)
+            pending.extend(known[dependency].depends)
+        for interface in dict.fromkeys(story.consumes):
+            owners = providers.get(interface, set())
+            if owners and not owners & reachable:
+                defects.append(
+                    GraphDefect(
+                        "interface-dependency",
+                        story.story_id,
+                        f"consumes {interface!r}, provided by {', '.join(sorted(owners))}, "
+                        "without a depends path to a provider; declare the prerequisite before "
+                        "grouping or correct the interface ownership",
+                    )
+                )
     return tuple(defects)
 
 
