@@ -117,3 +117,98 @@ def test_missing_managed_store_stops_before_agent_tests(store):
             pytest.fail("a missing managed store cannot launch an agent")
     assert not state.ready
     assert not state.environment
+
+
+def test_provider_failure_without_mutation_keeps_canonical_and_discards_snapshot(store):
+    build, target, canonical = store
+    with pytest.raises(ValueError, match="provider"):
+        with AgentStore(build, target) as state:
+            with sqlite3.connect(state.environment["DATABASE_URL"]) as db:
+                db.execute("INSERT INTO records VALUES ('test')")
+            raise ValueError("provider failed")
+    assert not state.violation
+    assert not state.backup_path.exists()
+    assert rows(canonical) == [("existing",)]
+
+
+_COMMITTING_TESTS = """
+import os
+import sqlite3
+
+
+def _rows():
+    with sqlite3.connect(os.environ["DATABASE_URL"]) as db:
+        return db.execute("SELECT value FROM records").fetchall()
+
+
+def test_{first}_commits_a_row():
+    with sqlite3.connect(os.environ["DATABASE_URL"]) as db:
+        db.execute("INSERT INTO records VALUES ('{first}')")
+    assert _rows() == [("{first}",)]
+
+
+def test_{second}_commits_a_row():
+    with sqlite3.connect(os.environ["DATABASE_URL"]) as db:
+        db.execute("INSERT INTO records VALUES ('{second}')")
+    assert _rows() == [("{second}",)]
+"""
+
+
+@pytest.mark.parametrize(("first", "second"), [("a", "b"), ("b", "a")])
+def test_two_project_tests_in_one_agent_call_cannot_contaminate_each_other(
+    store, tmp_path, first, second
+):
+    """FxRates 20261026.173232: committed project-test writes collided within one call."""
+    import os
+    import subprocess
+    import sys
+
+    build, target, canonical = store
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "test_store.py").write_text(
+        _COMMITTING_TESTS.format(first=first, second=second), encoding="utf-8"
+    )
+    with AgentStore(build, target) as state:
+        template = Path(state.environment["DATABASE_URL"])
+        child = {**os.environ, **state.environment}
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:randomly", "-p", "no:cacheprovider"],
+            cwd=project,
+            env=child,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert "2 passed" in completed.stdout
+        assert rows(template) == []
+    assert rows(canonical) == [("existing",)]
+    assert not (project / "drydock_store_isolation.py").exists()
+
+
+def test_without_the_plugin_the_same_tests_collide(store, tmp_path):
+    """Falsifier: the shared call store alone lets the second test see the first's row."""
+    import os
+    import subprocess
+    import sys
+
+    build, target, _ = store
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "test_store.py").write_text(
+        _COMMITTING_TESTS.format(first="a", second="b"), encoding="utf-8"
+    )
+    with AgentStore(build, target) as state:
+        child = {**os.environ, **state.environment}
+        child.pop("PYTEST_ADDOPTS")
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:randomly", "-p", "no:cacheprovider"],
+            cwd=project,
+            env=child,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    assert completed.returncode == 1
+    assert "1 failed, 1 passed" in completed.stdout

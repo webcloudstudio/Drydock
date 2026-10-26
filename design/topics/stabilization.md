@@ -73,7 +73,7 @@ which protections exist and which gaps block those paths; unrepresented adapters
 |---|---|---|
 | Imported sources, scoring assets, Blueprints | Immutable during Build; compare hashes, reject unauthorized changes. | Import/Plan; existing staged-asset guard, extend coverage for all governed files. |
 | Generated framework code and schema/provenance | Regenerate only through the owning lifecycle step. | DATABASE/foundation; verify fingerprints and ownership before/after calls. |
-| Application DBs, files, uploads, object storage | Fixture-owned test namespace, schema and seed; preserve canonical state. | Store owner; SQLite call isolation implemented, per-test and remote adapters pending. |
+| Application DBs, files, uploads, object storage | Fixture-owned test namespace, schema and seed; preserve canonical state. | Store owner; SQLite call and per-test (pytest) isolation implemented, remote adapters pending. |
 | Configuration and secrets | Task-local config; preserve operator values; redact evidence. | Config/runtime; existing `.env` materialization rule is not a universal write guard. |
 | Dependency manifests, locks, environments | Target-local manifests/environment; immutable version resolution during comparison. | Language foundation; existing parent-workspace guard plus environment regression. |
 | Git/worktrees and applied-spec provenance | Private worktree or explicit mutation set; preserve unrelated edits and accepted work. | Target Git/build lineage; verify before/after, never reset unrelated changes. |
@@ -449,6 +449,21 @@ Completion has two distinct states:
    proof and deferred capabilities are listed explicitly.
 2. **Release verified:** S6 supplies the required live evidence on the final candidate. A live
    failure is reduced to a regression and repaired at its owner; it does not reopen the whole plan.
+
+### Slice ledger
+
+`finding | owning memory | current repro | regression node | fix commit | local result | live proof`
+
+| Finding | Owner | Current repro | Regression | Fix | Local | Live |
+|---|---|---|---|---|---|---|
+| F02 absent result read as PASS | build | executor returning no result closed story `closed/verified` | `test_build_truthful_closure.py` `[no-run]`, `test_absent_results_are_reported_as_not_executed` | 0338ebe | fail before, pass after | pending |
+| F01 `AC_BROKEN` line dropped | build | `_stream_build_summary` filtered the line | `test_cli.py` `test_stream_build_summary_shows_llm_scope_and_acceptance_only` | 0338ebe | pass | pending |
+| F01 stale plan error after repair | plan | `_settle_plan_state` left `plan verify` error | `test_build_truthful_closure.py` `test_a_buildable_repair_retires_only_the_plan_verify_error` | 0338ebe | pass | pending |
+| F03 project tests share call store | build | committed writes leak between tests in one call | `test_build_state.py` `test_two_project_tests_in_one_agent_call_cannot_contaminate_each_other`, falsifier `test_without_the_plugin_the_same_tests_collide` | S2 commit | pass | pending |
+| F03/F04 provider failure path | build | none reproduced | `test_provider_failure_without_mutation_keeps_canonical_and_discards_snapshot`; build-level `test_agent_store_writes_are_isolated_and_deletion_stops_with_owner_recovery` | — | pass | pending |
+| F05 parent manifests | build/llm | none reproduced; existing guard | `test_llm.py` `test_agent_registration_in_an_enclosing_uv_workspace_is_restored_and_fails` | 39e4e10 | pass | pending |
+| F22 Go database / PostgreSQL | — | not represented / excluded | — | — | deferred | — |
+| F01 state/console/status agreement | build/status | none reproduced beyond F02 | `test_execution_outcomes_manifest_console_and_status_agree` (5 rows) | — | pass | pending |
 
 ## Decisions
 

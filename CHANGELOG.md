@@ -393,6 +393,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-26: Project pytest tests run by a `drydock build` agent each receive their own copy of
+  the call's provisioned SQLite store through a Drydock-staged pytest plugin, so one test's
+  committed rows or `cli_runner` writes no longer contaminate another. The plugin reaches only the
+  provider child (`PYTEST_ADDOPTS`, `PYTHONPATH`); generated product code is unchanged.
+
 - 2026-10-26: `drydock build` settles a declared criterion that the executor returned no result
   for as `UNVERIFIED` (`not executed`) instead of dropping it, so a story whose criteria never ran
   closes `closed/implemented`, never `closed/verified`. The agent's `AC_BROKEN` dispute line

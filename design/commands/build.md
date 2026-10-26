@@ -33,10 +33,19 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 | Mutations | Agent changes implementation; development tests use disposable SQLite state after provisioning. |
 | Invariants | Canonical managed state and unrelated records survive; model SUCCESS is advisory; generated criteria do not override source intent. |
 | Recovery | Retain private pre-call store snapshot on detected mutation; never automatically overwrite concurrent state; identify DATABASE owner. |
-| Proof | Real temporary-store write/deletion/concurrency regressions and build integration; PostgreSQL/per-test/process isolation remain explicit gaps. |
+| Proof | Real temporary-store write/deletion/concurrency regressions, per-test pytest isolation and build integration; PostgreSQL and process isolation remain explicit gaps. |
 
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · **Per-test store isolation inside an agent call.** `AgentStore` stages Drydock's
+`pytest_store_isolation.py` as `drydock_store_isolation` in the call directory and gives only the
+provider child `PYTHONPATH`, `PYTEST_ADDOPTS=-p drydock_store_isolation` and
+`DRYDOCK_STORE_TEMPLATE`. An autouse fixture copies the provisioned call store into each test's
+`tmp_path` and points `DATABASE_URL`/`DATABASE_PATH` at the copy, so committed rows and
+`cli_runner` writes cannot reach another test (FxRates `20261026.173232`). Nothing is written into
+the product; operator pytest runs and canonical acceptance keep their own lifecycle. Limit: code
+that resolves the DSN at import time keeps the shared call store; PostgreSQL is unchanged.
 
 `2026-10-26` · **Absent acceptance results are never passes.** `_run_valid_criteria` returns one
 result per declared criterion: excluded ones as before, and a selected criterion the executor

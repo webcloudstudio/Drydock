@@ -26,6 +26,34 @@ def _fingerprint(path: Path) -> tuple[str | None, str | None]:
     )
 
 
+_ISOLATION_PLUGIN = "drydock_store_isolation"
+
+
+def _per_test_isolation(call_dir: Path, template: Path) -> dict[str, str]:
+    """Child environment that gives each project pytest test its own copy of ``template``.
+
+    The plugin is Drydock's, staged beside the call store and removed with it; nothing is
+    written into the product. The provisioned call store becomes a read-only template.
+    """
+    plugin_dir = call_dir / "plugin"
+    plugin_dir.mkdir()
+    shutil.copyfile(
+        Path(__file__).with_name("pytest_store_isolation.py"),
+        plugin_dir / f"{_ISOLATION_PLUGIN}.py",
+    )
+    return {
+        "DRYDOCK_STORE_TEMPLATE": str(template),
+        "PYTHONPATH": os.pathsep.join(
+            part for part in (str(plugin_dir), os.environ.get("PYTHONPATH", "")) if part
+        ),
+        "PYTEST_ADDOPTS": " ".join(
+            part
+            for part in (os.environ.get("PYTEST_ADDOPTS", ""), f"-p {_ISOLATION_PLUGIN}")
+            if part
+        ),
+    }
+
+
 @dataclass
 class AgentStore:
     build_dir: Path
@@ -89,6 +117,7 @@ class AgentStore:
         except BaseException:
             self.__exit__(None, None, None)
             raise
+        self.environment.update(_per_test_isolation(self._temporary, test_path))
         self.ready = True
         return self
 
