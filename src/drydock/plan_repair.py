@@ -461,6 +461,19 @@ def _splice_and_revert(
         defects, key=lambda d: before.get(d.check_id, (0, 0, ""))[0], reverse=True
     ):
         span = before.get(defect.check_id)
+        key = (filename, defect.check_id)
+        if key in impossible:
+            # The model's stated reason is the evidence; keep it even without a spliceable span.
+            items.append(
+                RepairItem(
+                    filename,
+                    defect.check_id,
+                    "impossible",
+                    span[2] if span is not None else "",
+                    impossible[key] or "cannot run without changing what it asserts",
+                )
+            )
+            continue
         if span is None:
             items.append(
                 RepairItem(
@@ -469,18 +482,6 @@ def _splice_and_revert(
             )
             continue
         start, end, old = span
-        key = (filename, defect.check_id)
-        if key in impossible:
-            items.append(
-                RepairItem(
-                    filename,
-                    defect.check_id,
-                    "impossible",
-                    old,
-                    impossible[key] or "cannot run without changing what it asserts",
-                )
-            )
-            continue
         body = emitted.get(key)
         if body is None:
             items.append(
@@ -780,6 +781,31 @@ def repair(
             on_item(item)
         emit(f"  ✗  {item.rendered}")
 
+    # A criterion outside the delimited ``=== AC <id> ===`` form has no block to splice into.
+    # Sending it would hand the model an empty body it can only refuse; replanning owns it.
+    for filename in sorted(by_file):
+        bodies = _block_bodies((blueprint_dir / filename).read_text(encoding="utf-8"))
+        addressable = [defect for defect in by_file[filename] if defect.check_id in bodies]
+        for defect in by_file[filename]:
+            if defect.check_id in bodies:
+                continue
+            item = RepairItem(
+                filename,
+                defect.check_id,
+                "unrepaired",
+                "",
+                f"criterion is not in the delimited `=== AC <id> ===` form; "
+                f"run: drydock plan {target}",
+            )
+            items.append(item)
+            if on_item is not None:
+                on_item(item)
+            emit(f"  ✗  {item.rendered}")
+        if addressable:
+            by_file[filename] = addressable
+        else:
+            del by_file[filename]
+
     if by_file:
         originals: dict[str, str] = {}
         jobs: list[tuple[Defect, str]] = []
@@ -788,7 +814,7 @@ def repair(
             originals[filename] = original
             bodies = _block_bodies(original)
             for defect in by_file[filename]:
-                jobs.append((defect, bodies.get(defect.check_id, "")))
+                jobs.append((defect, bodies[defect.check_id]))
 
         emit(
             "repair: "

@@ -254,3 +254,76 @@ def test_existing_manifest_interface_fault_routes_to_authoring_without_model_cal
         manifest.replace("consumes: parsed records", "depends: read\nconsumes: parsed records")
     )
     assert verify("Example", target).ok
+
+
+def test_source_instructions_reach_topology_and_authoring_prompts(tmp_path):
+    """CommonMark 20261026.173709: the imported sequencing brief must be in front of topology."""
+    from tests.test_planning_session import _feature_block
+
+    target = _make_target(tmp_path)
+    (target / "blueprint/sources/INSTRUCTIONS.md").write_text(
+        "Deliver block parsing before inline parsing.\n", encoding="utf-8"
+    )
+    runner = _sequence_runner(_declaration_block(), _arch_block() + _feature_block())
+    try:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+    except Exception:  # noqa: BLE001 - only the consumed prompts are under test
+        pass
+    assert len(runner.calls) >= 2
+    assert all("Deliver block parsing before inline parsing." in call for call in runner.calls)
+
+
+def _stage(story_id, *, depends="", provides="", consumes="", kind="capability"):
+    lines = [
+        f"## story {story_id}",
+        f"summary:      {story_id}.",
+        "type:         service",
+        f"kind:         {kind}",
+        "phase:        1",
+        f"implements:   FEATURE-{story_id}.md",
+        "acceptance:   yes",
+    ]
+    for key, value in (("depends", depends), ("provides", provides), ("consumes", consumes)):
+        if value:
+            lines.append(f"{key + ':':<14}{value}")
+    return "\n".join(lines) + "\n"
+
+
+_STAGED_TOPOLOGY = "\n".join((
+    _stage("cli", provides="executable"),
+    _stage("blocks", depends="cli", provides="block tree", consumes="executable"),
+    _stage("inlines", depends="blocks", provides="inline tree", consumes="block tree"),
+    _stage("independent", depends="cli", consumes="executable"),
+    _stage("conformance", depends="inlines, independent", consumes="inline tree"),
+))
+
+
+def test_staged_dependencies_survive_serialization_verification_and_grouping(tmp_path):
+    """Prerequisite stages stay ordered through Manifest serialization; a sibling still groups."""
+    from drydock.build_plan import parse_build_plan
+    from drydock.plan_topology import parse_topology, render_manifest, stories_from_manifest
+
+    declared, defects = parse_topology(_STAGED_TOPOLOGY)
+    assert not defects
+    assert not interface_dependency_defects(declared)
+    computed = compute_plan(declared, min_savings=1, block_size_fn=lambda m: 100 + len(m))
+    assert not computed.fatal
+    manifest = tmp_path / "MANIFEST.md"
+    manifest.write_text(
+        render_manifest("Example", computed.stories, computed.blocks), encoding="utf-8"
+    )
+
+    reread = stories_from_manifest(parse_build_plan(manifest).blocks)
+    by_id = {s.story_id: s for s in reread}
+    assert {s: set(by_id[s].depends) for s in by_id} == {
+        s.story_id: set(s.depends) for s in declared
+    }
+    assert not interface_dependency_defects(reread)
+    assert by_id["cli"].block < by_id["blocks"].block < by_id["inlines"].block
+    assert by_id["inlines"].block < by_id["conformance"].block
+    assert by_id["independent"].block == by_id["blocks"].block
+
+    # Omitting the prerequisite edge is rejected, not silently merged into one block.
+    omitted = _STAGED_TOPOLOGY.replace("depends:      blocks", "depends:      cli")
+    broken, _ = parse_topology(omitted)
+    assert [d.code for d in interface_dependency_defects(broken)] == ["interface-dependency"]

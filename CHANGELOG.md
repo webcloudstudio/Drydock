@@ -393,6 +393,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-26: `drydock build` resolves a bare context name such as `INSTRUCTIONS.md` against
+  `blueprint/sources/` after the Blueprint and Target, so the imported source brief reaches the
+  build prompt instead of being reported as missing context. `drydock rigging compact` and
+  `drydock status` treat a derivative as fresh only when its recorded source sha256 matches,
+  regardless of timestamps. `drydock plan verify` accepts helper functions that unpack
+  `cli_runner` and return its exit status first. `drydock plan repair` routes criteria outside the
+  `=== AC <id> ===` form to replanning without a model call and keeps `REPAIR_IMPOSSIBLE` reasons.
+
 - 2026-10-26: Project pytest tests run by a `drydock build` agent each receive their own copy of
   the call's provisioned SQLite store through a Drydock-staged pytest plugin, so one test's
   committed rows or `cli_runner` writes no longer contaminate another. The plugin reaches only the

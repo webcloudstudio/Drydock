@@ -459,9 +459,17 @@ Completion has two distinct states:
 | F02 absent result read as PASS | build | executor returning no result closed story `closed/verified` | `test_build_truthful_closure.py` `[no-run]`, `test_absent_results_are_reported_as_not_executed` | 0338ebe | fail before, pass after | pending |
 | F01 `AC_BROKEN` line dropped | build | `_stream_build_summary` filtered the line | `test_cli.py` `test_stream_build_summary_shows_llm_scope_and_acceptance_only` | 0338ebe | pass | pending |
 | F01 stale plan error after repair | plan | `_settle_plan_state` left `plan verify` error | `test_build_truthful_closure.py` `test_a_buildable_repair_retires_only_the_plan_verify_error` | 0338ebe | pass | pending |
-| F03 project tests share call store | build | committed writes leak between tests in one call | `test_build_state.py` `test_two_project_tests_in_one_agent_call_cannot_contaminate_each_other`, falsifier `test_without_the_plugin_the_same_tests_collide` | S2 commit | pass | pending |
+| F03 project tests share call store | build | committed writes leak between tests in one call | `test_build_state.py` `test_two_project_tests_in_one_agent_call_cannot_contaminate_each_other`, falsifier `test_without_the_plugin_the_same_tests_collide` | 93acdf6 | pass | pending |
 | F03/F04 provider failure path | build | none reproduced | `test_provider_failure_without_mutation_keeps_canonical_and_discards_snapshot`; build-level `test_agent_store_writes_are_isolated_and_deletion_stops_with_owner_recovery` | — | pass | pending |
 | F05 parent manifests | build/llm | none reproduced; existing guard | `test_llm.py` `test_agent_registration_in_an_enclosing_uv_workspace_is_restored_and_fails` | 39e4e10 | pass | pending |
+| F12 source brief missing from build | build | bare `INSTRUCTIONS.md` reported missing context | `test_build_source_context.py` (5) | S3 | fail before, pass after | pending |
+| F23 mtime overrides changed sha | rigging | changed source older than compact read fresh | `test_rigging_compact.py` `test_changed_source_older_than_its_compact_is_stale` | S3 | fail before, pass after | pending |
+| F07 projected helper exit | acceptance/plan | `return code, out` helper rejected | `test_harness_exits.py` projected-helper tests | S3 | fail before, pass after | pending |
+| F14 undelimited / impossible reason | plan | empty-body model call; reason dropped | `test_plan_repair.py` two tests | S3 | fail before, pass after | pending |
+| F06/F08 probe correction, exhaustion | plan | none; 0ab6649 regression rerun | `test_plan_reliability.py` `test_complete_plan_reauthors_probe_before_persisting_and_can_repeat` | 0ab6649 | pass | pending |
+| S3 source → topology, staged deps | plan | none reproduced | `test_source_instructions_reach_topology_and_authoring_prompts`, `test_staged_dependencies_survive_serialization_verification_and_grouping` | — | pass | pending |
+| F11 unfounded runtime stack | plan | warning only; causal link unproved | — | — | uncertainty; see Questions | pending |
+| F10 DATABASE feedback | plan | not re-reproduced | existing `f63494c` coverage | — | audit only | pending |
 | F22 Go database / PostgreSQL | — | not represented / excluded | — | — | deferred | — |
 | F01 state/console/status agreement | build/status | none reproduced beyond F02 | `test_execution_outcomes_manifest_console_and_status_agree` (5 rows) | — | pass | pending |
 
@@ -472,8 +480,12 @@ Completion has two distinct states:
 
 ## Questions
 
-- None. Workflow, Target-independent scope, diagnosis-memory ownership and testing scope are resolved.
-  Ask only if a future diagnosis exposes conflicting source intent or a material unresolved decision.
+- `2026-10-26` · F11: should a non-foundational first user of a stack with a runtime Foundation
+  Contract (FastAPI `app_server/testing.py`) be a fatal topology defect routed to topology repair,
+  instead of today's `unfounded-stack` warning? Evidence: FxRates `20261026.011843` row (no
+  FastAPI foundation story; 10 criteria `ModuleNotFoundError`); `plan_graph.assign_stack_modes`
+  already gives that story builder mode, so fatality is not proved to fix the run. Closes on Ed's
+  decision; unchanged until then.
 
 ## Actions
 

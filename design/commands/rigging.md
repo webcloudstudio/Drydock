@@ -92,6 +92,11 @@ Rigging file whose purpose was invented.
 3. **verify** — evaluate each check, print ✓/✗ per check and `RESULT: PASS|FAIL`.
 4. **--add** — validate paths under `Rigging/`, append catalog rows.
 
+`2026-10-26` · **Freshness gate.** A derivative whose provenance records a source sha256 is fresh
+only when that sha matches the current source bytes; mtime cannot override it (checkout, copy or
+same-second edits leave changed bytes older than the derivative). A derivative without provenance
+keeps the mtime test. `compact` and `status` share `_is_stale`. Stabilization F23.
+
 ### Exit codes
 
 | Code | Condition |

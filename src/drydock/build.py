@@ -136,7 +136,10 @@ class StepRoots:
         if role == "implements":
             return (self.blueprint_dir,)
         if role == "context":
-            return (self.blueprint_dir, self.target_dir)
+            # Imported sources resolve last: an authored Blueprint or Target file of the same
+            # name is the plan's own and wins. A bare ``INSTRUCTIONS.md`` still reaches the
+            # governed source brief instead of being reported missing.
+            return (self.blueprint_dir, self.target_dir, self.blueprint_dir / "sources")
         if role == "stack":
             from drydock.paths import stack_paths
 

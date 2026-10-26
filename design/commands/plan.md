@@ -39,6 +39,15 @@ written.
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 
+`2026-10-26` · `plan repair` reports a criterion outside the delimited `=== AC <id> ===` form as
+unrepaired with `run: drydock plan <Target>` and makes no model call for it; a `REPAIR_IMPOSSIBLE`
+reason is kept even when no block can be spliced (DupFind `20261024.183232`). Checked-call
+analysis accepts a straight-line helper that unpacks `cli_runner` and returns the exit status first
+(`return code` / `return code, out`) when every caller asserts it; a reordered return, rebinding
+or unasserted caller stays unchecked (DrydockStats `20261026.011913`). Stabilization S3 also adds
+source-to-topology prompt and staged-dependency serialization regressions in
+`tests/test_plan_reliability.py`; both passed on existing code.
+
 `2026-10-26` · A `plan repair` whose re-verification leaves the plan buildable clears the
 current error record only when it is owned by `plan`/`plan verify` (`cli._settle_plan_state`).
 Status then stops reporting a disproved unbuildable plan; other owners' errors survive.

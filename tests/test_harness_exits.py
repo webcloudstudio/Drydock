@@ -235,6 +235,34 @@ def test_returned_runner_does_not_hide_unchecked_or_ambiguous_calls(old, new):
     assert unchecked_calls(_RETURNED_RUNNER.replace(old, new))
 
 
+_PROJECTED_RUNNER = """from cli.testing import cli_runner
+def summary(path):
+    code, out, err = cli_runner("summary", path)
+    return code, out
+code, out = summary("first.csv")
+assert code == 0
+"""
+
+
+def test_a_helper_returning_the_unpacked_exit_first_is_checked():
+    """DrydockStats 20261026.011913: 24 helper-wrapped calls were rejected as unchecked."""
+    assert unchecked_calls(_PROJECTED_RUNNER) == []
+    assert unchecked_calls(_PROJECTED_RUNNER.replace("return code, out", "return code")) == []
+
+
+@pytest.mark.parametrize(
+    "old,new",
+    [
+        ("assert code == 0", "pass"),
+        ("return code, out", "return out, code"),
+        ("return code, out", "code = 0\n    return code, out"),
+        ("code, out, err = cli_runner", "_, out, err = cli_runner"),
+    ],
+)
+def test_a_projected_helper_does_not_hide_an_unchecked_exit(old, new):
+    assert unchecked_calls(_PROJECTED_RUNNER.replace(old, new))
+
+
 def test_uncalled_returned_runner_stays_unchecked():
     assert unchecked_calls(_RETURNED_RUNNER.split('code, out, err = run("first.csv")')[0]) == [4]
 

@@ -428,6 +428,39 @@ def _checked_calls(tree: ast.Module) -> list[_CheckedCall]:
     return sorted(results, key=lambda item: (item.call.lineno, item.call.col_offset))
 
 
+def _returns_runner_exit(nodes: list[ast.AST], returned: ast.Return, runner: ast.Call) -> bool:
+    """True when a helper returns the runner tuple, or its exit status first, unchanged.
+
+    ``return cli_runner(...)`` qualifies directly. So does ``code, out, err = cli_runner(...)``
+    followed by ``return code`` or ``return code, out``: the exit status keeps position zero, so
+    the caller's unpacking binds it exactly as it would bind the runner's own result. Any other
+    binding of that name inside the helper disqualifies it.
+    """
+    if returned.value is runner:
+        return True
+    binding = next(
+        (
+            node
+            for node in nodes
+            if isinstance(node, ast.Assign) and node.value is runner and len(node.targets) == 1
+        ),
+        None,
+    )
+    if binding is None or not isinstance(binding.targets[0], ast.Tuple):
+        return False
+    name = _exit_name(binding.targets[0])
+    value = returned.value
+    first = value.elts[0] if isinstance(value, ast.Tuple) and value.elts else value
+    if name is None or not (isinstance(first, ast.Name) and first.id == name):
+        return False
+    stores = [
+        node
+        for node in nodes
+        if isinstance(node, ast.Name) and node.id == name and not isinstance(node.ctx, ast.Load)
+    ]
+    return len(stores) == 1
+
+
 def _checked_returned_calls(tree: ast.Module) -> set[ast.Call]:
     """Follow a local helper's single returned runner tuple into every asserted caller.
 
@@ -453,8 +486,8 @@ def _checked_returned_calls(tree: ast.Module) -> set[ast.Call]:
         if (
             len(returns) != 1
             or len(runners) != 1
-            or returns[0].value is not runners[0]
             or _statements(function.body)[-1] is not returns[0]
+            or not _returns_runner_exit(nodes, returns[0], runners[0])
         ):
             continue
         name = function.name

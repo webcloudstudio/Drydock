@@ -276,6 +276,7 @@ file-exists stubs), and rejects a plan where no story carries it. Deferred becau
   whether Go gets an equivalent harness-owned transaction.
 - `2026-10-24` · Re-run `drydock rigging compact` for `sqlite.md`, `postgres.md` and
   `persistence.md`; their compacts are stale and builds fall back to the full files.
+  *Closed 2026-10-26*: all three provenance hashes match their sources.
 
 ## Working Notes
 

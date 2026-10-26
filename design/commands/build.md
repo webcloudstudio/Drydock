@@ -38,6 +38,11 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 
+`2026-10-26` · **Imported sources resolve as context.** `StepRoots.roots_for("context")` is
+`(blueprint, target, blueprint/sources)`: a bare `INSTRUCTIONS.md` reaches the governed source brief
+with its `path=` provenance instead of `Missing context`; an authored Blueprint or Target file of the
+same name wins; absent files stay missing; sources are read only (FxRates `20261026.011843`).
+
 `2026-10-26` · **Per-test store isolation inside an agent call.** `AgentStore` stages Drydock's
 `pytest_store_isolation.py` as `drydock_store_isolation` in the call directory and gives only the
 provider child `PYTHONPATH`, `PYTEST_ADDOPTS=-p drydock_store_isolation` and

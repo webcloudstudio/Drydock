@@ -252,23 +252,23 @@ def _sibling_source_sha(sibling: Path) -> str | None:
 def _is_stale(source: Path) -> bool:
     """True when no sibling derivative is fresh for the source.
 
-    A sibling is fresh when it is at least as new as the source (mtime fast
-    path) or when its provenance records the source's current content sha256 —
-    a rewrite that did not change the source's bytes never re-triggers
-    compaction.
+    A sibling whose provenance records a source sha256 is fresh only when that sha matches the
+    source's current content; timestamps cannot override it, because a checkout, copy or same-
+    second edit can leave changed bytes older than their derivative. A sibling without recorded
+    provenance falls back to the mtime test.
     """
-    source_mtime = source.stat().st_mtime
     source_sha: str | None = None
     for sibling in (_compact_path(source), _skip_path(source)):
         if not sibling.exists():
             continue
-        if sibling.stat().st_mtime >= source_mtime:
-            return False
+        recorded = _sibling_source_sha(sibling)
+        if recorded is None:
+            if sibling.stat().st_mtime >= source.stat().st_mtime:
+                return False
+            continue
         if source_sha is None:
             source_sha = _sha256_text(source.read_text(encoding="utf-8"))
-        if _sibling_source_sha(sibling) == source_sha:
-            # Refresh mtime so the fast path answers without re-hashing next time.
-            os.utime(sibling)
+        if recorded == source_sha:
             return False
     return True
 

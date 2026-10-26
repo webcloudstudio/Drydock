@@ -1082,3 +1082,52 @@ def test_unresolved_probe_arguments_do_not_spend_a_repair_call(tmp_path):
     assert "declaration-only repair cannot resolve command expressions" in result.items[0].detail
     assert "runner argument 4" in "".join(progress)
     assert (target / "blueprint/FEATURE_Selector.md").read_text() == broken
+
+
+_FENCED = """# FEATURE: Sizes
+
+## Programmatic Acceptance
+
+### size-filter
+Intent: Files under the minimum size are skipped.
+
+```python
+assert (
+```
+"""
+
+
+def test_an_undelimited_criterion_is_routed_to_replanning_without_a_model_call(tmp_path):
+    """DupFind 20261024.183232: a fenced criterion reached the model with an empty body."""
+    target = _target(tmp_path, FEATURE_Sizes=_FENCED)
+    assert [d.check_id for d in verify("Demo", target).defects] == ["size-filter"]
+    runner = _runner("")
+
+    result = repair("Demo", target, runner=runner)
+
+    assert runner.calls == []
+    (item,) = result.items
+    assert item.status == "unrepaired"
+    assert "drydock plan Demo" in item.detail
+    assert not result.ok
+
+
+def test_an_impossible_reason_is_kept_when_the_block_cannot_be_spliced(tmp_path):
+    from drydock.plan_repair import _splice_and_revert
+    from drydock.plan_verify import Defect
+
+    path = tmp_path / "FEATURE_Sizes.md"
+    path.write_text(_FENCED, encoding="utf-8")
+    items, changed = _splice_and_revert(
+        "FEATURE_Sizes.md",
+        path,
+        _FENCED,
+        [Defect("FEATURE_Sizes.md", "size-filter", "syntax", "x")],
+        {},
+        {("FEATURE_Sizes.md", "size-filter"): "the criterion source is missing"},
+        source_root=tmp_path,
+    )
+    assert not changed
+    assert [(i.status, i.detail) for i in items] == [
+        ("impossible", "the criterion source is missing")
+    ]

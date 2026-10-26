@@ -509,3 +509,25 @@ def test_target_compaction_roles_receive_selected_language(tmp_path):
     )
     assert len(prompts) == 3
     assert all("TARGET_LANGUAGE: go" in prompt for prompt in prompts)
+
+
+def test_changed_source_older_than_its_compact_is_stale(tmp_path):
+    """F23: changed bytes with an older mtime (checkout, copy) must not pass the mtime fast path."""
+    from drydock.rigging_compact import compact_derivative_is_current
+
+    name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
+    compact(name, root / name, runner=fake_runner())
+    source = root / name / "DATABASE.md"
+    compact_file = root / name / "DATABASE_compact.md"
+    source.write_text("db changed\n", encoding="utf-8")
+    past = compact_file.stat().st_mtime - 100
+    os.utime(source, (past, past))
+
+    assert not compact_derivative_is_current(source)
+
+    def changed(prompt, wd, **kwargs):
+        return FakeRun(text="# DB — Persistence Contract\n\n### new_store.read\n")
+
+    again = compact(name, root / name, runner=changed)
+    assert [i.status for i in again.items] == ["compacted"]
+    assert compact_derivative_is_current(source)
