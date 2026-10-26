@@ -169,6 +169,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-26: `drydock plan verify` no longer emits the unknown-decimal-provenance warning.
+  Plan is authorized to choose fixtures and calculate expected results; a decimal expectation
+  absent from source material is ordinary test design, not a review item. Dependency, oracle,
+  readiness and citation checks are unchanged.
+
 - 2026-10-26: `python tests/uat_corpus.py <corpus-root>` regenerates the gate-policy corpus only
   from the directory named on the command line; nothing reads published `uat/` implicitly.
 

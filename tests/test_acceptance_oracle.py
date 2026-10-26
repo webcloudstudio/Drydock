@@ -1,69 +1,44 @@
-"""Decimal oracle provenance, using synthetic criteria and no published UAT data."""
+"""Plan-selected fixtures and decimal oracles, using synthetic criteria and no published UAT data."""
 
-from dataclasses import replace
-
-import pytest
-
-from drydock.acceptance import ProgrammaticAcceptance
-from drydock.acceptance_oracle import decimal_provenance_advisories
 from drydock.plan_verify import verify
 
-
-def _check(code):
-    return ProgrammaticAcceptance("conversion", "FEATURE-Convert.md", "Convert", code)
-
-
-def test_unrecognized_decimal_provenance_is_advisory_and_never_a_new_formula():
-    check = _check(
-        'amount = "2.00"\nassert body["amount"] == "2.00"\nassert body["result"] == "10.00"'
-    )
-    reasons = decimal_provenance_advisories(check)
-    assert len(reasons) == 1
-    assert "10.00" in reasons[0]
-    assert not decimal_provenance_advisories(replace(check, cited_text="Expected: 10.00"))
-    assert not decimal_provenance_advisories(
-        _check('assert body["result"] == f"{expected:.2f}"\nassert response.status_code == 200')
-    )
-    assert not decimal_provenance_advisories(_check('assert body["version"] == "1.2.3"'))
+_PREFIX = "# FEATURE: Convert\n\n## Programmatic Acceptance\n\n=== AC {id} ===\n"
+_SUFFIX = "\n=== END AC {id} ===\n\n## User Acceptance\n\n- None.\n"
 
 
-@pytest.mark.parametrize(
-    "payload",
-    [
-        "Date,ZZZ,\n2099-01-02,1.234,\n",
-        '{"rate":"1.234"}',
-        "<rate>1.234</rate>",
-    ],
-)
-def test_decimal_inside_serialized_fixture_remains_a_valid_round_trip(payload):
-    check = _check(f"archive.writestr('data', {payload!r})\nassert row.rate == '1.234'")
-    assert decimal_provenance_advisories(check) == ()
-    # A shared numeric prefix does not establish supplied precision.
-    revised = replace(check, code=check.code.replace("== '1.234'", "== '1.234000'"))
-    assert decimal_provenance_advisories(revised)
-
-
-def test_verify_reports_unknown_decimal_provenance_without_blocking_or_repair(tmp_path):
+def _verify_one(tmp_path, check_id, body):
     blueprint = tmp_path / "blueprint"
     blueprint.mkdir()
-    path = blueprint / "FEATURE-Convert.md"
-    prefix = "# FEATURE: Convert\n\n## Programmatic Acceptance\n\n=== AC conversion ===\n"
-    code = """from decimal import Decimal, ROUND_HALF_EVEN
-from app import convert
-amount, source_rate, target_rate = "2.00", "2", "5"
-body = convert(amount, source_rate, target_rate)
+    (blueprint / "FEATURE-Convert.md").write_text(
+        _PREFIX.format(id=check_id) + body + _SUFFIX.format(id=check_id)
+    )
+    return verify("Demo", tmp_path)
+
+
+def test_plan_selected_decimal_text_fixtures_need_no_source_provenance(tmp_path):
+    # LayersTesting csv-format-cents-values: none of these literals appear in source material.
+    body = """Intent: Format integer cents as decimal text with exactly two fractional digits.
+from csv_output import format_cents
+cases = [(0, "0.00"), (5, "0.05"), (-5, "-0.05"), (-1250, "-12.50"), (1250, "12.50"),
+         (500000, "5000.00"), (123456789, "1234567.89")]
+for cents, expected in cases:
+    assert format_cents(cents) == expected
 """
-    suffix = "\n=== END AC conversion ===\n\n## User Acceptance\n\n- None.\n"
-    path.write_text(prefix + code + 'assert body["result"] == "10.00"' + suffix)
-    result = verify("Demo", tmp_path)
+    result = _verify_one(tmp_path, "csv-format-cents-values", body)
     assert result.ok
-    assert any("provenance unknown" in warning for warning in result.warnings)
-    oracle = """expected = (Decimal(amount) * Decimal(target_rate) / Decimal(source_rate)).quantize(
-    Decimal("0.01"), rounding=ROUND_HALF_EVEN)
-assert body["result"] == f"{expected:.2f}"
+    assert not any("provenance" in warning for warning in result.warnings)
+    text = (tmp_path / "blueprint" / "FEATURE-Convert.md").read_text()
+    assert '(123456789, "1234567.89")' in text
+
+
+def test_plan_selected_division_example_needs_no_source_provenance(tmp_path):
+    body = """Intent: Return the quotient for a nonzero denominator; 6 / 3 must equal 2.
+from calculator import divide
+assert divide(6, 3) == 2
 """
-    path.write_text(prefix + code + oracle + suffix)
-    assert not any(defect.kind == "decimal-oracle" for defect in verify("Demo", tmp_path).defects)
+    result = _verify_one(tmp_path, "divide-quotient", body)
+    assert result.ok
+    assert not result.warnings
 
 
 def test_verify_resolves_citation_for_known_decimal_answer(tmp_path):

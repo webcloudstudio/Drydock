@@ -30,13 +30,16 @@ and measured something; everything else is reported, not charged.
 |---|---|
 | Authority | Source-derived behavior and independent governed evidence. |
 | Scope | Each criterion is isolated; project pytest outside the harness has different transaction ownership. |
-| Invariants | Preserve supplied published text; do not infer a formula or new precision from unrecognized provenance. |
-| Uncertainty | Static provenance limitations are advisory and cannot change expected values or charge a product defect. |
+| Invariants | Preserve supplied published text; Plan-selected fixtures and expected results need no source provenance. |
+| Uncertainty | No static provenance check exists; a failed criterion never authorizes changing its expected value. |
 | State | Harness rollback remains canonical acceptance isolation; agent-call SQLite stores are disposable and independently provisioned. |
 | Proof | Serialized-fixture round trips, schema/state isolation and negative oracle regressions. |
 
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · The unknown-decimal-provenance advisory is removed. Plan may select
+inputs and calculate expected results that do not appear in sources (`tests/test_acceptance_oracle.py`).
 
 `2026-10-26` · Unrecognized decimal provenance is advisory, with no semantic repair. Serialized
 fixture round trips preserve exact text. Agent test DSNs are disposable for SQLite; canonical

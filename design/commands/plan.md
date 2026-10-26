@@ -32,12 +32,17 @@ written.
 | Authority | Approved source requirements and selected stack; source-defined text and formulas are preserved. |
 | Preconditions | Approved stack and reviewed analysis; executable interfaces and prerequisite ownership declared. |
 | Mutations | Author Blueprints/topology; bounded corrective authoring for proved defects only. |
-| Invariants | Unknown decimal provenance never blocks or triggers repair; probes and declared interface dependencies use deterministic gates. |
+| Invariants | Plan chooses fixtures and expected results; literal absence from sources is never checked. Probes and declared interface dependencies use deterministic gates. |
 | Recovery | Mechanical repair handles supported mechanics; source/graph defects return to Plan without weakening coverage. |
 | Proof | Oracle, whole-plan, probe and dependency regressions; static checks do not establish model convergence. |
 
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · `decimal_provenance_advisories` and its `plan verify` warning are removed
+([plan_ac_intent_and_tdd](../topics/plan_ac_intent_and_tdd.md), Slice A). Plan-selected decimal
+text such as LayersTesting `csv-format-cents-values` is admitted with no warning. Citation
+resolution, ordered-oracle and dependency defects are unchanged.
 
 `2026-10-26` · `plan repair` reports a criterion outside the delimited `=== AC <id> ===` form as
 unrepaired with `run: drydock plan <Target>` and makes no model call for it; a `REPAIR_IMPOSSIBLE`

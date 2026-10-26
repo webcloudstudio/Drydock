@@ -3,46 +3,9 @@
 from __future__ import annotations
 
 import ast
-import re
 from collections.abc import Mapping
 
-from drydock.acceptance import (
-    ProgrammaticAcceptance,
-    _comparison_expectations,
-    _supplied_literals,
-)
-
-
-def decimal_provenance_advisories(check: ProgrammaticAcceptance) -> tuple[str, ...]:
-    """Report unrecognized provenance without judging or rewriting the expected value.
-
-    A decimal can occur inside a serialized fixture rather than as a separate AST literal.
-    Exact tokens in supplied text suppress this advisory; that is not proof of correctness.
-    Failure to recognize input is uncertainty, never evidence for a new formula or rounding.
-    """
-    try:
-        tree = ast.parse(check.code)
-    except SyntaxError:
-        return ()
-    supplied = _supplied_literals(tree)
-    values = dict.fromkeys(
-        node.value
-        for node in _comparison_expectations(tree)
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, str)
-        and re.fullmatch(r"[+-]?\d+\.\d+", node.value)
-        and not any(
-            re.search(r"(?<![\w.+-])" + re.escape(node.value) + r"(?![\w.])", text)
-            for text in supplied
-        )
-        and node.value not in (check.cited_text or "")
-    )
-    return tuple(
-        f"decimal expectation {value!r}: provenance unknown to static analysis; review against "
-        "the source contract if needed; this is not a defect and does not authorize changing "
-        "the value, precision or rounding"
-        for value in values
-    )
+from drydock.acceptance import ProgrammaticAcceptance
 
 
 def _fixture_value(
