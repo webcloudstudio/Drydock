@@ -232,10 +232,11 @@ def test_failure_renderer_shows_agent_summary_story_acceptance_and_progress():
     assert "Fixed parsing and rendering behavior." in rendered
     assert "inline-suite: 271 passed, 64 failed · change +71 passed, -71 failed" in rendered
     assert "Acceptance checks:" in rendered
-    assert "Assertion" in rendered
-    assert "Code: assert result.returncode == 0" in rendered
-    assert "Process exit code: 1" in rendered
-    assert "Error: AssertionError" in rendered
+    # A failed ``assert`` is an acceptance result, not a crash: no exit code or traceback.
+    assert "AC FAILED  inline-suite  271/335 passed (64 failed)" in rendered
+    assert "Intent: Inline conformance passes." in rendered
+    assert "Process exit code" not in rendered
+    assert "Error: AssertionError" not in rendered
     assert "Recovery" in rendered
     # The plain rebuild continues the build; it is named without the --ungate bypass.
     assert "Run: drydock build commonmark\n" in rendered
@@ -297,10 +298,10 @@ class TestHelpAndVersion:
         _stream_build_summary("  [call 2/4]  kind=repair(1/3)  llm=codex/gpt")
         # Token accounting is written to the execution's .llm.log, never to build progress.
         _stream_build_summary("  tokens: in=1,000 · fresh 100 · cached 900 (90% hit) · out=50")
-        _stream_build_summary("    fixing=block-conformance(240/260)")
         _stream_build_summary("12:00:00  calling codex/gpt …")
         _stream_build_summary("    result=ok  rc=0  execution=exec-1")
-        _stream_build_summary("    acceptance=2/3  failed=block-conformance(240/260)")
+        _stream_build_summary("    status  2/3  block-conformance(240/260 +12)")
+        _stream_build_summary("agent interrupted its own verification (advisory)")
         _stream_build_summary("files: 1 changed — parser.py")
 
         assert capsys.readouterr().out == (
@@ -308,9 +309,8 @@ class TestHelpAndVersion:
             '  story=block-parsing  "Block Parsing"\n'
             '  story=inline-parsing  "Inline Parsing"\n'
             "\n  [call 2/4]  kind=repair(1/3)  llm=codex/gpt\n"
-            "    fixing=block-conformance(240/260)\n"
             "    result=ok  rc=0  execution=exec-1\n"
-            "    acceptance=2/3  failed=block-conformance(240/260)\n"
+            "    status  2/3  block-conformance(240/260 +12)\n"
         )
 
     def test_compact_elapsed_is_one_space_free_token(self):
@@ -1274,7 +1274,7 @@ class TestAnalyzeCommand:
         rc, _out, err = run_cli("build", "Marina", "--plan-override-model", "sonnet")
 
         assert rc == 2
-        assert "only to drydock plan and drydock uat" in err
+        assert "only to drydock plan, drydock uat, and drydock run builder" in err
 
     def test_plan_and_build_help_describe_override(self):
         for command in ("plan", "build"):
@@ -2244,6 +2244,9 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+        monkeypatch.setattr(
+            "drydock.status.execution_state", lambda _dir: ("complete", "1 block verified")
+        )
 
         rc, out, err = run_cli(
             "build",
@@ -2261,6 +2264,8 @@ state: pending
         assert "  DONE  story=foundation  state=closed/verified  execution=exec-fake" in out
         assert "foundation" in out
         assert "result: 1 built, 0 failed" in out
+        assert "╭─ BUILD COMPLETE: ExampleTarget " in out and "1 built this run" in out
+        assert "\x1b[" not in out
 
     def test_build_reset_resets_whole_project_then_builds_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch

@@ -17,6 +17,9 @@ import re
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TextIO
+
+from drydock import console
 
 BLOCKERS_FILENAME = "BLOCKERS.md"
 ARCHIVE_RELATIVE = Path("logs") / "blockers.md"
@@ -468,41 +471,48 @@ def primary_instruction(blockers: Blockers) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-def render_banner(blockers: Blockers, target: str = "", recovery: str = "") -> str:
-    """The standard console banner: what blocks the Target, and the way back."""
-    border = "=" * 72
+def render_banner(
+    blockers: Blockers, target: str = "", recovery: str = "", *, stream: TextIO | None = None
+) -> str:
+    """The standard console banner: what blocks the Target, and the way back.
+
+    Red for an environmental stop, yellow when only Commander decisions remain. Colour applies
+    only when ``stream`` renders it.
+    """
     heading = f"BLOCKED: {target or blockers.target}"
     if blockers.declared:
         heading += f"  ·  {local_declared(blockers.declared)}"
-    lines = [border, heading, border, "", f"  {blockers.summary}"]
+    lines = [blockers.summary]
     for item in blockers.blockers:
-        lines += ["", f"  {item.title}", "", "  Error" if item.environmental else "  Question"]
+        lines += ["", item.title, "", "Error" if item.environmental else "Question"]
         body = item.error if item.environmental else item.question
-        lines += [f"    {line}" if line.strip() else "" for line in body.splitlines()]
+        lines += [f"  {line}" if line.strip() else "" for line in body.splitlines()]
         if item.explanation:
-            lines += ["", "  Why blocked"]
-            lines += [
-                f"    {line}" if line.strip() else "" for line in item.explanation.splitlines()
-            ]
+            lines += ["", "Why blocked"]
+            lines += [f"  {line}" if line.strip() else "" for line in item.explanation.splitlines()]
         if item.resolution:
-            lines += ["    Commander Resolution:"]
-            lines += [f"      {line}" for line in item.resolution.splitlines() if line.strip()]
+            lines += ["  Commander Resolution:"]
+            lines += [f"    {line}" for line in item.resolution.splitlines() if line.strip()]
     if recovery:
-        lines += ["", "  Recovery", *(f"    {line.strip()}" for line in recovery.splitlines())]
+        lines += ["", "Recovery", *(f"  {line.strip()}" for line in recovery.splitlines())]
     if blockers.source:
-        lines += ["", f"  Rerun after resolving the error: {blockers.source}"]
-    lines.append(border)
-    return "\n".join(lines)
+        lines += ["", f"Rerun after resolving the error: {blockers.source}"]
+    tone = console.RED if blockers.environmental() else console.YELLOW
+    return console.box(heading, lines, tone=tone, stream=stream)
 
 
-def render_refusal(target_dir: Path, command: str, recovery: str = "") -> str:
+def render_refusal(
+    target_dir: Path, command: str, recovery: str = "", *, stream: TextIO | None = None
+) -> str:
     """Why ``command`` will not run, without duplicating the blocker file."""
     path = blockers_path(target_dir)
     blockers = read_blockers(target_dir)
     lines = [
         f"{command} refused: {target_dir.name} is blocked.",
         "",
-        render_banner(blockers, target_dir.name, recovery) if blockers is not None else "",
+        render_banner(blockers, target_dir.name, recovery, stream=stream)
+        if blockers is not None
+        else "",
         "",
         f"Blocker details: {path}",
     ]

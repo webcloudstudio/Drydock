@@ -1,25 +1,40 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Drydock import script — Marina
+# Drydock import list — Marina
 #
-# Names the source material for one Target. It contains no import machinery:
-# drydock_runner.sh defines the helpers below and sources this file, from this
-# file's own directory, when the Target has no imported sources yet.
+# Names the source material for one Target and starts or continues its build:
 #
-#   drydock_runner.sh Marina sonnet ./Import_Marina.sh
+#   ./Import_Marina.sh --model sonnet
+#
+# Each entry becomes one --infile argument to `drydock run builder`, which
+# imports them in order only while the Target has no imported sources, then
+# runs the lifecycle through to a complete build. Extra arguments pass through.
 #
 # To adapt it to another project, copy this file, point SOURCE_DIR at the
 # source material, and edit the list below. Nothing else is required.
 #
-# Helpers provided by the runner. A relative path resolves against SOURCE_DIR;
-# an absolute path is used as given. Any failure aborts the run.
+# A relative path resolves against SOURCE_DIR; an absolute path is used as given.
 #   import_compass   <file>            Project intent, normalized into COMPASS.md.
 #   import_spec      <file> [format]   One specification document (default markdown).
-#   import_directory <dir>  [format]   Every file under a directory, in one import.
+#   import_directory <dir>  [format]   Every file under a directory (default markdown).
 #   import_code      <dir>             An existing source tree, imported as code.
 #
 # Formats: markdown, source, speckit, compass, intent, auto.
 # ---------------------------------------------------------------------------
+set -Eeuo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+
+INPUTS=()
+source_path() {
+  case "$1" in
+    /*) printf '%s' "$1" ;;
+    *) printf '%s' "${SOURCE_DIR:?SOURCE_DIR must be set}/$1" ;;
+  esac
+}
+import_compass() { INPUTS+=(--infile "compass=$(source_path "$1")"); }
+import_spec() { INPUTS+=(--infile "${2:-markdown}=$(source_path "$1")"); }
+import_directory() { INPUTS+=(--indir "${2:-markdown}=$(source_path "$1")"); }
+import_code() { import_directory "$1" source; }
 
 # Relative to this script's directory.
 SOURCE_DIR=../Specifications/Marina
@@ -90,3 +105,5 @@ import_spec SCREEN-PROJECTS-WORKFLOW.md
 #
 # No phase assigned.
 # import_spec FEATURE-PROJECT-OPS.md
+
+exec drydock run builder Marina "${INPUTS[@]}" "$@"

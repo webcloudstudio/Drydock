@@ -229,6 +229,10 @@ def case_tally(stdout: str, stderr: str) -> tuple[int, int] | None:
     failed`` line is read directly. Shared by the build loop and ``score ac`` so a check that
     selected zero cases from its corpus is classified identically by both: neither can prove the
     story broken or correct, so it is not a failure.
+
+    The total is the cases the check selected. A scoped suite reports the cases its section filter
+    left out as ``skip`` against the whole corpus (``pass=248 fail=38 skip=369 total=655``); those
+    are not the story's cases, so they leave the denominator (286, not 655).
     """
     if (match := _PROGRESS_TALLY_RE.search(stderr or "")) is not None:
         counts = dict(
@@ -236,9 +240,10 @@ def case_tally(stdout: str, stderr: str) -> tuple[int, int] | None:
             for name, _, number in (pair.partition("=") for pair in match.group("counts").split())
         )
         if "pass" in counts:
-            total = counts.get(
-                "total",
-                sum(counts[name] for name in ("pass", "fail", "error", "skip") if name in counts),
+            total = (
+                counts["total"] - counts.get("skip", 0)
+                if "total" in counts
+                else sum(counts[name] for name in ("pass", "fail", "error") if name in counts)
             )
             if total >= counts["pass"]:
                 return counts["pass"], total

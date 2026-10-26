@@ -437,6 +437,18 @@ def test_a_failed_criterion_reports_the_values_it_observed(tmp_path):
     assert acceptance.VALUES_BEGIN not in remaining
 
 
+def test_case_tally_excludes_cases_a_scoped_suite_skipped():
+    """A section filter reports unselected cases as ``skip`` against the whole corpus.
+
+    CommonMark 20261025.023211 printed the block slice as ``248/655``; it selects 286 cases.
+    """
+    stderr = "cases: pass=248 fail=38 error=0 skip=369 total=655 from=result.stdout\n"
+    assert acceptance.case_tally("", stderr) == (248, 286)
+    assert acceptance.case_tally("", "cases: pass=248 fail=38 skip=369\n") == (248, 286)
+    # A filter that selected nothing proved nothing: zero selected cases, not 655.
+    assert acceptance.case_tally("", "cases: pass=0 fail=0 skip=655 total=655\n") == (0, 0)
+
+
 def test_a_suite_tally_is_lifted_out_of_a_parsed_report(tmp_path):
     """The jq shape: the criterion asks for JSON, prints nothing, and asserts on the counts."""
     result = _run_one(

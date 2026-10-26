@@ -26,6 +26,13 @@ failing block.
 
 ## Details
 
+`2026-10-25` · `render_banner` frames the banner with `console.box`: a rounded box with the
+`BLOCKED: <Target> · <declared>` heading set into the top edge. The frame fits the widest line,
+capped at the terminal width, and widens rather than split a word, so paths stay whole. The ASCII
+tier renders it as `+-|`. The box is red for an environmental stop and yellow when only
+decisions remain, through `console.paint`. Color requires a color terminal on the `stream`
+argument (default stdout). Redirects, pipes, and `NO_COLOR` stay plain, so logs carry no escapes.
+
 `2026-10-24` · Operator presentation uses local timestamps with a UTC offset and separates
 the error, optional `Why blocked` explanation, recovery, and rerun command. Console banners omit
 owner, execution, attempts, kind/class, and auto-continue bookkeeping; refusals link to the file
@@ -45,6 +52,13 @@ fatal even for optional children and stops its kit sweep; its final blocker is p
 receipts, report links, and kit checkpoints. `scripts/uat_repair_loop.sh` repeats the recorded
 failure after its recovery instructions. Tests use fake providers and temporary fixture roots;
 no published UAT evidence is executed or modified.
+
+`2026-10-25` · `drydock run builder` replaces `drydock_build_loop.sh` and `drydock_runner.sh`
+(now a deprecated shim). A nonzero child while `BLOCKERS.md` stands ends the pass. At a terminal
+the run asks per blocker through `cli._ask_how_to_proceed`; unattended it requires
+`batch_may_run_owner`. It reruns the owner as `owner-rerun-<verb>` with `DRYDOCK_OWNER_RERUN`,
+then re-derives its position, or ends `BLOCKED` (exit 1). `run` stays exempt from the stop gate.
+See [lifecycle](lifecycle.md). The entry below is historical.
 
 `2026-10-24` · `drydock_build_loop.sh` resolves the Target through `drydock config env` and
 checks `BLOCKERS.md` before work, before diagnosis, and after diagnosis. A recorded blocker

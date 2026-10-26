@@ -269,19 +269,23 @@ verifies behavior. Routine corrections are annotated in the diagnosis report. Co
 choices are recorded in `DECISIONS.json` for QuarterDeck review without blocking execution.
 Commander answers remain binding. An unresolved stall or failed repair returns exit 1.
 
-Use the recovery loop for unfinished Targets, including those already stalled before build:
+`drydock run builder` starts or continues a Target through to a complete build, including
+Targets already stalled before build:
 
 ```bash
-bash drydock_build_loop.sh "$PROJECT" --model gpt-5.6-luna
+drydock run builder "$PROJECT" --model gpt-5.6-luna \
+    --infile compass=INTENT.md --indir specs/ --infile markdown=DATABASE.md
 ```
 
-The loop builds available work and invokes diagnosis after a failed build or an unfinished
-Target with no buildable frontier. It stops if diagnosis fails or leaves the Target stalled.
-`DRYDOCK_RUNNER_MAX_BUILDS` bounds iterations (default 5). Provider/model flags reach both
-commands. `drydock_runner.sh` uses this loop after preparing the Target, and accepts only a
-fixed list of models, printing that list with each model's cost when given anything else.
-The loop ends at verified build completion; scoring is separate. `status --ready` retains its
-boolean buildability contract, and `status --check` supplies the separate completion check.
+It runs the same lifecycle as `drydock uat`: init, import, analyze, plan, plan verification, and
+the build loop. Every stage the Target has already established is skipped. The console is the
+UAT step console. Repeated `--infile` (default format `auto`) and `--indir` (default `markdown`)
+arguments, each optionally prefixed `<format>=`, import in command-line order while the Target
+has no sources. After a failed build or an unfinished Target, `drydock diagnose --apply` repairs
+the work up to `--diagnose-attempts` times (default 3). The run ends with `BUILD COMPLETE` (exit
+0); scoring is separate. Each run is journaled to `<Target>/logs/runs/<run-id>/RUN.jsonl`, one
+record per step. `drydock_runner.sh` is a deprecated shim for `drydock run builder <target>
+--model <model>`; `Import_Marina.sh` shows the import-list form.
 
 `<Target>/BLOCKERS.md` is the one file that blocks a Target. A rate or usage limit, expired
 login, timeout, outage, invalid model, or unrunnable provider CLI writes an environmental blocker
@@ -314,8 +318,9 @@ within a kit append `[2]`, `[3]`, and so on; the first occurrence has no suffix.
 omits `Next:` guidance. Terminals use blue for headers/progress, green for success, and red for
 failure; redirected output and `NO_COLOR` remain plain.
 
-`drydock_build_loop.sh` checks the Target's `BLOCKERS.md` before further build or diagnosis
-work and exits `1` with the blocked cause last; `drydock_runner.sh` propagates that halt.
+`drydock run builder` settles `BLOCKERS.md` before each pass and after any failing step. At a
+terminal it asks `How should we proceed?` and reruns the owner. Unattended, it reruns the owner
+only when the file admits it. Otherwise it ends `BLOCKED` with exit `1`.
 
 `drydock build` checkpoints the application and Target Git repositories after each agent
 execution (including repairs and failures) and completed step. Existing changes receive a

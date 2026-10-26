@@ -2,11 +2,7 @@
 
 import difflib
 import json
-import os
-import subprocess
-import sys
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
@@ -225,84 +221,3 @@ def test_recommended_decision_does_not_gate_story(stalled):
     write_decisions(stalled / "DECISIONS.json", (decision(status="recommended"),))
     synchronize_manifest_question_gates(stalled / "MANIFEST.md", stalled / "blueprint")
     assert execution_state(stalled)[0] == "buildable"
-
-
-@pytest.mark.parametrize(
-    "scenario",
-    [
-        "stalled",
-        "failed-build",
-        "unresolved",
-        "false-success",
-        "complete",
-        "blocked",
-        "provider-limit",
-        "diagnose-limit",
-    ],
-)
-def test_recovery_loop(tmp_path, scenario):
-    """The fake CLI models state changes; no real build or LLM executes."""
-    executable = tmp_path / "drydock"
-    executable.write_text(
-        f"#!{sys.executable}\n"
-        + """
-import json, os, pathlib, sys
-root = pathlib.Path(os.environ["FAKE_ROOT"])
-scenario = os.environ["SCENARIO"]
-args = sys.argv[1:]
-with (root / "calls").open("a") as out:
-    out.write(json.dumps(args) + "\\n")
-state_file = root / "state"
-state = state_file.read_text() if state_file.exists() else (
-    "complete" if scenario == "complete" else "buildable" if scenario in {"failed-build", "provider-limit"} else "stalled"
-)
-if args[:2] == ["config", "env"]:
-    print("DRYDOCK_TARGET_DIR=" + str(root))
-    if scenario == "blocked": (root / "BLOCKERS.md").write_text("quota")
-    sys.exit(0)
-if args[0] == "status":
-    if (root / "BLOCKERS.md").exists():
-        print("BLOCKED: Demo (build: provider rate limit: quota exhausted)")
-        sys.exit(1)
-    sys.exit(0 if state == ("buildable" if "--ready" in args else "complete") else 1)
-if args[0] == "diagnose":
-    if scenario == "diagnose-limit":
-        (root / "BLOCKERS.md").write_text("quota")
-        sys.exit(1)
-    if scenario == "unresolved": sys.exit(1)
-    if scenario != "false-success": state_file.write_text("buildable")
-    sys.exit(0)
-if args[0] == "build":
-    if scenario == "provider-limit":
-        (root / "BLOCKERS.md").write_text("quota")
-        sys.exit(1)
-    if scenario == "failed-build" and not (root / "failed").exists():
-        (root / "failed").touch()
-        state_file.write_text("stalled")
-        sys.exit(1)
-    state_file.write_text("complete")
-"""
-    )
-    executable.chmod(0o755)
-    script = Path(__file__).resolve().parents[1] / "drydock_build_loop.sh"
-    env = dict(
-        os.environ,
-        PATH=f"{tmp_path}:{os.environ['PATH']}",
-        FAKE_ROOT=str(tmp_path),
-        SCENARIO=scenario,
-        DRYDOCK_RUNNER_MAX_BUILDS="3",
-    )
-    result = subprocess.run(
-        ["bash", str(script), "Demo", "--model", "test"], env=env, capture_output=True, text=True
-    )
-    halted = scenario in {"blocked", "provider-limit", "diagnose-limit"}
-    assert result.returncode == (1 if halted or scenario in {"unresolved", "false-success"} else 0)
-    calls = [json.loads(line) for line in (tmp_path / "calls").read_text().splitlines()]
-    repairs = [call for call in calls if call[0] == "diagnose"]
-    assert len(repairs) == (0 if scenario in {"complete", "blocked", "provider-limit"} else 1)
-    if repairs:
-        assert repairs[0] == ["diagnose", "Demo", "--apply", "--model", "test"]
-    if halted:
-        assert result.stdout.rstrip().endswith("provider rate limit: quota exhausted)")
-        assert not result.stderr
-        assert calls[-1] == ["status", "Demo", "--ready"]

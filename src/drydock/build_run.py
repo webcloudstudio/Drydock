@@ -1773,16 +1773,24 @@ def _quantitative_acceptance_progress(
     return improved
 
 
-def _attempt_acceptance_summary(acceptance: tuple[AcceptanceRunResult, ...]) -> str:
-    """Render one concise, operator-facing ``key=value`` acceptance summary for an LLM call."""
+def _attempt_acceptance_summary(
+    acceptance: tuple[AcceptanceRunResult, ...],
+    baseline: Mapping[str, int] | None = None,
+) -> str:
+    """Render the one operator-facing ``status`` line measured after an LLM call.
+
+    Each failed check reads ``id(passed/total +N)``: the cases passing now, the cases that check
+    selected, and the movement since the last measured call. ``+N`` is omitted when no earlier
+    measurement of that check exists.
+    """
     passed = sum(1 for result in acceptance if result.passed)
     skipped = tuple(result for result in acceptance if result.skipped)
     missed = tuple(result for result in acceptance if not result.passed and not result.skipped)
     failed = tuple(result for result in missed if result.binding)
     disputed = tuple(result for result in missed if not result.binding)
-    line = f"    acceptance={passed}/{len(acceptance)}"
+    line = f"    status  {passed}/{len(acceptance)}"
     if failed:
-        line += "  failed=" + _acceptance_failure_details(failed)
+        line += "  " + _acceptance_failure_details(failed, baseline)
     if skipped:
         line += "  skipped=" + ",".join(result.check_id for result in skipped)
     if disputed:
@@ -1792,14 +1800,24 @@ def _attempt_acceptance_summary(acceptance: tuple[AcceptanceRunResult, ...]) -> 
 
 def _acceptance_failure_details(
     failed: tuple[AcceptanceRunResult, ...],
+    baseline: Mapping[str, int] | None = None,
 ) -> str:
-    """Render failed AC ids with ``(passed/total)`` case tallies when available."""
+    """Render failed AC ids with ``(passed/total +N)`` case tallies when available."""
     details: list[str] = []
     for result in failed:
         tally = _case_tally(result)
-        cases = f"({tally[0]}/{tally[1]})" if tally is not None else ""
+        cases = ""
+        if tally is not None:
+            prior = (baseline or {}).get(result.check_id)
+            delta = f" {tally[0] - prior:+d}" if prior is not None else ""
+            cases = f"({tally[0]}/{tally[1]}{delta})"
         details.append(f"{result.check_id}{cases}")
     return ",".join(details)
+
+
+def _passed_case_counts(acceptance: tuple[AcceptanceRunResult, ...]) -> dict[str, int]:
+    """Passing case count per check that reported a tally: the baseline for the next ``+N``."""
+    return {check_id: passed for check_id, passed, _ in _acceptance_case_tallies(acceptance)}
 
 
 def _console_failure_lines(result: AcceptanceRunResult, max_lines: int = 5) -> list[str]:
@@ -3125,6 +3143,11 @@ def build_target(
         # Consecutive flat passes. Reset by any pass that moves the deterministic acceptance
         # score, so progress/flat/progress/flat never accumulates into a stop.
         consecutive_stalls = 0
+        # The last pass that was actually graded. Progress is measured against it, never against
+        # an ungraded pass, whose empty record would turn real movement into a flat pass.
+        last_measured: AttemptRecord | None = None
+        # Passing cases per check at the last measurement: the base of each ``+N`` on ``status``.
+        case_baseline: dict[str, int] = {}
         # Loop invariant: each attempt runs one full LLM pass and grades it. A failed pass
         # whose classification is repairable, whose deterministic acceptance score improved,
         # and whose budget remains feeds its diagnostics back and re-runs against the persisted
@@ -3209,6 +3232,7 @@ def build_target(
             resume_failed = tuple(
                 check for check in resume_live if _drives_repair(check) and not check.skipped
             )
+            case_baseline = _passed_case_counts(resume_live)
             if not resume_failed:
                 acceptance = resume_live
                 unexamined_resume = _unverified_finding(resume_live, prepassed_ids) is not None
@@ -3296,10 +3320,6 @@ def build_target(
                 f"llm={llm_provider}/{attempt_model or '-'}"
             )
             _emit(on_text, call_line)
-            if feedback_checks:
-                _emit(on_text, "    fixing=" + _acceptance_failure_details(feedback_checks))
-            elif agent_report is not None:
-                _emit(on_text, "    fixing=agent-reported")
             _emit(on_text, f"{_clock()}  calling {llm_provider}/{attempt_model or '-'} …")
             execution_started_at = lineage_now()
             try:
@@ -3407,13 +3427,28 @@ def build_target(
             # no checks to measure, the self-report stands; hard failures (sandbox, token limit,
             # non-zero exit, empty/no output) are not prefixed ``agent-reported failure`` and
             # stay terminal.
+            # An agent that stopped its own verification command said nothing about the code, so
+            # it is graded the same way: skipping acceptance there left the next repair pass with
+            # no failing checks and the stall counter comparing against an unmeasured call
+            # (CommonMark 20261025.023211, call 3).
             agent_report = None
-            if status == "failed" and (error or "").startswith(_AGENT_REPORTED_PREFIX) and checks:
+            if (
+                status == "failed"
+                and (error or "").startswith((
+                    _AGENT_REPORTED_PREFIX,
+                    INTERRUPTED_VERIFICATION_PREFIX,
+                ))
+                and checks
+            ):
                 agent_report = _parse_agent_failure(summary)
                 _emit(
                     on_text,
-                    "agent self-reported failure (advisory) "
-                    "— deterministic acceptance is authoritative",
+                    (
+                        "agent interrupted its own verification (advisory) "
+                        if (error or "").startswith(INTERRUPTED_VERIFICATION_PREFIX)
+                        else "agent self-reported failure (advisory) "
+                    )
+                    + "— deterministic acceptance is authoritative",
                 )
                 state, status, error, failure_detail = "", "", None, ""
             elif status == "failed" and (error or "").startswith(_AGENT_REPORTED_PREFIX):
@@ -3807,8 +3842,9 @@ def build_target(
                         if checks:
                             _emit(
                                 on_text,
-                                _attempt_acceptance_summary(acceptance),
+                                _attempt_acceptance_summary(acceptance, case_baseline),
                             )
+                            case_baseline.update(_passed_case_counts(acceptance))
                             if disputed_checks:
                                 # Loud, because silence here would read as coverage the run does
                                 # not have. The criterion ran and missed; what is withheld is the
@@ -3896,7 +3932,10 @@ def build_target(
                     (target_dir / "evidence/persistence-verification.json").write_text(
                         runtime_schema.detail + "\n", encoding="utf-8"
                     )
-            previous_record = attempt_records[-1] if attempt_records else None
+            measured = bool(acceptance or gate_results)
+            if checks and not acceptance:
+                _emit(on_text, f"    status  not measured — {_clip(error or 'not graded', 120)}")
+            previous_record = last_measured
             passed_checks = sum(1 for check in acceptance if check.passed)
             passed_cases, total_cases = _acceptance_case_totals(acceptance)
             executed_check_ids, passed_check_ids, case_tallies = _binding_progress_view(acceptance)
@@ -3904,7 +3943,7 @@ def build_target(
             stalled = (
                 status == "failed"
                 and _is_repairable(error)
-                and bool(acceptance or gate_results)
+                and measured
                 and previous_record is not None
                 and not ac_progress
                 and not quantitative_progress
@@ -3912,8 +3951,10 @@ def build_target(
             # A flat pass is a signal, not always a verdict: one can be noise between two
             # productive passes. A run of them is the verdict, because a model that has stopped
             # moving the score will not start. Every build tolerates one flat pass as noise and
-            # stops on the second consecutive flat pass.
-            consecutive_stalls = consecutive_stalls + 1 if stalled else 0
+            # stops on the second consecutive flat pass. An ungraded pass is neither: it leaves
+            # the count where it was.
+            if measured:
+                consecutive_stalls = consecutive_stalls + 1 if stalled else 0
             stall_budget = max_consecutive_stalls()
             stop_on_stall = stalled and consecutive_stalls >= stall_budget
             # An agent's claim that a criterion is broken is evidence, not a verdict. It used to
@@ -4003,6 +4044,8 @@ def build_target(
                     observed_checks=len(acceptance),
                 )
             )
+            if measured:
+                last_measured = attempt_records[-1]
             lineage.record(
                 started_at=execution_started_at,
                 result=result,
@@ -4021,7 +4064,9 @@ def build_target(
                     "failure_detail": failure_detail,
                 },
             )
-            feedback_checks = tuple(check for check in acceptance if _drives_repair(check))
+            # An ungraded pass keeps the last measured failures as the next pass's work queue.
+            if acceptance or not checks:
+                feedback_checks = tuple(check for check in acceptance if _drives_repair(check))
             if (
                 status == "failed"
                 and _is_repairable(error)

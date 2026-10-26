@@ -214,7 +214,7 @@ row here or breaks the format.
 | `refit` | `design/commands/refit.md` | `refit.py`, `refit_ticket.py`, `change_ticket.py`, `manifest_edit.py` |
 | `report` | `design/commands/report.md` | `report.py`, `report_render.py`, `llm_report.py` |
 | `rigging` | `design/commands/rigging.md` | `rigging_*.py` |
-| `run` | `design/commands/run.md` | `quarterdeck_*.py`, `QuarterDeck/app.py` |
+| `run` | `design/commands/run.md` | `quarterdeck_*.py`, `QuarterDeck/app.py`, `lifecycle.py` |
 | `score` | `design/commands/score.md` | `score*.py`, `scorecard.py`, `sea_trials.py` |
 | `status` | `design/commands/status.md` | `status.py`, `project_status.py` |
 | `survey` | `design/commands/survey.md` | `survey.py` |
@@ -225,6 +225,7 @@ row here or breaks the format.
 | *Process stops* | `design/topics/process_stops.md` | `blockers.py`, `llm.py` (`fatal_stop`), `cli.py` (stop gate) |
 | *Language-agnostic Targets* | `design/topics/language_agnostic.md` | `technology_stack.py`, `Rigging/languages/` |
 | *Planner step validation* | `design/topics/planner_step_validation.md` | `planning_session.py` |
+| *Build lifecycle* | `design/topics/lifecycle.md` | `lifecycle.py`, `uat.py` (`run_fixture`) |
 | `/ddk-uat` skill | `design/skills/ddk-uat.md` | `prompts/uat_diagnostic.md` |
 
 ### Memory File Format

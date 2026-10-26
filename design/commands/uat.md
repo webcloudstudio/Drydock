@@ -42,6 +42,16 @@ UNVERIFIED. Failed and unverified outcomes do not assign defect ownership; diagn
 whether the product, acceptance criterion, source contract, or execution environment is defective.
 
 
+`2026-10-25` · The init-through-build steps run through the shared `Lifecycle`
+([lifecycle](../topics/lifecycle.md)) with an unattended policy and `diagnose_attempts=0`.
+`STAGES` is the lifecycle's stages plus `refit, test, score`. Child argv, labels, numbering,
+halts, degraded lines, and evidence are unchanged. Seven fake-runner scenarios matched HEAD
+byte for byte. `build_failure_detail` moved to `lifecycle.py`.
+
+`2026-10-25` · The verdict, `STEP ERROR`, and `NOT READY` boxes use `console.box` (rounded,
+heading in the top edge): verdict green when passed and red otherwise, `STEP ERROR` red, `NOT READY`
+yellow. A child's framed banner arrives plain through the pipe. `StepConsole` paints stderr lines
+that begin with a frame edge red and omits the `!` gutter on them. Evidence logs stay plain.
 
 `2026-10-24` · Compact build-status snapshots mark verified and built rows with green checks,
 question-blocked rows with a yellow warning, and failed or blocked rows with red failure marks.

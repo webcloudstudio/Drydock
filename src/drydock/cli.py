@@ -20,6 +20,7 @@ from typing import NoReturn
 from drydock import __copyright__, __version__
 from drydock.config import DEFAULT_REPAIR_ATTEMPTS, LLM_PROVIDERS, settable_config_keys
 from drydock.errors import DrydockError, RecordedError, UsageError
+from drydock.lifecycle import DEFAULT_DIAGNOSE_ATTEMPTS, DEFAULT_MAX_BUILD_PASSES
 from drydock.stubs import not_implemented
 
 logger = logging.getLogger(__name__)
@@ -116,9 +117,8 @@ def _stream_build_summary(text: str) -> None:
     elif text.startswith((
         "  story=",
         "  gates=",
-        "    fixing=",
         "    result=",
-        "    acceptance=",
+        "    status  ",
         "  STOP ",
         "WARNING:",
         "git:",
@@ -1913,6 +1913,56 @@ def _resolve_latest_target(targets_root: Path) -> Path:
     return min(updated, key=lambda item: (-item[1], item[0].name.casefold(), item[0].name))[0]
 
 
+def cmd_run_builder(args: argparse.Namespace) -> int:
+    """Start or continue one Target's build lifecycle in place, through to a complete build."""
+    from drydock.blockers import render_banner
+    from drydock.config import get_effort, get_model, get_target_directory
+    from drydock.lifecycle import BuildRun, Policy, SourceInput, builder_env, render_outcome
+    from drydock.uat import make_streaming_runner
+    from drydock.uat_console import StepConsole
+
+    if args.max_build_passes < 1:
+        raise UsageError("--max-build-passes must be at least 1")
+    if args.repair_attempts is not None and args.repair_attempts < 0:
+        raise UsageError("--repair-attempts must be zero or greater")
+    if args.diagnose_attempts < 0:
+        raise UsageError("--diagnose-attempts must be zero or greater")
+    inputs = [
+        SourceInput.parse(value, directory=kind == "dir") for kind, value in args.inputs or ()
+    ]
+    _apply_bound_overrides(args)
+    policy = Policy(
+        repair_attempts=_resolved_repair_attempts(args),
+        max_build_passes=args.max_build_passes,
+        diagnose_attempts=args.diagnose_attempts,
+        plan_model=args.plan_override_model,
+    )
+    env = builder_env(
+        get_model(getattr(args, "model", None)),
+        _llm_provider(args),
+        get_effort(getattr(args, "effort", None)),
+    )
+
+    def show_blockers(blockers) -> None:
+        print(render_banner(blockers, args.Target, _blockers_recovery(blockers)), flush=True)
+
+    step_console = StepConsole(sys.stdout)
+    outcome = BuildRun(
+        args.Target,
+        get_target_directory() / args.Target,
+        policy,
+        runner=make_streaming_runner(step_console),
+        env=env,
+        inputs=inputs,
+        ask=_ask_how_to_proceed if _is_terminal() else None,
+        on_blocker=show_blockers,
+    ).execute()
+    sys.stdout.flush()
+    stream = sys.stdout if outcome.exit_code == 0 else sys.stderr
+    print("\n" + render_outcome(outcome, args.Target, stream=stream), file=stream, flush=True)
+    return outcome.exit_code
+
+
 def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
     from drydock import quarterdeck_run as _qd
     from drydock.config import get_quarterdeck_port, get_target_directory
@@ -2437,7 +2487,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"{label}: {len(result.built())} built, {len(result.failed())} failed, "
         f"{len(result.steps) - len(result.built()) - len(result.failed())} unchanged"
     )
-    print(f"elapsed: {_elapsed_text(time.monotonic() - build_started)}")
+    elapsed = _elapsed_text(time.monotonic() - build_started)
+    print(f"elapsed: {elapsed}")
     from drydock.llm import fatal_stop
 
     if result.stalled() and (stop := fatal_stop()) is not None:
@@ -2536,6 +2587,21 @@ def cmd_build(args: argparse.Namespace) -> int:
             )
     elif exit_code == 0:
         record_status(target_dir, "BUILT", passed=True, command=f"drydock build {args.Target}")
+        from drydock.status import execution_state
+
+        state, reason = execution_state(target_dir)
+        if state == "complete" and not result.dry_run:
+            # The milestone closes the run in green, as a blocker closes it in red.
+            from drydock import console
+
+            print()
+            print(
+                console.box(
+                    f"BUILD COMPLETE: {args.Target}",
+                    [reason, f"{len(result.built())} built this run, elapsed {elapsed}"],
+                    tone=console.GREEN,
+                )
+            )
     return exit_code
 
 
@@ -3536,9 +3602,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_uat.add_argument(
         "--max-build-passes",
         type=int,
-        default=25,
+        default=DEFAULT_MAX_BUILD_PASSES,
         metavar="<n>",
-        help="Maximum build passes per initial or refit stage (default: 25).",
+        help=f"Maximum build passes per initial or refit stage (default: {DEFAULT_MAX_BUILD_PASSES}).",
     )
     p_uat.add_argument(
         "--repair-attempts",
@@ -4073,6 +4139,75 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="HOST",
         help="Host to bind to (default: 127.0.0.1).",
     )
+    p_run_builder = run_sub.add_parser(
+        "builder",
+        help="Start or continue a Target's build lifecycle, through to a complete build.",
+        description=(
+            "Run the build lifecycle in place: init, import, analyze, plan, plan verification,\n"
+            "and the build loop, skipping every stage the Target has already established.\n"
+            "Each run is journaled to <Target>/logs/runs/<run-id>/RUN.jsonl."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_run_builder.add_argument("Target", metavar="<Target>")
+    p_run_builder.add_argument(
+        "--infile",
+        dest="inputs",
+        action="append",
+        type=lambda value: ("file", value),
+        default=None,
+        metavar="[<format>=]<file>",
+        help="Import this file when the Target has no sources (repeatable; default format auto).",
+    )
+    p_run_builder.add_argument(
+        "--indir",
+        dest="inputs",
+        action="append",
+        type=lambda value: ("dir", value),
+        default=None,
+        metavar="[<format>=]<dir>",
+        help=(
+            "Import this directory when the Target has no sources (repeatable; default format "
+            "markdown). Imports run in command-line order."
+        ),
+    )
+    p_run_builder.add_argument(
+        "--max-build-passes",
+        type=int,
+        default=DEFAULT_MAX_BUILD_PASSES,
+        metavar="<n>",
+        help=f"Maximum build passes (default: {DEFAULT_MAX_BUILD_PASSES}).",
+    )
+    p_run_builder.add_argument(
+        "--repair-attempts",
+        dest="repair_attempts",
+        type=int,
+        default=None,
+        metavar="<n>",
+        help=(
+            "Repairs one build block may spend "
+            f"(default: {DEFAULT_REPAIR_ATTEMPTS}, or 'drydock config set repair_attempts <n>')."
+        ),
+    )
+    p_run_builder.add_argument(
+        "--diagnose-attempts",
+        dest="diagnose_attempts",
+        type=int,
+        default=DEFAULT_DIAGNOSE_ATTEMPTS,
+        metavar="<n>",
+        help=(
+            "Times unfinished work is repaired with 'drydock diagnose --apply' "
+            f"(default: {DEFAULT_DIAGNOSE_ATTEMPTS}; 0 disables)."
+        ),
+    )
+    _add_bound_arguments(p_run_builder)
+    p_run_builder.add_argument(
+        "--plan-override-model",
+        dest="plan_override_model",
+        default=None,
+        metavar="<model>",
+        help="Model for every 'drydock plan' step; every other step uses --model.",
+    )
 
     # ── import ────────────────────────────────────────────────────────────────
     p_import = sub.add_parser("import", help="Reverse-engineer a project into a Blueprint.")
@@ -4592,6 +4727,8 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         sub = getattr(args, "run_command", None)
         if sub == "quarterdeck":
             return cmd_run_quarterdeck(args)
+        if sub == "builder":
+            return cmd_run_builder(args)
         else:
             parser.parse_args(["run", "--help"])
             return 0
@@ -4823,6 +4960,32 @@ def _failure_exception(check) -> str:
     )
 
 
+def _is_assertion_miss(check) -> bool:
+    """True when a check ran to completion and its own ``assert`` failed.
+
+    That is a verdict about the product, not a crash: its traceback restates the assertion and
+    adds nothing. Any other exception, or a classified error (timeout, malformed snippet), is
+    diagnostic and keeps the full rendering.
+    """
+    return not check.error and _failure_exception(check).startswith("AssertionError")
+
+
+def _assertion_miss_lines(check) -> list[str]:
+    """Render a failed assertion as an acceptance result: id, case tally, intent, source."""
+    from drydock.acceptance import case_tally
+
+    head = f"      AC FAILED  {check.check_id}"
+    if (tally := case_tally(check.stdout, check.stderr)) is not None:
+        head += f"  {tally[0]}/{tally[1]} passed ({tally[1] - tally[0]} failed)"
+    else:
+        head += f"  {_failure_assertion(check)}"
+    return [
+        head,
+        f"        Intent: {check.intent or check.check_id}",
+        f"        Source: {check.source}",
+    ]
+
+
 def _failure_stop_lines(step) -> list[str]:
     """Explain a repair loop that ended below its call budget.
 
@@ -4999,9 +5162,11 @@ def _render_build_failures(
             check for check in (step.acceptance or step.owned_acceptance) if not check.passed
         )
         if failed_checks:
-            lines.append("    Assertion")
-            lines.append("      Acceptance checks:")
+            lines.append("    Acceptance checks:")
             for check in failed_checks:
+                if _is_assertion_miss(check):
+                    lines.extend(_assertion_miss_lines(check))
+                    continue
                 lines += [
                     f"      Acceptance: {check.check_id}",
                     f"      Intent: {check.intent or check.check_id}",
@@ -5370,15 +5535,15 @@ def _process_stop_gate(args: argparse.Namespace) -> bool | int:
     ):
         # An analysis decision is waived by ``plan --override``, which records the waiver.
         return True
-    banner = render_refusal(target_dir, f"drydock {args.command}", _blockers_recovery(blockers))
+    command, recovery = f"drydock {args.command}", _blockers_recovery(blockers)
     if not _is_terminal():
         if is_owner and batch_may_run_owner(blockers):
             print(f"{target_dir.name} is blocked by its own {blockers.owner}; rerunning it.")
             _admit_owner(target_dir, blockers)
             return True
-        print(banner, file=sys.stderr)
+        print(render_refusal(target_dir, command, recovery, stream=sys.stderr), file=sys.stderr)
         return False
-    print(banner)
+    print(render_refusal(target_dir, command, recovery))
     if not _ask_how_to_proceed(target_dir, blockers):
         return False
     blockers = read_blockers(target_dir) or blockers
@@ -5503,7 +5668,10 @@ def _declare_process_stop(args: argparse.Namespace, argv: list[str] | None) -> b
     )
     write_blockers(target_dir, recorded)
     recorded = read_blockers(target_dir) or replace(recorded)
-    print(render_banner(recorded, target_dir.name, stop.recovery()), file=sys.stderr)
+    print(
+        render_banner(recorded, target_dir.name, stop.recovery(), stream=sys.stderr),
+        file=sys.stderr,
+    )
     print(f"Error: {target_dir.name}: {stop.kind}: {stop.message}", file=sys.stderr, flush=True)
     return True
 
@@ -5852,11 +6020,15 @@ def main(argv: list[str] | None = None) -> None:
             setattr(args, key, value)
     plan_model = getattr(args, "plan_override_model", None)
     if plan_model:
-        # Plan-stage only: ``drydock plan`` runs on it, and ``drydock uat`` hands it to its plan
-        # steps. Any other command would silently ignore it, so it is refused.
-        if args.command not in {"plan", "uat"}:
+        # Plan-stage only: ``drydock plan`` runs on it, and ``drydock uat`` and ``drydock run
+        # builder`` hand it to their plan steps. Any other command would silently ignore it.
+        lifecycle_driver = args.command == "uat" or (
+            args.command == "run" and getattr(args, "run_command", None) == "builder"
+        )
+        if args.command != "plan" and not lifecycle_driver:
             print(
-                "error: --plan-override-model applies only to drydock plan and drydock uat",
+                "error: --plan-override-model applies only to drydock plan, drydock uat, and "
+                "drydock run builder",
                 file=sys.stderr,
             )
             sys.exit(2)

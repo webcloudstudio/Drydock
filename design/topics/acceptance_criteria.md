@@ -166,6 +166,11 @@ passed ids or a per-case tally gain over binding criteria; two flat passes stop.
 sweeps every criterion of every finished block (`2026-10-13`). *Broken:* regressions from earlier
 passes go unseen.
 
+`2026-10-25` · **A case tally counts the cases a check selected.** `acceptance.case_tally` takes the
+denominator as `total - skip` from the harness `cases:` line, so a scoped suite that reports its
+unselected corpus as `skip` reads `248/286`, not `248/655`, and a filter that selects nothing reads
+`0/0` and settles UNVERIFIED. Shared by `build` and `score ac`.
+
 `2026-10-12` · **AC repair is deterministic in selection and validated in memory.** `malformed` and
 `DISPUTED` criteria are selected; terminal ones never. One call per run with the AC, fault, spec
 text, and numbered sources — never product source or output. A repair keeps its id, must bind, must
@@ -173,8 +178,9 @@ not be vacuous, and must run `VALID` on the empty baseline; else the criterion b
 *Broken:* criteria fitted to product output, or an endless loop.
 
 `2026-10-12` · **Completion.** `status --check` is `RETRYABLE` while any criterion is `DISPUTED`;
-`UNFIXABLE` is clean. The outer loop (`drydock_build_loop.sh`) owns sequencing: build, then
-`diagnose --apply`, until `status --check` passes.
+`UNFIXABLE` is clean. The outer loop (`Lifecycle.build`, driven by `drydock run builder`; see
+[lifecycle](lifecycle.md)) owns sequencing: build, then `diagnose --apply`, until `status --check`
+passes.
 
 `2026-07-23` · **A deterministic definition of done is the complete suite, never a sample.** A
 whole-project suite sits on the block that completes the capability (`Suite: full`) and is mirrored

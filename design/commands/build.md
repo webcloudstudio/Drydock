@@ -42,6 +42,30 @@ its first story. Synthetic regressions cover a later conversion owner, independe
 and failures with no owned check. FxRates `20261025.200850` previously named initialization
 as the cause of a conversion assertion failure.
 
+
+`2026-10-25` · **One `status` line per LLM call, printed after grading.** The pre-call `fixing=`
+echo is removed. `    status  <passed>/<checks>  <id>(<cases passed>/<cases selected> +N),...`
+lists each failed binding check; the denominator is the cases that check selected, and `+N` is
+the movement since the last measured call (a resumed block's live pre-run is the first base;
+omitted with no earlier measurement). An ungraded call prints `    status  not measured — <cause>`.
+*Broken:* identical pre/post lines read as a stalled loop, and a scoped slice reads `/655`.
+
+`2026-10-25` · **An agent's interrupted verification is advisory, like its self-reported
+failure.** With checks declared, deterministic acceptance still runs and decides the pass.
+Progress is compared against the last measured pass, an ungraded pass leaves the flat-pass count
+unchanged, and it keeps the last measured failures as the next repair's work queue. CommonMark
+`20261025.023211`: call 3 was skipped, call 4 got no failing checks, and its +22 was counted flat,
+stopping the block at call 5 of 22. *Broken:* real progress ends a block as `stall`.
+
+`2026-10-25` · **A failed `assert` renders as an acceptance result.** The `BUILD FAILED` block
+prints `AC FAILED  <id>  <passed>/<selected> passed (<n> failed)` with Intent and Source, without
+exit code, `Error: AssertionError`, or traceback. Any other exception or classified error keeps
+the full Code/Result/Stderr rendering.
+
+`2026-10-25` · A successful, non-dry-run build whose `execution_state` is `complete`
+ends with a green `BUILD COMPLETE: <Target>` box: the completion reason, the count built this run,
+and the elapsed time. A partial build (`--step`, open frontier) prints no box.
+
 `2026-10-24` · Repair feedback renders actionable check diagnostics before excluded checks.
 Exclusions are summarized by count with pointers to `evidence/acceptance-status.json` and the
 block's pre-build observation instead of consuming the 4,000-character feedback budget with
@@ -58,6 +82,10 @@ edits when the step is already satisfied. Attempt evidence labels bypassed gradi
 `checks not executed (<n> declared)` and labels an agent report advisory only when it did not
 determine the failure. This revises the file-delta restriction from `98c2f82`; it does not change
 the master specification. CsvStat `20261025.001433` previously spent seven calls without grading.
+
+`2026-10-25` · `drydock_build_loop.sh` is removed. `drydock run builder` drives the build loop
+through `Lifecycle.build` ([lifecycle](../topics/lifecycle.md)) and settles `BLOCKERS.md`
+before each pass and after any failing step; the entry below is historical.
 
 `2026-10-24` · The normal `drydock_build_loop.sh` driver checks the resolved Target's
 `BLOCKERS.md` before building and before or after recovery diagnosis. Any blocker ends the
@@ -265,6 +293,13 @@ an unchanged rebuild against the same immutable criterion.
 -
 
 ## Actions
+
+- `2026-10-25` · CommonMark `20261025.023211`: interrupted-verification grading, last-measured
+  stall comparison, and scoped case denominators are fixed locally
+  (`test_interrupted_agent_verification_is_still_graded_and_counts_as_progress`). Unverified:
+  Ed's next CommonMark resume must show a `status` line for every call and `/286`, `/356`, `/655`
+  denominators. Also open: the agent's 60-second no-output watchdog kills the multi-minute full
+  suite; the build prompt does not say the suite is long-running.
 
 - `2026-10-24` · CsvStat `20261025.011759`: local fixes address the five diagnosis ledger
   findings; Ed must verify a fresh run with valid CSV fixtures, post-build native checks,

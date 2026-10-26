@@ -109,7 +109,7 @@ def test_terminal_headers_successes_and_failures_use_semantic_colors(monkeypatch
     else:
         assert "\x1b[34m── DRYDOCK BUILD COMMONMARK" in output
         assert "\x1b[32m── DRYDOCK BUILD COMMONMARK" in output
-        assert "\x1b[31m" + "#" * 60 in output
+        assert "\x1b[31m╭─ STEP ERROR: DRYDOCK BUILD COMMONMARK [2]" in output
 
 
 def test_partial_and_redrawn_lines_reach_the_terminal_unchanged() -> None:
@@ -139,6 +139,34 @@ def test_an_open_line_is_closed_before_the_other_stream_writes() -> None:
     assert stream.getvalue() == " │ working\n ! boom\n"
 
 
+def test_framed_child_banner_is_not_given_a_gutter() -> None:
+    console, stream = _console()
+
+    console.chunk("stderr", "╭─ BLOCKED: Toml ─╮\n│ Uat Stage      │\n╰────────────────╯\nafter\n")
+
+    assert stream.getvalue() == (
+        "╭─ BLOCKED: Toml ─╮\n│ Uat Stage      │\n╰────────────────╯\n ! after\n"
+    )
+
+
+def test_framed_child_banner_is_red_on_a_terminal_and_plain_otherwise(monkeypatch) -> None:
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    stream = Terminal()
+    console = StepConsole(stream, width=60)
+
+    console.chunk("stderr", "╭─ BLOCKED ─╮\n│ x")
+    console.chunk("stdout", "next\n")
+
+    assert stream.getvalue() == (
+        "\x1b[31m╭─ BLOCKED ─╮\x1b[0m\n\x1b[31m│ x\x1b[0m\n\x1b[2m │ \x1b[0mnext\n"
+    )
+
+
 def test_quiet_reports_stage_names_only() -> None:
     console, stream = _console(quiet=True)
 
@@ -163,7 +191,7 @@ def test_fragmented_noise_is_hidden_and_diagnostic_text_survives() -> None:
     text = stream.getvalue()
     assert "Copyright" not in text and "git store" not in text
     assert "STEP ERROR:" in text and "error: schema mismatch" in text
-    assert text.rstrip().endswith("#" * 60)
+    assert text.rstrip().endswith("╯")
 
 
 def test_plan_box_becomes_one_line_without_hiding_warnings() -> None:
@@ -223,10 +251,10 @@ def test_ready_failure_is_not_presented_as_a_command_error() -> None:
     assert "STEP ERROR:" not in stream.getvalue()
 
 
-def test_result_box_wraps_ascii_and_long_diagnostics() -> None:
-    from drydock.uat_console import result_box
+def test_result_box_wraps_long_diagnostics_and_degrades_to_ascii() -> None:
+    from drydock import console
 
-    output = result_box("UAT FAILED: Toml", ["error " * 80], width=60)
+    output = console.render(console.box("UAT FAILED: Toml", ["error " * 80], width=60), "ascii")
     assert all(len(line) == 60 for line in output.splitlines())
     assert output.isascii()
 

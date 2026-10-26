@@ -552,3 +552,48 @@ def test_every_text_subprocess_pins_utf8() -> None:
             if "encoding" not in keywords:
                 offenders.append(f"{path.name}:{node.lineno}")
     assert offenders == []
+
+
+def test_box_frames_lines_with_heading_in_the_top_edge() -> None:
+    framed = console.box("BLOCKED: Toml", ["Uat Stage", "", "  detail"], width=80).splitlines()
+
+    assert framed[0].startswith("╭─ BLOCKED: Toml ") and framed[0].endswith("╮")
+    assert framed[1] == "│ Uat Stage       │"
+    assert framed[3] == "│   detail        │"
+    assert framed[-1] == "╰" + "─" * (len(framed[0]) - 2) + "╯"
+    assert {len(line) for line in framed} == {len(framed[0])}
+
+
+def test_box_wraps_prose_under_its_indent_and_keeps_paths_whole() -> None:
+    path = "/tmp/" + "x" * 70 + "/build.stderr.log"
+    prose = "  " + " ".join(["word"] * 20)
+    framed = console.box("BLOCKED", [prose, f"  stderr: {path}"], width=50).splitlines()
+
+    assert all(len(line) == len(framed[0]) for line in framed)
+    assert any(f"  {path}" in line for line in framed)
+    assert all(line.startswith("│   word") for line in framed[1:-3])
+
+
+def test_box_frame_degrades_to_ascii() -> None:
+    assert console.render(console.box("B", ["x"]), console.ASCII).splitlines() == [
+        "+- B -+",
+        "| x   |",
+        "+-----+",
+    ]
+
+
+def test_box_tone_colours_each_line_only_on_a_colour_terminal(monkeypatch) -> None:
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    coloured = console.box("PASSED", ["ok"], tone=console.GREEN, stream=Terminal())
+    assert all(
+        line.startswith("\x1b[32m") and line.endswith("\x1b[0m") for line in coloured.splitlines()
+    )
+
+    assert "\x1b[" not in console.box("PASSED", ["ok"], tone=console.GREEN, stream=io.StringIO())
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert "\x1b[" not in console.box("PASSED", ["ok"], tone=console.GREEN, stream=Terminal())

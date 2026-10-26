@@ -50,8 +50,11 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
 import sys
+import textwrap
 import unicodedata
+from collections.abc import Sequence
 from typing import TextIO
 
 _GLYPHS_ENV = "DRYDOCK_GLYPHS"
@@ -114,6 +117,10 @@ _FALLBACKS = {
     "┐": "+",
     "└": "+",
     "┘": "+",
+    "╭": "+",
+    "╮": "+",
+    "╰": "+",
+    "╯": "+",
     "├": "+",
     "┤": "+",
     "┬": "+",
@@ -225,6 +232,73 @@ def display_width(text: str) -> int:
 def pad_display(text: str, width: int) -> str:
     """Left-align ``text`` in ``width`` terminal cells, counting double-width glyphs as two."""
     return text + " " * max(0, width - display_width(text))
+
+
+# ANSI SGR codes for ``paint`` and ``box``: red stops, yellow decisions, green milestones.
+RED = "31"
+GREEN = "32"
+YELLOW = "33"
+
+
+def paint(text: str, tone: str | None, stream: TextIO | None = None) -> str:
+    """``text`` in ``tone`` when ``stream`` renders colour, else unchanged.
+
+    Each line is reset on its own, so a pager, a gutter, or a partial read never inherits it.
+    Redirected output, pipes, and ``NO_COLOR`` stay plain, which keeps logs free of escapes.
+    """
+    if not tone or not color_enabled(stream):
+        return text
+    return "\n".join(f"\x1b[{tone}m{line}\x1b[0m" if line else line for line in text.split("\n"))
+
+
+def box(
+    heading: str,
+    lines: Sequence[str],
+    *,
+    width: int | None = None,
+    tone: str | None = None,
+    stream: TextIO | None = None,
+) -> str:
+    """Frame ``lines`` in a rounded box with ``heading`` set into the top edge.
+
+    The frame fits the widest line, capped at ``width`` or the terminal width. A longer line
+    wraps at spaces under its own indent; the frame widens rather than split a word, so paths
+    stay whole. Lower tiers render the frame as ``+-|``. ``tone`` colours the box when
+    ``stream`` (default stdout) renders colour; see ``paint``.
+    """
+    limit = max(40, width or shutil.get_terminal_size((100, 24)).columns)
+    natural = max([display_width(heading) + 2, *(display_width(line) for line in lines)])
+    unbreakable = max(
+        (
+            display_width(line) - display_width(line.lstrip()) + display_width(word)
+            for line in lines
+            for word in line.split()
+        ),
+        default=0,
+    )
+    inner = max(min(natural, limit - 4), unbreakable)
+    width = inner + 4
+    body: list[str] = []
+    for line in lines:
+        if display_width(line) <= inner:
+            body.append(line)
+            continue
+        indent = line[: len(line) - len(line.lstrip())]
+        body += textwrap.wrap(
+            line.strip(),
+            width=inner,
+            initial_indent=indent,
+            subsequent_indent=indent,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+    fill = max(1, width - display_width(heading) - 5)
+    framed = "\n".join([
+        f"╭─ {heading} {'─' * fill}╮",
+        *(f"│ {pad_display(line, inner)} │" for line in body),
+        f"╰{'─' * (width - 2)}╯",
+    ])
+    return paint(framed, tone, stream)
 
 
 def active_tier() -> str:

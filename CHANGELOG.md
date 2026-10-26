@@ -10,6 +10,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-10-25: `drydock run builder <Target>` starts or continues one Target through to a complete
+  build in place. It is the lifecycle `drydock uat` runs (init, import, analyze, plan, plan
+  verification, build loop), now defined once in `lifecycle.py` and shown with the same step
+  console. The position is derived from the Target directory, so completed stages are skipped and
+  a complete Target reports `BUILD COMPLETE` and exits 0. Repeated `--infile` and `--indir`
+  arguments, each optionally prefixed `<format>=`, import in command-line order while the Target
+  has no sources. Unfinished work is repaired with `diagnose --apply` up to `--diagnose-attempts`
+  times (default 3). `BLOCKERS.md` is settled before each pass and after any failing step: at a
+  terminal the run asks per blocker and reruns the owner, and unattended it ends `BLOCKED`
+  (exit 1) unless the file admits the owner. Each run is journaled to
+  `<Target>/logs/runs/<run-id>/RUN.jsonl`, with the stage topology, one record per step, blocker
+  settlements, and the outcome. `--plan-override-model` is accepted.
+
 - 2026-10-24: UAT build-status snapshots color verified and built rows green with check marks,
   question-blocked rows yellow with a warning mark, and failed or blocked rows red with a fail
   mark. Color remains terminal-only; recorded child stdout and stderr remain plain text.
@@ -155,6 +168,24 @@ command surface and Typed Specification contract are unstable and may change bet
   Manifest `draft`/`unbuildable` and exits `1`.
 
 ### Changed
+
+- 2026-10-25: `drydock build` prints one `status` line per LLM call after grading, replacing the
+  pre-call `fixing=` line and the post-call `acceptance=` line:
+  `status  2/5  block-parsing-conformance(248/286 +16),...`. Each failed check shows cases passing,
+  cases that check selected, and the change since the last measured call. In the `BUILD FAILED`
+  report, a criterion whose own `assert` failed prints `AC FAILED  <id>  <passed>/<selected> passed
+  (<n> failed)` with its intent and source instead of an exit code, `Error: AssertionError`, and a
+  traceback.
+
+- 2026-10-25: The blocker banner printed by blocked commands, refusals, and UAT stops is a rounded
+  box with the `BLOCKED: <Target> · <declared>` heading in its top edge, replacing the `=` rules.
+  Long lines wrap at spaces under their indent, paths are never split, and the ASCII glyph tier
+  draws the frame with `+-|`. Boxes are colored by outcome: an environmental blocker is red, a
+  decision-only blocker yellow. `drydock build` closes a run that completes the Target with a green
+  `BUILD COMPLETE: <Target>` box. The UAT verdict box is green when passed and red otherwise,
+  `STEP ERROR` is red, and `NOT READY` is yellow. All of these replace `#` frames. A child's banner
+  shows red in the UAT live console without the stderr `!` gutter. Color is written only to a color
+  terminal; redirected output, pipes, captured evidence, and `NO_COLOR` remain plain text.
 
 - 2026-10-24: Live UAT step headers use uppercase commands and positional arguments, with
   the exact invocation below. The first occurrence has no suffix; repeats within a kit append
@@ -385,6 +416,12 @@ command surface and Typed Specification contract are unstable and may change bet
 - 2026-10-25: Scoring commands suppress grader JSON fragments beginning with punctuation or
   indentation instead of displaying them as broken progress lines. Explicit provider telemetry
   and the final verdict listing remain visible, including when called by `drydock uat`.
+
+- 2026-10-25: A build agent that interrupts its own verification command no longer skips
+  deterministic acceptance. The pass is graded, the next repair receives the measured failures,
+  and repair progress is compared against the last graded pass, so a gain after an ungraded pass
+  is no longer counted as a flat pass that stops the block early. Scoped conformance tallies use
+  the cases the check selected as the denominator (`total - skip`), not the whole corpus.
 
 - 2026-10-24: Planning and `drydock plan verify` reject conflicting `DATABASE.md` output DTO
   definitions before persistence generation. Admission and the Python emitter share class-name
@@ -1116,6 +1153,13 @@ command surface and Typed Specification contract are unstable and may change bet
   repaired the four criteria that failed the plan and touched nothing else in 47 Blueprints.
 
 ### Removed
+
+- 2026-10-25: `drydock_build_loop.sh` and its `DRYDOCK_RUNNER_MAX_BUILDS` bound are removed.
+  `drydock_runner.sh` is deprecated: it forwards `<target> <model>` to `drydock run builder` and
+  refuses an import-script argument. Its fixed model list and its haiku-to-sonnet analyze and plan
+  substitution are gone; model choice is `--model` and `--plan-override-model` through
+  `model_config`. `Import_Marina.sh` now builds `--infile` arguments and execs
+  `drydock run builder`.
 
 - 2026-10-13: **`prompt_warn_tokens` and `prompt_error_tokens` configuration keys.** Their values
   are per-model `prompt_target_tokens` and `prompt_warning_tokens` in `model_config.jsonl`.

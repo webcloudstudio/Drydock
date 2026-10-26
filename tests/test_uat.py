@@ -1461,7 +1461,7 @@ def test_build_blocker_retains_child_error_and_explains_the_stop(tmp_path: Path)
     "stderr", [None, "", "diagnostic " * 2000], ids=["missing", "empty", "large"]
 )
 def test_build_failure_excerpt_handles_missing_empty_and_large_streams(tmp_path, stderr):
-    from drydock.uat import build_failure_detail
+    from drydock.lifecycle import build_failure_detail
 
     err = tmp_path / "stderr.log"
     out = tmp_path / "stdout.log"

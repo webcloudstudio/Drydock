@@ -5,10 +5,10 @@
 | Version | 2026-10-15 V1 |
 | Description | Start a Drydock service. |
 | Route | run |
-| Modules | `quarterdeck_run.py`, `quarterdeck_state.py`, `standard_artifacts.py`, `manifest_edit.py`, `QuarterDeck/app.py` |
+| Modules | `quarterdeck_run.py`, `quarterdeck_state.py`, `standard_artifacts.py`, `manifest_edit.py`, `QuarterDeck/app.py`, `lifecycle.py` |
 | Prompts | — |
-| Tests | `tests/test_quarterdeck*.py`, `tests/test_manifest_edit.py` |
-| Topics | [process_stops](../topics/process_stops.md) |
+| Tests | `tests/test_quarterdeck*.py`, `tests/test_manifest_edit.py`, `tests/test_lifecycle.py` |
+| Topics | [process_stops](../topics/process_stops.md), [lifecycle](../topics/lifecycle.md) |
 | Pending spec | 0 |
 | Pending impl | 0 |
 
@@ -29,12 +29,27 @@ page types and `console.yaml`.
 
 ```text
 drydock run quarterdeck [<Target>] [--host <host>] [--port <port>]
+drydock run builder <Target> [--infile [<format>=]<file>]... [--indir [<format>=]<dir>]...
+        [--max-build-passes <n>] [--repair-attempts <n>] [--diagnose-attempts <n>]
+        [--repair-stall-limit <n>] [--capture-output-limit <MB>] [--sandbox-mem-limit <MB>]
+        [--plan-override-model <model>] [--model <model>]
 ```
 
 `<Target>` defaults to the most recently updated Target; `--port` defaults to `quarterdeck_port`
 config or `8080`; `--host` to `127.0.0.1`.
 
 ### Rules
+
+`2026-10-25` · **`run builder` starts or continues one Target through to a complete build.** It
+runs the [lifecycle](../topics/lifecycle.md) in place, with the UAT step console, and ends in a
+box: `BUILD COMPLETE` (exit 0), `BUILD INCOMPLETE`, `BUILD STOPPED`, or `BLOCKED` (exit 1), or
+`NO SOURCES` (exit 2). `--infile` (default format `auto`) and `--indir` (default `markdown`)
+repeat, accept a `<format>=` prefix (`compass=INTENT.md`), run in command-line order as one
+`drydock import` each, and apply only while the Target has no imported sources. A bad path is a
+usage error. `--diagnose-attempts` defaults to 3. `drydock_runner.sh` is a deprecated shim that
+forwards `<target> <model>`; `drydock_build_loop.sh` is removed, and `DRYDOCK_RUNNER_MAX_BUILDS`
+is no longer read. `Import_Marina.sh` is the import-list form: it builds `--infile` arguments and
+execs `drydock run builder Marina "$@"`. Cost when broken: two workflows that drift apart.
 
 `2026-10-19` · QuarterDeck renders max-one Rigging types as radios, including None for optional types, and excludes them from table choices. Draft saves return and display shared validation errors. Language or database changes clear approval; approval rejects invalid selections. Breaking this rule approves an incoherent stack.
 

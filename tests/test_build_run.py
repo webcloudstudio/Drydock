@@ -1155,7 +1155,7 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     assert "RED: foundation-file" in evidence
     assert "## Post-build programmatic acceptance" in evidence
     assert "PASS: foundation-file" in evidence
-    assert "    acceptance=1/1" in messages
+    assert "    status  1/1" in messages
     assert not any("Unit Tests" in message for message in messages)
 
 
@@ -2776,9 +2776,10 @@ assert score == 4
 
     assert result.steps[0].status == "built"
     assert calls == [0, 1, 2, 3]
-    assert "    acceptance=0/1  failed=conformance(1/4)" in messages
-    assert "    acceptance=0/1  failed=conformance(3/4)" in messages
-    assert "    acceptance=1/1" in messages
+    assert "    status  0/1  conformance(1/4)" in messages
+    assert "    status  0/1  conformance(2/4 +1)" in messages
+    assert "    status  0/1  conformance(3/4 +1)" in messages
+    assert "    status  1/1" in messages
 
 
 def test_repair_loop_counts_subcase_progress_a_silent_criterion_never_printed(tmp_path):
@@ -2830,9 +2831,69 @@ assert report["summary"]["fail"] == 0
 
     assert result.steps[0].status == "built"
     assert calls == [0, 1, 2, 3]
-    assert "    acceptance=0/1  failed=conformance(1/4)" in messages
-    assert "    acceptance=0/1  failed=conformance(3/4)" in messages
-    assert "    acceptance=1/1" in messages
+    assert "    status  0/1  conformance(1/4)" in messages
+    assert "    status  0/1  conformance(2/4 +1)" in messages
+    assert "    status  0/1  conformance(3/4 +1)" in messages
+    assert "    status  1/1" in messages
+
+
+def test_interrupted_agent_verification_is_still_graded_and_counts_as_progress(tmp_path):
+    """CommonMark 20261025.023211: an agent stopped its own full-suite run on call 3.
+
+    Acceptance was skipped, so call 3 printed no tally, call 4 was sent no failing checks, and
+    call 4's real gain was compared against call 3's empty record and counted as a flat pass.
+    """
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """## Programmatic Acceptance
+
+### conformance
+Every conformance example passes.
+
+```python
+from pathlib import Path
+score = int(Path("score.txt").read_text(encoding="utf-8"))
+print(f"{score} passed, {4 - score} failed, 0 errored")
+assert score == 4
+```
+""",
+        encoding="utf-8",
+    )
+    prompts: list[str] = []
+    messages: list[str] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        attempt = kwargs["parameters"]["attempt"]
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "score.txt").write_text(f"{attempt + 1}\n", encoding="utf-8")
+        prompts.append(prompt)
+        if attempt == 1:
+            return FakeResult(
+                text="RESULT: FAILURE\n\nFILES CHANGED:\n- score.txt\n\n"
+                "FAILURE_SUMMARY: I interrupted the full suite after 60 seconds\n"
+                "FAILURE_DETAIL: The harness produced no output and was interrupted.\n"
+            )
+        return FakeResult(text=_success_report(changed=("score.txt",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        on_text=messages.append,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert result.steps[0].status == "built"
+    assert len(prompts) == 4
+    assert "agent interrupted its own verification (advisory) " in "\n".join(messages)
+    assert "    status  0/1  conformance(2/4 +1)" in messages
+    assert not any(line.startswith("    status  not measured") for line in messages)
+    assert not any("no acceptance progress" in line for line in messages)
+    # The pass after the interruption is handed the measured failure, not an empty queue.
+    assert "2 passed, 2 failed" in prompts[2]
 
 
 def test_repair_loop_stops_when_one_conformance_ac_regresses(tmp_path):
@@ -3124,7 +3185,7 @@ def test_console_shows_what_a_failed_check_was_doing(tmp_path):
     )
 
     console = "\n".join(messages)
-    assert "    acceptance=0/1" in console
+    assert "    status  0/1" in console
     assert "suite-conformance(365/368)" in console
     assert "suite-conformance: The scoped conformance suite passes." in console
     # Both streams reach the screen: the tally that makes the defect legible, and the
@@ -3606,7 +3667,8 @@ def test_resume_seeds_attempt_zero_with_live_failure(tmp_path):
     assert "foundation-file" in prompt
     assert 'BLOCK foundation  name="Foundation"  calls_max=7' in messages
     assert any(line.startswith("  [call 1/7]  kind=resume  llm=") for line in messages)
-    assert "    fixing=foundation-file" in messages
+    # The pre-call ``fixing=`` echo is gone: ``status`` after the call is the only tally.
+    assert not any("fixing=" in line for line in messages)
 
 
 def test_fresh_pending_step_is_not_seeded(tmp_path):

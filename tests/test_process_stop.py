@@ -377,7 +377,7 @@ def test_uat_prints_the_halt_after_reports_and_checkpointing(
     assert text.index("Report:") < text.index("Checkpoint saved") < text.index("BLOCKED:")
     assert "UAT FAILED: TestTarget" in text
     assert "Error: TestTarget: stopped at build: provider rate limit:" in text
-    assert text.rstrip().endswith("#" * 88)
+    assert text.rstrip().endswith("╯")
 
 
 def test_ready_reports_a_block_and_ends_the_build_loop(

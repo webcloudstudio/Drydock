@@ -38,13 +38,19 @@ from drydock.compass_sources import mark_compass_authored
 from drydock.config import DEFAULT_REPAIR_ATTEMPTS
 from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.errors import DrydockError, SpecificationError
+from drydock.lifecycle import (
+    DEFAULT_MAX_BUILD_PASSES,
+    Lifecycle,
+    Policy,
+    SourceInput,
+)
+from drydock.lifecycle import STAGES as LIFECYCLE_STAGES
 from drydock.llm_usage import executed_models, normalize_tokens, read_records
 from drydock.metadata import METADATA_NAME, parse_metadata
 from drydock.story_guidance import StoryGuidance, guidance_from_config, write_guidance
 from drydock.uat_console import StepSink
 from drydock.uat_report import build_case_kit, local_run_window, write_kit_index
 
-DEFAULT_MAX_BUILD_PASSES = 25
 LATEST_RUN_FILENAME = "LATEST_RUN"
 #: Read size for the child output pump. Small enough that a chunk reaches the console promptly.
 _STREAM_CHUNK_BYTES = 4096
@@ -53,7 +59,8 @@ _STREAM_CHUNK_BYTES = 4096
 #: tree, so a lifecycle that failed late can be re-entered at a named stage instead of paying
 #: for every earlier LLM pass again. This is a development affordance: a resumed run reuses
 #: whatever the prior attempt left on disk and is therefore not a clean-room measurement.
-STAGES = ("init", "import", "analyze", "plan", "verify", "build", "refit", "test", "score")
+#: The build lifecycle's stages come first; UAT extends them with refit, test, and score.
+STAGES = (*LIFECYCLE_STAGES, "refit", "test", "score")
 
 
 def stage_index(name: str) -> int:
@@ -1382,14 +1389,11 @@ def run_fixture(
             on_event(f"{fixture.name}: superseded steps {retained + 1}+ -> {superseded.name}")
     commands: list[CommandResult] = list(prior_commands[:retained])
     scores: dict[str, int] = {}
-    build_passes = prior_passes
     sequence = retained
 
     def execute(parts: Sequence[str], label: str, *, required: bool = True) -> CommandResult:
         nonlocal sequence
         sequence += 1
-        if plan_model and parts[0] == "plan":
-            parts = (*parts, "--plan-override-model", plan_model)
         argv = (sys.executable, "-m", "drydock", *parts)
         if on_event:
             on_event(f"{fixture.name}: {label}")
@@ -1409,33 +1413,14 @@ def run_fixture(
         return result
 
     def repair_unrunnable_acceptance() -> None:
-        """Verify the plan, repair it once if needed, and stop the run if it is still unrunnable.
-
-        A criterion that cannot execute costs the build its entire repair budget on a story whose
-        code was already correct, then stops the run on a score that never moved — which is
-        exactly how the run that motivated this step was lost. Verification is deterministic and
-        free, so it runs every time; the repair call is paid for only when verification fails.
-
-        One attempt, then the run halts. A second pass asks the same model the same question with
-        the same context, and building on a Blueprint whose criteria cannot run measures nothing.
+        """Verify the plan through the lifecycle; it repairs once and halts if still unrunnable.
 
         Cleared on entry, mirroring ``build_until_no_work_remains``: a resumed run re-plans and
         re-verifies from scratch, so a stop this same stage declared on an earlier attempt must
         not survive to halt a plan that now verifies cleanly.
         """
         clear_environmental(workspace / "targets" / fixture.target)
-        verified = execute(("plan", "verify", fixture.target), "plan-verify", required=False)
-        if verified.returncode == 0:
-            return
-        execute(("plan", "repair", fixture.target), "plan-repair", required=False)
-        confirmed = execute(
-            ("plan", "verify", fixture.target), "plan-verify-after-repair", required=False
-        )
-        if confirmed.returncode != 0:
-            declare_stop(
-                "plan-repair",
-                "acceptance criteria still cannot run after one repair pass",
-            )
+        lifecycle.verify_plan()
 
     def declare_stop(stage: str, reason: str, *, explanation: str = "") -> None:
         """Record the halt as an environmental blocker and announce it on the console."""
@@ -1516,116 +1501,49 @@ def run_fixture(
         execute(("status", fixture.target), f"{stage}-target-status", required=False)
         execute(("status",), f"{stage}-workspace-status", required=False)
 
-    def refuse_unstarted_build(stage: str) -> None:
-        """Stop a build stage whose frontier was empty before it ran a single pass.
-
-        ``status --ready`` answers one question — may a build pass advance this Target — and
-        returns the same nonzero code for a Target that has finished and one that never had
-        buildable work. Read across a whole stage the two are opposites: nonzero after a pass is
-        completion, nonzero before the first pass means the Manifest was unbuildable on arrival,
-        which is what a story parked at ``blocked/questions`` produces. Left undetected it reads
-        as a clean build, and every stage below scores a tree the build never wrote.
-
-        ``status --check`` separates them: 0 complete, 1 incomplete, 2 blocked. A resumed stage
-        may legitimately arrive complete, so only a non-complete verdict halts the run.
-        """
-        checked = execute(
-            ("status", fixture.target, "--check"), f"{stage}-unstarted-check", required=False
-        )
-        if checked.returncode == 0:
-            return
-        reason = (
-            "blocked before the first build pass"
-            if checked.returncode == 2
-            else "no buildable frontier before the first build pass"
-        )
-        degraded.append(f"{stage}: {reason}")
-        declare_stop(
-            stage,
-            f"The build stage found {reason}. Answer the blocking DECISIONS.json records "
-            "parking the Manifest's stories, then rerun; a score taken over a build that never "
-            "ran grades an empty tree, not the product.",
-        )
-
     def build_until_no_work_remains(stage: str) -> None:
-        """Run build passes until the frontier is empty, or declare a stop condition.
-
-        The loop is iterative by construction: each pass builds every ready block, which makes
-        more blocks ready, until ``status --ready`` reports nothing left. It is not a single
-        command that either completes or does not.
+        """Run the lifecycle's build loop for one stage; a halt is recorded as a stop condition.
 
         A build that exhausts its repair budget has reached its terminal state, and the run ends
-        there. Scoring a build that stopped part way measures a project nobody asked for: the
-        entry point the last stories deliver is absent, so every score below it describes that
-        absence rather than the product, and a verdict over a partial tree is a number that
-        invites acting on it. The halt is recorded as a stop condition at the Target root so the
-        stages that follow refuse by reading it, not by re-deriving it from an exit code.
+        there: scoring a build that stopped part way measures a project nobody asked for. The
+        halt is recorded at the Target root so the stages that follow refuse by reading it.
 
         A stop declared by an earlier attempt is cleared on entry. A resumed run re-enters this
         stage precisely to repair what halted it, so carrying the old semaphore forward would
         halt the repaired build on the strength of a failure it just fixed.
         """
-        nonlocal build_passes
         clear_environmental(workspace / "targets" / fixture.target)
-        entry_degraded = len(degraded)
-        stage_passes = 0
-        while True:
-            ready = execute(("status", fixture.target, "--ready"), f"{stage}-ready", required=False)
-            if ready.returncode != 0:
-                if stage_passes == 0:
-                    refuse_unstarted_build(stage)
-                break
-            stage_passes += 1
-            build_passes += 1
-            if stage_passes > max_build_passes:
-                degraded.append(
-                    f"{stage}: exceeded {max_build_passes} build passes without completing"
-                )
-                declare_stop(
-                    stage,
-                    f"The build made {max_build_passes} passes without emptying the frontier. "
-                    "Either a block is looping without progress or the bound is too low for "
-                    "this Manifest.",
-                )
-                break
-            built = execute(
-                (
-                    "build",
-                    fixture.target,
-                    "--override",
-                    "--repair-attempts",
-                    str(repair_attempts),
-                ),
-                f"{stage}-build-{stage_passes}",
-                required=False,
-            )
-            if built.returncode != 0:
-                degraded.append(f"{stage}-build-{stage_passes} exited {built.returncode}")
-                declare_stop(
-                    f"{stage}-build-{stage_passes}",
-                    build_failure_detail(built, fixture.target),
-                    explanation=(
-                        "The build did not complete. UAT stopped before acceptance tests and "
-                        "scoring because the application is unfinished. Resolve the build "
-                        "error above before rerunning UAT."
-                    ),
-                )
-                break
-        # ``--check`` records Manifest verification completeness; it does not control the build
-        # loop and does not grade the product. ``--ready`` already established that the frontier
-        # is empty, and ``score release`` observes the finished tree independently below.
-        #
-        # It is a completion record, so it is only taken when the stage completed. A stage that
-        # broke off already knows it is incomplete; asking again adds a stage whose INCOMPLETE is
-        # a restatement of the shortfall rather than a new observation. The partial views —
-        # ``--ready``, ``build status``, and ``capture_status`` — still run either way.
-        if len(degraded) > entry_degraded:
-            return
-        execute(
-            ("status", fixture.target, "--check"),
-            f"{stage}-complete",
-            required=False,
-        )
+        lifecycle.build(stage)
+
+    def halt(
+        stage: str,
+        reason: str,
+        *,
+        summary: str,
+        result: CommandResult | None = None,
+        explanation: str = "",
+    ) -> None:
+        if summary:
+            degraded.append(summary)
+        declare_stop(stage, reason, explanation=explanation)
+
+    lifecycle = Lifecycle(
+        fixture.target,
+        Policy(
+            repair_attempts=repair_attempts,
+            max_build_passes=max_build_passes,
+            unattended=True,
+            plan_model=plan_model,
+        ),
+        execute=execute,
+        halt=halt,
+        build_passes=prior_passes,
+        build_failed_explanation=(
+            "The build did not complete. UAT stopped before acceptance tests and "
+            "scoring because the application is unfinished. Resolve the build "
+            "error above before rerunning UAT."
+        ),
+    )
 
     error = ""
     status = "passed"
@@ -1634,7 +1552,7 @@ def run_fixture(
     test_skipped = False
     try:
         if start <= stage_index("init"):
-            execute(("init", fixture.target), "init")
+            lifecycle.init()
             seed_metadata(fixture, workspace)
             seed_technology_stack(fixture, workspace)
             seed_sea_trials(fixture, workspace)
@@ -1643,14 +1561,11 @@ def run_fixture(
             seed_story_guidance(fixture, workspace)
             seed_prior_decisions(fixture, workspace, case_root)
         if start <= stage_index("import"):
-            execute(
-                ("import", fixture.target, str(source_root), "--format", "markdown"),
-                "import-sources",
-            )
+            lifecycle.import_sources((SourceInput(source_root, "markdown"),))
         if start <= stage_index("analyze"):
-            execute(("analyze", fixture.target), "analyze")
+            lifecycle.analyze()
         if start <= stage_index("plan"):
-            execute(("plan", fixture.target, "--override"), "plan")
+            lifecycle.plan()
         if start <= stage_index("verify"):
             repair_unrunnable_acceptance()
             capture_status("after-plan")
@@ -1781,7 +1696,7 @@ def run_fixture(
         run_id=run_id or case_root.name,
         status=status,
         elapsed_ms=elapsed_ms,
-        build_passes=build_passes,
+        build_passes=lifecycle.build_passes,
         output_dir=str(case_root),
         commands=tuple(commands),
         score_exit_codes=scores,
@@ -1842,31 +1757,6 @@ def render_status(fixture: UATFixture, run: str | None = None) -> str:
     completed = _successful_run_times(fixture)
     if completed:
         lines.extend(["", "Completed runs:", *completed])
-    return "\n".join(lines)
-
-
-def build_failure_detail(command: CommandResult, target: str) -> str:
-    """Preserve a failed build's diagnostics and their evidence locations in its blocker."""
-    lines = [f"drydock build {target} exited {command.returncode}."]
-    diagnostics = ""
-    for stream, value in (("stderr", command.stderr_path), ("stdout", command.stdout_path)):
-        if not value:
-            continue
-        try:
-            with Path(value).open(encoding="utf-8", errors="replace") as handle:
-                content = handle.read(12001)
-        except OSError:
-            continue
-        if content.strip():
-            diagnostics = f"{stream}:\n{content[:12000].strip()}"
-            if len(content) > 12000:
-                diagnostics += "\n[Excerpt truncated; full output is in the evidence file below.]"
-            break
-    lines += ["", diagnostics or "No diagnostic output was captured; inspect the command evidence."]
-    lines += ["", "Evidence:"]
-    for stream, value in (("stderr", command.stderr_path), ("stdout", command.stdout_path)):
-        if value:
-            lines.append(f"  {stream}: {value}")
     return "\n".join(lines)
 
 

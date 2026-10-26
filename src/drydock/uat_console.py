@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 import shutil
 import sys
-import textwrap
 import threading
 from collections.abc import Sequence
 from datetime import datetime
@@ -27,24 +26,11 @@ _MAX_ARGV_WIDTH = 140
 _RED = "\x1b[31m"
 _GREEN = "\x1b[32m"
 _BLUE = "\x1b[34m"
+_YELLOW = "\x1b[33m"
 _DIM = "\x1b[2m"
 _RESET = "\x1b[0m"
-
-
-def result_box(heading: str, details: Sequence[str], *, width: int = 88) -> str:
-    """An ASCII frame remains conspicuous in terminals and redirected logs alike."""
-    width = max(24, min(width, 96))
-    lines = [heading, *details]
-    wrapped = [
-        part
-        for line in lines
-        for part in textwrap.wrap(line, width=width - 4, break_on_hyphens=False) or [""]
-    ]
-    return "\n".join([
-        "#" * width,
-        *(f"# {line:<{width - 4}} #" for line in wrapped),
-        "#" * width,
-    ])
+# A framed child banner carries its own left edge; a gutter would break the frame.
+_FRAME_EDGES = frozenset("╭│╰+|")
 
 
 def render_result(result: UATResult, *, stream: TextIO | None = None) -> str:
@@ -87,10 +73,12 @@ def render_result(result: UATResult, *, stream: TextIO | None = None) -> str:
         details.append(f"{'Reported' if result.status == 'passed' else 'Error'}: {result.error}")
     details.extend(result.degraded)
     details.extend(f"MANUAL TEST REQUIRED: {item}" for item in result.attestations)
-    box = result_box(f"UAT {result.status.upper()}: {result.target}", details)
-    if console.color_enabled(stream if stream is not None else sys.stdout):
-        return f"{_GREEN if result.status == 'passed' else _RED}{box}{_RESET}"
-    return box
+    return console.box(
+        f"UAT {result.status.upper()}: {result.target}",
+        details,
+        tone=console.GREEN if result.status == "passed" else console.RED,
+        stream=stream if stream is not None else sys.stdout,
+    )
 
 
 class StepSink(Protocol):
@@ -165,6 +153,7 @@ class StepConsole:
         self._heading = ""
         self._occurrences: dict[str, int] = {}
         self._at_line_start = True
+        self._framing = False
         self._open_source: str | None = None
         self._last_was_cr = False
         self._pending: dict[str, str] = {}
@@ -340,7 +329,7 @@ class StepConsole:
             ("[built]", "✓ built", _GREEN),
             ("[review]", "~ review", _BLUE),
             ("[pending]", "· pending", _DIM),
-            ("[QUESTIONS]", "⚠ QUESTIONS", "\x1b[33m"),
+            ("[QUESTIONS]", "⚠ QUESTIONS", _YELLOW),
             ("[FAILED]", "✗ FAILED", _RED),
             ("[failed]", "✗ failed", _RED),
         )
@@ -356,15 +345,25 @@ class StepConsole:
         with self._lock:
             if self._open_source is not None and self._open_source != source:
                 # The other stream left a line open; close it so the two never tangle mid-line.
-                self._write("\n")
+                self._write(_RESET + "\n" if self._framing else "\n")
+                self._framing = False
                 self._at_line_start = True
                 self._last_was_cr = False
             gutter = self._gutter(source)
             out: list[str] = []
             for char in text:
                 if self._at_line_start and not (char == "\n" and self._last_was_cr):
-                    out.append(gutter)
+                    if source == "stderr" and char in _FRAME_EDGES:
+                        # A child's banner reaches the pipe plain; the terminal shows it red.
+                        if self._color:
+                            out.append(_RED)
+                            self._framing = True
+                    else:
+                        out.append(gutter)
                     self._at_line_start = False
+                if char in "\n\r" and self._framing:
+                    out.append(_RESET)
+                    self._framing = False
                 out.append(char)
                 self._last_was_cr = char == "\r"
                 if char in "\n\r":
@@ -386,19 +385,14 @@ class StepConsole:
             self._close_open_line()
             if returncode:
                 detail = [f"Command exited {returncode} | {format_ms(elapsed_ms)}", *self._errors]
-                heading = "NOT READY" if self._label.endswith("-ready") else "STEP ERROR"
-                self._write(
-                    self._paint(
-                        result_box(
-                            f"{heading}: {self._title()}",
-                            detail,
-                            width=self._width
-                            or min(shutil.get_terminal_size((88, 24)).columns, 88),
-                        ),
-                        _RED,
-                    )
-                    + "\n"
+                ready = self._label.endswith("-ready")
+                box = console.box(
+                    f"{'NOT READY' if ready else 'STEP ERROR'}: {self._title()}",
+                    detail,
+                    width=self._width or min(shutil.get_terminal_size((88, 24)).columns, 88),
                 )
+                tone = _YELLOW if ready else _RED
+                self._write("\n".join(self._paint(line, tone) for line in box.split("\n")) + "\n")
             elif not self._hidden:
                 self._write(
                     self._paint(self._rule(self._title(), f"OK   {format_ms(elapsed_ms)}"), _GREEN)
@@ -430,7 +424,8 @@ class StepConsole:
 
     def _close_open_line(self) -> None:
         if not self._at_line_start:
-            self._write("\n")
+            self._write(_RESET + "\n" if self._framing else "\n")
+            self._framing = False
             self._at_line_start = True
             self._open_source = None
             self._last_was_cr = False
