@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-26 V4 |
+| Version | 2026-10-26 V5 |
 | Description | Bounded UAT stabilization plan with historical proposal dispositions, truthful verdicts, state ownership and a frozen ten-kit release gate. |
 | Modules | `acceptance_oracle.py`, `planning_session.py`, `build_state.py`, `build_run.py`, `diagnose.py` |
 | Prompts | `uat_diagnostic.md`, `build.md`, `BLUEPRINTS_CONTRACT.md` |
@@ -38,7 +38,7 @@ The release gate remains Ed's ten-project UAT matrix.
 | Mutable state | Every resource has an owner, scope, permitted mutations, cleanup and failure action. |
 | Recovery | Preserve evidence and data; route recovery to the owner; never silently overwrite possible concurrent writes. |
 | Proof | Deterministic regressions precede the fixed ten-kit release matrix; any separately authorized live experiment supplements them. |
-| Execution | This revision plans the work; an execution request starts WP0 and prioritized release slices, each verified and committed locally. |
+| Execution | This revision defines S1–S6; implementation follows the ordered queue, with each slice verified and committed locally. |
 | Limit | Passing deterministic tests does not establish model convergence or undeclared semantic dependencies. |
 
 ### Previously implemented technical slice
@@ -64,9 +64,9 @@ These are recorded mechanisms from earlier work, not verification of the next ca
 - `/ddk-uat` prints Assumptions Review after Verdict. Default invocation diagnoses; explicit
   repair authorization permits the requested code work under repository rules.
 
-### State inventory to complete
+### State inventory — implement only represented, reproduced gaps
 
-This is the resource catalogue. WP0/WP3 mark which rows are represented in the release matrix,
+This is the resource catalogue. S2 records which rows are represented in the release matrix,
 which protections exist and which gaps block those paths; unrepresented adapters stay deferred.
 
 | State | Scope and isolation | Owner / required verification |
@@ -111,7 +111,7 @@ tests; deleted managed store and surviving backup; missing-store owner recovery;
 artifact retry; missing transport/tool prerequisites; interrupted execution and resume; valid
 replan preserving already accepted work. These cover failure classes across projects.
 
-### Stabilization assessment and scope
+### Historical stabilization assessment and scope (superseded by review correction)
 
 `2026-10-26` · Review baseline: `7586152` (`Make stabilization plan implementation-ready`),
 clean working tree. The approach is sound: establish contracts, reproduce failures without model
@@ -170,12 +170,12 @@ Current-code anchors that invalidate a wholesale July implementation:
 `plan_graph.measure_stories` explicitly marks excess size without refusal;
 `build_run._snapshot_files` measures file changes; `build_run.build_target` distinguishes governed
 gates from model criteria; `proof_integrity.py` records why speculative analyzers were removed;
-`lifecycle.Policy` bounds build passes; `rigging_compact._fresh_sibling` has both mtime and source
+`lifecycle.Policy` bounds build passes; `rigging_compact._is_stale` has both mtime and source
 SHA handling. These establish mechanisms, not complete protection. In particular, compaction's
 mtime fast path still needs a changed-content/newer-derivative regression before calling freshness
 proved. Existing code and tests must be re-read at implementation time.
 
-### WP0 baseline and finding matrix
+### Historical WP0 baseline and finding matrix
 
 `2026-10-26` · Initial state: HEAD `32a35ff`, clean tree. `.venv` Python 3.12.13, editable
 `drydock` 0.8.0 from `src/`, pytest-xdist 3.8.0, hatchling importable, `uv.lock` present. Ruff
@@ -191,7 +191,8 @@ their fixes and close only on Ed's evidence. Rows are cited as Kit run (FX FxRat
 ReadingList, LT LayersTesting, CM CommonMark, DF DupFind, CS CsvStat, DS DrydockStats, JQ jq).
 Status: **covered** local regression exists, needs candidate rerun · **open** no fix ·
 **confirmed** open defect re-read in current code · **undetermined** cause not established.
-Ed verification is pending for every row.
+Ed verification is pending for every row. WP references below are historical; the execution
+queue below supplies the current order and scope.
 
 | Id | P | Requirement → earliest owner | Ledger evidence | Status | WP |
 |---|---|---|---|---|---|
@@ -209,15 +210,15 @@ Ed verification is pending for every row.
 | F12 | P1 | Build receives governed source context → `build.py` context roots | FX 1026.011843 block-3 | confirmed: `build.py:138-139` roots omit `blueprint/sources/` | WP2 |
 | F13 | P1 | Repair loop measures regression, stalls on no progress, keeps attempt history, routes next step → `build_run`/`cli` | RL 1022.231143 ×2 (constant `BUILD_FAILURE_HINT`, confirmed `build_run.py:165`); CM 1025.023211 ×4; DS 1026.011913 | open | WP4 |
 | F14 | P1 | `plan repair` handles every authored criterion form and keeps the model's reason → `plan_repair` | DF 1024.183232 ×3 | open | WP2/WP4 |
-| F15 | P1 | Parsed policy fields promise only implemented effects → `gate_policy`/`sea_trials` | FX 1026.011843 (`Consequence` parsed, `fold` ignores) | open | WP1 |
+| F15 | deferred | Parsed policy fields promise only implemented effects → `gate_policy`/`sea_trials` | FX 1026.011843 (`Consequence` parsed, `fold` ignores) | Scoring/policy changes excluded by Ed for this pass | deferred |
 | F16 | P2 | Diagnostics name the failing span, assertion and ids → `output_format`/`cli`/`lineage_attribution` | RL 1023.022430; FX 1024.070101; LT 1020.161323; DF 1024.183232 (comma-only `stories=` split, confirmed `lineage_attribution.py:117`) | open | WP4 |
 | F17 | P2 | Provider auth/quota stops are classified as provider stops → `llm` | LT 1021.141704; CS 1024.221659 | open | WP4 |
 | F18 | P1 | Refit pending-source and no-frontier stop are truthful → `refit`/`uat` | RL 1014.031551 ×2 | undetermined / open | WP4 |
 | F19 | — | Causes not established | LT 1020.132808, 1020.161323; RL 1014.040547 | undetermined; needs Ed-requested evidence | — |
 | F20 | P2 | Plan artifact names and citations satisfy validation → `planning_session`/`validate_specification` | RL 1022.195456 (`VERIFICATION.md`); DF 1024.080843 | open | WP2 |
 | F21 | P2 | No repository script reads published `uat/` implicitly → `tests/uat_corpus.py` | WP0 audit | open; not run | WP5 |
-| F22 | P0 | Represented stores have tested isolation → `AgentStore`, Go harness | PostgreSQL pass-through (WP3.6); Go criteria outside harness transaction (`acceptance_criteria.md` Action) | gap; release impact depends on kit profiles | WP3 |
-| F23 | P1 | Stale compacts never reach assembly → `rigging_compact._fresh_sibling` | `acceptance_criteria.md` Action (stale `sqlite`/`postgres`/`persistence` compacts) | open; mtime fast path unproved | WP2 |
+| F22 | P0 | Represented stores have tested isolation → `AgentStore`, Go harness | PostgreSQL pass-through (WP3.6); Go criteria outside harness transaction (`acceptance_criteria.md` Action) | PostgreSQL excluded by Ed; Go database gap requires an actually represented path, not merely a Go kit | S2 / deferred |
+| F23 | P1 | Stale compacts never reach assembly → `rigging_compact._is_stale` | `acceptance_criteria.md` Action (stale `sqlite`/`postgres`/`persistence` compacts) | open; mtime fast path unproved | WP2 |
 
 Capability profiles, inferred from ledger text only (unconfirmed; `uat/` not read):
 
@@ -225,238 +226,159 @@ Capability profiles, inferred from ledger text only (unconfirmed; `uat/` not rea
 |---|---|---|---|---|
 | FxRates | Python | CLI, FastAPI HTTP | SQLite | grader, `sh` |
 | ReadingList | Python | HTTP app server | SQLite | refit, `import --update` |
-| LayersTesting | Python | CLI | SQLite; PostgreSQL engine seen 2026-10-20 | grader |
+| LayersTesting | Python | CLI | SQLite inferred; Ed confirms PostgreSQL is not used | grader |
 | CommonMark | Python | library | none seen | spec corpus, `sh` |
 | CsvStat, DupFind | Go | CLI | none seen | grader |
 | DrydockStats | Go/Python unclear | CLI | none seen | grader, `sh` |
 | jq, Quakes | unclear | unclear | unclear | corpus (jq) |
 | tenth kit | unknown | | | |
 
-### Execution contract
+### Review correction — 2026-10-26
 
-Before each slice, record the approved behavior, owner, allowed mutations, invariants, observed
-facts, uncertainty, falsifying test and valid neighbor. Read the owning command/topic contracts,
-source, prompts and tests. Extend an existing mechanism before introducing another. A successful
-recovery remains evidence of a generating defect when that defect is proved.
+Retain the existing implementation and regression work. Replace the broad WP1–WP4 audit gate
+with six ordered delivery slices. The plan is a completion queue, not an instruction to implement
+all 23 historical finding groups. PostgreSQL and scoring changes are outside this pass.
 
-#### Fixed boundaries
+Ed reports that the many-criterion kits have worked; CommonMark and jq need retesting. Those
+statements establish priorities, not current-candidate verification. Ed may continue revising kit
+sources. Record each run's source revision and distinguish changed requirements from framework
+regressions. Freeze inputs only for a particular comparison and the eventual release evidence.
 
-- Never invoke `drydock uat` in any form. Never write, stage or run Git inside `uat/`; inspect
-  published evidence only when Ed requests it. Use the design ledger and synthetic fixtures here.
-- Never edit `docs/Drydock_Specification.md` without block-specific authorization. Record any
-  disagreement in the owning Memory File; a historical proposal does not resolve it.
-- No live model/provider calls, API-key generation, charges or full project builds in deterministic
-  verification. Any bounded live experiment needs applicable explicit authorization.
-- Use the checkout and private temporary resources outside `uat/`. Preserve unrelated work,
-  imported sources, governed acceptance, canonical data and previously accepted implementation.
-  Stage only task files; inspect every staged diff; commit locally; do not push.
-- Prove test paths before running them. A script/test that reaches published `uat/` is a defect:
-  report it and stop that verification. Synthetic UAT orchestration tests use fake children and
-  temporary kit roots; they never execute the UAT command.
-- Detection, prevention and recovery are separate claims. Hashes and prompts do not sandbox
-  arbitrary agent tools. Never automatically restore over changed data or reset a worktree.
-- An unavailable, hanging or failed required check keeps its gate open. Record command, cause,
-  owner and rerun; continue independent work, but do not advance the release candidate as passed.
+### Review findings
 
-#### WP0 — freeze scope and map evidence
+1. **Scope is still expandable.** WP3 includes remote resources, secrets, process ownership,
+   hard kills, parallel workers and universal per-test adapters without evidence that all are
+   needed by these kits. Retain the catalogue as deferred risk inventory; require implementation
+   only for a reproduced violation on an active path.
+2. **Historical rows are mistaken for current defects.** F06/F08/F13 mix implemented fixes,
+   unresolved causes and live proof. `0ab6649` already supplies a complete synthetic planning
+   correction/exhaustion test. Repeat that test before editing its mechanism.
+3. **The central planning risk needs a distinct proof.** CommonMark's latest failure involved
+   unsupported probe expressions, already addressed locally. Its omitted block-before-inline
+   sequencing is a separate authoring problem. `interface_dependency_defects` checks declared
+   relationships; it cannot discover a source dependency omitted from both `consumes` and
+   `depends`. Prompt instructions alone do not prove delivery of the intended stages.
+4. **There is no finite iterative-build acceptance scenario.** Existing tests cover case progress,
+   skipped measurement, losses and feedback. The plan should connect those behaviors through a
+   bounded multi-block run and resume, preserving earlier accepted work and cumulative evidence.
+5. **F22 conflates language and storage.** PostgreSQL is not used. Go CLI coverage does not prove
+   a Go database path exists. Defer PostgreSQL; require Go database isolation only if represented
+   and unsafe. Keep the demonstrated SQLite boundary in scope.
+6. **F02 overstates its evidence.** An undeclared-tool warning is not itself proof of a false PASS.
+   Test execution outcomes separately from declaration quality. Keep unexecuted checks unverified;
+   do not promote every warning into a new gate.
+7. **F13 needs path-specific reproduction.** The generic `BUILD_FAILURE_HINT` is consumed by
+   `cli.py`, but `_failed_story_recovery_commands` also supplies owner-specific recovery. Reproduce
+   the contradictory rendered output before replacing recovery behavior.
+8. **F23 names the wrong function.** Current freshness is `rigging_compact._is_stale`, with an
+   mtime fast path. Test changed source bytes under equal/older timestamps through the actual
+   assembly consumer, not just the compaction helper.
+9. **Memory coverage exists.** `design/commands/` has the command memories and linked topic
+   contracts. Its coverage test checks presence, format and indexing; it does not establish that
+   recorded behavior is correct or that every open action blocks this release.
 
-1. Record HEAD, clean/dirty paths, Python/interpreter, dependency/lock state, test/lint/package
-   availability and installed/source package identity. Candidate identity is the eventual final
-   verified commit, not the initial HEAD. Preserve the initial state for comparison.
-2. Read build, plan, diagnose, uat, score, acceptance-criteria, foundations, lifecycle and `/ddk-uat`
-   memories plus affected linked topics. Reconcile documented and implemented contracts explicitly.
-3. Create one finding table here: id, priority, source requirement, earliest failing owner/stage,
-   evidence/commit, minimal reproduction, negative test, valid neighbor, fix commit, local result,
-   affected kit capabilities and Ed verification status. Separate a proved defect from uncertainty.
-   Map all open/recurred ledger findings; do not limit the inventory to the latest two incidents.
-4. Seed the map with decimal normalization, unresolved probes, omitted source ordering, canonical
-   test writes/deletion/recovery, false verified closure after unavailable tooling, missing source
-   context, malformed artifact recovery, and console/persisted-state disagreement. Reuse existing
-   tests; classify an existing fix as locally covered, needing proof, or recurred before rewriting.
-5. Map the ten-kit capability profiles from authorized non-evidence configuration or Ed-provided
-   data. Missing profiles do not block independent tests, but the matrix must be complete before
-   release. Do not inspect `uat/` to obtain them without Ed's request.
+### Execution boundaries
 
-**Exit:** bounded release backlog, capability/resource matrix, existing regression links and
-explicit missing tests. Every item has an owner and closure proof. Counts from earlier commits
-are historical evidence; they are not the new candidate's baseline.
+Repository rules continue to apply: Ed alone runs UAT; agents neither inspect published `uat/`
+without his request nor write or run Git there. Audit test paths before execution; stop an unsafe
+verification and continue independent safe work. Use temporary resources and fake providers;
+no live calls or API spending are authorized by this plan. The master specification requires
+block-specific permission. Preserve unrelated work, sources and canonical data; stage task files
+only and commit locally without pushing. Detection and backups do not establish confinement;
+never restore over concurrent changes. An unavailable or failed required check leaves its gate open.
 
-#### WP1 — make execution, closure and verdict evidence truthful (P0)
+### Execution queue
 
-1. Establish the current truth table from build/score/UAT contracts. For each path, assert child
-   return code, provider outcome, declared/selected/executed check counts, criterion outcomes,
-   governed-gate outcome, per-story persisted state, console state and release receipt agree.
-   Preserve separate dimensions; a provider success is not successful verification.
-2. Cover provider success with failed/absent acceptance setup, missing transport/tool, zero-case
-   selection, malformed/unreadable criteria, skipped/timeout checks, partial governed coverage,
-   mixed covered/uncovered siblings, and a valid verification-only/no-diff step. An unexecuted
-   check never becomes PASS; no governed proof never becomes governed verification. Preserve
-   existing legal `implemented` versus `verified`, prepassed and diagnostic-only classifications.
-3. Separate assertion failure from diagnosed defect ownership. Source-backed Sea Trials and
-   governed acceptance retain their current authority. No static uncertainty, missing proof or
-   model-authored criterion silently becomes a product defect or a new release prohibition.
-4. Regress score/release/receipt behavior using synthetic evidence and fake graders: malformed
-   output, unknown/missing/duplicate trials, grader failure, legitimate advisory and actual governed
-   failure. Retired policy fields must not promise effects the runtime ignores; record conflicts
-   without silently reviving old gate rules. Never weaken an existing gate to make a kit pass.
-5. Retain deterministic measured file/command facts separately from model narrative. Verify
-   missing/false `FILES CHANGED`, tracked/untracked changes and no-op success. An empty diff alone
-   does not determine correctness. Repair prompts may change implementation, not governed oracles.
+Read the owning command memory's Current contract, Intent, Guardrails and relevant linked topics
+before each slice. State authority, permitted mutations, invariants and the falsifying test.
+Update Details and Actions in the same commit as an implementation change. Never rewrite
+Intent/Guardrails/Decisions merely to match code. Preserve the existing ledger's historical rows.
 
-**Exit:** truth-table regressions pass; all represented no-run/partial/failure paths retain truthful
-states and owner-specific causes. Locally fixed ledger rows remain `unverified` pending Ed's run.
+| Order | Deliverable | Findings | Completion proof |
+|---|---|---|---|
+| S1 | Truthful execution and closure | F01/F02; existing F13 reporting paths | One table connects actual execution, criterion outcomes, persisted story states, console and `status`; fake success/no-run/partial/failure and valid verification-only cases agree. |
+| S2 | Existing SQLite and workspace protection | F03/F04/F05; represented part of F22 | Through build orchestration, provider children receive a provisioned disposable DSN; canonical sentinel and parent manifests survive success/failure; two project tests cannot contaminate each other. Keep canonical acceptance's separate lifecycle. |
+| S3 | Source-complete incremental planning | F06/F08/F10/F11/F12; relevant F07/F14/F23 | Complete temporary Target: source instructions reach the consumed prompts; stage dependencies and scoped criteria permit incremental delivery; invalid probes receive bounded authoring correction; exhaustion remains unbuildable. |
+| S4 | Many-criterion build and recovery | F13; reproduced F09/F17/F18 | Multi-block synthetic scenario: partial gains, unmeasured call, regression, recovery, exhaustion and resume; earlier accepted work survives; per-check denominators and attempt history remain truthful; next command belongs to the failing owner. |
+| S5 | Local candidate | F21 and local gate failures | Audited full deterministic suite, lint, formatting and package smoke pass on one identifiable code revision. No published-UAT access or live provider calls. |
+| S6 | Ed's live confirmation | CommonMark, jq, affected representative kits; final release matrix | Plan-stage evidence precedes expensive build retries. Ed runs the eventual complete matrix on the final candidate; no local synthetic test is labeled live convergence. |
 
-#### WP2 — prevent recurring plan and oracle defects (P1)
+S1 and S2 protect evidence and data first. S3 and S4 address the actual planning/build convergence
+risk; they must not be postponed behind unrepresented resource hardening. Do not implement F12
+alone and declare planning stable: verify source consumption and the resulting staged work.
 
-1. Preserve decimal text from serialized CSV/JSON/XML fixtures. Cover exact source values,
-   unknown provenance, derived expressions and source-backed contradiction; no new rounding,
-   quantization or normalization. Advisory remains visible and never triggers semantic repair.
-2. Retain admission/verify parity for supported probe arguments, empty selection, executable tools,
-   scoped/full suites, required foundation interfaces and dependency paths. Give every rejection a
-   valid neighbor. Unknown/external dependencies stay legal where current contracts allow them;
-   omitted source-defined stages require authoring feedback, not guessed domain edges.
-3. Exercise a complete synthetic plan with injected outputs: initial defect, bounded correction,
-   corrected admission, revalidation, exhaustion and recovery recommendation. Existing legal work
-   survives malformed/truncated output. Repeating mechanical repair never substitutes for source
-   authoring. Do not merely test the same helper through two wrappers.
-4. Prove consumed source/context exists in the assembled prompt with correct path/provenance;
-   foundation/provider first use precedes consumers; stack/runtime/test transport selections agree.
-   Preserve source-required incremental delivery even when the graph permits grouping.
-5. Audit compact freshness against changed bytes with unchanged timestamps and a newer stale
-   derivative. If stale content can reach assembly, repair the existing freshness mechanism and
-   use full source or the supported explicit recovery; do not add an unrequested model call.
-6. Regress current size accounting, deduplication and grouping at the configured target. Keep
-   advisory oversize behavior. Distinguish a target estimate from an actual provider context limit;
-   no new hard ceiling or public schema is authorized by the July recommendation.
+Use existing regression fixtures and fake runners. Add a fixture index only if multiple cases
+need it; a new fixture framework is not a deliverable. Each new negative test needs a valid
+neighbor so fixes do not reject previously working kits.
 
-**Exit:** complete synthetic authoring/verify regressions pass and repeat with stable semantic
-outputs; defects route to their earliest legal owner without rewriting approved requirements.
+#### Specific S3/S4 test contracts
 
-#### WP3 — protect represented state and isolate generated tests (P0/P1)
+- Source context: a temporary `blueprint/sources/INSTRUCTIONS.md` appears with provenance in the
+  consumed build prompt. Cover explicit `sources/...` references, basename lookup, collisions,
+  missing files and read-only source preservation; decide precedence from current source contracts.
+- Planning: use a small parser/transformation source with prerequisite stages, an independent
+  sibling and a final conformance story. Verify source instructions reach topology authoring;
+  declared provider/consumer omissions are rejected; valid dependencies survive serialization,
+  verification and grouping; independent work still groups. No CommonMark-specific graph rule.
+- A fake response containing the correct dependencies proves execution of those dependencies,
+  not that a real model reliably authors them. Ed's CommonMark/jq plan inspection closes that gap.
+- Corpus selection: preserve exact selected IDs/counts and runner arguments; empty selection,
+  unresolved expressions and unsupported protocols cannot masquerade as measured success.
+- Iteration: use per-check case identity where available, otherwise per-check counts with an
+  explicit limit on what they prove. Never sum overlapping full/scoped suites. A skipped grade
+  changes neither measured progress nor flat-pass history. Real regression gets first repair
+  priority; budgets terminate. Do not invent automatic rollback or change budgets to obtain PASS.
+- Resume: retain previous attempt evidence and accepted blocks; compare only measurements with
+  the same criterion/input identity. Kit edits invalidate affected comparisons, not unrelated fixes.
 
-1. Complete the state inventory for actual release paths. For each resource record owner, scope,
-   mutation entry points, protection level (prevented/detected/recoverable/unsupported), enforcing
-   code, negative/positive test and residual risk. An unrepresented remote service is deferred;
-   a represented destructive path cannot be released on a prompt promise.
-2. First deliver the demonstrated SQLite path. Keep per-agent-call isolation and private backups;
-   verify deletion, modification, WAL writes, provider exception, failed provisioning, missing
-   canonical store, concurrent writer and backup access/ignore behavior. Never overwrite current
-   data; provisioning an empty DB is not recovery. Preserve DATABASE-owner routing.
-3. Enforce per-test isolation through the existing generated foundation/testing adapter for the
-   selected language and runner. Use a temporary file/namespace when independent connections or
-   subprocesses are required; rollback of one connection does not isolate another. Do not prescribe
-   pytest for Go or invent a universal fixture protocol. Test two cases writing the same key,
-   cross-connection access, assertion/collection failure, supported parallel workers and two runs
-   against a canonical sentinel. Update templates and prompts with the enforcing code.
-4. Trace governed acceptance separately: preserve its canonical schema-verification and
-   rollback/committed lifecycle. Disposable development-test DSNs must not silently redirect the
-   independent gate away from the application being assessed.
-5. For represented file, config, Git, environment and process paths, verify authorized mutations,
-   unchanged governed inputs/unrelated work, child-only environment, owned scratch cleanup,
-   secret redaction, bounded readiness/timeout and termination of owned children. Port allocation
-   must avoid a bind/release race where the harness owns the listener; no promise that every
-   sequential check receives a different numeric port.
-6. PostgreSQL remains a declared product capability, but `AgentStore` currently passes it through
-   without isolation. Mark this gap explicitly. If a release path uses it, deliver and test the
-   narrow namespace/fixture adapter or stop unsafe test execution before the agent call and report
-   the unsupported case. If unrepresented, record the limitation outside this candidate; do not
-   claim universal DB isolation or disable unrelated supported commands.
+### Finding disposition and closure
 
-**Exit:** represented mutable resources have tested protection and recovery; no canonical-data
-mutation is disguised as test cleanup. Unsupported cases and confinement limits are explicit.
-Hard-kill cleanup uses owned leftovers and next-run reclamation where teardown cannot execute;
-never promise `finally` runs after an unobservable process kill.
+The F01–F23 inventory remains historical traceability. Before changing a finding, record exactly
+one current disposition: reproduced blocker; locally covered awaiting live proof; uncertainty
+awaiting a named observation; or deferred outside this candidate. A historical `open`/`recurred`
+ledger status alone does not require another code change.
 
-#### WP4 — bound recovery and align prompts with enforcement (P1)
+For each implementation slice maintain one row:
 
-1. Use fake children to cover lifecycle plan/verify/repair/build/refit/test/score sequencing,
-   standing blockers, provider limit, actual context limit, timeout, repeated no-progress calls,
-   restart and interruption at persistence/journal boundaries. Inspect current bounds before adding
-   counters. Keep UAT `diagnose_attempts=0`; changing that policy is Ed's existing open decision,
-   not a prerequisite for this stabilization pass.
-2. Prove retry budgets terminate in the supported lifecycle and cannot accidentally reset inside
-   its loop. Record any separate manual-invocation limit; do not silently invent a durable global
-   budget, automatic model escalation or a new reopen command.
-3. Recovery identifies owner/stage, preserved evidence, safe prerequisite and next legal command.
-   Preserve accepted work on replan/resume; deterministic persistence/provider failures must not
-   be overwritten by model prose or spend a diagnosis call to restate known facts.
-4. For each changed prompt claim, map source contract → assembled input → enforcing function →
-   negative and positive regression. Label authoring advice as such. Prompt string/header tests
-   supplement execution tests; they do not prove isolation, repair, injection or cleanup.
-5. Keep the diagnosis loop concise: Assumptions Review, cause/uncertainty, upstream owner, proof
-   and authorized repair. Audit relevant prompt/contract conflicts without expanding the master
-   specification or copying a growing prohibition catalogue across prompts.
+`finding | owning memory | current repro | regression node | fix commit | local result | live proof`
 
-**Exit:** represented failure/recovery paths terminate, preserve evidence and accepted work, and
-report the next actionable stage consistently. Enforcement claims have executable evidence.
+- F15 (scoring/policy) is deferred by Ed's scope instruction; do not change scoring or gates.
+- F16/F20 remain optional diagnostics unless reproduced as preventing the active workflow.
+- F19 remains uncertainty; it cannot hold all implementation until historical evidence is read.
+- F21 prevents the unsafe script from being used; its existence does not prohibit independent
+  audited tests. Any repair must eliminate implicit reads of published evidence.
+- F22 PostgreSQL is deferred. Go database isolation remains conditional on actual capability use.
+- F23 requires a current consumed-staleness reproduction; avoid a broad compaction redesign.
 
-#### WP5 — verify and freeze the candidate
+A new blocker enters this queue only with a violated approved contract, current reproduction,
+owner and closure test. Repeated warnings, recovered envelopes and provider stops must remain
+visible, but do not automatically expand implementation scope. Preserve the existing clean-run
+standard for proved defects; do not call recovered defects fixed without affected-stage proof.
 
-1. Audit selected tests, fixtures and entry points for published-UAT access and live subprocesses
-   before running. Use the declared environment with its interpreter first on PATH. Run focused
-   tests per slice; repeat state-sensitive cases cold/warm, including failure and interruption,
-   comparing semantic results rather than timestamps, temporary names or nondeterministic bytes.
-2. Run required repository gates after the final slice: full deterministic suite, lint, formatting
-   and package build/smoke. Inspect `bin/test.sh` before using it. Install/extract the built wheel
-   in a private temporary directory; verify imports, prompts, Rigging and resource versions match
-   source. No dependency download or live provider is part of the smoke test.
-3. Record command, environment, exit code, counts and revision for each gate. All required gates
-   must pass before candidate freeze; an unavailable gate is an open action, not an exception
-   that converts a partial run into release readiness.
-4. Inspect diff/status/staged contents, record remaining limitations and commit verified slices.
-   Identify the final candidate commit/package/config and capability coverage. Any subsequent
-   implementation change invalidates affected proof and produces a new candidate identity.
+### Verification and finish line
 
-**Exit:** one identifiable candidate passes every required local gate. Required unsupported or
-unverified release capabilities remain blockers; deliberately deferred features are listed apart.
+During implementation, run focused local regressions for each coherent slice and commit locally.
+Do not rerun all kits for every patch. After the final local slice, run repository gates once;
+rerun affected checks after any correction. Record exact commands, interpreter, results and SHA.
+Resolve Ruff's actual executable path instead of prescribing the absent `.venv/bin/ruff`.
 
-#### WP6 — Ed's release matrix and closure
+Ed first verifies CommonMark and jq planning on the revised code and current chosen sources:
+required stages retained, usable scoped probes, executable acceptance, and no mandatory future
+capability in an early block. Then run their iterative builds and affected working-kit checks.
+A failed plan returns to S3; do not spend repeated build calls on that same unbuildable plan.
 
-1. Ed pins candidate commit, package digest/install location, Python/tool versions, provider/model
-   and settings, source/kit revisions, acceptance inputs and dependency resolution. The ten kits
-   run against that candidate without implementation edits. No bulk/resume syntax is invented;
-   derive actual operator commands from the current CLI before handoff.
-2. Record each kit's planning, build, acceptance, recovery and isolation observations separately.
-   Model convergence is established here, not by fake-runner tests. Preserve release gates and
-   record proved defective warnings/recovered errors as well as terminal failures; expected
-   advisories and static uncertainty alone do not establish an unclean run.
-3. After Ed supplies results and requests evidence inspection, diagnose the earliest cause and
-   minimize any new failure into a local regression before changing code. Update ledger Fix and
-   Outcome under its rules; only clean affected-stage evidence verifies a fix.
-4. A changed candidate reruns affected local gates and the ten-kit matrix before release closure.
-   A failure with a named follow-up is a useful handoff, not a passed release or completed plan.
+Missing tenth-kit metadata is not a prerequisite for S1–S5. The final release claim still requires
+Ed's complete intended matrix, identified inputs per kit and one final code candidate. Freeze each
+kit's chosen inputs for its confirming run; a source change starts new affected evidence without
+invalidating unrelated unchanged kits. Framework changes require impact-based development reruns
+and a final full-matrix confirmation before release closure.
 
-**Exit:** all ten kits satisfy the existing release contract on one frozen candidate; every
-release-blocking finding is closed by evidence. Otherwise keep the release open with a named
-owner, minimal reproduction and next slice. Deterministic success never substitutes for UAT.
+Completion has two distinct states:
 
-### Continuation and progress record
-
-Execute WP0 first, then prioritize P0 items across WP1/WP3 before P1 slices. WP2, WP3 and WP4
-may proceed independently once their owners/inputs are mapped; do not postpone verdict integrity
-until universal resource hardening is complete. Finish WP1–WP4 release scope before WP5/WP6.
-After each slice update the finding table, owning Memories, Actions and changelog as applicable,
-then commit. No repeated approval is needed for ordinary work in an authorized execution session.
-
-| Work package | Status at this planning revision | Closure evidence |
-|---|---|---|
-| WP0 | Partial `2026-10-26` | Baseline, UAT-access audit and F01–F23 matrix recorded; capability profiles await Ed's kit list. |
-| WP1 | Open | Existing snapshot/governed-gate mechanisms and unavailable-prerequisite regression found; truth table not audited. |
-| WP2 | Partial, historical local coverage | `0ab6649` planning/probe/dependency fixes and decimal regressions exist; candidate rerun and remaining audits required. |
-| WP3 | Partial, historical local coverage | `938021a` / `tests/test_build_state.py`; per-test isolation and remaining represented-state proofs open. |
-| WP4 | Partial, historical mechanisms | Lifecycle budgets and recovery exist; interruption/loop/claim coverage audit open. |
-| WP5 | Open | No implementation-candidate gate run in this documentation session. |
-| WP6 | Ed-owned, open | No UAT execution or published evidence inspection in this session. |
-
-Suggested commands after the WP5 safety audit (implementation session, from the checkout):
-
-```bash
-PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m pytest -q -n auto tests/test_acceptance_oracle.py tests/test_build_state.py tests/test_plan_reliability.py tests/test_build_run.py tests/test_diagnose.py
-PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m pytest -q -n auto
-.venv/bin/ruff check src/ tests/
-.venv/bin/ruff format --check src/ tests/
-.venv/bin/python -m hatchling build
-```
+1. **Implementation complete:** S1–S5 pass; no reproduced in-scope blocker remains; remaining live
+   proof and deferred capabilities are listed explicitly.
+2. **Release verified:** S6 supplies the required live evidence on the final candidate. A live
+   failure is reduced to a regression and repaired at its owner; it does not reopen the whole plan.
 
 ## Decisions
 
@@ -465,24 +387,26 @@ PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m pytest -q -n auto
 
 ## Questions
 
-- `2026-10-26` · Which ten kits form the release matrix, and what language, interfaces and store
-  does each use? The ledger names nine; the tenth and the jq/Quakes/DrydockStats profiles are
-  unknown. Whether LayersTesting still selects PostgreSQL decides if F22 blocks release. Closes
-  with Ed's list or his request to read the kit configuration under `uat/`.
+- None blocking S1–S5. Ed has excluded PostgreSQL and scoring work. Final kit membership and
+  selected source revisions are release-evidence inputs for S6, not another prerequisite to fixes.
 
 ## Actions
 
-- `2026-10-26` · WP0 remainder: confirm capability profiles (Question above), then mark which
-  findings each kit exercises. F19 rows need Ed-requested evidence inspection. Closes with a
-  complete capability matrix.
-- `2026-10-26` · Next slice per priority: P0 F01/F02/F15 (WP1 truth table) and F03/F04/F05/F22
-  (WP3), then F12 as the smallest confirmed P1 defect.
-- `2026-10-26` · WP1–WP4 implementation/proof remain open: truthful verdicts, recurring plan
-  defects, generated per-test isolation, represented state protection and bounded recovery.
-  Existing regression files/commits above are starting evidence, not completion of these packages.
-- `2026-10-26` · WP5 requires passing local candidate gates; WP6 requires Ed's complete frozen
-  ten-kit matrix. No historical test count, unavailable check or named follow-up closes either.
+- `2026-10-26` · Execute S1–S4 in order, reusing existing regressions and changing only reproduced
+  in-scope defects. Each slice closes on its stated proof, owning-memory update and local commit.
+- `2026-10-26` · Complete S5 local gates and record one candidate identity. Historical test
+  results do not close this gate.
+- `2026-10-26` · Ed verifies CommonMark/jq planning before build iteration, then supplies affected
+  kit evidence and the final intended release matrix on the candidate (S6). Kit edits are allowed;
+  record changed inputs and invalidate only affected comparisons during development.
 
 ## Working Notes
 
-- None.
+- `2026-10-26` · Review baseline `fae8250`. Read command/topic memories, current code, regression
+  tests and the design ledger; no published `uat/` evidence inspected and no UAT executed.
+  Review changes the delivery plan, not runtime behavior or historical verification outcomes.
+- `2026-10-26` · Review verification at `fae8250`: `.venv/bin/python -m pytest -q
+  -p no:cacheprovider` over `tests/test_design_coverage.py`, `tests/test_plan_reliability.py`
+  and `tests/test_build_state.py`: 76 passed (72.01 s). Python bytecode disabled, `.venv/bin`
+  first on PATH, temporary resources under `/home/barlo/drydock-review-test-proof`.
+  This verifies existing narrow coverage, not S1–S5 completion or live model convergence.

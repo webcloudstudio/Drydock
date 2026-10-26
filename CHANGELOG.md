@@ -169,6 +169,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-26: Documentation: stabilization uses six ordered delivery slices with explicit local
+  and live closure evidence. PostgreSQL and scoring changes are excluded; source-complete planning
+  and many-criterion build recovery precede final candidate validation. Kit revisions remain
+  editable during development, with affected evidence tracked separately from framework fixes.
+
 - 2026-10-26: Documentation: stabilization planning now bounds work to existing release
   capabilities, records dispositions for the July proposals against current contracts, and prioritizes
   truthful verification, source-preserving repair, test-state isolation and bounded recovery.
