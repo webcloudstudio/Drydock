@@ -232,6 +232,7 @@ row here or breaks the format.
 | `survey` | `design/commands/survey.md` | `survey.py` |
 | `uat` | `design/commands/uat.md` | `uat*.py`, `blockers.py` |
 | `validate` | `design/commands/validate.md` | `validate_specification.py` |
+| *Plan: AC intent and TDD* | `design/topics/plan_ac_intent_and_tdd.md` | Deferred AC intent, fixture authority, and repair context plan |
 | *Acceptance criteria* | `design/topics/acceptance_criteria.md` | `acceptance*.py`, `ac_repair.py`, `proof_integrity.py` |
 | *Foundations* | `design/topics/foundations.md` | `rigging_contract.py`, `technology_stack.py` |
 | *Process stops* | `design/topics/process_stops.md` | `blockers.py`, `llm.py` (`fatal_stop`), `cli.py` (stop gate) |
