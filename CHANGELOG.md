@@ -169,6 +169,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-26: Documentation and `/ddk-uat`: stabilization follows Ed's manual kit-run,
+  diagnosis, authorized repair, review and rerun workflow. Layered acceptance/TDD checklists
+  define source coverage, oracle correctness, execution, isolation and closure; the supplied
+  ten-kit matrix resolves kit membership. PostgreSQL support is retained without requiring
+  installation/live testing. Diagnostic reports use a compact review handoff with full ledger
+  evidence and preserve explicit repair authorization.
+
 - 2026-10-26: Documentation: stabilization uses six ordered delivery slices with explicit local
   and live closure evidence. PostgreSQL and scoring changes are excluded; source-complete planning
   and many-criterion build recovery precede final candidate validation. Kit revisions remain

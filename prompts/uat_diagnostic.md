@@ -1,10 +1,10 @@
 ---
 name: uat_diagnostic
 description: Investigate warnings, errors, recovered defects, and downstream failures in a running or completed Drydock UAT run, including a successful run.
-version: 20261026 V8
+version: 20261026 V9
 intent: Assess operational success and clean execution separately, trace upstream warnings and errors through later artifacts and failures, and recommend the earliest corrective work supported by preserved evidence.
 command: operator diagnostic prompt
-output: A concise diagnosis with an assistant-owned Assumptions Review, evidence-backed findings, and prioritized actions.
+output: A compact review handoff with verdict, material contract assumptions, evidence-backed causes, and next action or verified repair result.
 ---
 
 # Diagnose the Latest Drydock UAT Run
@@ -19,13 +19,24 @@ specification without its separate block-specific authorization. Recommend chang
 the evidence establishes a cause. Preserve the distinction between a product defect, a Drydock
 defect, a UAT-kit defect, a provider/model failure, and an expected control-flow exit.
 
+## Operator workflow
+
+Ed runs a kit, invokes this skill on the selected failure, reviews the diagnosis or authorized
+repair, and reruns. Preserve that manual review stage. Never launch UAT or an unattended outer
+repair loop. Internal Build retries are evidence to diagnose, not a replacement for Ed's review.
+Read `design/topics/stabilization.md` when the request concerns stabilization; use its layered
+AC checklist and current scope. Do not reopen settled kit membership, PostgreSQL live testing,
+or scoring policy. Kit source edits are allowed by Ed; compare failures using the actual source,
+criterion, framework and provider revisions. A changed input is not by itself a framework regression.
+
 ## Assumptions Review — owned by the assistant
 
 Before diagnosis conclusions or authorized edits, read the affected command/topic memory's
 Current contract, Intent and Guardrails, plus the source requirements and relevant ledger rows.
-State a short review in the output: approved goal and source authority; applicable invariants;
-resource owners and allowed mutations; established facts versus uncertain assumptions; the
-smallest test that could falsify the diagnosis. Cite the governing files. This is the assistant's
+Perform the full review: approved goal/source authority, invariants, resource owners and allowed
+mutations, established facts versus assumptions, and the smallest falsifying test. Report only
+the material contract or uncertainty in one or two lines with the governing file; do not repeat
+the checklist in chat. This is the assistant's
 work, not a questionnaire for Ed. Ask Ed only when approved inputs conflict or a material product
 decision cannot be resolved from them; continue independent authorized work.
 
@@ -128,8 +139,9 @@ Treat incorrect Sea Trials and acceptance criteria as specification contaminatio
 test failures. They are governed inputs that planning can turn into Blueprints, Manifest stories,
 implementation, and acceptance gates. Before blaming implementation or the model:
 
-1. Compare every Sea Trial and acceptance criterion with the imported source, Compass, declared
-   update sequence, and intended project boundary.
+1. Trace each implicated Sea Trial and acceptance criterion to the imported source, Compass,
+   declared update sequence and project boundary. Follow its prerequisites and downstream
+   consumers; expand to a full coverage audit when requested or when evidence shows omissions.
 2. Identify behavior introduced only by Sea Trials and determine whether it verifies source intent
    or adds an unauthorized requirement.
    Also inspect governed source briefs for implementation choices presented as user requirements:
@@ -157,51 +169,53 @@ implementation, and acceptance gates. Before blaming implementation or the model
 - Recommend the smallest change that repairs the cause, plus regression tests. Do not recommend a
   broad rewrite or another expensive UAT until narrow tests pass.
 
+## Authorized repair handoff
+
+For an authorized repair, reproduce the defect with a narrow failing regression, correct its
+owning mechanism, and run affected checks including a valid neighbor. A passing no-op or
+previously satisfied product AC need not be forced red. Do not weaken assertions or coverage to
+obtain green. Correct a proved faulty oracle only within the authorized source/authoring scope;
+otherwise hand that input correction to Ed. Preserve canonical data and accepted behavior.
+Update the owning memory, changelog and ledger Fix/Outcome (`unverified`), then commit locally.
+Report the commit, files, actual verification and residual risk for Ed's review. A local pass
+never substitutes for later affected-stage UAT proof. If no cause is established, stop repair and
+name the missing discriminating evidence; continue independent authorized work.
+
 ## Output Contract
 
-Return the following sections in order under these headings (Reporting Defects may be omitted). Every bullet is one short
-sentence on one line. No paragraphs, no run-on sentences, no restated analysis. The whole report
-targets 250 words: a reader who can diagnose the run themselves needs the facts and the file
-paths, not the reasoning that produced them. Include every material finding even when the report
-must exceed that target.
+Target 150–200 words for the diagnosis, excluding any user-required completion footer. Include
+all material causes even if that requires more. Use the four sections below; omit empty detail,
+generic assurances, repeated consequences and a second summary. Keep full evidence in the ledger
+and linked artifacts. Do not shorten the investigation merely to shorten its report.
 
 ### Verdict
 
-One line: the run id, recorded status, cleanliness (`clean`, `not clean`, or `undetermined`), and
-terminal stage with its exit code, or pending completion when the receipt is absent.
+One line: run id, recorded status, cleanliness (`clean`, `not clean`, `undetermined`), and terminal
+stage/exit or pending completion. A provider success, a historical summary Y, and product
+acceptance are different evidence; preserve those distinctions.
 
 ### Assumptions Review
 
-Short bullets stating the goal/source authority, applicable invariants and state owners, uncertain
-assumptions, and the discriminating verification, with links to the governing memory/contract.
-Ed supplies only unresolved decisions; the assistant performs this review.
+One or two lines: the decisive source/AC contract and owner, plus any uncertainty that changes
+the diagnosis and its discriminating check. Link the governing memory. Ask Ed only for a decision
+that actually prevents further work; omit a questions section otherwise.
 
 ### Root Cause
 
-One-line bullets naming the earliest causal defects and independent warnings or recovered errors,
-whether or not they stopped the run. Name the exact file and line where each defect lives and
-state the evidence for any downstream causal link. When a ledger row holds the same cause, name
-its run, fix commit, and new Outcome. Stop when the cause is stated; do not continue into effects.
+One bullet per distinct material cause: owner, observed mismatch and shortest useful evidence
+reference. Attach downstream consequences to their cause instead of repeating them in another
+section. Include independent/recovered defects and label a Reporting Defect here. Distinguish
+proved, ruled-out and undetermined causal links. For a recurrence, name the prior fix and outcome.
 
-### Consequences (not separate defects)
+### Next Action
 
-One-line bullets for downstream non-zero exits, failed criteria, and recovery outcomes that follow
-from a root cause, linking each to its upstream finding. Independent defects belong under Root
-Cause; a recovered warning is not demoted to a consequence merely because it did not stop the run.
+- Diagnosis only: the smallest correction or missing investigation, its deterministic proof,
+  and the affected stage Ed should rerun after repair/review. Do not imply repairs were performed.
+- Authorized repair: commit and changed files, actual test outcomes, residual risk, and what Ed
+  should verify on rerun. Do not ask again to perform already-authorized work.
+- End with one compact ledger update (rows added/outcomes changed). Do not append another recap
+  or duplicate the user's required completion block; put commit/tests/next steps there when required.
 
-### Reporting Defects
-
-One-line bullets naming each place the run's own evidence failed to explain itself: discarded
-output, truncated diagnostics, an unlinked or empty artifact, a verdict that contradicts the state
-it reports. Cite the source location that drops the information. Omit the section when the evidence
-was sufficient.
-
-### Recommended Actions
-
-A numbered list, most important first. Each item is a bold one-line change plus the source location,
-with at most two indented sub-bullets: how it is verified, and its risk when the risk is not low.
-Name any committed fix the action revises or removes.
-Close with one line stating what to fix now and what to defer, one line stating any condition
-that must hold before the UAT is rerun, and one line naming the ledger rows appended and the
-earlier Outcomes changed. Do not make changes as part of this diagnostic beyond the
-ledger.
+Investigation writes and commits only the ledger. Explicit repair authorization permits the
+implementation, tests and memory/changelog changes described above. Neither mode runs UAT,
+mutates published evidence, or bypasses Ed's manual review and rerun.

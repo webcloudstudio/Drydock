@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-24 V1 |
+| Version | 2026-10-26 V2 |
 | Description | Ledger of diagnosed UAT runs and root causes kept by `/ddk-uat`. |
 | Skill | `/ddk-uat` |
 | Prompts | `uat_diagnostic.md` |
@@ -35,9 +35,24 @@ fixes already sit in the implicated area.
 | Findings | Proved violation, proved permitted operation or uncertainty; distinguish clean execution from status. |
 | Recovery | Trace the earliest cause and resource owner; do not accommodate an incorrect upstream oracle in later code. |
 | Proof | Preserved evidence plus local regressions; only later clean affected-stage evidence marks a fix verified. |
+| Handoff | Ed runs → invokes the skill → reviews diagnosis/authorized repair → reruns. Four compact sections report verdict, material assumptions, causes and next action; full detail stays in evidence/ledger. |
 
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · Prompt V9 / repository skill 1.4.0 preserves Ed's manual review loop. Reports target
+150–200 words with four sections; consequences/reporting defects stay with their cause, empty
+sections and repeated recaps are omitted. Full investigation and every material defect remain
+required. Assumptions review stays assistant-owned; chat shows only the decisive contract and
+uncertainty. Source/AC review follows implicated prerequisites/consumers and expands for requested
+coverage audits or demonstrated omissions. Authorized repairs use a failing local regression,
+affected-neighbor checks, memory/changelog and local commit; their ledger status stays unverified
+until clean affected-stage evidence. The final output rule now agrees with repair authorization.
+Claude's `.claude/skills` links to `.agents/skills`, so one repository definition serves both.
+The skill loads the current versioned prompt at each invocation; no UAT evidence was inspected
+or diagnosed in this editing session and no run ledger outcomes were changed. Verification:
+97 prompt/header/design/skill tests pass, skill validation passes, and a built wheel contains
+the exact V9 prompt bytes. This validates packaging/contracts, not live diagnostic quality.
 
 `2026-10-26` · Diagnostic prompt V8 prints Assumptions Review after Verdict and distinguishes
 proven constraints from uncertainty. Default invocation remains investigation plus ledger; an
