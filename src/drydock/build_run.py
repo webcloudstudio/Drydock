@@ -3290,10 +3290,14 @@ def build_target(
                 attempt_model = base_model
             else:
                 attempt_model = base_model
+                # A regression the sweep found is Drydock's measurement, not the agent's report,
+                # even when every check the block owns passed.
+                failing = len(feedback_checks) + len(regressed_checks)
                 _emit(
                     on_text,
                     f"repair: attempt {attempt}/{max_attempt} · "
-                    f"{len(feedback_checks) or 'agent-reported'} failing check(s)",
+                    f"{failing or 'agent-reported'} failing check(s)"
+                    + (f" ({len(regressed_checks)} regressed)" if regressed_checks else ""),
                 )
                 # Claude resumes the block session, so every prior repair instruction stays in
                 # the conversation prefix and this pass is a strict append. Other providers start

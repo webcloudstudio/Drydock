@@ -38,6 +38,15 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 
+`2026-10-26` · **Regression-led repairs are labelled as measured.** The repair line counts the
+block's failing checks plus checks the regression sweep found broken:
+`repair: attempt N/M · K failing check(s) (R regressed)`; `agent-reported` appears only when
+Drydock measured nothing failing. Stabilization S4 scenario
+`tests/test_build_recovery_scenario.py` connects partial gains, a green-but-regressed call,
+recovery, stall exhaustion, owner recovery (`drydock build <Target>`, never the earlier block) and
+resume with retained lineage. The sweep runs only on a call whose own checks are green, by design.
+The disputed-criterion banner is asserted to match the persisted recovery.
+
 `2026-10-26` · **Imported sources resolve as context.** `StepRoots.roots_for("context")` is
 `(blueprint, target, blueprint/sources)`: a bare `INSTRUCTIONS.md` reaches the governed source brief
 with its `path=` provenance instead of `Missing context`; an authored Blueprint or Target file of the

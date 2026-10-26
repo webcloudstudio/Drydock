@@ -462,14 +462,19 @@ Completion has two distinct states:
 | F03 project tests share call store | build | committed writes leak between tests in one call | `test_build_state.py` `test_two_project_tests_in_one_agent_call_cannot_contaminate_each_other`, falsifier `test_without_the_plugin_the_same_tests_collide` | 93acdf6 | pass | pending |
 | F03/F04 provider failure path | build | none reproduced | `test_provider_failure_without_mutation_keeps_canonical_and_discards_snapshot`; build-level `test_agent_store_writes_are_isolated_and_deletion_stops_with_owner_recovery` | — | pass | pending |
 | F05 parent manifests | build/llm | none reproduced; existing guard | `test_llm.py` `test_agent_registration_in_an_enclosing_uv_workspace_is_restored_and_fails` | 39e4e10 | pass | pending |
-| F12 source brief missing from build | build | bare `INSTRUCTIONS.md` reported missing context | `test_build_source_context.py` (5) | S3 | fail before, pass after | pending |
-| F23 mtime overrides changed sha | rigging | changed source older than compact read fresh | `test_rigging_compact.py` `test_changed_source_older_than_its_compact_is_stale` | S3 | fail before, pass after | pending |
-| F07 projected helper exit | acceptance/plan | `return code, out` helper rejected | `test_harness_exits.py` projected-helper tests | S3 | fail before, pass after | pending |
-| F14 undelimited / impossible reason | plan | empty-body model call; reason dropped | `test_plan_repair.py` two tests | S3 | fail before, pass after | pending |
+| F12 source brief missing from build | build | bare `INSTRUCTIONS.md` reported missing context | `test_build_source_context.py` (5) | 81e185d | fail before, pass after | pending |
+| F23 mtime overrides changed sha | rigging | changed source older than compact read fresh | `test_rigging_compact.py` `test_changed_source_older_than_its_compact_is_stale` | 81e185d | fail before, pass after | pending |
+| F07 projected helper exit | acceptance/plan | `return code, out` helper rejected | `test_harness_exits.py` projected-helper tests | 81e185d | fail before, pass after | pending |
+| F14 undelimited / impossible reason | plan | empty-body model call; reason dropped | `test_plan_repair.py` two tests | 81e185d | fail before, pass after | pending |
 | F06/F08 probe correction, exhaustion | plan | none; 0ab6649 regression rerun | `test_plan_reliability.py` `test_complete_plan_reauthors_probe_before_persisting_and_can_repeat` | 0ab6649 | pass | pending |
 | S3 source → topology, staged deps | plan | none reproduced | `test_source_instructions_reach_topology_and_authoring_prompts`, `test_staged_dependencies_survive_serialization_verification_and_grouping` | — | pass | pending |
 | F11 unfounded runtime stack | plan | warning only; causal link unproved | — | — | uncertainty; see Questions | pending |
 | F10 DATABASE feedback | plan | not re-reproduced | existing `f63494c` coverage | — | audit only | pending |
+| F13 regression-led repair label | build | `agent-reported` printed after a measured regression | `test_build_recovery_scenario.py` | S4 | fail before, pass after | pending |
+| F13 dispute routing / owner recovery | build/cli | not reproduced; record and banner agree | `test_a_defect_claim_is_recorded_and_does_not_stop_the_loop` (banner), scenario recovery | — | pass | pending |
+| F17 provider stop identifiers | llm | `usage_limit_reached` unclassified | `test_process_stop.py` parametrized classifier | S4 | fail before, pass after | pending |
+| F09 unattended refusal | plan | not reproduced; `plan_blocked._refutation` unattended policy present | existing | — | audit only | pending |
+| F18 refit pending source | refit/uat | undetermined; needs Ed-requested evidence | — | — | uncertainty | pending |
 | F22 Go database / PostgreSQL | — | not represented / excluded | — | — | deferred | — |
 | F01 state/console/status agreement | build/status | none reproduced beyond F02 | `test_execution_outcomes_manifest_console_and_status_agree` (5 rows) | — | pass | pending |
 

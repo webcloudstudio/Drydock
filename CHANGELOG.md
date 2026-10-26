@@ -393,6 +393,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-26: Provider quota and expired-login results that Claude reports as
+  `usage_limit_reached`, `rate_limit_error` or `OAuth token has expired` stop the process as
+  provider stops instead of reading as ordinary failures. `drydock build` labels a repair driven
+  by the regression sweep with its measured failing and regressed check counts instead of
+  `agent-reported`.
+
 - 2026-10-26: `drydock build` resolves a bare context name such as `INSTRUCTIONS.md` against
   `blueprint/sources/` after the Blueprint and Target, so the imported source brief reaches the
   build prompt instead of being reported as missing context. `drydock rigging compact` and

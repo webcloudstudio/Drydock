@@ -52,6 +52,14 @@ def _clean_process_state(monkeypatch):
     [
         (USAGE_LIMIT, f"provider rate limit: {USAGE_LIMIT}", False, "provider rate limit"),
         ("OAuth session expired", None, False, "provider authentication required"),
+        ("OAuth token has expired.", None, False, "provider authentication required"),
+        (
+            "",
+            '"api_error_status":429,"api_error":"usage_limit_reached"',
+            False,
+            "provider rate limit",
+        ),
+        ("", "rate_limit_error: Number of requests exceeded", False, "provider rate limit"),
         ("execution timed out", None, True, "provider timeout"),
         ("", "provider error 503: Service Unavailable", False, "provider outage"),
         ("", "provider error: Overloaded", False, "provider outage"),

@@ -3878,6 +3878,14 @@ def test_a_defect_claim_is_recorded_and_does_not_stop_the_loop(tmp_path):
     assert "drydock plan verify Demo" in record.recovery
     assert "drydock plan repair Demo" in record.recovery
     assert "Run: drydock build" not in record.recovery
+    # The rendered banner names the same owner as the persisted record.
+    from drydock.build_run import BUILD_FAILURE_HINT
+    from drydock.cli import _render_build_failures
+
+    banner = _render_build_failures("Demo", result.failed(), hint=BUILD_FAILURE_HINT)
+    assert "Run: drydock plan verify Demo" in banner
+    assert "Run: drydock build Demo" not in banner
+    assert "rerun drydock build" not in banner
 
 
 def test_an_unnamed_defect_claim_still_spends_the_repair_budget(tmp_path):

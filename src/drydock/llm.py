@@ -1379,6 +1379,7 @@ _AUTHENTICATION_ERROR_MARKERS = (
     "please set an auth method",
     "failed to authenticate",
     "oauth session expired",
+    "oauth token has expired",
     "could not be refreshed",
 )
 
@@ -1409,6 +1410,9 @@ _RATE_LIMIT_MARKERS = (
     "usage limit",
     "spend limit",
     "limit reached",
+    # Claude's raw result names the limit as an identifier, not prose (CsvStat 20261024.221659).
+    "usage_limit_reached",
+    "rate_limit_error",
     "quota",
     # gemini's wording for an exhausted per-minute or per-day allowance.
     "resource has been exhausted",

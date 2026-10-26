@@ -26,6 +26,12 @@ failing block.
 
 ## Details
 
+`2026-10-26` · Provider stop markers include Claude's identifier forms `usage_limit_reached` and
+`rate_limit_error` (rate limit) and `OAuth token has expired` (authentication), so a quota or
+expired-login result is a fatal provider stop rather than an ordinary failure (CsvStat
+`20261024.221659`). Generic `authentication_error` is deliberately not a marker: agent output can
+contain it as ordinary code text. Stabilization F17.
+
 `2026-10-25` · `render_banner` frames the banner with `console.box`: a rounded box with the
 `BLOCKED: <Target> · <declared>` heading set into the top edge. The frame fits the widest line,
 capped at the terminal width, and widens rather than split a word, so paths stay whole. The ASCII
