@@ -176,10 +176,8 @@ class UATResult:
     #: the gate did not run. ``acceptance_status`` is derived from it, and the two differ — an
     #: ERROR here reads as NOT_RUN there — so the raw verdict is recorded rather than inferred.
     release_verdict: str = ""
-    #: Story-acceptance outcomes for the run, three-valued. ``product_defects`` counts assertions
-    #: that exercised the built code and found it wrong; ``harness_defects`` counts assertions
-    #: that never reached it. A reader distinguishes "Drydock produced a bad artifact" from
-    #: "Drydock's checker rejected a good one" from this field alone.
+    #: PASS/FAIL/UNVERIFIED counts describe observations, not adjudicated defect ownership.
+    #: Every failed or unverified check requires diagnosis before assigning responsibility.
     assertions: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self, base: Path | None = None) -> dict[str, object]:
@@ -779,14 +777,8 @@ def _release_attestations(target_dir: Path) -> tuple[str, ...]:
 
 
 def _assertion_outcomes(target_dir: Path, target: str, records_path: Path) -> dict[str, int]:
-    """Return the run's PASS/FAIL/UNVERIFIED assertion tally and its defect attribution.
-
-    This is the field that tells the two failure modes apart without reading a log. A FAIL is
-    evidence about the product Drydock built. An UNVERIFIED is evidence about Drydock's own kit:
-    the assertion never reached the code under test, so it says nothing about the build. The two
-    need opposite fixes, and ``status: failed`` alone cannot distinguish them.
-    """
-    empty = {"passed": 0, "failed": 0, "unverified": 0, "product_defects": 0, "harness_defects": 0}
+    """Count check outcomes without inferring whether the product or oracle is defective."""
+    empty = {"passed": 0, "failed": 0, "unverified": 0, "defect_ownership_undetermined": 0}
     try:
         report = build_score_report(target, target_dir, records_path=records_path)
     except (OSError, ValueError):
@@ -800,8 +792,7 @@ def _assertion_outcomes(target_dir: Path, target: str, records_path: Path) -> di
         "passed": passed,
         "failed": failed,
         "unverified": unverified,
-        "product_defects": failed,
-        "harness_defects": unverified,
+        "defect_ownership_undetermined": failed + unverified,
     }
 
 

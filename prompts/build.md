@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20261024 V10
+version: 20261025 V11
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 output: evidence summary
@@ -22,7 +22,10 @@ Operating contract:
 
 1. Follow the write authorization and protected paths in the stacked `COMPASS.md` exactly.
    That persisted guardrail is the sole authority for paths this build may modify.
-2. Start by inspecting the build working directory. Preserve existing application
+2. Start by inspecting the build working directory. Read the current contents of each file before
+   applying a contextual patch. If patch verification fails, re-read that file and rebuild the
+   patch against its current text; do not repeat stale context or overwrite unrelated changes.
+   Preserve existing application
    files unless this step's specifications require a change.
    Its `sources/` subdirectory holds staged build assets — imported test corpora,
    conformance harnesses, and fixtures — placed there for you. They are read-only

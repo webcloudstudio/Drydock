@@ -1,7 +1,7 @@
 ---
 name: plan_continue
 description: Stage 2 Blueprint authoring instruction appended after plan_create has accepted and frozen a complete TOPOLOGY.md declaration.
-version: 20261025 V7
+version: 20261025 V8
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
 output: A bounded batch of Blueprint specification files
@@ -52,7 +52,12 @@ Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated 
   use `- None.` only when User Acceptance or Guardrails has no applicable content.
 - Compute numeric expectations from fixture inputs using the source formula and rounding;
   never guess formatted decimal answers. Put Requires declarations inside each AC block.
-  Before returning, verify that every artifact ends with the complete `=== END ARTIFACT ===`.
+  Before returning, count the open and close artifact lines; counts match, and the final nonblank
+  line is exactly `=== END ARTIFACT ===`, including its trailing equals signs.
+  Derive ordered expectations from fixture inputs and declared sort keys, including tie breakers.
+  Import every referenced name inside each AC, declare every external import and test transport,
+  and use a bounded endpoint/port readiness probe for server-start criteria.
+  Cite only owned or shared database patterns and derive their DTO fields from DATABASE.md.
 - Acceptance observes the delivered application through its declared interfaces. Never replace
   it with a local implementation or a standalone language expression inside the criterion.
   For a Go CLI, use `drydock_go.cli_runner`, assert its exit code, parse its CSV output, and

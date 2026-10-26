@@ -26,6 +26,14 @@ was given.
 
 ## Details
 
+`2026-10-25` · First-use stack mode excludes a file only when it declares `Type: guidance`,
+no foundation kind, and no foundation tier (absent/application). This removes common.md's false
+unfounded-stack warning while keeping Bootstrap's explicit interface tier and FastAPI's runtime
+foundation rule. The scheduling adapter resolves metadata and passes the guidance set to the pure graph
+functions; the file name does not define the exemption. Both full and compact FastAPI
+Rigging explain modern TestClient transport selection and lockfile/deprecation verification.
+
+
 `2026-10-24` · Output DTO identity is validated before the persistence declaration freezes:
 one normalized Python class name has one ordered field/type shape. Planning and the emitter
 share normalization and the registry. Distinct projections receive operation-derived naming

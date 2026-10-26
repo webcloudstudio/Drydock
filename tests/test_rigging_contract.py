@@ -416,3 +416,15 @@ def test_a_file_with_no_contract_compacts_unchanged():
     assert model_text == _ADDITIVE
     out = _finalize("surface", rel_source="s.md", today="2026-09-20", source_sha="x", contract=None)
     assert "Foundation Contract" not in out
+
+
+def test_only_untiered_additive_guidance_is_exempt_from_a_foundation(tmp_path):
+    from drydock.rigging_contract import is_guidance
+
+    (tmp_path / "advice.md").write_text("# Advice\n\n**Type:** guidance\n")
+    assert is_guidance("advice.md", tmp_path)
+    (tmp_path / "advice.md").write_text("# Advice\n\n**Type:** guidance\n**Tier:** interface\n")
+    assert not is_guidance("advice.md", tmp_path)
+    (tmp_path / "advice.md").write_text("# Advice\n\n**Type:** guidance\n**Foundation:** testing\n")
+    assert not is_guidance("advice.md", tmp_path)
+    assert not is_guidance("missing.md", tmp_path)

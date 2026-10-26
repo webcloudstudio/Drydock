@@ -487,3 +487,21 @@ process a criterion launches cannot see the transaction, so `drydock plan verify
 criterion that both opens the store and launches a process. Go criteria use `OpenSession(ctx, "")`
 and check the deferred cleanup error. `drydock plan verify` also rejects recognized DSN overrides
 and schema application in criteria. `VERIFICATION.md` is an accepted standard release-gate Blueprint filename.
+
+### Acceptance authoring checks
+
+Planning and `drydock plan verify <Target>` reject statically resolvable expected repository rows
+that contradict declared `Order` keys (`ordered-oracle`), and immediate spawn-only server checks
+(`process-readiness`). Author ordered expectations from fixture data and verify service readiness
+with a bounded endpoint/port probe. Mechanical `drydock plan repair` preserves acceptance intent;
+it does not select a new order or invent a readiness contract. Re-emitted artifacts are checked
+for missing criterion imports before admission.
+
+Lineage retries invalid story identifiers once while preserving source text and valid links.
+Untiered additive guidance does not require a runtime foundation. FastAPI test criteria declare
+both FastAPI and the compatible TestClient transport (`httpx2` for Starlette >=1.2), with resolved
+versions recorded in the application lockfile.
+
+New UAT receipts expose `assertions.passed`, `failed`, `unverified`, and
+`defect_ownership_undetermined`; the last counts failed plus unverified checks. Check outcomes alone
+do not establish whether a product, criterion, source, or environment is defective.

@@ -9,7 +9,7 @@
 | Prompts | `uat_diagnostic.md` (via `/ddk-uat`) |
 | Tests | `tests/test_uat*.py` |
 | Topics | [acceptance_criteria](../topics/acceptance_criteria.md) |
-| Pending spec | 0 |
+| Pending spec | 1 |
 | Pending impl | 2 |
 
 ## Intent
@@ -29,6 +29,19 @@ Three properties define done (UAT gate model, 2026-08-14):
 - None.
 
 ## Details
+
+`2026-10-25` · New receipts retain assertion `passed`, `failed`, and `unverified` counts
+and replace inferred `product_defects`/`harness_defects` with
+`defect_ownership_undetermined = failed + unverified`. Executing an assertion and obtaining FAIL
+does not adjudicate whether the product, criterion, governed source, or environment is defective.
+Published receipts remain unchanged. The four-key tally is verified with synthetic block evidence,
+including a contradictory-oracle-shaped failure; no published UAT run is executed by these tests.
+
+Specification clarification proposed (not applied): Assertion outcomes record PASS, FAIL, or
+UNVERIFIED. Failed and unverified outcomes do not assign defect ownership; diagnosis establishes
+whether the product, acceptance criterion, source contract, or execution environment is defective.
+
+
 
 `2026-10-24` · Compact build-status snapshots mark verified and built rows with green checks,
 question-blocked rows with a yellow warning, and failed or blocked rows with red failure marks.
@@ -154,7 +167,7 @@ build at all.
 
 `2026-10-14` · **Receipts name the executed model, not the requested one.** Run receipts and kit indexes name models from LLM execution records, preferring the provider-reported model. `requested_model` remains provenance; using it as the run model misattributes routed and mixed-model runs. Report rebuilds derive the model from preserved evidence without rerunning UAT.
 
-`2026-08-10` · **A run distinguishes a harness defect from a product defect.** A check that cannot
+`2026-08-10` · **A run distinguishes executed failures from unverified checks.** A check that cannot
 reach the code under test settles `UNVERIFIED`, not `FAIL`; a build that stopped part way is a
 named shortfall (`degraded`), and the scoring command is not run against it. Cost when broken: the
 four-day loop of 2026-08 — runs failing on Drydock's own checkers while reporting product failures.
@@ -237,6 +250,8 @@ Action: convert each analyzer from a blocking defect into (a) prompt guidance in
 authoring contract, and (b) a warning that may cost marks, never a hard gate.
 
 ## Questions
+
+- `2026-10-25` · Proposed specification clarification in Details requires Ed's block-specific approval; implementation is complete independently of that editorial decision.
 
 1. **Two decisions of 2026-08-10 have unverified status.** Executable deterministic Sea Trials
    blocks, and demoting `proof_integrity` analyzers to authoring time (`validate` no longer runs

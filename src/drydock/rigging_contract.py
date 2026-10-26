@@ -399,6 +399,20 @@ def kind_for(name: str, stack_dir: Path | None = None) -> str:
     return _header_field(name, declared_kind, stack_dir)
 
 
+def is_guidance(name: str, stack_dir: Path | None = None) -> bool:
+    """Explicit guidance carries rules but does not stand up a runtime foundation."""
+
+    def read_type(text: str) -> str:
+        match = re.search(r"^\*\*Type:\*\*[ \t]*(.+?)[ \t]*$", text, re.MULTILINE)
+        return match.group(1).strip().casefold() if match else ""
+
+    return (
+        _header_field(name, read_type, stack_dir) == "guidance"
+        and not kind_for(name, stack_dir)
+        and tier_for(name, stack_dir) in {"", APPLICATION_TIER}
+    )
+
+
 def order_rigging(names: Iterable[str], stack_dir: Path | None = None) -> list[str]:
     """Return ``names`` in build order: by tier, then sub-tier, then alphabetically.
 

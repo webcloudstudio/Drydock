@@ -99,3 +99,43 @@ def test_generated_plan_routes_decimal_expectation_to_artifact_repair(tmp_path):
     with pytest.raises(CriteriaDefect) as raised:
         _validate_plan_output(blocks, blueprint, FakeRun(text=_llm_output(manifest)))
     assert any(kind == "decimal-oracle" for kind, defect in raised.value.defects)
+
+
+def test_reemitted_artifact_with_missing_decimal_imports_is_rejected_before_write(tmp_path):
+    import pytest
+
+    from drydock.planning_session import CriteriaDefect, _validate_plan_output
+    from tests.test_planning_session import _SPEC_HEADER, FakeRun, _llm_output, _manifest
+
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    manifest = _manifest()
+    blocks = {
+        "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
+        "FEATURE-Status.md": "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
+        "=== AC arithmetic ===\nfrom app import value\n"
+        'expected = Decimal("1").quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)\n'
+        "assert value == expected\n=== END AC arithmetic ===\n",
+        "MANIFEST.md": manifest,
+    }
+    with pytest.raises(CriteriaDefect) as raised:
+        _validate_plan_output(blocks, blueprint, FakeRun(text=_llm_output(manifest)))
+    undefined = [defect.reason for kind, defect in raised.value.defects if kind == "undefined-name"]
+    assert len(undefined) == 1
+    assert "Decimal" in undefined[0] and "ROUND_HALF_EVEN" in undefined[0]
+    assert not list(blueprint.iterdir())
+
+
+def test_artifact_repair_instructions_require_self_contained_imports_and_complete_closes():
+    from drydock.planning_session import _artifact_repair_assembly
+
+    prompt = _artifact_repair_assembly(
+        names=("FEATURE-Status.md",),
+        blocks={"FEATURE-Status.md": "# FEATURE: Status"},
+        defect="missing import",
+        pass_number=1,
+    ).rendered_text
+    assert "isolated script" in prompt
+    assert "Decimal and rounding constants" in prompt
+    assert "count opening and closing artifact lines" in prompt
+    assert "including all trailing equals signs" in prompt

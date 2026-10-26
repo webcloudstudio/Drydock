@@ -826,7 +826,7 @@ def test_a_malformed_check_is_unverified_rather_than_charged_to_the_build(tmp_pa
     assert result.outcome == acceptance.OUTCOME_UNVERIFIED
 
 
-def test_an_ordinary_assertion_failure_is_a_product_defect(tmp_path):
+def test_an_ordinary_assertion_failure_is_a_failed_check(tmp_path):
     result = _run_one("value = 1\nassert value == 2", tmp_path)
     assert result.outcome == acceptance.OUTCOME_FAIL
 
@@ -835,7 +835,7 @@ def test_a_passing_check_is_a_pass(tmp_path):
     assert _run_one("assert 1 == 1", tmp_path).outcome == acceptance.OUTCOME_PASS
 
 
-def test_the_tally_separates_harness_defects_from_product_defects(tmp_path):
+def test_the_tally_does_not_infer_defect_ownership_from_outcomes(tmp_path):
     results = (
         _run_one("assert 1 == 1", tmp_path),
         _run_one("value = 1\nassert value == 2", tmp_path),
@@ -843,8 +843,10 @@ def test_the_tally_separates_harness_defects_from_product_defects(tmp_path):
     )
     tally = acceptance.tally_outcomes(results)
     assert (tally.passed, tally.failed, tally.unverified) == (1, 1, 1)
-    assert tally.product_defects == 1
-    assert tally.harness_defects == 1
+    assert tally.defect_ownership_undetermined == 2
+    assert tally.to_dict()["defect_ownership_undetermined"] == 2
+    assert "product_defects" not in tally.to_dict()
+    assert "harness_defects" not in tally.to_dict()
     assert tally.to_dict()["total"] == 3
 
 

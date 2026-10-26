@@ -1,7 +1,7 @@
 ---
 name: lineage_attribute
 description: Attribute existing Manifest stories to the source requirements they implement.
-version: 1
+version: 2
 intent: Recover the requirement-to-story provenance link for one imported source file by matching against a closed set of existing stories.
 command: drydock plan / drydock refit --relineage
 output: attribution tags
@@ -36,8 +36,8 @@ correct.
 
 ## Rules
 
-- Use only story ids that appear in `<stories>`. Never invent one.
-- Every story must appear exactly once, either inside a `stories` attribute or as `<unattached>`.
+- Copy story ids byte-for-byte from `<stories>`, preserving underscores, hyphens, and case; never invent or normalize one.
+- Every story appears in one or more requirement `stories` attributes, or once as `<unattached>`, never both.
 - Quote the requirement text verbatim from the source in the tag body. Do not paraphrase it.
 - Emit nothing but the tags below. No preamble, no commentary, no explanation.
 

@@ -253,6 +253,9 @@ def emission_contract_lines(names: Sequence[str]) -> list[str]:
         "",
         "The filename appears once, in the opening delimiter. The closing delimiter is the",
         "constant token above and never carries a name.",
+        "Before sending, count opening and closing artifact lines: the counts must match.",
+        "Finish every body before writing its complete closing line; reserve room for it.",
+        f"The final nonblank line of the response is exactly {ARTIFACT_CLOSE_TOKEN!r}, including all trailing equals signs.",
     ]
     if names:
         lines.extend([

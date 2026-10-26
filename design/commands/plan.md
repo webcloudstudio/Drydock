@@ -9,7 +9,7 @@
 | Prompts | `plan_create.md`, `plan_create_speckit.md`, `plan_continue.md`, `plan_conform.md`, `plan_reuse.md`, `plan_repair.md`, `plan_artifact_waiver.md`, `BLUEPRINTS_CONTRACT.md`, `MANIFEST_CONTRACT.md` |
 | Tests | `tests/test_plan*.py`, `tests/test_planning_session.py`, `tests/test_database_*.py` |
 | Topics | [foundations](../topics/foundations.md), [acceptance_criteria](../topics/acceptance_criteria.md) |
-| Pending spec | 0 |
+| Pending spec | 1 |
 | Pending impl | 0 |
 
 ## Intent
@@ -24,6 +24,32 @@ written.
 - None.
 
 ## Details
+
+`2026-10-25` · FxRates diagnosis follow-through: admission and `plan verify` share
+`ordered-oracle` validation for literal fixture rows projected from declared repository list
+results, including secondary keys and mixed directions. Unknown runtime expressions are not
+executed or guessed. `process-readiness` rejects an immediate Popen/poll-only server assertion;
+a bounded endpoint/port probe is authored against source intent. Mechanical `plan repair` leaves
+both semantic authoring defects unchanged. Artifact admission now checks unresolved globals after
+normalization on every pass, including re-emitted repair artifacts; terminal verification remains
+the buildability gate if the authoring repair budget is exhausted.
+
+Lineage permits one correction call when an attribution invents story ids; the response must retain
+requirement names, verbatim text, order, and existing valid links. Invalid corrections preserve the
+valid original links with diagnostics. Successful corrections remain visible as recoveries.
+Untiered `Type: guidance` stacks without a foundation kind do not require a runtime foundation;
+explicit tiers and foundation kinds keep the existing first-use rule. FastAPI criterion tooling
+recognizes declared httpx/httpx2 transports; undeclared TestClient transport defaults to httpx2.
+Owner-only/shared database citations and exact final artifact closes remain authoring obligations;
+deterministic normalization and envelope recovery remain visible rather than being hidden.
+
+Specification clarification proposed for the `drydock plan` behavior block (not applied):
+`drydock plan` validates acceptance criteria against declared repository ordering and rejects
+statically provable contradictions. Each acceptance criterion declares its external test tools and
+binds every referenced name within its own execution scope. A service-start criterion verifies the
+required endpoint or port within a bounded deadline. Process creation alone does not establish
+service readiness. Mechanical `drydock plan repair` preserves acceptance intent.
+
 
 `2026-10-25` · Planning and `plan verify` reject an unsupplied literal formatted decimal
 expectation as `decimal-oracle` unless the resolved citation contains that exact answer.
@@ -663,6 +689,8 @@ A failing `plan verify` condemns the standing plan rung without voiding anything
 
 ## Questions
 
+- `2026-10-25` · Proposed specification clarification in Details requires Ed's block-specific approval; implementation is complete independently of that editorial decision.
+
 - `2026-10-24` · **Fenced criteria outside the plan gate.** `e4a2aad` rejects `fenced-criteria`
   only in plan's in-plan gate. Extending it to `plan verify` and Build fails 161 fenced test
   fixtures (about 15 test files). Should those fixtures migrate to `=== AC` blocks so verify and
@@ -761,5 +789,13 @@ exist.
   record now names the last rejection and any standing blocked Blueprints.
 
 ## Working Notes
+
+- `2026-10-25` · FxRates follow-through verification: full suite observed 4486 passes, two
+  skips, and two environment failures (editable package path `drydock` versus caller `Drydock`,
+  and a shell child selecting system Python 3.10). Both failed tests pass when invoked from
+  `/mnt/c/Users/barlo/projects/drydock` with its `.venv/bin` first on PATH. The isolated staged
+  tree passes 145 authoring/lineage/foundation regressions and five accounting checks; the final
+  pure scheduling adapter passes 21 focused checks. Wheel/resource smoke and lint pass. Changed
+  files pass formatting; repository-wide formatting still flags unrelated build_run.py changes.
 
 -

@@ -349,6 +349,8 @@ def order_stories(stories: Sequence[PlannedStory]) -> tuple[PlannedStory, ...]:
 
 def assign_stack_modes(
     ordered: Sequence[PlannedStory],
+    *,
+    guidance_stacks: frozenset[str] = frozenset(),
 ) -> tuple[tuple[PlannedStory, ...], tuple[GraphDefect, ...]]:
     """Assign each story's stack mode from first use in the computed order.
 
@@ -370,7 +372,7 @@ def assign_stack_modes(
     defects: list[GraphDefect] = []
     assigned: list[PlannedStory] = []
     for story in ordered:
-        builds = [name for name in story.stack if name not in seen]
+        builds = [name for name in story.stack if name not in seen and name not in guidance_stacks]
         for name in builds:
             seen.add(name)
             if story.story_type != "foundational":
@@ -640,6 +642,7 @@ def compute_plan(
     size_fn: Callable[[PlannedStory], int] | None = None,
     block_size_fn: Callable[[Sequence[PlannedStory]], int] | None = None,
     preserve_existing: bool = False,
+    guidance_stacks: frozenset[str] = frozenset(),
 ) -> PlanComputation:
     """Verify, order, assign stack modes, size, and block a declared plan.
 
@@ -655,7 +658,7 @@ def compute_plan(
     if any(defect.fatal for defect in defects):
         return PlanComputation(stories=declared, blocks=(), defects=defects)
     ordered = order_stories(declared)
-    ordered, mode_defects = assign_stack_modes(ordered)
+    ordered, mode_defects = assign_stack_modes(ordered, guidance_stacks=guidance_stacks)
     size_defects: tuple[GraphDefect, ...] = ()
     if size_fn is not None:
         ordered, size_defects = measure_stories(ordered, size_fn, target_tokens=target_tokens)

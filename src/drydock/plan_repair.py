@@ -644,7 +644,12 @@ def repair(
     by_file: dict[str, list[Defect]] = {}
     items: list[RepairItem] = []
     for defect in found.defects:
-        if defect.kind in {"unresolved-probe-arguments", "decimal-oracle"}:
+        if defect.kind in {
+            "unresolved-probe-arguments",
+            "decimal-oracle",
+            "ordered-oracle",
+            "process-readiness",
+        }:
             # Mechanical repair cannot resolve runtime expressions or establish a numeric
             # oracle. Preserve the proof and report the need for source-based authoring.
             item = RepairItem(defect.filename, defect.check_id, "unrepaired", "", defect.detail)

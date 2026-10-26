@@ -211,3 +211,50 @@ def test_consume_after_plan_is_idempotent_across_runs(tmp_path):
     consume_after_plan(target, target / "blueprint" / "sources", date="2026-08-07")
 
     assert len(load_lineage(target).sources["spec.md"].versions) == 1
+
+
+def test_invalid_attribution_ids_get_one_targeted_correction_without_losing_links(tmp_path):
+    initial = '<requirement name="add" stories="add_book,database">Add a book.</requirement>'
+    corrected = initial.replace("add_book", "add-book")
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append((prompt, kwargs))
+        return FakeRun(text=initial if len(calls) == 1 else corrected)
+
+    result = attribute_source(
+        "spec.md", "Add a book.", _manifest(), working_directory=tmp_path, runner=runner
+    )
+    assert result.requirements[0].stories == ("add-book", "database")
+    assert len(calls) == 2
+    assert calls[1][1]["parameters"]["attribution_repair"] is True
+    assert "add_book" in calls[1][0]
+    assert "corrected unknown story id(s)" in result.warnings[0]
+
+
+def test_attribution_correction_cannot_rewrite_source_text_or_remove_valid_links(tmp_path):
+    original = '<requirement name="add" stories="add_book,database">Add a book.</requirement>'
+    for reply in [
+        original,
+        original.replace("Add a book.", "Changed intent."),
+        original.replace("add_book,database", "add-book"),
+    ]:
+        calls = []
+
+        def runner(prompt, working_directory, **kwargs):
+            calls.append(prompt)
+            return FakeRun(text=original if len(calls) == 1 else reply)
+
+        result = attribute_source(
+            "spec.md", "Add a book.", _manifest(), working_directory=tmp_path, runner=runner
+        )
+        assert len(calls) == 2
+        assert result.requirements[0].text == "Add a book."
+        assert result.requirements[0].stories == ("database",)
+        assert "correction failed" in result.warnings[-1]
+
+
+def test_unknown_unattached_story_is_reported():
+    result = validate_attribution([], ["invented"], known_stories=("architecture",))
+    assert not result.unattached
+    assert "unattached: dropped unknown story id(s) invented" in result.warnings

@@ -26,6 +26,7 @@ _MISSING_EXECUTABLE_RE = re.compile(r"FileNotFoundError: .*?['\"]([^/'\"\n]+)['\
 _KNOWN_EXTERNAL_IMPORTS = frozenset({
     "fastapi",
     "httpx",
+    "httpx2",
     "numpy",
     "pandas",
     "playwright",
@@ -69,7 +70,9 @@ def _distribution_imports() -> frozenset[str]:
     return frozenset(name for name, _packages in _distribution_map())
 
 
-def visible_external_usage(code: str) -> tuple[tuple[str, str], ...]:
+def visible_external_usage(
+    code: str, *, testclient_transport: str = "httpx2"
+) -> tuple[tuple[str, str], ...]:
     """Return visible third-party imports and literal subprocess executables."""
     try:
         tree = ast.parse(code)
@@ -89,7 +92,7 @@ def visible_external_usage(code: str) -> tuple[tuple[str, str], ...]:
             if module in distribution_imports or module in _KNOWN_EXTERNAL_IMPORTS:
                 usage.append(("python-package", module))
             if node.module in {"fastapi.testclient", "starlette.testclient"}:
-                usage.append(("python-package", "httpx"))
+                usage.append(("python-package", testclient_transport))
         if not isinstance(node, ast.Call) or not node.args:
             continue
         function = node.func
@@ -128,7 +131,12 @@ def undeclared_external_usage(check: ProgrammaticAcceptance) -> tuple[tuple[str,
     }
     missing = []
     distributions = dict(_distribution_map())
-    for kind, name in visible_external_usage(check.code):
+    transport = (
+        "httpx"
+        if ("python-package", "httpx") in declared and ("python-package", "httpx2") not in declared
+        else "httpx2"
+    )
+    for kind, name in visible_external_usage(check.code, testclient_transport=transport):
         normalized = canonicalize_package_name(name) if kind == "python-package" else name
         aliases = {normalized}
         if kind == "python-package":

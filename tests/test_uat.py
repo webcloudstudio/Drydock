@@ -2144,8 +2144,7 @@ def test_assertion_outcomes_use_the_build_reports_graded_denominator(
         "passed": passed,
         "failed": failed,
         "unverified": unverified,
-        "product_defects": failed,
-        "harness_defects": unverified,
+        "defect_ownership_undetermined": failed + unverified,
     }
     assert (
         counts["passed"] + counts["failed"] + counts["unverified"] == passed + failed + unverified

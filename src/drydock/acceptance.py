@@ -811,7 +811,7 @@ class AcceptanceObservation:
 
 @dataclass(frozen=True)
 class OutcomeTally:
-    """Counts of the three assertion outcomes, plus the defect attribution they imply."""
+    """Observed outcomes; a failing assertion alone does not adjudicate defect ownership."""
 
     passed: int = 0
     failed: int = 0
@@ -822,14 +822,9 @@ class OutcomeTally:
         return self.passed + self.failed + self.unverified
 
     @property
-    def product_defects(self) -> int:
-        """Assertions that reached the code under test and found it wrong."""
-        return self.failed
-
-    @property
-    def harness_defects(self) -> int:
-        """Assertions that never reached the code under test."""
-        return self.unverified
+    def defect_ownership_undetermined(self) -> int:
+        """Failed and unverified checks whose cause still requires diagnosis."""
+        return self.failed + self.unverified
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -837,8 +832,7 @@ class OutcomeTally:
             "failed": self.failed,
             "unverified": self.unverified,
             "total": self.total,
-            "product_defects": self.product_defects,
-            "harness_defects": self.harness_defects,
+            "defect_ownership_undetermined": self.defect_ownership_undetermined,
         }
 
 

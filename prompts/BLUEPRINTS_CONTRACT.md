@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261025 V36
+version: 20261025 V37
 ---
 
 ## Overview
@@ -185,7 +185,11 @@ accommodate a probe protocol.
 
 Put each `Requires:` declaration inside its `=== AC ... ===` block, before the Python body;
 repeat it for each criterion that needs it. A declaration before the opener belongs to no
-criterion. Selecting a framework in TECHNOLOGY_STACK.md does not declare the criterion's tools.
+criterion. Selecting a framework in TECHNOLOGY_STACK.md does not declare the criterion's tools. Each criterion declares every imported
+external package and its test transport. For FastAPI TestClient on Starlette 1.2 or newer, declare
+`fastapi` and `httpx2` with `scope=test`; use `httpx` only for a compatible older selected stack.
+Pin the resolved compatible dependency set in the application lockfile. Import every name inside
+each criterion, including a criterion re-emitted by artifact repair.
 A foundation criterion verifies its factory/client interface without invoking an endpoint owned
 by a later service story; endpoint criteria assert the exact required status, never 200-or-404.
 
@@ -233,6 +237,22 @@ A state oracle cannot pass against a stub and cannot fail because a runner print
 a string in captured output.
 
 ### The expected value must be one you could not get wrong
+
+An expected sequence follows its declared sort keys, including secondary keys and mixed directions.
+Derive the expected rows from fixture inputs, then sort by those keys; never copy insertion order
+into a sorted-output assertion. For `date asc, currency asc`, `YYY` precedes `ZZZ` on one date.
+Plan and verify reject a statically resolvable expected row sequence that contradicts a declared
+repository `Order` (`ordered-oracle`). This check does not execute proof code or prove arbitrary
+ordering expressions correct. Mechanical `plan repair` preserves these assertions for source-based
+authoring rather than choosing a new expected order.
+
+A service-start criterion waits within a fixed deadline for the required endpoint or port at the
+configured address. It asserts the source's exact response, fails if the process exits or the
+deadline expires, retains startup diagnostics, and terminates and reaps the child in `finally`.
+An immediate `Popen.poll() is None` proves only process creation and is rejected as
+`process-readiness`. Do not substitute a sleep for a readiness probe or use the probe to require
+an endpoint owned by a later story; give the criterion the dependency it actually exercises.
+
 
 For computed numeric output, derive the oracle from the fixture inputs using the source formula.
 Never hand-calculate a formatted decimal answer. Use `Decimal` for decimal contracts, preserve
@@ -855,6 +875,11 @@ compatibility level: `unchanged`, `data`, or `rebuild`. Route and screen Bluepri
 ids through a `## Database Interface` section, including only fields they supply or receive; they
 do not cite a physical store. Persistence interfaces name the repository, module location, and
 allowed callers.
+
+A Feature cites only access patterns whose Owner names that exact Feature or the shared owner
+`DATABASE.md`. When several Features use an operation, declare the shared owner in `DATABASE.md`;
+never claim another Feature's private pattern. Derive each interface's DTO field list from the
+current `DATABASE.md` rather than from a remembered draft.
 
 `## Database Interface` is required, not optional, for every Blueprint that `DATABASE.md` names
 as the `Owner` of an access pattern. Ownership is read from the declaration, never guessed from a

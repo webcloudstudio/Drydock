@@ -56,9 +56,9 @@ def test_undeclared_usage_is_recommended_never_a_planning_failure():
         source="FEATURE-Health.md",
     )[0]
 
-    assert ("python-package", "httpx") in undeclared_external_usage(check)
+    assert ("python-package", "httpx2") in undeclared_external_usage(check)
     notes = recommend_external_declarations((check,))
-    assert any("undeclared python-package=httpx" in note for note in notes)
+    assert any("undeclared python-package=httpx2" in note for note in notes)
     assert all("TECHNOLOGY_STACK.md" in note for note in notes)
 
 
@@ -398,3 +398,23 @@ def test_a_missing_project_submodule_is_not_external_tooling(tmp_path):
         )
         is None
     )
+
+
+def test_testclient_accepts_either_explicit_transport_without_masking_direct_imports():
+    for transport in ("httpx", "httpx2"):
+        check = parse_programmatic_acceptance_text(
+            _spec(
+                f"Requires: python-package=fastapi; scope=test\nRequires: python-package={transport}; scope=test",
+                "from fastapi.testclient import TestClient\nassert TestClient",
+            ),
+            source="FEATURE-Health.md",
+        )[0]
+        assert not undeclared_external_usage(check)
+    check = parse_programmatic_acceptance_text(
+        _spec(
+            "Requires: python-package=httpx; scope=test",
+            "import httpx2\nassert httpx2",
+        ),
+        source="FEATURE-Health.md",
+    )[0]
+    assert ("python-package", "httpx2") in undeclared_external_usage(check)

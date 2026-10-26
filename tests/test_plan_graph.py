@@ -251,8 +251,8 @@ def test_a_non_foundational_first_user_is_a_non_fatal_defect_signal():
 
 def test_stack_mode_is_build_order_global_not_per_phase():
     ordered = (
-        story("foundation", story_type="foundational", phase=1, stack=("common.md",)),
-        story("later", phase=5, stack=("common.md",)),
+        story("foundation", story_type="foundational", phase=1, stack=("fastapi.md",)),
+        story("later", phase=5, stack=("fastapi.md",)),
     )
     assigned, _ = assign_stack_modes(ordered)
     assert [s.stack_mode for s in assigned] == ["builder", "consumer"]
@@ -526,3 +526,13 @@ def test_language_initialization_cannot_merge_with_persistence():
     # The first return value contains the stamped stories.
     stamped, _ = result
     assert stamped[0].block != stamped[1].block
+
+
+def test_guidance_has_no_runtime_foundation_but_tiered_stacks_still_do():
+    assigned, defects = assign_stack_modes(
+        (story("release", stack=("common.md",)),), guidance_stacks=frozenset({"common.md"})
+    )
+    assert assigned[0].stack_mode == "consumer"
+    assert not defects
+    _, defects = assign_stack_modes((story("ui", stack=("bootstrap5.md",)),))
+    assert [d.code for d in defects] == ["unfounded-stack"]

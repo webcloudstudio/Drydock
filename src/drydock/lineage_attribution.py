@@ -143,6 +143,8 @@ def validate_attribution(
             )
         cleaned.append(Requirement(name=requirement.name, text=requirement.text, stories=kept))
     kept_unattached = tuple(story for story in unattached if story in known)
+    if unknown := sorted(set(unattached) - known):
+        warnings.append(f"unattached: dropped unknown story id(s) {', '.join(unknown)}")
     return Attribution(tuple(cleaned), kept_unattached, tuple(warnings))
 
 
@@ -185,4 +187,56 @@ def attribute_source(
     if not getattr(result, "ok", False) or not str(getattr(result, "text", "")).strip():
         return Attribution((), (), (f"{rel_path}: attribution unavailable",))
     requirements, unattached = parse_attribution_output(str(result.text))
-    return validate_attribution(requirements, unattached, known_stories=story_ids(manifest))
+    known = story_ids(manifest)
+    validated = validate_attribution(requirements, unattached, known_stories=known)
+    if not validated.warnings:
+        return validated
+    correction = (
+        assembled
+        + "\n\n# Correct invalid story identifiers\n\n"
+        + "The previous response named unknown story ids:\n"
+        + "\n".join(validated.warnings)
+        + "\nRe-emit the same requirements and verbatim text in the same order. Change only "
+        "invalid story ids to exact ids from the catalogue; preserve every valid link. "
+        "Do not normalize hyphens, underscores, or case. Emit only attribution tags.\n\n"
+        + str(result.text)
+    )
+    repaired = run(
+        correction,
+        working_directory,
+        llm=llm_provider,
+        model=model or prompt.model,
+        command_name=PROMPT_NAME,
+        parameters={"source": rel_path, "attribution_repair": True},
+        log_dir=log_dir,
+        target=target,
+    )
+    if getattr(repaired, "ok", False):
+        corrected, corrected_unattached = parse_attribution_output(str(repaired.text))
+        candidate = validate_attribution(corrected, corrected_unattached, known_stories=known)
+        same_requirements = [(r.name, r.text) for r in corrected] == [
+            (r.name, r.text) for r in requirements
+        ]
+        preserved_links = (
+            same_requirements
+            and all(
+                set(before.stories) <= set(after.stories) and bool(after.stories)
+                for before, after in zip(validated.requirements, corrected, strict=True)
+            )
+            and set(validated.unattached) <= set(corrected_unattached)
+        )
+        if corrected and not candidate.warnings and preserved_links:
+            return Attribution(
+                candidate.requirements,
+                candidate.unattached,
+                tuple(
+                    warning.replace("dropped unknown", "corrected unknown")
+                    for warning in validated.warnings
+                ),
+            )
+    return Attribution(
+        validated.requirements,
+        validated.unattached,
+        validated.warnings
+        + (f"{rel_path}: attribution correction failed; retained valid original links",),
+    )

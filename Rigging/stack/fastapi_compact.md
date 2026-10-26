@@ -58,4 +58,14 @@ Constraints: Uvicorn reload is used only in development.
 
 The application runtime declares FastAPI dependencies as needed.
 
-Constraints: Declare `fastapi`, `uvicorn`, and `httpx` as needed by runtime and tests; declare `jinja2` when serving templates. Use the Python foundation’s environment and test command.
+Constraints: Declare `fastapi`, `uvicorn`, and the TestClient transport as needed by runtime and tests; declare `jinja2` when serving templates. Use the Python foundation’s environment and test command.
+
+## Test dependency compatibility
+
+Keep `fastapi.testclient.TestClient` as the client API. Starlette 1.2 and newer prefer `httpx2`;
+plain `httpx` is deprecated there. Declare `fastapi` and `httpx2` inside every TestClient acceptance
+criterion with `Requires: python-package=<name>; scope=test`. Older selected Starlette versions
+use `httpx` instead. Resolve and lock the compatible FastAPI/Starlette/transport set together;
+do not override FastAPI's Starlette constraints or suppress deprecation warnings. Verify client
+construction and a request with deprecations treated as errors before accepting the lockfile.
+Reference: https://www.starlette.io/testclient/

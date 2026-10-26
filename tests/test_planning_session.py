@@ -8029,3 +8029,26 @@ def test_conflicting_row_contract_returns_to_database_authoring_before_freeze(tm
     assert result.score.is_complete
     assert result.blocks["DATABASE.md"] == corrected.strip()
     assert "class RatesDeleteOutput:" in render_schema_module(result.blocks["DATABASE.md"])
+
+
+def test_schedule_supplies_guidance_metadata_without_a_spurious_foundation(
+    tmp_path, isolated_config
+):
+    blueprint = tmp_path / "blueprint"
+    blueprint.mkdir()
+    (blueprint / "FEATURE-Release.md").write_text("# FEATURE: Release\n")
+    computation = ps._compute_schedule(
+        [
+            PlannedStory(
+                story_id="release",
+                story_type="service",
+                implements="FEATURE-Release.md",
+                stack=("common.md",),
+            )
+        ],
+        blueprint_dir=blueprint,
+        emitted_files={},
+    )
+    assert not computation.fatal
+    assert "unfounded-stack" not in {defect.code for defect in computation.warnings}
+    assert computation.stories[0].stack_mode == "consumer"

@@ -347,6 +347,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-25: Planning and verification reject fixture-row expectations that contradict declared
+  repository order and immediate spawn-only service checks; mechanical repair preserves their
+  intent. Artifact repair rechecks criterion imports before admission. Lineage gets one bounded
+  correction of invalid story ids without changing source text or valid links. Untiered additive
+  guidance no longer requires a runtime foundation. FastAPI tooling recognizes modern httpx2 and
+  explicitly selected legacy httpx transports. New UAT receipts report check outcomes and
+  undetermined defect ownership instead of equating executed failures with product defects.
+
+
 - 2026-10-25: `drydock plan` and `plan verify` reject unsupplied literal formatted decimal
   expectations (`decimal-oracle`) unless the cited source contains the exact answer. Numeric
   acceptance authoring derives its oracle from fixture inputs and source-defined rounding;

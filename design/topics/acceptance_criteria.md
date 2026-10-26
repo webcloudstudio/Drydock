@@ -24,6 +24,15 @@ and measured something; everything else is reported, not charged.
 
 ## Details
 
+`2026-10-25` · Ordered-oracle and process-readiness checks live in
+`acceptance_oracle.py` and run at admission and verification without executing proofs. Ordered
+rows are checked only when the declared keys, projected columns, and fixture values are statically
+resolvable; unsupported expressions remain unjudged. Immediate spawn-only liveness checks are
+rejected narrowly, not treated as a general proof of correct readiness. UAT receipts describe
+outcomes without automatically assigning product/harness ownership. OutcomeTally uses the same undetermined-ownership field in its serialized counts; the old
+product/harness aliases are removed rather than retaining contradictory terminology.
+
+
 `2026-10-24` · Native Go `not-run` is `VALID product-missing` at baseline, extending
 `c6a910f`'s absent-file rule. Skip and unavailable retain `ERROR environment`; post-build
 not-run stays UNVERIFIED and cannot pass. A real temporary Go module regression observes the

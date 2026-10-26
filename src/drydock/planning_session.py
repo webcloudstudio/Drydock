@@ -47,7 +47,11 @@ from drydock.acceptance import (
 )
 from drydock.acceptance_contract import FILENAME as ACCEPTANCE_CONTRACT_FILENAME
 from drydock.acceptance_env import read_staged_assets, staged_asset_env_defects
-from drydock.acceptance_oracle import decimal_expectation_defects
+from drydock.acceptance_oracle import (
+    decimal_expectation_defects,
+    ordered_expectation_defects,
+    process_readiness_defect,
+)
 from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
     recommend_external_declarations,
@@ -162,6 +166,7 @@ from drydock.prompts import load_prompt
 from drydock.rigging_contract import (
     FoundationContract,
     entry_owners,
+    is_guidance,
     selected_contract_sections,
 )
 from drydock.source_material import SourceMaterialFile, discover_source_material
@@ -3824,6 +3829,11 @@ def _compute_schedule(
         size_fn=lambda story: block_size_fn((story,)),
         block_size_fn=block_size_fn,
         preserve_existing=preserve_existing,
+        guidance_stacks=frozenset(
+            name
+            for name in {name for story in declared for name in story.stack}
+            if is_guidance(name)
+        ),
     )
 
 
@@ -4124,6 +4134,34 @@ def _validate_plan_output(
                 if check.cite
                 else check
             )
+        )
+        + tuple(
+            ("ordered-oracle", MalformedAcceptance(check.check_id, name, reason))
+            for name in sorted(blocks)
+            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+            for check in _acceptance_checks(blocks[name], source=name)
+            for reason in ordered_expectation_defects(check, blocks.get(DATABASE_BLOCK, ""))
+        )
+        + tuple(
+            (
+                "undefined-name",
+                MalformedAcceptance(
+                    check.check_id,
+                    name,
+                    f"reads undefined global name(s): {', '.join(missing)}; import or assign each name inside this criterion",
+                ),
+            )
+            for name in sorted(blocks)
+            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+            for check in _acceptance_checks(blocks[name], source=name)
+            if (missing := unresolved_globals(check.code))
+        )
+        + tuple(
+            ("process-readiness", MalformedAcceptance(check.check_id, name, reason))
+            for name in sorted(blocks)
+            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+            for check in _acceptance_checks(blocks[name], source=name)
+            if (reason := process_readiness_defect(check.code)) is not None
         )
         + tuple(("acceptance-malformed", defect) for defect in malformed_acceptance)
         + tuple(
@@ -5063,6 +5101,11 @@ def _artifact_repair_assembly(
         "Do not remove or weaken a valid assertion while adding a missing one. Every artifact with",
         "a programmatic surface retains at least two concrete Python acceptance assertions. Every",
         "DECISIONS.json is the sole decision disclosure surface; do not emit Markdown question sections.",
+        "Each criterion is an isolated script: import or assign every name inside that criterion,",
+        "including Decimal and rounding constants. Declare every external import and transport",
+        "inside its AC block. Preserve published text without converting it into an arithmetic oracle.",
+        "Derive expected row order from fixture data and the declared sort keys, including ties.",
+        "Server-start criteria use bounded endpoint/port readiness probes and retain diagnostics.",
         "",
         *emission_contract_lines(names),
         "",

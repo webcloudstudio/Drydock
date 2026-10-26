@@ -24,6 +24,16 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 
 ## Details
 
+`2026-10-25` · The build prompt requires a current-file read before contextual patches
+and a reread/rebased patch after a verification failure. A repeated stale patch is not a repair.
+The FastAPI foundation keeps the published TestClient API, uses httpx2 for Starlette >=1.2,
+and locks a compatible dependency set without suppressing deprecations; older selected stacks
+may retain httpx. This is authoring guidance, not a vendor pin or a change to existing Targets.
+The current Starlette TestClient documentation confirms the transport preference:
+https://www.starlette.io/testclient/ . Warning-free execution in a newly generated Target remains
+to be verified by Ed's next UAT.
+
+
 `2026-10-25` · CLI failure banners and stderr choose one representative per execution,
 preferring a story that owns a failed binding acceptance check over an earlier sibling that
 shares the block failure. Aggregate block status and Manifest states remain authoritative;
