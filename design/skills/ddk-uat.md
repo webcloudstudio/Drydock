@@ -2,16 +2,16 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-26 V2 |
-| Description | Ledger of diagnosed UAT runs and root causes kept by `/ddk-uat`. |
+| Version | 2026-10-26 V3 |
+| Description | Per-Target diagnosis-memory contract and index, with the historical central UAT ledger. |
 | Skill | `/ddk-uat` |
 | Prompts | `uat_diagnostic.md` |
 
 ## Intent
 
-The memory of `/ddk-uat` (`prompts/uat_diagnostic.md`) across runs: one row per diagnosed run and
-root cause. A diagnosis reads it first, to see whether its cause has been seen before and which
-fixes already sit in the implicated area.
+Preserve diagnosis and repair evidence across runs in one memory per Target. This file defines
+that contract, links the memories as they are created, and retains the historical central ledger
+so earlier causes and fixes remain discoverable.
 
 ## Guardrails
 
@@ -31,14 +31,30 @@ fixes already sit in the implicated area.
 |---|---|
 | Review owner | Assistant reads current contracts, states assumptions/invariants/state owners and identifies a falsifying test. |
 | Ed's role | Decide only material product conflicts or unknown intent that the approved inputs cannot settle. |
-| Default scope | Investigate and update ledger; explicit repair authorization permits requested implementation under AGENTS.md. |
+| Default scope | Investigate and update the Target diagnosis memory/index plus justified legacy Fix/Outcome changes; implementation requires explicit repair authorization. |
 | Findings | Proved violation, proved permitted operation or uncertainty; distinguish clean execution from status. |
 | Recovery | Trace the earliest cause and resource owner; do not accommodate an incorrect upstream oracle in later code. |
 | Proof | Preserved evidence plus local regressions; only later clean affected-stage evidence marks a fix verified. |
-| Handoff | Ed runs → invokes the skill → reviews diagnosis/authorized repair → reruns. Four compact sections report verdict, material assumptions, causes and next action; full detail stays in evidence/ledger. |
+| Handoff | Ed runs → invokes the skill → reviews diagnosis/authorized repair → reruns. Four compact sections report verdict, material assumptions, causes and next action; full detail stays in the Target memory and evidence. |
 
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+### Target diagnosis memories
+
+- None created yet. Add a relative link on first diagnosis; do not preseed a roster.
+
+### Per-Target memory contract
+
+`2026-10-26` · Prompt V10 / skill 1.5.0 writes one file at
+`design/skills/ddk-uat/targets/<Target>.md` for any diagnosed Target. Resolve actual evidence
+identity and enumerate memory filenames, checking exact spelling and all case-folded matches.
+Reuse a unique existing file; create with the canonical directory spelling only when absent.
+Case collisions or conflicting evidence roots require disambiguation, never automatic merging,
+renaming or a second spelling variant. The prompt defines the standard Memory File sections,
+finding records, run history and outcome rules. Add one link above on creation. No Target memory
+is created by this skill-editing session. Existing ledger rows below remain historical; new
+findings go to the Target memory and fixes to old rows still update their Fix/Outcome.
 
 `2026-10-26` · Prompt V9 / repository skill 1.4.0 preserves Ed's manual review loop. Reports target
 150–200 words with four sections; consequences/reporting defects stay with their cause, empty
@@ -65,10 +81,10 @@ rules. It never authorizes UAT execution/evidence mutation or blanket master-spe
 | Fix | The commit that addressed the cause; written by the session that commits the fix |
 | Outcome | `open` no fix · `unverified` fix committed, no later clean verification of the affected stage · `fixed` a run on or after the fix passed the stage without the same warning, error, or recovery · `recurred` the same cause appeared after the fix, even when recovery succeeded |
 
-Rules: every diagnosed failed run gets at least one row (`undetermined:` when no cause is
-established). Each root cause, and each contributing, independent, or reporting defect, gets its
+Historical ledger rules (new findings use the Target memory): every diagnosed failed run
+received at least one row (`undetermined:` when no cause was established). Each root cause, and each contributing, independent, or reporting defect, gets its
 own row, and Stopped marks the non-terminal kinds. Change only the Fix and Outcome of earlier rows. A fix
-in an Area that already holds a `recurred` row revises or removes that fix, not layers beside it. Append new rows at the end of the ledger table below.
+in an Area that already holds a `recurred` row revises or removes that fix, not layers beside it. Keep this historical table; append new run evidence to the owning Target memory.
 
 | Date | Kit | Run | Commit | Model | Stopped | Root cause | Area | Fix | Outcome |
 |---|---|---|---|---|---|---|---|---|---|

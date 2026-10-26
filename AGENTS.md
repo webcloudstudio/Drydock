@@ -38,8 +38,11 @@ and `SHA256SUMS` attest to completed builds. Any write under it invalidates that
   lock files. Read-only inspection occurs only when Ed requests it.
 - A test, script, or command that reaches `uat/` is a defect. Report it and stop; do not run it
   to find out.
-- `design/skills/ddk-uat.md` is the `/ddk-uat` ledger. A session that commits a fix for one of
-  its rows writes the commit into that row's Fix and sets its Outcome to `unverified`.
+- `/ddk-uat` keeps one diagnosis memory per Target under `design/skills/ddk-uat/targets/`,
+  resolving actual Target identity and filename casing before creation/update.
+  `design/skills/ddk-uat.md` defines the contract, indexes these memories and retains the historical
+  central ledger. A fix records its commit and `unverified` outcome in the Target memory and any
+  linked historical row; new diagnoses do not create a kit roster or provider matrix.
 
 ## Project Layout
 
@@ -236,7 +239,7 @@ row here or breaks the format.
 | *Planner step validation* | `design/topics/planner_step_validation.md` | `planning_session.py` |
 | *Stabilization* | `design/topics/stabilization.md` | Reusable contracts, state inventory, frozen regression cases and staged release validation |
 | *Build lifecycle* | `design/topics/lifecycle.md` | `lifecycle.py`, `uat.py` (`run_fixture`) |
-| `/ddk-uat` skill | `design/skills/ddk-uat.md` | `prompts/uat_diagnostic.md` |
+| `/ddk-uat` skill | `design/skills/ddk-uat.md` | `prompts/uat_diagnostic.md`; indexes dynamically created per-Target memories in `design/skills/ddk-uat/targets/` |
 
 ### Memory File Format
 

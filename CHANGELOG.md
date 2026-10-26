@@ -169,23 +169,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
-- 2026-10-26: Documentation and `/ddk-uat`: stabilization follows Ed's manual kit-run,
-  diagnosis, authorized repair, review and rerun workflow. Layered acceptance/TDD checklists
-  define source coverage, oracle correctness, execution, isolation and closure; the supplied
-  ten-kit matrix resolves kit membership. PostgreSQL support is retained without requiring
-  installation/live testing. Diagnostic reports use a compact review handoff with full ledger
-  evidence and preserve explicit repair authorization.
-
-- 2026-10-26: Documentation: stabilization uses six ordered delivery slices with explicit local
-  and live closure evidence. PostgreSQL and scoring changes are excluded; source-complete planning
-  and many-criterion build recovery precede final candidate validation. Kit revisions remain
-  editable during development, with affected evidence tracked separately from framework fixes.
-
-- 2026-10-26: Documentation: stabilization planning now bounds work to existing release
-  capabilities, records dispositions for the July proposals against current contracts, and prioritizes
-  truthful verification, source-preserving repair, test-state isolation and bounded recovery.
-  Local candidate gates must pass before Ed runs the frozen ten-kit matrix; historical proposals
-  do not authorize new gates, schema changes or automatic source reconciliation.
+- 2026-10-26: Documentation and `/ddk-uat`: stabilization applies to any Target through
+  deterministic acceptance/TDD audit slices and Ed's manual diagnosis, repair-review and rerun
+  workflow. No fixed kit roster or provider matrix defines completion. Diagnoses persist in one
+  memory per Target, resolved using actual on-disk casing; the central ledger remains historical.
+  Compact reports retain full evidence and explicit repair authorization. PostgreSQL live testing
+  and scoring changes remain outside this stabilization effort.
 
 - 2026-10-26: Planning preserves delivery gates when grouping work: only independent ready
   stories share a new build block, while started blocks retain their resume identity. Token-cost
