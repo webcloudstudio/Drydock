@@ -8,7 +8,8 @@ evidence facts, run the current fold over them, and assert the verdict each run 
 
 ``uat/*/runs/`` is not committed, so extraction is a one-time step whose result is frozen into
 ``tests/fixtures/uat_corpus.json``. That keeps the regression suite portable, deterministic, and
-free of token cost. Run this module as a script to regenerate the fixture from a live corpus.
+free of token cost. Regeneration reads a corpus only from the directory named on the command
+line (``python tests/uat_corpus.py <corpus-root>``); nothing reads published ``uat/`` implicitly.
 """
 
 from __future__ import annotations
@@ -19,8 +20,6 @@ from pathlib import Path
 
 from drydock.gate_policy import MANUAL, MET, NOT_MET, RunFacts, TrialFacts
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-LIVE_CORPUS_ROOT = REPO_ROOT / "uat"
 CORPUS_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "uat_corpus.json"
 
 # The recorded grader vocabulary, retired in favour of one three-word vocabulary shared by the
@@ -175,8 +174,8 @@ def load_corpus(path: Path = CORPUS_FIXTURE) -> list[dict]:
     return entries
 
 
-def iter_live_runs(root: Path = LIVE_CORPUS_ROOT):
-    """Yield ``(fixture, run_id, score_record_or_None)`` for every recorded run under ``uat/``.
+def iter_live_runs(root: Path):
+    """Yield ``(fixture, run_id, score_record_or_None)`` for every recorded run under ``root``.
 
     A run with no ``score-release.json`` never reached the release gate, so it offers the fold no
     facts at all. That is a real and common corpus outcome, not a missing file.
@@ -192,10 +191,10 @@ def iter_live_runs(root: Path = LIVE_CORPUS_ROOT):
         yield fixture, run_dir.name, json.loads(records[0].read_text(encoding="utf-8"))
 
 
-def _regenerate() -> None:
+def _regenerate(root: Path) -> None:
     existing = {(item["fixture"], item["run_id"]): item for item in load_corpus()}
     runs = []
-    for fixture, run_id, record in iter_live_runs():
+    for fixture, run_id, record in iter_live_runs(root):
         previous = existing.get((fixture, run_id), {})
         if record is None:
             runs.append({
@@ -222,4 +221,8 @@ def _regenerate() -> None:
 
 
 if __name__ == "__main__":
-    _regenerate()
+    import sys
+
+    if len(sys.argv) != 2:
+        raise SystemExit("usage: python tests/uat_corpus.py <corpus-root>")
+    _regenerate(Path(sys.argv[1]))

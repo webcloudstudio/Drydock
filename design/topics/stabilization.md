@@ -470,11 +470,12 @@ Completion has two distinct states:
 | S3 source → topology, staged deps | plan | none reproduced | `test_source_instructions_reach_topology_and_authoring_prompts`, `test_staged_dependencies_survive_serialization_verification_and_grouping` | — | pass | pending |
 | F11 unfounded runtime stack | plan | warning only; causal link unproved | — | — | uncertainty; see Questions | pending |
 | F10 DATABASE feedback | plan | not re-reproduced | existing `f63494c` coverage | — | audit only | pending |
-| F13 regression-led repair label | build | `agent-reported` printed after a measured regression | `test_build_recovery_scenario.py` | S4 | fail before, pass after | pending |
+| F13 regression-led repair label | build | `agent-reported` printed after a measured regression | `test_build_recovery_scenario.py` | d6cbf16 | fail before, pass after | pending |
 | F13 dispute routing / owner recovery | build/cli | not reproduced; record and banner agree | `test_a_defect_claim_is_recorded_and_does_not_stop_the_loop` (banner), scenario recovery | — | pass | pending |
-| F17 provider stop identifiers | llm | `usage_limit_reached` unclassified | `test_process_stop.py` parametrized classifier | S4 | fail before, pass after | pending |
+| F17 provider stop identifiers | llm | `usage_limit_reached` unclassified | `test_process_stop.py` parametrized classifier | d6cbf16 | fail before, pass after | pending |
 | F09 unattended refusal | plan | not reproduced; `plan_blocked._refutation` unattended policy present | existing | — | audit only | pending |
 | F18 refit pending source | refit/uat | undetermined; needs Ed-requested evidence | — | — | uncertainty | pending |
+| F21 implicit `uat/` read | tests | `iter_live_runs` defaulted to repo `uat/` | `test_gate_policy_replay.py` `test_corpus_regeneration_reads_only_an_explicit_root` | S5 commit | pass | — |
 | F22 Go database / PostgreSQL | — | not represented / excluded | — | — | deferred | — |
 | F01 state/console/status agreement | build/status | none reproduced beyond F02 | `test_execution_outcomes_manifest_console_and_status_agree` (5 rows) | — | pass | pending |
 
@@ -494,10 +495,11 @@ Completion has two distinct states:
 
 ## Actions
 
-- `2026-10-26` · Execute S1–S4 in order, reusing existing regressions and changing only reproduced
-  in-scope defects. Each slice closes on its stated proof, owning-memory update and local commit.
-- `2026-10-26` · Complete S5 local gates and record one candidate identity. Historical test
-  results do not close this gate.
+- `2026-10-26` · S1–S4 *Closed 2026-10-26*: `0338ebe`, `93acdf6`, `81e185d`, `d6cbf16`; see Slice ledger.
+- `2026-10-26` · S5 *Closed 2026-10-26*: candidate is the S5 commit (`d6cbf16` + F21). See Working Notes.
+- `2026-10-26` · Deferred, not reproduced or excluded: F09 audit, F10 audit, F11 (Question),
+  F15 scoring, F16/F20 diagnostics, F18/F19 undetermined, F22 PostgreSQL/Go database. Each
+  closes on a current reproduction with owner and regression, per Finding disposition.
 - `2026-10-26` · S6: Ed selects Targets, reviews /ddk-uat diagnosis/repairs and reruns affected
   stages. Close each finding on later clean evidence with exact input/provider/candidate identity
   in its Target diagnosis memory; historical success alone does not verify a new fix.
@@ -525,3 +527,10 @@ Completion has two distinct states:
 - `2026-10-26` · V7 / prompt V10 / skill 1.5.0 verification: 97 focused tests pass; skill
   validation and wheel build pass; packaged diagnostic prompt matches source. No Target memory
   was precreated and no UAT or live provider was invoked.
+- `2026-10-26` · S5 gates on the candidate: `.venv/bin/python -m pytest -p no:randomly -n auto -q`
+  4608 passed, 2 skipped (1116 s, Python 3.12.13); `ruff check src/ tests/` and `ruff format
+  --check src/ tests/` pass (`~/.local/bin/ruff` 0.15.2); `hatchling build -t wheel` plus a
+  clean-venv install runs `drydock --help` and ships `pytest_store_isolation.py`. A run overlapped
+  by a second suite showed two planning-probe failures that pass alone and under xdist: shared
+  temporary resources between concurrent suites, not a candidate defect. No UAT, published `uat/`
+  access or live provider call. S6 (Ed's live runs) remains open.

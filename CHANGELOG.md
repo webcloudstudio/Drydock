@@ -169,6 +169,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-26: `python tests/uat_corpus.py <corpus-root>` regenerates the gate-policy corpus only
+  from the directory named on the command line; nothing reads published `uat/` implicitly.
+
 - 2026-10-26: Documentation and `/ddk-uat`: stabilization applies to any Target through
   deterministic acceptance/TDD audit slices and Ed's manual diagnosis, repair-review and rerun
   workflow. No fixed kit roster or provider matrix defines completion. Diagnoses persist in one

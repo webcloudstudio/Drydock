@@ -205,3 +205,17 @@ def test_uc008_without_the_defect_passes():
         ),
     )
     assert fold(clean).verdict == PASSED
+
+
+def test_corpus_regeneration_reads_only_an_explicit_root(tmp_path):
+    """F21: the corpus helper never reaches published uat/ without an explicit path."""
+    import inspect
+
+    import uat_corpus
+
+    assert "root" in inspect.signature(uat_corpus.iter_live_runs).parameters
+    assert inspect.signature(uat_corpus.iter_live_runs).parameters["root"].default is (
+        inspect.Parameter.empty
+    )
+    assert not hasattr(uat_corpus, "LIVE_CORPUS_ROOT")
+    assert list(uat_corpus.iter_live_runs(tmp_path)) == []
