@@ -393,6 +393,15 @@ command surface and Typed Specification contract are unstable and may change bet
   repair the installation and start a fresh process from a consistent checkout. Precheck errors
   do not trigger automatic model diagnosis. This addresses LayersTesting `20261026.161555`.
 
+- 2026-10-26: `drydock plan verify` rejects a criterion declaring `python-package=httpx` when
+  another criterion of the same Target declares `httpx2` (`test-transport`); `drydock plan repair`
+  may replace only that `Requires:` line. Planning and Blueprint contract examples now name
+  `httpx2`, the Starlette 1.2+ FastAPI TestClient transport. When `drydock build` fails on
+  `authorized acceptance prerequisite unavailable`, the failure detail lists each missing
+  requirement once with its declaring criteria and names an installed alternative TestClient
+  transport, so diagnosis corrects the declaration instead of the Target. FxRates
+  `20261026.153843` failed block-3 on three `httpx` declarations while the Target locked `httpx2`.
+
 - 2026-10-25: Planning instructions place function acceptance before downstream CLI integration
   gates. `drydock plan verify` rejects literal CLI calls whose declared command provider builds
   in a later block (`acceptance-order`), including calls through local forwarding helpers and

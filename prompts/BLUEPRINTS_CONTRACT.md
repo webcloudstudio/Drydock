@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261025 V37
+version: 20261026 V38
 ---
 
 ## Overview
@@ -529,7 +529,7 @@ Rigging or `TECHNOLOGY_STACK.md`, declared once by the Commander and true for ev
 project. A per-check declaration is also accepted and is recorded as a report:
 
 ```markdown
-Requires: python-package=httpx; scope=test
+Requires: python-package=httpx2; scope=test
 Requires: executable=node; scope=test
 ```
 

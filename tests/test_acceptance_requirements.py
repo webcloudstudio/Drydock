@@ -13,6 +13,8 @@ from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
     recommend_external_declarations,
     retire_automatic_test_tooling_decisions,
+    transport_conflicts,
+    unavailable_requirement_detail,
     undeclared_external_usage,
 )
 from drydock.decisions import Decision, write_decisions
@@ -418,3 +420,75 @@ def test_testclient_accepts_either_explicit_transport_without_masking_direct_imp
         source="FEATURE-Health.md",
     )[0]
     assert ("python-package", "httpx2") in undeclared_external_usage(check)
+
+
+def _transport_check(check_id: str, transport: str, source: str = "FEATURE-Demo.md"):
+    text = f"""# FEATURE: Demo
+
+## Programmatic Acceptance
+
+=== AC {check_id} ===
+Intent: The route responds.
+Requires: python-package={transport}; scope=test
+
+from fastapi.testclient import TestClient
+assert TestClient
+=== END AC {check_id} ===
+"""
+    return parse_programmatic_acceptance_text(text, source=source)[0]
+
+
+def test_httpx_beside_httpx2_is_a_transport_conflict_on_the_httpx_criterion():
+    """FxRates 20261026.153843: History declared httpx while the Target locked httpx2."""
+    checks = (
+        _transport_check("currencies", "httpx2", "FEATURE-Currencies.md"),
+        _transport_check("stats", "httpx2", "FEATURE-Stats.md"),
+        _transport_check("history", "httpx", "FEATURE-History.md"),
+    )
+
+    ((check, reason),) = transport_conflicts(checks)
+
+    assert (check.source, check.check_id) == ("FEATURE-History.md", "history")
+    assert "2 criteria" in reason
+    assert "Requires: python-package=httpx2; scope=test" in reason
+
+
+def test_a_target_declaring_one_transport_has_no_conflict():
+    assert (
+        transport_conflicts((_transport_check("a", "httpx"), _transport_check("b", "httpx"))) == ()
+    )
+    assert (
+        transport_conflicts((_transport_check("a", "httpx2"), _transport_check("b", "httpx2")))
+        == ()
+    )
+
+
+def test_unavailable_detail_names_owning_criteria_and_the_provided_transport(tmp_path, monkeypatch):
+    """The bare `python-package=httpx` list let diagnosis invert the fix."""
+
+    class Distribution:
+        metadata = {"Name": "httpx2"}
+
+    (tmp_path / ".venv" / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
+    monkeypatch.setattr(
+        acceptance_requirements.importlib.metadata,
+        "distributions",
+        lambda *, path: (Distribution(),),
+    )
+    checks = (
+        _transport_check("history-points", "httpx", "FEATURE-History.md"),
+        _transport_check("history-empty", "httpx", "FEATURE-History.md"),
+    )
+    missing = [requirement for check in checks for requirement in check.requirements]
+
+    acceptance_requirements.invalidate_target_environment_inventory()
+    try:
+        detail = unavailable_requirement_detail(checks, missing, tmp_path)
+    finally:
+        acceptance_requirements.invalidate_target_environment_inventory()
+
+    (line,) = detail.splitlines()
+    assert line.startswith("python-package=httpx; scope=test; declared by ")
+    assert "FEATURE-History.md#history-points, FEATURE-History.md#history-empty" in line
+    assert "the Target provides `httpx2`" in line
+    assert "correct the criterion declaration" in line

@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261024 V18
+version: 20261026 V19
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -75,6 +75,8 @@ Permitted:
 - correct a literal regex supplied to a staged runner option whose contract compiles that option
   as a regex, preserving the intended selected forms;
 - reorder imports to the top of the criterion;
+- for a `test-transport` fault, replace the named `Requires: python-package=httpx; scope=test`
+  line with `Requires: python-package=httpx2; scope=test`, and only that line;
 - for a `missing-selection-probe` or `invalid-selection-probe` fault, add or correct the
   criterion's `Probe:` and `Probe Count:` declaration lines so the selector it already invokes can
   be proven non-empty, and only that;

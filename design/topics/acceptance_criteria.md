@@ -191,6 +191,17 @@ suite verified a broken build.
 
 `2026-10-22` · Go CLI criteria run through the staged `drydock_go.cli_runner(*args, package=None, input=None)`, which builds the single `./cmd/<name>` main package once with `go build -o` and returns `(exit_code, stdout, stderr)` from the binary. A failed build reports `execution-error`, an absent toolchain `unavailable`. Cost when broken: `go run` rewrites every non-zero exit to 1, so exit-status criteria fail a correct product or pass a wrong one.
 
+`2026-10-26` · **One Target declares one TestClient transport.** `plan verify` reports
+`test-transport` on each criterion declaring `python-package=httpx` when any criterion declares
+`httpx2` (`acceptance_requirements.transport_conflicts`); plan repair replaces only that
+`Requires:` line. A uniform `httpx` Target (older selected stack) passes. A post-provisioning
+prerequisite failure (`unavailable_requirement_detail`) names each missing requirement once, its
+declaring criteria, and an installed alternative transport. Test-scope packages stay
+auto-authorized (`a86fe78`); authorization does not install them — only `uv sync --locked`
+provisions, so a test package absent from the Target manifest still fails the block. Cost when
+broken: FxRates `20261026.153843` block-3 failed before any criterion ran, and diagnosis
+inverted the fix to `httpx`.
+
 ### Mechanism
 
 See the build-loop and completion rules. Removing a criterion id is rejected; `FLAKY`,

@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from drydock.acceptance import (
+    ProgrammaticAcceptance,
     blueprint_read_defects,
     captures_without_reporting,
     citation_defect,
@@ -53,6 +54,7 @@ from drydock.acceptance_oracle import (
     ordered_expectation_defects,
     process_readiness_defect,
 )
+from drydock.acceptance_requirements import transport_conflicts
 from drydock.acceptance_store import store_setup_defects
 from drydock.database_contract import (
     database_contract_defects,
@@ -171,6 +173,9 @@ PERSISTENCE_ORDER = "persistence-order"
 
 #: Defect kind for a criterion whose assertions sit in a function nothing calls.
 UNCALLED_FUNCTION = "uncalled-function"
+
+#: Defect kind for a criterion declaring `httpx` beside another criterion's `httpx2`.
+TEST_TRANSPORT = "test-transport"
 
 
 def untested_operations(database_text: str, codes: Iterable[str]) -> tuple[str, ...]:
@@ -599,6 +604,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
     database_text = database.read_text(encoding="utf-8") if database.is_file() else ""
 
     criteria: dict[str, int | None] = {}
+    every_check: list[ProgrammaticAcceptance] = []
     for path in files:
         try:
             checks = parse_programmatic_acceptance(path)
@@ -609,6 +615,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
             criteria[path.name] = None
             continue
         criteria[path.name] = len(checks)
+        every_check.extend(checks)
         for check in checks:
             checked_criteria += 1
             for reason in decimal_expectation_defects(check):
@@ -779,6 +786,12 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
                     "rather than derived from the input or read back from the system"
                 )
 
+    # A fact about the whole Target, not one file: the declaration is only wrong beside another
+    # criterion's `httpx2`, so it is judged once every criterion has been read.
+    defects.extend(
+        Defect(check.source, check.check_id, TEST_TRANSPORT, reason)
+        for check, reason in transport_conflicts(tuple(every_check))
+    )
     defects.extend(_story_criteria_defects(target_dir, criteria))
     defects.extend(_persistence_order_defects(target_dir))
     defects.extend(_cli_order_defects(target_dir))

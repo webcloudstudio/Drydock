@@ -1499,3 +1499,35 @@ def test_conflicting_output_rows_fail_cli_verification_before_generation(
     (target / "blueprint/DATABASE.md").write_text(_rates_database("RatesDeleteOutput"))
     assert cli.cmd_plan_verify("Demo") == 0
     assert verify("Demo", target).ok
+
+
+def _transport_spec(check_id: str, transport: str) -> str:
+    return f"""# FEATURE: Route
+
+## Programmatic Acceptance
+
+=== AC {check_id} ===
+Intent: The route responds.
+Requires: python-package=fastapi; scope=test
+Requires: python-package={transport}; scope=test
+
+from fastapi.testclient import TestClient
+assert TestClient
+=== END AC {check_id} ===
+"""
+
+
+def test_an_httpx_declaration_beside_httpx2_is_a_test_transport_defect(tmp_path):
+    """FxRates 20261026.153843: the httpx criteria failed block-3 before any criterion ran."""
+    result = verify(
+        "Demo",
+        _target(
+            tmp_path,
+            FEATURE_Currencies=_transport_spec("currencies-present", "httpx2"),
+            FEATURE_History=_transport_spec("history-bounded-points", "httpx"),
+        ),
+    )
+
+    (defect,) = result.defects
+    assert defect.kind == "test-transport"
+    assert (defect.filename, defect.check_id) == ("FEATURE_History.md", "history-bounded-points")

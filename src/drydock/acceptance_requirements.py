@@ -56,6 +56,75 @@ def is_automatic_test_requirement(requirement: AcceptanceRequirement) -> bool:
     return requirement.kind == "python-package" and requirement.scope == "test"
 
 
+def _declared_python_packages(check: ProgrammaticAcceptance) -> frozenset[str]:
+    return frozenset(
+        canonicalize_package_name(item.name)
+        for item in check.requirements
+        if item.kind == "python-package"
+    )
+
+
+def transport_conflicts(
+    checks: tuple[ProgrammaticAcceptance, ...],
+) -> tuple[tuple[ProgrammaticAcceptance, str], ...]:
+    """Return criteria declaring `httpx` in a Target whose other criteria declare `httpx2`.
+
+    One Target provisions one FastAPI TestClient transport. Starlette 1.2 and newer use `httpx2`
+    and the selected stack locks it; `httpx` is only for an older selected stack, so a plan that
+    declares both has one wrong declaration, and it is the `httpx` one. Left in place, the build
+    marks the `httpx` criteria pending provisioning that never happens and fails the block before
+    any criterion runs (FxRates 20261026.153843).
+    """
+    users = sum(1 for check in checks if "httpx2" in _declared_python_packages(check))
+    if not users:
+        return ()
+    return tuple(
+        (
+            check,
+            f"declares `python-package=httpx` while {users} "
+            f"{'criterion' if users == 1 else 'criteria'} in this Target declare `httpx2`, the "
+            "Starlette 1.2+ TestClient transport; one Target provisions one transport, so "
+            "replace the declaration with `Requires: python-package=httpx2; scope=test`",
+        )
+        for check in checks
+        if "httpx" in _declared_python_packages(check)
+    )
+
+
+def unavailable_requirement_detail(
+    checks: tuple[ProgrammaticAcceptance, ...],
+    unavailable: list[AcceptanceRequirement],
+    build_dir: Path,
+) -> str:
+    """Name each prerequisite still missing after provisioning, its criteria, and any alternative.
+
+    The bare `kind=name` list this replaces let diagnosis read `httpx2` in the lockfile and
+    `httpx` in the failure as "the Target installed the wrong package" when the criterion
+    declared the wrong one.
+    """
+    installed = _target_python_packages(str(build_dir.resolve()))
+    lines = []
+    for requirement in dict.fromkeys(unavailable):
+        owners = ", ".join(
+            f"{check.source}#{check.check_id}"
+            for check in checks
+            if requirement in check.requirements
+        )
+        line = (
+            f"{requirement.kind}={requirement.name}; scope={requirement.scope}; declared by "
+            f"{owners or 'no criterion'}; absent from the Target environment after provisioning"
+        )
+        wanted = canonicalize_package_name(requirement.name)
+        alternative = {"httpx": "httpx2", "httpx2": "httpx"}.get(wanted)
+        if requirement.kind == "python-package" and alternative in installed:
+            line += (
+                f"; the Target provides `{alternative}`, the alternative TestClient transport — "
+                "correct the criterion declaration to match the Target"
+            )
+        lines.append(line)
+    return "\n".join(lines)
+
+
 @cache
 def _distribution_map() -> tuple[tuple[str, tuple[str, ...]], ...]:
     """Return installed import-to-distribution metadata once per process."""

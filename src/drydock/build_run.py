@@ -59,6 +59,7 @@ from drydock.acceptance_requirements import (
     is_automatic_test_requirement,
     record_requirement_decision,
     requirement_available,
+    unavailable_requirement_detail,
 )
 from drydock.acceptance_status import (
     ERROR_VERDICT_CHANGED,
@@ -3583,8 +3584,8 @@ def build_target(
                         if unavailable_after_provision and status != "failed":
                             state, status = "closed/failed", "failed"
                             error = "authorized acceptance prerequisite unavailable"
-                            failure_detail = ", ".join(
-                                f"{item.kind}={item.name}" for item in unavailable_after_provision
+                            failure_detail = unavailable_requirement_detail(
+                                checks, unavailable_after_provision, resolved_build_dir
                             )
                         tree_before_acceptance = (
                             _snapshot_files(resolved_build_dir) if status != "failed" else {}

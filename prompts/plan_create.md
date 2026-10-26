@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261026 V53
+version: 20261026 V54
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -571,7 +571,8 @@ Additional body guidance:
   emit `- None.` in a spec a story implements.
 - Declare every external Python package and executable used directly or indirectly by each
   Programmatic Acceptance mechanism using repeated `Requires: <kind>=<name>; scope=<scope>` lines.
-  Include framework test-client dependencies such as `httpx`. Never install or silently assume an
+  Include framework test-client dependencies, such as `httpx2` for FastAPI TestClient; every
+  criterion in one Target declares the same transport. Never install or silently assume an
   undeclared tool. Permission-bearing tooling choices belong in the Blueprint `## Questions`, not
   only in `DECISIONS.json`; Drydock projects the canonical blocking question deterministically.
 - An assertion that invokes a staged asset obeys that asset's documented interface, supplies every
