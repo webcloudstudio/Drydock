@@ -5,7 +5,7 @@
 | Version | 2026-10-15 V1 |
 | Description | Turn imported sources into Blueprints and a Manifest Build can execute without further interpretation. |
 | Route | plan |
-| Modules | `planning_session.py`, `plan_verify.py`, `plan_repair.py`, `plan_graph.py`, `plan_topology.py`, `database_contract.py`, `manifest.py`, `lineage.py`, `acceptance_oracle.py`, `acceptance_requirements.py` |
+| Modules | `planning_session.py`, `plan_verify.py`, `plan_repair.py`, `acceptance_order.py`, `plan_graph.py`, `plan_topology.py`, `database_contract.py`, `manifest.py`, `lineage.py`, `acceptance_oracle.py`, `acceptance_requirements.py` |
 | Prompts | `plan_create.md`, `plan_create_speckit.md`, `plan_continue.md`, `plan_conform.md`, `plan_reuse.md`, `plan_repair.md`, `plan_artifact_waiver.md`, `BLUEPRINTS_CONTRACT.md`, `MANIFEST_CONTRACT.md` |
 | Tests | `tests/test_plan*.py`, `tests/test_planning_session.py`, `tests/test_database_*.py` |
 | Topics | [foundations](../topics/foundations.md), [acceptance_criteria](../topics/acceptance_criteria.md) |
@@ -24,6 +24,25 @@ written.
 - None.
 
 ## Details
+
+`2026-10-25` · Story acceptance is scoped to capabilities available at its computed build block.
+`plan verify` reports `acceptance-order` when a statically resolved `cli_runner` command matches
+`provides: <executable> <subcommand>` on a later-block story and no provider is available in the
+current block or earlier. The pure `acceptance_order.py` resolver follows literal arguments,
+local helper parameters/varargs and literal command loops without executing criteria. Unknown
+calls, undeclared interfaces and uncomputed blocks do not establish a defect. Explicit
+nonzero-exit assertions are excluded because usage/read-error checks need no report. Same-block
+providers are available before block acceptance. Persistence keeps its existing specialized gate.
+Stage 1 and continuation instructions require direct function acceptance for early capabilities
+and preserve end-to-end CLI checks on later consumers. Go function checks use exact native tests
+through `drydock_go.run_test`. Mechanical `plan repair` leaves an ordering defect unchanged: moving
+coverage or changing topology requires replanning, not a criterion rewrite or dependency cycle.
+DrydockStats `20261026.011913` supplies the filter/report regression; no UAT evidence is modified.
+Verification: 227 targeted tests pass; the full suite reports 4512 passed, 2 skipped and two
+environment failures (Drydock/drydock path spelling; a shell child selecting Python 3.10). Both
+failures pass when rerun from the installed lowercase checkout with `.venv/bin` first on PATH.
+Lint passes; changed Python files pass formatting. Pre-existing build_run.py edits fail the
+repository-wide format check and remain outside this change.
 
 `2026-10-25` · FxRates diagnosis follow-through: admission and `plan verify` share
 `ordered-oracle` validation for literal fixture rows projected from declared repository list
@@ -724,6 +743,12 @@ exist.
 
 
 ## Actions
+
+- `2026-10-25` · DrydockStats `20261026.011913` (diagnosis `0c9e92e`): acceptance-order guard
+  and Stage 1/2 authoring guidance have deterministic regression coverage in
+  `tests/test_acceptance_order.py` and `tests/test_plan_verify.py`; 227 targeted tests pass.
+  Ed's next clean UAT must build the filters before report integration acceptance and complete
+  the affected stages without defective warnings or recovery before the ledger fix is verified.
 
 - `2026-10-25` · FxRates `20261025.200850`: local regressions cover decimal-oracle admission,
   source citations, refusal of speculative mechanical repair, and owning-story failure summaries.

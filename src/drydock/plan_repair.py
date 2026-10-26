@@ -649,6 +649,7 @@ def repair(
             "decimal-oracle",
             "ordered-oracle",
             "process-readiness",
+            "acceptance-order",
         }:
             # Mechanical repair cannot resolve runtime expressions or establish a numeric
             # oracle. Preserve the proof and report the need for source-based authoring.

@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261024 V51
+version: 20261025 V52
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -9,6 +9,14 @@ output: TOPOLOGY.md, DECISIONS.json
 ---
 
 # Agent for: planning session synthesis
+
+Every story's acceptance gate uses only capabilities delivered in its own build block or earlier.
+Declare lower-level function tests against the interface that story provides. Place CLI integration
+criteria after all invoked commands exist, preserving end-to-end coverage on those later stories.
+For example, pure filters precede reports: filter stories test filter functions, then report stories
+verify the filters through report output. Do not make filters depend on reports that depend on them.
+Declare each concrete CLI command as `provides: <executable> <subcommand>` so verification can compare
+its availability with criterion invocations; do not claim an unimplemented command on an earlier story.
 
 Map each required technical or behavioral ID in structured `SEA_TRIALS.md` into the implementing
 story's `accepts:` field. Never invent or rename Sea Trial IDs. Do not tag a Programmatic

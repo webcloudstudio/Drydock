@@ -416,6 +416,75 @@ def implements_of(block: object) -> tuple[str, ...]:
     return tuple(str(name) for name in value or () if name)
 
 
+def _cli_order_defects(target_dir: Path) -> list[Defect]:
+    """Reject literal CLI criteria whose declared provider builds in a later block.
+
+    The interface comes from ``provides: <executable> <subcommand>``; neither project nor command
+    names are built in. Only computed block order establishes availability. Same-block providers
+    are available because Build implements the complete block before grading its criteria.
+    """
+    from drydock.acceptance_order import cli_arguments
+    from drydock.build_plan import parse_build_plan
+
+    manifest = target_dir / "MANIFEST.md"
+    if not manifest.is_file():
+        return []
+    try:
+        plan = parse_build_plan(manifest)
+    except SpecificationError:
+        return []
+    stories = [story for story in plan.blocks if story.block_type == "story"]
+    providers: dict[tuple[str, ...], list] = {}
+    for story in stories:
+        declared = story.fields.get("provides", "")
+        interfaces = declared.split(",") if isinstance(declared, str) else declared
+        for interface in interfaces:
+            tokens = str(interface).split()
+            if len(tokens) < 2 or any(not re.fullmatch(r"[\w./-]+", token) for token in tokens):
+                continue
+            providers.setdefault(tuple(tokens[1:]), []).append(story)
+    defects = []
+    for story in stories:
+        if story.computed_block is None:
+            continue
+        for filename in implements_of(story):
+            path = target_dir / "blueprint" / filename
+            if not path.is_file():
+                continue
+            try:
+                checks = parse_programmatic_acceptance(path)
+            except ValueError:
+                continue
+            for check in checks:
+                required = {
+                    prefix
+                    for args in cli_arguments(check.code)
+                    for prefix in providers
+                    if args[: len(prefix)] == prefix
+                }
+                for prefix in sorted(required):
+                    available = providers[prefix]
+                    if any(
+                        owner.computed_block is None or owner.computed_block <= story.computed_block
+                        for owner in available
+                    ):
+                        continue
+                    owner = min(available, key=lambda item: item.computed_block)
+                    defects.append(
+                        Defect(
+                            filename,
+                            check.check_id,
+                            "acceptance-order",
+                            f"calls CLI `{' '.join(prefix)}`, provided by story `{owner.block_id}` "
+                            f"at block {owner.computed_block}, after story `{story.block_id}` "
+                            f"builds at block {story.computed_block}; test this story's own interface "
+                            "here and retain CLI integration coverage on a later story after all "
+                            "required capabilities exist; do not add a dependency cycle",
+                        )
+                    )
+    return defects
+
+
 def _blueprint_files(blueprint_dir: Path) -> list[Path]:
     return [
         path
@@ -712,6 +781,7 @@ def verify(target: str, target_dir: Path) -> VerifyResult:
 
     defects.extend(_story_criteria_defects(target_dir, criteria))
     defects.extend(_persistence_order_defects(target_dir))
+    defects.extend(_cli_order_defects(target_dir))
     defects.extend(persistence_defects(blueprint_dir))
     if criteria.get("DATABASE.md"):
         # A DATABASE.md with no criterion is reported once, as criteria-missing.

@@ -1101,6 +1101,144 @@ def test_a_criterion_importing_persistence_in_the_database_step_verifies_clean(t
     assert verify("Demo", target).ok
 
 
+_FILTER_REPORT_MANIFEST = """# MANIFEST: Demo
+state: draft
+
+## story 1: Filters
+id: filters
+type: service
+block: 1
+implements: FEATURE-Filter.md
+provides: report.Filter
+instructions: |
+  Filter records directly.
+state: pending
+
+## story 2: Summary
+id: summary
+type: service
+block: {report_block}
+implements: FEATURE-Report.md
+provides: logtool summary
+depends: filters
+instructions: |
+  Implement the report and verify filtering through its output.
+state: pending
+"""
+
+_EARLY_REPORT_CRITERION = """# FEATURE: Filter
+## Programmatic Acceptance
+=== AC filtered-summary ===
+Intent: Report output applies filtering.
+from drydock_go import cli_runner
+def run(lines, *args):
+    code, out, err = cli_runner(*args, "log.jsonl")
+    assert code == 0
+    print(out, err)
+    return code, out
+code, out = run([], "summary", "--target", "Alpha")
+assert code == 0
+assert "Alpha" in out
+=== END AC filtered-summary ===
+"""
+
+
+def test_report_depending_on_filters_cannot_gate_the_earlier_filter_block(tmp_path):
+    target = _target(
+        tmp_path,
+        **{
+            "FEATURE-Filter": _EARLY_REPORT_CRITERION,
+            "FEATURE-Report": _RUNNABLE,
+        },
+    )
+    (target / "MANIFEST.md").write_text(
+        _FILTER_REPORT_MANIFEST.format(report_block=2),
+        encoding="utf-8",
+    )
+    result = verify("Demo", target)
+    defect = next(item for item in result.defects if item.kind == "acceptance-order")
+    assert result.exit_code() == 1
+    assert (defect.filename, defect.check_id) == ("FEATURE-Filter.md", "filtered-summary")
+    assert "story `summary` at block 2" in defect.detail
+    assert "story `filters` builds at block 1" in defect.detail
+    assert "retain CLI integration coverage" in defect.detail
+
+
+@pytest.mark.parametrize("report_block", [1, 2])
+def test_cli_integration_gate_passes_when_report_is_available(tmp_path, report_block):
+    # Function acceptance remains on the early story; integration coverage moves to the report.
+    target = _target(
+        tmp_path,
+        **{
+            "FEATURE-Filter": _RUNNABLE,
+            "FEATURE-Report": _EARLY_REPORT_CRITERION,
+        },
+    )
+    (target / "MANIFEST.md").write_text(
+        _FILTER_REPORT_MANIFEST.format(report_block=report_block),
+        encoding="utf-8",
+    )
+    assert verify("Demo", target).ok
+
+
+def test_same_block_cli_provider_is_available_to_filter_criteria(tmp_path):
+    target = _target(
+        tmp_path,
+        **{
+            "FEATURE-Filter": _EARLY_REPORT_CRITERION,
+            "FEATURE-Report": _RUNNABLE,
+        },
+    )
+    (target / "MANIFEST.md").write_text(
+        _FILTER_REPORT_MANIFEST.format(report_block=1),
+        encoding="utf-8",
+    )
+    assert verify("Demo", target).ok
+
+
+@pytest.mark.parametrize("replacement", ["not-declared", None])
+def test_unresolved_or_undeclared_cli_calls_do_not_invent_a_dependency(tmp_path, replacement):
+    criterion = _EARLY_REPORT_CRITERION.replace(
+        'run([], "summary",',
+        f"run([], {replacement!r},",
+    )
+    target = _target(
+        tmp_path,
+        **{
+            "FEATURE-Filter": criterion,
+            "FEATURE-Report": _RUNNABLE,
+        },
+    )
+    (target / "MANIFEST.md").write_text(
+        _FILTER_REPORT_MANIFEST.format(report_block=2),
+        encoding="utf-8",
+    )
+    assert not any(item.kind == "acceptance-order" for item in verify("Demo", target).defects)
+
+
+def test_mechanical_repair_preserves_acceptance_ordering_and_coverage(tmp_path):
+    from drydock.plan_repair import repair
+
+    target = _target(
+        tmp_path,
+        **{
+            "FEATURE-Filter": _EARLY_REPORT_CRITERION,
+            "FEATURE-Report": _RUNNABLE,
+        },
+    )
+    manifest = _FILTER_REPORT_MANIFEST.format(report_block=2)
+    (target / "MANIFEST.md").write_text(manifest, encoding="utf-8")
+
+    def no_model(**kwargs):
+        pytest.fail("Ordering requires replanning, not mechanical criterion repair")
+
+    result = repair("Demo", target, runner=no_model)
+    assert not result.files_changed
+    assert len(result.outstanding) == 1
+    assert (target / "blueprint" / "FEATURE-Filter.md").read_text() == _EARLY_REPORT_CRITERION
+    assert (target / "MANIFEST.md").read_text() == manifest
+
+
 def test_a_story_citing_a_file_outside_the_blueprint_has_no_criterion(tmp_path):
     """A story implementing a Rigging file such as python.md has nothing to grade."""
     target = _target(tmp_path, **{"FEATURE-Status": _RUNNABLE})

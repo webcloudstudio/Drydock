@@ -490,6 +490,14 @@ and schema application in criteria. `VERIFICATION.md` is an accepted standard re
 
 ### Acceptance authoring checks
 
+Story acceptance uses interfaces available in the same build block or earlier. `drydock plan verify`
+rejects statically resolved CLI invocations whose declared `provides: <executable> <subcommand>`
+provider builds later (`acceptance-order`). Local forwarding helpers and literal command loops are
+recognized; unknown calls are left unresolved and explicit nonzero-exit checks remain allowed.
+Test lower-level functions directly and retain CLI
+integration checks on later stories after those commands exist. Same-block providers are allowed.
+Mechanical `drydock plan repair` preserves these criteria and requires replanning their placement.
+
 Planning and `drydock plan verify <Target>` reject statically resolvable expected repository rows
 that contradict declared `Order` keys (`ordered-oracle`), and immediate spawn-only server checks
 (`process-readiness`). Author ordered expectations from fixture data and verify service readiness

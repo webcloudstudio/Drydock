@@ -1,7 +1,7 @@
 ---
 name: plan_continue
 description: Stage 2 Blueprint authoring instruction appended after plan_create has accepted and frozen a complete TOPOLOGY.md declaration.
-version: 20261025 V8
+version: 20261025 V9
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
 output: A bounded batch of Blueprint specification files
@@ -60,9 +60,16 @@ Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated 
   Cite only owned or shared database patterns and derive their DTO fields from DATABASE.md.
 - Acceptance observes the delivered application through its declared interfaces. Never replace
   it with a local implementation or a standalone language expression inside the criterion.
-  For a Go CLI, use `drydock_go.cli_runner`, assert its exit code, parse its CSV output, and
+  For a Go CLI report criterion, use `drydock_go.cli_runner`, assert its exit code, parse its CSV output, and
   compare the observed fields with expectations derived from the supplied fixture inputs.
   The application need not exist during planning; author its invocation for Build to execute.
+- A story's criteria exercise only capabilities available in its own build block or earlier.
+  Follow the frozen topology's Provides and dependency order. Test lower-level functions through
+  their own interfaces; for Go use drydock_go.run_test with an exact native test name. Keep CLI
+  integration criteria on a later story after every command they invoke exists. A filter story
+  that precedes report implementations tests filtering directly; the later reports also verify
+  the filters through their CLI output. Never replace product execution with a local substitute,
+  drop end-to-end coverage, or introduce a dependency cycle to make an early gate pass.
 
 ## Blocked Blueprints
 

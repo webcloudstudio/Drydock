@@ -347,6 +347,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-25: Planning instructions place function acceptance before downstream CLI integration
+  gates. `drydock plan verify` rejects literal CLI calls whose declared command provider builds
+  in a later block (`acceptance-order`), including calls through local forwarding helpers and
+  literal command loops. Same-block calls remain valid; unknown expressions do not invent
+  dependencies. Mechanical repair preserves coverage and reports the need to replan rather than
+  weakening criteria or adding a dependency cycle. This prevents the DrydockStats filter/report
+  acceptance deadlock diagnosed in run `20261026.011913`.
+
 - 2026-10-25: Planning and verification reject fixture-row expectations that contradict declared
   repository order and immediate spawn-only service checks; mechanical repair preserves their
   intent. Artifact repair rechecks criterion imports before admission. Lineage gets one bounded
