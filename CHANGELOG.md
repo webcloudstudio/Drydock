@@ -393,6 +393,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-26: `drydock build` settles a declared criterion that the executor returned no result
+  for as `UNVERIFIED` (`not executed`) instead of dropping it, so a story whose criteria never ran
+  closes `closed/implemented`, never `closed/verified`. The agent's `AC_BROKEN` dispute line
+  (`agent reports defective (recorded, not accepted)`) now prints in normal build output.
+  `drydock plan repair` that leaves the plan buildable retires the `plan verify` error it
+  superseded, so `drydock status` no longer reports `plan cannot be built as written`; errors
+  owned by other commands are kept.
+
 - 2026-10-26: Decimal provenance limitations become nonblocking advisories instead of triggering
   source-aware repair that can invent rounding. SQLite build-agent calls use fresh provisioned
   disposable stores and private pre-call snapshots of managed application state; detected changes

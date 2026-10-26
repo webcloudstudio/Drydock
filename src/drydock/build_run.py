@@ -280,31 +280,38 @@ def _run_valid_criteria(
     """Run the criteria that can measure the product; settle the rest UNVERIFIED unrun.
 
     An excluded criterion still appears in the results, in declaration order, so the story that
-    owns it reports why nothing measured it rather than silently losing a criterion.
+    owns it reports why nothing measured it rather than silently losing a criterion. A selected
+    criterion the executor returned no result for settles UNVERIFIED as not executed: an absent
+    result is never a pass, and a story whose criteria all vanished must not close verified.
     """
-    if not any(check.check_id in excluded for check in checks):
-        return run(checks) if checks else ()
     selected = tuple(check for check in checks if check.check_id not in excluded)
     ran = {result.check_id: result for result in run(selected)} if selected else {}
     results: list[AcceptanceRunResult] = []
     for check in checks:
-        if (entry := excluded.get(check.check_id)) is not None:
-            results.append(
-                AcceptanceRunResult(
-                    check_id=check.check_id,
-                    source=check.source,
-                    intent=check.intent,
-                    passed=False,
-                    return_code=None,
-                    stdout="",
-                    stderr="",
-                    error=f"{EXCLUDED_FAILURE_PREFIX}: {entry.status} {entry.error_code}".strip(),
-                    skipped=True,
-                    binding=check.binding,
-                )
-            )
-        elif (result := ran.get(check.check_id)) is not None:
+        entry = excluded.get(check.check_id)
+        result = ran.get(check.check_id)
+        if entry is None and result is not None:
             results.append(result)
+            continue
+        error = (
+            f"{EXCLUDED_FAILURE_PREFIX}: {entry.status} {entry.error_code}".strip()
+            if entry is not None
+            else f"{UNVERIFIED_FAILURE_PREFIX}: not executed (no result returned)"
+        )
+        results.append(
+            AcceptanceRunResult(
+                check_id=check.check_id,
+                source=check.source,
+                intent=check.intent,
+                passed=False,
+                return_code=None,
+                stdout="",
+                stderr="",
+                error=error,
+                skipped=True,
+                binding=check.binding,
+            )
+        )
     return tuple(results)
 
 
@@ -4027,7 +4034,7 @@ def build_target(
                 })
                 _emit(
                     on_text,
-                    "agent reports defective (recorded, not accepted): "
+                    "    agent reports defective (recorded, not accepted): "
                     + ", ".join(defective_ids)
                     + (f" — in {', '.join(sources)}" if sources else ""),
                 )

@@ -119,6 +119,7 @@ def _stream_build_summary(text: str) -> None:
         "  gates=",
         "    result=",
         "    status  ",
+        "    agent reports defective",
         "  STOP ",
         "WARNING:",
         "git:",
@@ -1219,8 +1220,13 @@ def _fail_standing_plan(target: str, target_dir: Path, result) -> None:
 
 
 def _settle_plan_state(target_dir: Path, *, buildable: bool) -> None:
-    """Mark the Manifest approved only when the Blueprint it builds passes ``plan verify``."""
+    """Mark the Manifest approved only when the Blueprint it builds passes ``plan verify``.
+
+    A buildable verdict also retires the plan-verify error it supersedes, so status does not keep
+    reporting a failure the repair has just disproved. Any other command's error is kept.
+    """
     from drydock.build_plan import set_plan_state
+    from drydock.errors import clear_error_record, read_error_record
     from drydock.metadata import set_sub_state
 
     manifest = target_dir / "MANIFEST.md"
@@ -1228,6 +1234,10 @@ def _settle_plan_state(target_dir: Path, *, buildable: bool) -> None:
         return
     set_plan_state(manifest, "approved" if buildable else "draft")
     set_sub_state(target_dir, "approved" if buildable else "unbuildable")
+    record = read_error_record(target_dir)
+    if buildable and record is not None and record.command == "plan":
+        if record.phase == "plan verify":
+            clear_error_record(target_dir)
 
 
 def cmd_plan_repair(args: argparse.Namespace, target: str) -> int:

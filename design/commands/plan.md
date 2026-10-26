@@ -39,6 +39,11 @@ written.
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 
+`2026-10-26` · A `plan repair` whose re-verification leaves the plan buildable clears the
+current error record only when it is owned by `plan`/`plan verify` (`cli._settle_plan_state`).
+Status then stops reporting a disproved unbuildable plan; other owners' errors survive.
+`plan verify` itself stays read-only. DrydockStats `20261026.011913`.
+
 `2026-10-26` · Decimal provenance is an advisory (`decimal_provenance_advisories`), not an
 admission defect. Exact decimal tokens in supplied serialized strings suppress the advisory,
 without proving the expected formula correct. Unknown provenance no longer triggers artifact

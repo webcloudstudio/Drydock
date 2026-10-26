@@ -38,6 +38,15 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 
+`2026-10-26` · **Absent acceptance results are never passes.** `_run_valid_criteria` returns one
+result per declared criterion: excluded ones as before, and a selected criterion the executor
+returned nothing for as UNVERIFIED `not executed (no result returned)`. A story whose criteria
+all vanished therefore closes `closed/implemented` with the unexamined finding, not verified.
+The `AC_BROKEN` dispute line is indented under its call and passes the normal console filter
+(FxRates `20261024.051856`). Stabilization S1 matrix: `tests/test_build_truthful_closure.py`
+connects execution, outcomes, Manifest state, console tally and `completion_check` for success,
+no-run, partial, agent failure and verification-only (prepassed → implemented) cases.
+
 `2026-10-26` · `build_state.AgentStore` isolates agent-call SQLite tests after persistence
 provenance exists. It provisions a fresh schema in a unique `.drydock-tests` subdirectory and
 passes both DSNs only to the provider child, without changing the parent process environment.

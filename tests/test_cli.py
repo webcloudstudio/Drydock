@@ -301,6 +301,9 @@ class TestHelpAndVersion:
         _stream_build_summary("12:00:00  calling codex/gpt …")
         _stream_build_summary("    result=ok  rc=0  execution=exec-1")
         _stream_build_summary("    status  2/3  block-conformance(240/260 +12)")
+        _stream_build_summary(
+            "    agent reports defective (recorded, not accepted): ac-1 — in X.md"
+        )
         _stream_build_summary("agent interrupted its own verification (advisory)")
         _stream_build_summary("files: 1 changed — parser.py")
 
@@ -311,6 +314,7 @@ class TestHelpAndVersion:
             "\n  [call 2/4]  kind=repair(1/3)  llm=codex/gpt\n"
             "    result=ok  rc=0  execution=exec-1\n"
             "    status  2/3  block-conformance(240/260 +12)\n"
+            "    agent reports defective (recorded, not accepted): ac-1 — in X.md\n"
         )
 
     def test_compact_elapsed_is_one_space_free_token(self):
