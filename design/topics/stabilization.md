@@ -475,7 +475,7 @@ Completion has two distinct states:
 | F17 provider stop identifiers | llm | `usage_limit_reached` unclassified | `test_process_stop.py` parametrized classifier | d6cbf16 | fail before, pass after | pending |
 | F09 unattended refusal | plan | not reproduced; `plan_blocked._refutation` unattended policy present | existing | — | audit only | pending |
 | F18 refit pending source | refit/uat | undetermined; needs Ed-requested evidence | — | — | uncertainty | pending |
-| F21 implicit `uat/` read | tests | `iter_live_runs` defaulted to repo `uat/` | `test_gate_policy_replay.py` `test_corpus_regeneration_reads_only_an_explicit_root` | S5 commit | pass | — |
+| F21 implicit `uat/` read | tests | `iter_live_runs` defaulted to repo `uat/` | `test_gate_policy_replay.py` `test_corpus_regeneration_reads_only_an_explicit_root` | ef68b55 | pass | — |
 | F22 Go database / PostgreSQL | — | not represented / excluded | — | — | deferred | — |
 | F01 state/console/status agreement | build/status | none reproduced beyond F02 | `test_execution_outcomes_manifest_console_and_status_agree` (5 rows) | — | pass | pending |
 
@@ -496,7 +496,7 @@ Completion has two distinct states:
 ## Actions
 
 - `2026-10-26` · S1–S4 *Closed 2026-10-26*: `0338ebe`, `93acdf6`, `81e185d`, `d6cbf16`; see Slice ledger.
-- `2026-10-26` · S5 *Closed 2026-10-26*: candidate is the S5 commit (`d6cbf16` + F21). See Working Notes.
+- `2026-10-26` · S5 *Closed 2026-10-26*: candidate is `ef68b55`. See Working Notes.
 - `2026-10-26` · Deferred, not reproduced or excluded: F09 audit, F10 audit, F11 (Question),
   F15 scoring, F16/F20 diagnostics, F18/F19 undetermined, F22 PostgreSQL/Go database. Each
   closes on a current reproduction with owner and regression, per Finding disposition.
