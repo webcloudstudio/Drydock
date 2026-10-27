@@ -415,6 +415,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-27: Stage 2 planning repeats current-batch topology instructions and interfaces beside
+  its work queue. Corpus selection guidance preserves deferred cross-feature coverage: a section
+  containing later capabilities belongs on an integration after those providers exist, while the
+  earlier story verifies its own API. A nonempty selection probe does not prove schedule validity.
+
+- 2026-10-27: SQLite configuration acceptance can test `DATABASE_URL` prefix/precedence,
+  `DATABASE_PATH` fallback, default paths and source-required open failures through the
+  harness-owned `database_environment` fixture, with disposable cwd/paths and exception-safe
+  restoration. Planning and mechanical repair share this contract; ordinary persistence
+  criteria continue using the provisioned store. Database-interface parsing preserves shared
+  citations when an empty input or unobserved output field list is omitted.
+- 2026-10-27: Build repair feedback includes a concrete failing corpus example and identifies
+  unchanged case counts, directing the agent to reproduce and regress the actual failing branch
+  before returning an edit. Descriptions of malformed product input no longer combine with a
+  suite name in a different report field to falsely dispute acceptance and recommend Plan repair.
+
 - 2026-10-26: Provider quota and expired-login results that Claude reports as
   `usage_limit_reached`, `rate_limit_error` or `OAuth token has expired` stop the process as
   provider stops instead of reading as ordinary failures. `drydock build` labels a repair driven

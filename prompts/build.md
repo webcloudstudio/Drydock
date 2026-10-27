@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20261026 V13
+version: 20261026 V14
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 output: evidence summary
@@ -64,6 +64,10 @@ Operating contract:
    Use available failure logs before rerunning suites to rediscover failures; use section or
    example filters to diagnose the underlying behavior, never example-specific exceptions.
    If you run a suite, wait for completion or its declared timeout; silence is not a hang.
+   During repair, select a failing example, reproduce it before editing, and trace its actual
+   execution branch. Add a regression that fails on the current code, fix the cause, and run
+   that regression plus a passing neighbor. Revise an ineffective edit within this call.
+   Report only tests actually executed, with their command and result; label unrun tests unrun.
 6. Grow the project's own test suite as you write the code, and treat it as the project's
    real coverage. The acceptance assertions in `implements` are gates: few, fixed, and
    written before any code existed, so every expectation in them is a prediction. The tests

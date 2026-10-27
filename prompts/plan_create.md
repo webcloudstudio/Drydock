@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261026 V56
+version: 20261026 V57
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -928,10 +928,46 @@ The governing contracts, planning artifacts, and source materials follow below.
 ## Acceptance persistence lifecycle
 
 **Acceptance store lifecycle.** The DATABASE step provisions and verifies the configured store
-once. Criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary database, apply DDL,
-or assume an empty store. The store may hold data before any criterion runs: assert on records the
+once. Ordinary persistence criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary
+database, apply DDL, or assume an empty store. Configuration behavior is tested separately using
+the harness fixture below. The store may hold data before any criterion runs: assert on records the
 criterion created, or on a count read before setup (`after == before + 5`), never on an absolute
 table count.
+
+
+**SQLite configuration tests (Python acceptance container).** The harness supplies
+`from drydock_acceptance import database_environment`. Use it only to test configuration
+selection, default paths, or source-required open failures, never ordinary CRUD acceptance:
+
+```python
+import os
+from drydock_acceptance import database_environment
+from <declared_config_module> import database_path
+
+with database_environment(url="sqlite://primary.db", path="fallback.db") as root:
+    assert str(database_path()) == str(root / "primary.db")
+with database_environment(path="fallback.db") as root:
+    assert str(database_path()) == str(root / "fallback.db")
+with database_environment() as root:
+    assert str(database_path()) == "data/app.db"
+```
+
+`None` (the default) unsets a variable; `""` sets it empty. Other arguments are relative SQLite
+file names within a fresh temporary working directory; only `url` permits the `sqlite://`
+prefix. The fixture maps names to absolute scratch paths, yields that directory as a `Path`,
+and restores both variables and cwd on exit, including failures. It applies no schema and
+creates no parent directories: `url="missing/app.db"` exercises an unopenable path. Invoke
+the declared application interface inside the context, assert the source-required outcome,
+and do not read or write the managed store. Import the declared configuration module, never
+invent a module or an exit requirement absent from the source. Do not replace environment
+variables directly or bypass this fixture with monkeypatches.
+
+For `acceptance-store` repair of an existing configuration test, move its environment setup
+and restoration into this fixture. Preserve URL-prefix/precedence/unset/empty conditions,
+command arguments, error behavior and expected results. Replace arbitrary fixture paths with
+relative names and derive asserted absolute paths from `root`; this is a mechanical fixture
+relocation, not permission to change which configured value wins or weaken any assertion.
+If the criterion needs a populated replacement store, report `REPAIR_IMPOSSIBLE` instead.
 
 The acceptance harness owns isolation. It begins one transaction before each Python criterion and
 rolls it back when the criterion ends, pass or fail. Every database the criterion's process opens

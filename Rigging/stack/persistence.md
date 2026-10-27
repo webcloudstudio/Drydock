@@ -1,7 +1,7 @@
 # Persistence & Service Encapsulation
 
 **Type:** guidance
-**Version:** 20261023 V5
+**Version:** 20261026 V6
 **Category:** Persistence
 **Description:** The single boundary rule for all persistent stores and external services — typed access classes, no raw access in application code
 
@@ -180,10 +180,22 @@ within a release. Application startup does not create or alter schema.
 ### Acceptance transactions
 
 **Acceptance store lifecycle.** The DATABASE step provisions and verifies the configured store
-once. Criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary database, apply DDL,
-or assume an empty store. The store may hold data before any criterion runs: assert on records the
+once. Ordinary persistence criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary
+database, apply DDL, or assume an empty store. Configuration tests use the harness-owned fixture
+below. The store may hold data before any criterion runs: assert on records the
 criterion created, or on a count read before setup (`after == before + 5`), never on an absolute
 table count.
+
+For SQLite configuration and source-required open-failure acceptance, import
+`database_environment` from `drydock_acceptance`. The harness supplies this module only inside
+Python acceptance. `with database_environment(url="sqlite://primary.db", path="fallback.db") as root:`
+sets both variables to absolute scratch paths and changes cwd to the yielded `Path`. None
+unsets a variable; empty string sets it empty; other arguments must be relative file names.
+Only `url` accepts `sqlite://`. Both variables and cwd are restored on exit, even on failure.
+The fixture creates no schema or parent directory; `url="missing/app.db"` tests open failure.
+Use separate contexts to test URL priority, prefix stripping, fallback and the default
+`data/app.db`. Assert behavior through the declared product interface, never ordinary CRUD
+against these unprovisioned paths. Direct DSN replacement remains forbidden.
 
 The acceptance harness owns isolation. It begins one transaction before each Python criterion and
 rolls it back when the criterion ends, pass or fail. Every database the criterion's process opens

@@ -35,6 +35,19 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 | Recovery | Retain private pre-call store snapshot on detected mutation; never automatically overwrite concurrent state; identify DATABASE owner. |
 | Proof | Real temporary-store write/deletion/concurrency regressions, per-test pytest isolation and build integration; PostgreSQL and process isolation remain explicit gaps. |
 
+`2026-10-26` · Corpus repair feedback carries one bounded input/expected/actual example beside
+the assertion, retains the case inventory/full log, and explicitly flags an unchanged passing
+case count. Repair instructions require reproducing a failing example before editing, tracing
+the actual failing branch, adding a red regression, running it and a passing neighbor, and
+revising an ineffective edit within the call. Test claims must name executed commands/results;
+unrun checks remain unrun. This is prompt guidance, not enforcement that a provider executed tests;
+deterministic acceptance and the two-flat-call stop still own the verdict.
+
+Prose criterion-dispute inference requires the failing check, defect language and a criterion
+noun in the same sentence/report field. A product's malformed reference definitions no longer
+combine with a different field's suite name to route product failures to Plan. Explicit
+`AC_BROKEN` claims and genuine local prose claims remain advisory and retain existing recovery.
+
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 

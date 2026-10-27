@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261026 V41
+version: 20261027 V43
 ---
 
 ## Overview
@@ -430,6 +430,15 @@ story implements, the run is neither slow nor red by construction: those are exa
 code is supposed to pass, so the result is a verdict about the story rather than a report on the
 schedule. This is what makes build progress visible — the corpus goes green in the order the plan
 builds it, and a regression in an earlier story is caught by the later story that re-runs it.
+
+A section title is not a prerequisite boundary. Review the supplied selected examples for
+cross-feature interactions and preserve the frozen topology's coverage assignments. A nonempty
+probe does not establish that every selected capability is available. Use only documented
+runner options to select an implementable slice. If the runner supports only a mixed section
+that requires future work, test the current story's own API directly (without restating corpus
+examples), then assign that entire section to a later integration with all required providers.
+That integration runs the real corpus before the terminal gate. No case is dropped, expected
+result changed, or dependency cycle introduced; the early gate measures the delivered capability.
 
 Executing is the whole point, so:
 
@@ -909,7 +918,11 @@ reaches a repository. Each citation is one bullet on one line, in this exact for
 
 The id is an `## Access Patterns` id in backticks, the em dash is literal, the access is `read`,
 `write`, or `read-write`, and `supplies:` and `returns:` carry comma-separated backticked field
-names from that pattern's Input and Output DTOs. A Blueprint that reaches no repository — a Screen
+names from that pattern's Input and Output DTOs. Author an empty list explicitly as `—`:
+`- supplies: — - returns: —`. The reader also accepts an omitted `supplies:` or `returns:`
+as an empty claim when the other field clause is present. Required inputs, declared fields
+and access grants remain validated against DATABASE.md; omission never supplies a required input.
+A Blueprint that reaches no repository — a Screen
 that delegates to a Feature's service routes — writes one bullet and no other:
 
 ```text
@@ -1135,10 +1148,24 @@ METADATA, and generated files do not contain feature specifications.
 ## Acceptance persistence lifecycle
 
 **Acceptance store lifecycle.** The DATABASE step provisions and verifies the configured store
-once. Criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary database, apply DDL,
-or assume an empty store. The store may hold data before any criterion runs: assert on records the
+once. Ordinary persistence criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary
+database, apply DDL, or assume an empty store. Configuration behavior uses the isolated harness
+fixture below. The store may hold data before any criterion runs: assert on records the
 criterion created, or on a count read before setup (`after == before + 5`), never on an absolute
 table count.
+
+For SQLite configuration selection and source-required open-failure tests, use
+`from drydock_acceptance import database_environment` in the Python criterion. Its context
+manager takes `url=None, path=None`: None unsets, empty string sets empty, and other values
+are relative file names. `url` alone accepts the `sqlite://` prefix. Inside
+`with database_environment(url="sqlite://primary.db", path="fallback.db") as root:`, the
+variables name absolute paths under the yielded scratch `Path`, and cwd is that directory.
+Assert that the product resolves `str(root / "primary.db")`; repeat separate contexts for URL
+without prefix, unset/empty URL fallback, and both unset for `data/app.db`. The fixture creates
+no schema or parent directories; `url="missing/app.db"` permits real open-failure assertions.
+It restores cwd and both variables even on assertion failure. Use this only for configuration
+and failure behavior, never populated-store CRUD. Direct environment replacement remains
+forbidden. Declare only exits and behavior supported by governed sources.
 
 The acceptance harness owns isolation. It begins one transaction before each Python criterion and
 rolls it back when the criterion ends, pass or fail. Every database the criterion's process opens

@@ -5341,6 +5341,7 @@ def _render_ledger(
     prior_type: str = "",
     prior_details: Sequence[str] = (),
     size: int = _PLAN_BLUEPRINT_BATCH_SIZE,
+    stories: Sequence[PlannedStory] = (),
 ) -> str:
     """Render one bounded Stage 2 work queue, never the complete remaining topology.
 
@@ -5363,6 +5364,24 @@ def _render_ledger(
     lines.extend(f"  {item.rendered()}" for item in score.missing if item.filename in tranche)
     if not tranche:
         lines.append("  (none)")
+    # Repeat only this batch's frozen obligations at the recency anchor. A broad corpus
+    # selector must not silently override the earlier topology's deferred coverage rules.
+    current_ids = {item.story_id for item in score.missing if item.filename in tranche}
+    current_stories = [story for story in stories if story.story_id in current_ids]
+    if current_stories:
+        lines.extend(["", "Current batch obligations — preserve in behavior and acceptance:"])
+        for story in current_stories:
+            lines.append(f"  {story.story_id} -> {story.implements}")
+            for key, values in (
+                ("depends", story.depends),
+                ("provides", story.provides),
+                ("consumes", story.consumes),
+            ):
+                if values:
+                    lines.append(f"    {key}: {', '.join(values)}")
+            if instructions := story.fields.get("instructions", "").strip():
+                lines.append("    instructions:")
+                lines.extend(f"      {line}" for line in instructions.splitlines())
     if DATABASE_BLOCK in tranche:
         # Built in one step and then frozen. A cumulative declaration left outside the Current
         # batch read as forbidden under "nothing else", so no batch added the update and delete
@@ -5642,6 +5661,7 @@ def _continue_short_plan(
             previous=previous_rejection,
             prior_type=prior_type,
             prior_details=prior_details,
+            stories=current,
         )
         assembly = _continuation_assembly(
             prompt_assembly,

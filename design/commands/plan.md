@@ -36,6 +36,32 @@ written.
 | Recovery | Mechanical repair handles supported mechanics; source/graph defects return to Plan without weakening coverage. |
 | Proof | Oracle, whole-plan, probe and dependency regressions; static checks do not establish model convergence. |
 
+`2026-10-26` · SQLite configuration acceptance uses harness-owned
+`drydock_acceptance.database_environment(url=None, path=None)`. Relative file names become
+absolute paths under a temporary cwd; None unsets and empty string sets empty. Only URL accepts
+`sqlite://`; external paths, traversal and other engines are refused. No schema or parent
+directory is created. This permits configuration precedence/default and source-required open
+failure tests while direct DSN replacement and ordinary replacement-store CRUD remain forbidden.
+Plan creation, the Blueprint contract and mechanical repair document the same API. Repair may
+relocate fixture paths and their expected path operands while preserving configuration conditions,
+commands and behavioral assertions. Missing product intent still requires source-aware planning.
+
+`parse_database_interface` accepts an omitted supplies/returns clause as an empty claim when the
+other clause exists. Required input, field and access validation is unchanged. This preserves
+shared DATABASE-owned citations rather than rewriting them to None for an omitted empty list.
+Authors are instructed to emit both clauses and `—` for an empty list.
+
+`2026-10-27` · Stage 2's bounded ledger repeats only current-batch stories' exact frozen
+instructions and depends/provides/consumes interfaces at the authoring anchor. This preserves
+instructions assigning mixed corpus cases to a later integration instead of relying solely on
+the full frozen topology earlier in context. Stage 2/Blueprint guidance distinguishes nonempty
+selection from prerequisite availability: section titles can hide cross-feature interactions.
+Use supported filters; if they cannot express an implementable slice, early acceptance exercises
+the story's own API without duplicating corpus examples, and the mixed section executes in a
+later integration after all providers exist, before the terminal gate. No case or expected result
+is removed. The ledger injection is deterministic; semantic scope correctness remains a model
+judgment and is not claimed as statically enforced.
+
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 

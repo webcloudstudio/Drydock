@@ -2767,6 +2767,10 @@ def run_programmatic_acceptance(
             # interpreter, which cannot be assumed able to import Drydock.
             runner = Path(tmp) / "_drydock_acceptance_runner.py"
             shutil.copyfile(_RUNNER_SOURCE, runner)
+            shutil.copyfile(
+                _RUNNER_SOURCE.with_name("drydock_acceptance.py"),
+                Path(tmp) / "drydock_acceptance.py",
+            )
             # The Go bridge remains usable from the existing Python AC container.
             shutil.copyfile(
                 get_language_dir("go") / "acceptance" / "drydock_go.py",

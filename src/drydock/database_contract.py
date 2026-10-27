@@ -31,8 +31,9 @@ _TABLE_ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$")
 _INPUT_OUTPUT_RE = re.compile(r"^(Input|Output):[ \t]*(.*?)[ \t]*$", re.MULTILINE)
 _INTERFACE_RE = re.compile(
     r"^\s*-\s+`(?P<id>[A-Z][A-Z0-9-]*-\d{3})`\s+—\s+"
-    r"(?P<access>read-write|read|write)\s*:\s*.*?\s+-\s+supplies:\s*(?P<input>.*?)"
-    r"\s+-\s+returns:\s*(?P<output>.*?)\s*$",
+    r"(?P<access>read-write|read|write)\s*:\s*.*?\s+-\s+"
+    r"(?:supplies:\s*(?P<input>.*?)(?:\s+-\s+returns:\s*(?P<output>.*?))?"
+    r"|returns:\s*(?P<only_output>.*?))\s*$",
     re.MULTILINE | re.IGNORECASE,
 )
 _INTERFACE_BULLET_RE = re.compile(r"^\s*-\s+\S")
@@ -1895,8 +1896,8 @@ def parse_database_interface(text: str, *, source: str = "Blueprint") -> tuple[D
             DatabaseUse(
                 identifier=match.group("id"),
                 access=match.group("access").casefold(),
-                supplies=_names(match.group("input")),
-                returns=_names(match.group("output")),
+                supplies=_names(match.group("input") or ""),
+                returns=_names(match.group("output") or match.group("only_output") or ""),
             )
         )
     if declared_none and uses:

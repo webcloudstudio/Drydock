@@ -32,8 +32,17 @@ and measured something; everything else is reported, not charged.
 | Scope | Each criterion is isolated; project pytest outside the harness has different transaction ownership. |
 | Invariants | Preserve supplied published text; Plan-selected fixtures and expected results need no source provenance. |
 | Uncertainty | No static provenance check exists; a failed criterion never authorizes changing its expected value. |
-| State | Harness rollback remains canonical acceptance isolation; agent-call SQLite stores are disposable and independently provisioned. |
+| State | Harness rollback remains canonical CRUD isolation; configuration-only SQLite tests use harness-owned disposable cwd/DSNs, without schema; agent-call stores are separately provisioned. |
 | Proof | Serialized-fixture round trips, schema/state isolation and negative oracle regressions. |
+
+`2026-10-26` · `drydock_acceptance.py` is copied beside each Python criterion and runner,
+using the Target interpreter without importing Drydock. `database_environment(url=None,
+path=None)` allocates a scratch cwd, confines configured file names to it and restores both
+DSNs/cwd even on exceptions. It provides no schema and is for configuration/open-failure
+assertions, not CRUD. Existing static direct-environment/schema guards remain intact. The
+fixture owns the permitted configuration mutation; it is not a filesystem/process sandbox.
+Absolute/remote/traversal paths are refused. Tests prove canonical bytes and parent state
+survive, including exceptions, and the fixture imports in the real acceptance subprocess.
 
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).

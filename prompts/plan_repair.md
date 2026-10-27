@@ -1,7 +1,7 @@
 ---
 name: plan_repair
 description: Repair acceptance criteria that cannot run as written — restore missing imports, fix syntax, make each criterion executable without changing what it asserts, and prove a staged-runner selector is non-empty. Repairs a bad acceptance container only by correcting its AC delimiters.
-version: 20261026 V20
+version: 20261026 V21
 intent: Act as the Planning Crew repairing acceptance criteria, possibly across several Blueprint specification files in one batch, so each one can execute. Restore missing imports and correct syntax. Do not weaken, strengthen, or reinterpret what any criterion asserts.
 command: drydock plan repair
 inputs: DEFECTS
@@ -128,11 +128,16 @@ code, out, err = cli_runner("--summary", ".")   # separate string arguments
 Never pass a list or tuple as one positional argument. For a `go-cli-args` fault, unpack
 that sequence with `*` and preserve every argument and assertion.
 
+For a configuration-only `acceptance-store` defect, the database_environment fixture relocation
+specified below is also allowed, including its necessary path-operand substitution. Preserve
+the same configuration cases and assertions about behavior.
+
 Forbidden:
 
 - changing any `assert` — its operands, its comparison, or its expected value — except as
   permitted above for a `harness-exit` fault, or renaming its operands to `code`, `out`, and
-  `err` for a `go-run`, `go-package-launch`, or `acceptance-store` fault;
+  `err` for a `go-run`, `go-package-launch`, or `acceptance-store` fault, or substituting
+  relocated scratch path operands for a configuration-only `acceptance-store` fault;
 - changing the input payload, the program under test, or the command invoked, except as
   permitted above for an `unchecked-call`, `staged-value`, `go-run`, `go-package-launch`, or
   `acceptance-store` fault;
@@ -192,10 +197,46 @@ not a patch or a diff.
 ## Acceptance persistence lifecycle
 
 **Acceptance store lifecycle.** The DATABASE step provisions and verifies the configured store
-once. Criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary database, apply DDL,
-or assume an empty store. The store may hold data before any criterion runs: assert on records the
+once. Ordinary persistence criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary
+database, apply DDL, or assume an empty store. Configuration behavior is tested separately using
+the harness fixture below. The store may hold data before any criterion runs: assert on records the
 criterion created, or on a count read before setup (`after == before + 5`), never on an absolute
 table count.
+
+
+**SQLite configuration tests (Python acceptance container).** The harness supplies
+`from drydock_acceptance import database_environment`. Use it only to test configuration
+selection, default paths, or source-required open failures, never ordinary CRUD acceptance:
+
+```python
+import os
+from drydock_acceptance import database_environment
+from <declared_config_module> import database_path
+
+with database_environment(url="sqlite://primary.db", path="fallback.db") as root:
+    assert str(database_path()) == str(root / "primary.db")
+with database_environment(path="fallback.db") as root:
+    assert str(database_path()) == str(root / "fallback.db")
+with database_environment() as root:
+    assert str(database_path()) == "data/app.db"
+```
+
+`None` (the default) unsets a variable; `""` sets it empty. Other arguments are relative SQLite
+file names within a fresh temporary working directory; only `url` permits the `sqlite://`
+prefix. The fixture maps names to absolute scratch paths, yields that directory as a `Path`,
+and restores both variables and cwd on exit, including failures. It applies no schema and
+creates no parent directories: `url="missing/app.db"` exercises an unopenable path. Invoke
+the declared application interface inside the context, assert the source-required outcome,
+and do not read or write the managed store. Import the declared configuration module, never
+invent a module or an exit requirement absent from the source. Do not replace environment
+variables directly or bypass this fixture with monkeypatches.
+
+For `acceptance-store` repair of an existing configuration test, move its environment setup
+and restoration into this fixture. Preserve URL-prefix/precedence/unset/empty conditions,
+command arguments, error behavior and expected results. Replace arbitrary fixture paths with
+relative names and derive asserted absolute paths from `root`; this is a mechanical fixture
+relocation, not permission to change which configured value wins or weaken any assertion.
+If the criterion needs a populated replacement store, report `REPAIR_IMPOSSIBLE` instead.
 
 The acceptance harness owns isolation. It begins one transaction before each Python criterion and
 rolls it back when the criterion ends, pass or fail. Every database the criterion's process opens

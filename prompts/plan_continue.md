@@ -1,7 +1,7 @@
 ---
 name: plan_continue
 description: Stage 2 Blueprint authoring instruction appended after plan_create has accepted and frozen a complete TOPOLOGY.md declaration.
-version: 20261026 V10
+version: 20261027 V11
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
 output: A bounded batch of Blueprint specification files
@@ -83,6 +83,16 @@ bindings, including the product and corpus paths. With `import os`, canonical
 `os.path.abspath("program")` is also supported. Do not construct probe arguments with getcwd
 f-strings, dynamic imports or runtime expressions. Drydock runs listing probes; you author them
 without tools and never invent counts. Print captured output before asserting the runner's exit.
+
+A nonempty listing proves selection, not prerequisite availability. Inspect the selected cases
+in the supplied source: a section name can include interactions with capabilities scheduled later.
+Preserve the current batch obligations repeated in the ledger, especially instructions assigning
+cross-feature cases to a later integration. Do not turn a whole section into an early gate merely
+because its title matches the story. Select only the supported cases using documented runner
+options. If the runner cannot express that boundary, test this story's own interface directly
+without copying corpus examples, and run the mixed section on a later integration after all its
+required capabilities exist. Keep every deferred case covered there before the terminal gate.
+Never make the earlier story implement the later feature or introduce a dependency cycle.
 
 The frozen topology is the availability contract. A criterion must not require an undeclared
 later capability merely because the same executable eventually exposes it. Author direct checks

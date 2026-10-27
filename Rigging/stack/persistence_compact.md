@@ -1,4 +1,5 @@
-<!-- Compacted from Rigging/stack/persistence.md sha256=46dba643a848b1fd6c56493a0ba3651ad8f29797e25b9fc0327c7d02daff7d2f on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/persistence.md sha256=450cc321e2e57a5dc2a353b44a1b780ff52268ae87a545d5b32b3d1fd243fb3e on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Manually aligned with the source configuration-fixture contract on 2026-10-26. -->
 
 # Persistence & Service Encapsulation — Contract Surface
 
@@ -172,9 +173,22 @@ Constraints: Every external-service wrapper extends `ServiceClient`, exposes typ
 
 ### Rule: acceptance-store
 
-Acceptance criteria use the configured database provisioned by the DATABASE step.
+Ordinary persistence acceptance uses the configured database provisioned by the DATABASE step.
 
-Constraints: Criteria must not replace database configuration, create temporary databases, apply DDL, assume an empty store, commit, or clean up records. Assertions use records created by the criterion or relative counts.
+Constraints: Ordinary persistence criteria must not replace database configuration, create temporary databases, apply DDL, assume an empty store, commit, or clean up records. Assertions use records created by the criterion or relative counts.
+
+### database_environment
+
+Harness-owned Python acceptance fixture: `from drydock_acceptance import database_environment`.
+
+`with database_environment(url=None, path=None) as root:` yields a temporary `Path` and sets
+cwd there. None unsets a variable, empty string sets it empty, and relative file names become
+absolute scratch paths. Only `url` accepts `sqlite://`. Restores cwd and both variables on exit,
+including failures. Creates no schema or parent directories; `url="missing/app.db"` tests open
+failure. Test configuration priority, prefix, fallback and default through the product interface.
+
+Constraints: Configuration/open-failure acceptance only; no populated-store CRUD, external
+paths, other engines, direct DSN mutation or schema setup.
 
 ### Rule: python-criterion-transaction
 

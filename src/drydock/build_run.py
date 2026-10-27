@@ -1574,13 +1574,23 @@ def _defective_acceptance_claim(
     """
     if agent_report is None or not failed_checks:
         return ()
-    words = _normalize_words(" ".join(agent_report))
-    if not words:
-        return ()
-    claim = " ".join(words)
-    if not any(term.replace("-", " ") in claim for term in _DEFECT_CLAIM_TERMS):
-        return ()
-    return tuple(check.check_id for check in failed_checks if _names_check(words, check.check_id))
+    # A defect word in a different sentence or report field can describe the product's
+    # malformed input, rather than the criterion. Require a local statement about a check.
+    clauses = [
+        _normalize_words(clause)
+        for field in agent_report
+        for clause in re.split(r"[.!?;\n]+", field)
+    ]
+    return tuple(
+        check.check_id
+        for check in failed_checks
+        if any(
+            _names_check(words, check.check_id)
+            and any(term.replace("-", " ") in " ".join(words) for term in _DEFECT_CLAIM_TERMS)
+            and bool({"check", "criterion", "criteria", "acceptance", "invocation"} & set(words))
+            for words in clauses
+        )
+    )
 
 
 def _output_tail(result: AcceptanceRunResult, max_lines: int = 6) -> list[str]:
@@ -1870,6 +1880,22 @@ def _check_detail_lines(
 ) -> list[str]:
     """One failed check's assertion, output tail, failing-case inventory, and full-output log."""
     lines = [f"    assertion: {_assertion_summary(result)}"]
+    # Keep one complete counterexample near the instruction, rather than only the last
+    # diff's tail. The full log and inventory still carry the remaining root-cause clusters.
+    output = result.stdout.splitlines()
+    for index, line in enumerate(output):
+        if _SPEC_EXAMPLE_RE.match(line):
+            end = next(
+                (i for i in range(index + 1, len(output)) if _SPEC_EXAMPLE_RE.match(output[i])),
+                len(output),
+            )
+            excerpt = "\n".join(output[index:end]).strip()
+            if "--- expected HTML" in excerpt and "+++ actual HTML" in excerpt:
+                lines.append("    failing example (input, expected, actual):")
+                lines.extend(f"      {line}" for line in excerpt[:1800].splitlines())
+                if len(excerpt) > 1800:
+                    lines.append("      … (example truncated; read full output)")
+                break
     tail = _output_tail(result)
     if tail:
         lines.append("    output:")
@@ -1911,6 +1937,12 @@ def _render_repair_feedback(
         "available, run the failing check to obtain its diagnostics. Use section or example",
         "filters to diagnose coherent root-cause clusters, then test the changed behavior",
         "and its neighbors. Do not add example-specific exceptions.",
+        "Choose one failing example and reproduce it before editing. Trace its input through",
+        "the actual failing branch and read its governing source rules; add a regression",
+        "that fails on the current code, fix that",
+        "cause, then run the regression and a passing neighbor. If it stays red, revise the",
+        "edit in this call instead of handing the same failed hypothesis to the next pass.",
+        "Report the executed command and before/after result; label unrun checks as unrun.",
         "",
         "Drydock runs every declared acceptance check after this call. Do not repeat all",
         "acceptance suites merely to return a verdict. If you run a suite, wait for completion",
@@ -1919,7 +1951,9 @@ def _render_repair_feedback(
         "",
         "If a check below cannot pass however the code is written — the command it runs",
         "succeeds and the assertion still fails — report it with `AC_BROKEN: <check-id>`",
-        "and explain the contradiction in `FAILURE_DETAIL`. The report is recorded as",
+        "and explain the contradiction in `FAILURE_DETAIL`. If the gate requires a capability",
+        "assigned to a later story, name that provider and the conflicting scope; do not silently",
+        "implement future stories or weaken the gate. The report is recorded as",
         "evidence and stops nothing: the repair budget is spent as for any other failure,",
         "so keep the code correct and every other check green.",
         "",
@@ -1947,6 +1981,20 @@ def _render_repair_feedback(
             lines.append(
                 f"- {result.check_id}: {prior} -> {tally[0]} passing cases "
                 f"({tally[0] - prior:+d}); inspect the previous edit before adding behavior."
+            )
+        lines.append("")
+    flat = tuple(
+        result
+        for result in failed_checks
+        if (tally := _case_tally(result)) is not None
+        and (case_baseline or {}).get(result.check_id) == tally[0]
+    )
+    if flat:
+        lines.extend(["### No measured improvement", ""])
+        for result in flat:
+            lines.append(
+                f"- {result.check_id}: passing case count is unchanged. The previous edit has "
+                "not established a repair; test the failing branch before extending that edit."
             )
         lines.append("")
     if regressed_checks:

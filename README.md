@@ -511,6 +511,13 @@ criterion that both opens the store and launches a process. Go criteria use `Ope
 and check the deferred cleanup error. `drydock plan verify` also rejects recognized DSN overrides
 and schema application in criteria. `VERIFICATION.md` is an accepted standard release-gate Blueprint filename.
 
+SQLite configuration acceptance can use the harness-owned
+`drydock_acceptance.database_environment(url=None, path=None)` context manager. It tests
+`DATABASE_URL` precedence/prefix handling, `DATABASE_PATH` fallback, default paths and
+source-required open failures in a disposable directory, restoring cwd and both variables on
+exit. Arguments are relative SQLite file names; the fixture creates no schema. Ordinary
+persistence criteria continue using the provisioned application store.
+
 ### Acceptance authoring checks
 
 Story acceptance uses interfaces available in the same build block or earlier. `drydock plan verify`

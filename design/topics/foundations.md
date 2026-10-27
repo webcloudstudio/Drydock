@@ -37,6 +37,12 @@ was given.
 | Limits | Managed SQLite detection/snapshots do not constitute an OS sandbox or remote-store isolation. |
 | Proof | Foundation/graph, generated persistence and managed-state regressions. |
 
+`2026-10-26` · Full/compact persistence guidance distinguishes ordinary provisioned-store
+acceptance from harness-owned SQLite configuration tests. `database_environment` is supplied
+by the acceptance runner, never by generated application code. It owns scratch cwd/relative
+DSNs and restoration, creates no schema, and does not replace CRUD acceptance or authorize
+remote stores. The compact contract was manually aligned with the full source and its hash.
+
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 
