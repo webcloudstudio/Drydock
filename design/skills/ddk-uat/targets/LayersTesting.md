@@ -35,8 +35,8 @@ Preserve evidence-backed causes and verification status across LayersTesting run
 - `operational-usage-before-database` is separable: `count extra` against the provisioned store still asserts exit 2, losing only the ordering proof.
 - `operational-unreadable-load-file` uses the provisioned store and passed verify.
 - Reproduction: `store_setup_defects(<AC body>)` on any of the four bodies returns the "configured database" defect. Not run against evidence; read-only.
-- Fix `2026-10-26`: Ed directed a kit source edit (route a). PostgreSQL wording removed from `sources/INSTRUCTIONS.md`, `INSTRUCTIONS_go.md`, `INSTRUCTIONS_python.md` (Database section now SQLite-only) and `inputs/COMPASS.md` (network rule). Uncommitted in the kit; Ed commits kit history. The exit-1 row "database unreachable" (`INSTRUCTIONS.md:120`) remains and can still regenerate `operational-unreachable-database` / `operational-invalid-database-file`.
-- Outcome: unverified (postgres criteria); open (unreachable/invalid-store criteria).
+- Fix `2026-10-26`: Ed directed a kit source edit (route a). PostgreSQL wording removed from `sources/INSTRUCTIONS.md`, `INSTRUCTIONS_go.md`, `INSTRUCTIONS_python.md` (Database section now SQLite-only) and `inputs/COMPASS.md` (network rule). Uncommitted in the kit; Ed commits kit history. The exit-1 row "database unreachable, tables missing" was then removed from the exit-1 row of all three variants (now "a file named on the command line cannot be read"), as for FxRates. Store connectivity remains proved by the DATABASE step.
+- Outcome: unverified.
 
 ### LT-IFACE-001 — `## Database Interface` entries omit `- supplies:` (recovered)
 
@@ -56,11 +56,11 @@ Preserve evidence-backed causes and verification status across LayersTesting run
 
 ## Questions
 
-- `2026-10-26` · LT-STORE-001: remove "database unreachable" from the `INSTRUCTIONS.md:120` exit-1 row as in FxRates, or keep it and give Drydock an authoring route. Closes when Ed decides.
+- None.
 
 ## Actions
 
-- `2026-10-26` · LT-STORE-001 — implement the chosen route with a regression test; rerun `04-plan`..`07` on LayersTesting.
+- `2026-10-26` · LT-STORE-001 — rerun LayersTesting from `04-plan`; closes when plan verify passes with no store-mutating criteria.
 - `2026-10-26` · LT-IFACE-001 — decide parser vs prompt fix; regression test replaying `plan.output.txt:464`.
 
 ## Working Notes
