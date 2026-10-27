@@ -1,4 +1,4 @@
-<!-- Compacted from /mnt/c/Users/barlo/projects/drydock/Rigging/stack/fastapi.md sha256=c2123204fd14b966471f62e6af7c0da9e67474cb2797f589f17bcd17276dcc8f on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/fastapi.md sha256=e1242918033cb040173e66be7076e2ffefe6f27c45eff9ae14958ecea2c0e498 on 2026-10-26 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -24,48 +24,43 @@ it directly. The pytest `web_client` fixture delegates to the same callable.
 
 # FastAPI Foundation — Contract Surface
 
-### Rule: route-boundary
+## FastAPI application boundary
 
-Route handlers reside in `app_server` routers, parse HTTP input, call application services, and return responses.
+### Rule: route handling
+Route handlers parse HTTP input, call application services, and return responses.
 
-Constraints: Services own business behavior and have no FastAPI dependency.
+Constraints: Keep routes in `app_server` routers; services own business behavior and have no FastAPI dependency.
 
-### Rule: shared-dependencies
+### Rule: dependency replacement
+Shared resources are provided through dependencies replaceable with `app.dependency_overrides`.
 
-Shared resources are provided through replaceable dependencies.
+Constraints: Acceptance code uses the existing application and test client; it does not create a second application or test client.
 
-Constraints: Tests replace dependencies through `app.dependency_overrides`; acceptance code does not create a second application or test client.
+### Rule: HTTP validation
+Request and response shapes are validated at the HTTP boundary.
 
-### Rule: blueprint-http-contract
+Constraints: Use the Blueprint’s routes, schemas, configuration names, defaults, and error contracts; sample routes are not part of this foundation.
 
-HTTP boundaries validate request and response shapes according to the Blueprint.
-
-Constraints: Use the Blueprint’s routes, schemas, configuration names, defaults, and error contracts.
-
-### Rule: server-rendered-pages
-
+### Rule: server-rendered pages
 Server-rendered pages include `request` in Jinja template context and serve static assets through the application.
 
-Constraints: Errors are sanitized and use the format required by the Blueprint.
+Constraints: Return sanitized errors in the format required by the Blueprint.
 
-### Rule: application-lifecycle
-
+### Rule: application lifecycle
 Startup and shutdown work runs in lifespan handlers.
 
 Constraints: Uvicorn reload is used only in development.
 
 ### fastapi
+FastAPI is required for the application boundary.
 
-The application runtime declares FastAPI dependencies as needed.
+### uvicorn
+Uvicorn is required as needed for runtime server execution.
 
-Constraints: Declare `fastapi`, `uvicorn`, and the TestClient transport as needed by runtime and tests; declare `jinja2` when serving templates. Use the Python foundation’s environment and test command.
+### jinja2
+Jinja2 is required when the application serves templates.
 
-## Test dependency compatibility
+### TestClient transport
+The compatible TestClient transport dependency is required for tests.
 
-Keep `fastapi.testclient.TestClient` as the client API. Starlette 1.2 and newer prefer `httpx2`;
-plain `httpx` is deprecated there. Declare `fastapi` and `httpx2` inside every TestClient acceptance
-criterion with `Requires: python-package=<name>; scope=test`. Older selected Starlette versions
-use `httpx` instead. Resolve and lock the compatible FastAPI/Starlette/transport set together;
-do not override FastAPI's Starlette constraints or suppress deprecation warnings. Verify client
-construction and a request with deprecations treated as errors before accepting the lockfile.
-Reference: https://www.starlette.io/testclient/
+Constraints: Use `fastapi.testclient.TestClient` as the client API. Declare `fastapi` and `httpx2` in every TestClient acceptance criterion with `Requires: python-package=<name>; scope=test` when using Starlette 1.2 or newer. Use `httpx` with older selected Starlette versions. Resolve and lock the compatible FastAPI, Starlette, and transport set together; do not override FastAPI’s Starlette constraints or suppress deprecation warnings. Verify client construction and a request with deprecations treated as errors before accepting the lockfile.

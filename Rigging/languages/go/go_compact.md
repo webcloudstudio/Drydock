@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/languages/go/go.md sha256=aa96c7155b26f091e4f2ee9b7a47ff2202fc7c162254f2b8676779198c7147da on 2026-10-18 by Rigging maintenance -->
+<!-- Compacted from Rigging/languages/go/go.md sha256=1126e6e8affc974e2eedef2e5e2091419a6a39dbf24ca6af7dd28df24eb4ef7a on 2026-10-26 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -92,8 +92,111 @@ DATABASE step. Python Blueprint AC containers invoke the native Go tests through
 
 ---
 
-## Consumer Rules
+# Go Best Practices — Contract Surface
 
-- Use `gofmt`, explicit errors, small consumer-owned interfaces and owned goroutine lifetimes.
-- Keep business logic in `internal/` and entry points in `cmd/`; commit `go.mod` and `go.sum`.
-- Gate with `go vet ./...`, `go build ./...` and `go test -race ./...`.
+## Toolchain and Module Layout
+
+### config_key: go.mod
+The module declaration specifies the module path, minimum Go version, and exact dependencies.
+
+Constraints: Go 1.22 or newer is required; `go.sum` is committed; `go mod tidy` runs after dependency changes; application logic resides in `internal/`; binaries reside in `cmd/<name>/`; `pkg/` is used only for externally imported libraries.
+
+### Rule: toolchain-validation
+Before writing code, verify the installed Go version and stop when it is older than 1.22.
+
+## Errors
+
+### function LoadConfig
+Loads and parses a configuration file.
+
+| Parameter | Type |
+|---|---|
+| `path` | `string` |
+
+Returns `*Config` and `error`.
+
+Constraints: Return errors instead of panicking; wrap added context with `%w`; callers inspect errors with `errors.Is` or `errors.As`; error strings are lowercase without trailing punctuation.
+
+## Types and Interfaces
+
+### interface Store
+Provides access to stored data.
+
+| Method | Parameters | Returns |
+|---|---|---|
+| `Get` | `context.Context`, `id string` | `[]byte`, `error` |
+
+Constraints: Interfaces are defined by consumers, contain one or two methods, and functions accept interfaces but return concrete types.
+
+### function Render
+Renders data retrieved from a store.
+
+| Parameter | Type |
+|---|---|
+| `ctx` | `context.Context` |
+| `s` | `Store` |
+| `id` | `string` |
+
+Returns `[]byte` and `error`.
+
+### type Buffer
+Provides a usable zero-value byte buffer.
+
+### Buffer.Write
+Appends bytes to the buffer.
+
+| Parameter | Type |
+|---|---|
+| `p` | `[]byte` |
+
+Returns the number of bytes written and `error`.
+
+Constraints: The zero value is usable; `context.Context` is the first parameter for I/O, blocking, or spawned-work functions.
+
+## Concurrency
+
+### function Fetch
+Fetches results concurrently for a list of URLs.
+
+| Parameter | Type |
+|---|---|
+| `ctx` | `context.Context` |
+| `urls` | `[]string` |
+
+Returns `[]Result` and `error`.
+
+Constraints: Every goroutine has an owner, cancellation path, failure-reporting path, and wait; cancellation flows through `context.Context`; the sender closes channels; shared state uses mutexes and handoff uses channels; builds and CI run `go test -race`.
+
+## Testing
+
+### function ParseDuration
+Parses a duration string.
+
+| Parameter | Type |
+|---|---|
+| `input` | `string` |
+
+Returns `time.Duration` and `error`.
+
+Constraints: Tests use the standard `testing` package, table-driven subtests with `t.Run`, informative failure messages, offline deterministic fixtures, `testdata/`, `t.TempDir()`, and `t.Cleanup()`; no network, credentials, or wall-clock sleeps.
+
+## Build and Verification
+
+### Rule: verification-commands
+The project passes the following commands before commit:
+
+```bash
+gofmt -l .
+go vet ./...
+go build ./...
+go test -race -cover ./...
+```
+
+Constraints: `gofmt -l .` emits no filenames; `CGO_ENABLED=0` is used unless a dependency requires cgo; release builds use `-trimpath`; verification commands are wrapped in one `bin/` script.
+
+## Dependencies
+
+### Rule: dependency-management
+Dependencies use the standard library where practical and exact versions for external modules.
+
+Constraints: Check the standard library first; never use `@latest` in committed configuration; run `go mod tidy` after dependency changes; evaluate maintenance, transitive dependencies, and licensing; deprecated or archived dependencies are defects to schedule.
