@@ -42,6 +42,8 @@ newest dated entry describe the implemented behavior. See [stabilization](../top
 
 ### Target diagnosis memories
 
+- [FxRates](ddk-uat/targets/FxRates.md) — grader provisioning, init source fidelity and managed-state alert.
+
 - [CommonMark](ddk-uat/targets/CommonMark.md) — Stage 1 artifact-envelope diagnosis.
 - [LayersTesting](ddk-uat/targets/LayersTesting.md) — database-failure criteria versus the acceptance store lifecycle.
 
