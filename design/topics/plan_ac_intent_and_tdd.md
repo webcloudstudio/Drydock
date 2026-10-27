@@ -4,7 +4,7 @@
 |---|---|
 | Version | 2026-10-26 V2 |
 | Description | Plan for AC intent metadata, authorized fixtures, and TDD repair context. |
-| Status | Implemented 2026-10-26 (Slice A `d0f0061`, Slice B follows); live validation pending. |
+| Status | Implemented 2026-10-26 (Slice A `d0f0061`, Slice B `d79087b`); live validation pending. |
 | Modules | `acceptance.py`, `acceptance_oracle.py`, `plan_verify.py`, `plan_repair.py`, `ac_repair.py`, `planning_session.py`, `build.py` |
 | Related | [Acceptance criteria](acceptance_criteria.md), [Plan](../commands/plan.md), [Build](../commands/build.md) |
 
@@ -213,6 +213,9 @@ memories as current contracts. Do not rename unrelated files in this task.
 
 - `2026-10-26` · *Closed 2026-10-26*: implemented; matrix covered by `tests/test_ac_intent.py`
   and `tests/test_acceptance_oracle.py`. Go native-type case not separately tested.
+- `2026-10-26` · Stabilization candidate `ef68b55` predates this work. Ed runs S6 after it, so
+  the S6 candidate must include `d79087b` and S5 gates rerun on it. Close when stabilization
+  records the new candidate identity.
 - `2026-10-26` · After implementation, Ed may validate the next LayersTesting run: decimal
   advisories disappear; dependency failures remain until their Plan correction is made.
   This session does not modify the generated criteria.
