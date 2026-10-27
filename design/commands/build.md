@@ -31,12 +31,20 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 | Authority | Approved Blueprints, source constraints and generated foundation contracts. |
 | Preconditions | Buildable plan, delivered prerequisites and provisioned persistence after its owner step. |
 | Mutations | Agent changes implementation; development tests use disposable SQLite state after provisioning. |
-| Invariants | Canonical managed state and unrelated records survive; model SUCCESS is advisory; generated criteria do not override source intent. |
+| Invariants | Canonical managed state and unrelated records survive; model SUCCESS is advisory; generated criteria do not override source intent; repair quotes AC intent verbatim and never licenses changing an expected result. |
 | Recovery | Retain private pre-call store snapshot on detected mutation; never automatically overwrite concurrent state; identify DATABASE owner. |
 | Proof | Real temporary-store write/deletion/concurrency regressions, per-test pytest isolation and build integration; PostgreSQL and process isolation remain explicit gaps. |
 
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
+
+`2026-10-26` · **Repair feedback quotes AC intent verbatim.** `_render_repair_feedback` adds a
+`### Criterion intent` section listing each failing or regressed criterion's original `Intent:`
+lines (`AcceptanceRunResult.intent_lines`), never the ID fallback. The instructions and this
+section are never truncated; `_REPAIR_FEEDBACK_CAP` applies only to the diagnostics after them.
+The repair instructions state that fixtures are Plan-selected, a failure does not authorize
+changing an expected result, and a demonstrated contradiction is reported with `AC_BROKEN`
+(`tests/test_ac_intent.py`).
 
 `2026-10-26` · **Regression-led repairs are labelled as measured.** The repair line counts the
 block's failing checks plus checks the regression sweep found broken:

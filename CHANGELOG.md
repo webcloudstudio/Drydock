@@ -169,6 +169,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-26: Acceptance criteria intent is a governed contract. `drydock plan` requires one or
+  two nonblank `Intent:` lines per newly authored criterion (`missing-intent`, corrected in the
+  bounded artifact repair loop and forgiven on exhaustion); `plan verify` does not check it, so
+  existing Blueprints still build. `drydock build` repair prompts quote each failing criterion's
+  `Intent:` lines verbatim in a `### Criterion intent` section that is never truncated, and state
+  that Plan-selected fixtures are intentional and a failure never authorizes changing an expected
+  result. `BLUEPRINTS_CONTRACT.md` V41.
+
 - 2026-10-26: `drydock plan verify` no longer emits the unknown-decimal-provenance warning.
   Plan is authorized to choose fixtures and calculate expected results; a decimal expectation
   absent from source material is ordinary test design, not a review item. Dependency, oracle,

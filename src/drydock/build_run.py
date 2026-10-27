@@ -303,6 +303,7 @@ def _run_valid_criteria(
                 check_id=check.check_id,
                 source=check.source,
                 intent=check.intent,
+                intent_lines=check.intent_lines,
                 passed=False,
                 return_code=None,
                 stdout="",
@@ -1922,7 +1923,15 @@ def _render_repair_feedback(
         "evidence and stops nothing: the repair budget is spent as for any other failure,",
         "so keep the code correct and every other check green.",
         "",
+        "Fixture values are intentional examples selected during Plan. A failure does not",
+        "authorize changing an expected result. Preserve each criterion's intent. Report a",
+        "demonstrated contradiction with the specification with `AC_BROKEN`; do not infer a",
+        "new policy from unfamiliar literals.",
+        "",
     ]
+    lines.extend(_criterion_intent_lines(regressed_checks + failed_checks))
+    # The instructions and intent above are kept whole; only the diagnostics below are capped.
+    preserved = len(lines)
     falling = tuple(
         result
         for result in failed_checks
@@ -2018,10 +2027,30 @@ def _render_repair_feedback(
         if len(changed_files) > len(preview):
             lines.append(f"- ... (+{len(changed_files) - len(preview)} more)")
         lines.append("")
-    text = "\n".join(lines).rstrip()
-    if len(text) > _REPAIR_FEEDBACK_CAP:
-        text = text[:_REPAIR_FEEDBACK_CAP].rstrip() + "\n… (feedback truncated)"
-    return text + "\n\n"
+    head = "\n".join(lines[:preserved]).rstrip()
+    body = "\n".join(lines[preserved:]).rstrip()
+    budget = max(_REPAIR_FEEDBACK_CAP - len(head), 0)
+    if len(body) > budget:
+        body = body[:budget].rstrip() + "\n… (feedback truncated)"
+    return f"{head}\n\n{body}".rstrip() + "\n\n"
+
+
+def _criterion_intent_lines(results: tuple[AcceptanceRunResult, ...]) -> list[str]:
+    """Quote each failing criterion's ``Intent:`` declarations exactly as authored.
+
+    The normalized :attr:`intent` joins repeated declarations and falls back to the criterion
+    ID, so it cannot stand in for what the author wrote. A criterion with no declaration is
+    omitted rather than given its ID as an intent.
+    """
+    seen: set[str] = set()
+    lines: list[str] = []
+    for result in results:
+        if result.check_id in seen or not result.intent_lines:
+            continue
+        seen.add(result.check_id)
+        lines.append(f"- {result.check_id}")
+        lines.extend(f"  {line}" for line in result.intent_lines)
+    return ["### Criterion intent", "", *lines, ""] if lines else []
 
 
 def _repair_prompt_assembly(base: PromptAssembly, feedback: str) -> PromptAssembly:
@@ -3024,6 +3053,7 @@ def build_target(
                     check_id=check.check_id,
                     source=check.source,
                     intent=check.intent,
+                    intent_lines=check.intent_lines,
                     passed=False,
                     return_code=None,
                     stdout="",

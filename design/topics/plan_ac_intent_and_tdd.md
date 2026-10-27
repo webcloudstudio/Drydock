@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-26 V1 |
-| Description | Deferred plan for AC intent metadata, authorized fixtures, and TDD repair context. |
-| Status | Ready for review or later execution; implementation deferred. |
+| Version | 2026-10-26 V2 |
+| Description | Plan for AC intent metadata, authorized fixtures, and TDD repair context. |
+| Status | Implemented 2026-10-26 (Slice A `d0f0061`, Slice B follows); live validation pending. |
 | Modules | `acceptance.py`, `acceptance_oracle.py`, `plan_verify.py`, `plan_repair.py`, `ac_repair.py`, `planning_session.py`, `build.py` |
 | Related | [Acceptance criteria](acceptance_criteria.md), [Plan](../commands/plan.md), [Build](../commands/build.md) |
 
@@ -39,7 +39,12 @@ Unknown provenance of an example decimal is not a useful advisory or a test defe
 
 ### Current contract
 
-This document records approved direction and deferred implementation, not shipped behavior.
+Implemented 2026-10-26 in two slices. Slice A removed `decimal_provenance_advisories`. Slice B
+added verbatim `intent_lines`, the `missing-intent` authoring defect and the Build repair intent
+section. The table below is the pre-implementation inspection. Plan and AC repair needed no code
+change; Build repair evidence files (`_write_evidence`) still print the normalized intent.
+Binding heuristics were not changed: no conflict with authorized fixtures was demonstrated.
+
 Read-only inspection on 2026-10-26 established:
 
 | Concern | Existing mechanism |
@@ -206,8 +211,8 @@ memories as current contracts. Do not rename unrelated files in this task.
 
 ## Actions
 
-- `2026-10-26` · Execute the implementation sequence in a later session. Close when the
-  acceptance matrix passes and the separate implementation commit and memories agree.
+- `2026-10-26` · *Closed 2026-10-26*: implemented; matrix covered by `tests/test_ac_intent.py`
+  and `tests/test_acceptance_oracle.py`. Go native-type case not separately tested.
 - `2026-10-26` · After implementation, Ed may validate the next LayersTesting run: decimal
   advisories disappear; dependency failures remain until their Plan correction is made.
   This session does not modify the generated criteria.

@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261026 V40
+version: 20261026 V41
 ---
 
 ## Overview
@@ -152,7 +152,7 @@ file completes:
 
 ```
 === AC {check-id} ===
-Intent: One sentence stating what the check proves.
+Intent: One or two lines stating what the check proves and why its fixtures exercise it.
 Suite: scoped
 Requires: executable=python3; scope=test
 Probe: --list
@@ -166,6 +166,12 @@ The delimiters are the whole format. The id lives in the opening marker, so it i
 from a nearby heading. Declarations are the `Key: value` lines at the top of the block, ending at
 the first blank line; `Intent:` is required and the rest are optional. Everything after that blank
 line is the proof body, taken character for character to the matching end marker.
+
+Every criterion declares one or two nonblank `Intent:` lines: the behavior it proves, the expected
+relationship, and, where useful, why its example inputs exercise that behavior. A table of cases
+shares one explanation. Plan selects the inputs and calculates the expected results from the
+specification; those constants need not appear in source material and need no citation. Repair
+quotes these lines verbatim, and a failing criterion never authorizes changing its expected result.
 
 `Probe:`/`Probe Count:` are required together whenever the body invokes a staged runner with a
 literal selection option (a flag choosing a subset of an imported corpus, such as `--sections` or

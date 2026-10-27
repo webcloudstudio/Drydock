@@ -698,6 +698,14 @@ class ProgrammaticAcceptance:
     #: The cited lines, resolved under the Blueprint's ``sources/`` when the criterion was parsed
     #: from a file. ``None`` when nothing is cited or the citation does not resolve.
     cited_text: str | None = None
+    #: Each ``Intent:`` declaration line exactly as authored, in order. :attr:`intent` is the
+    #: normalized join with a criterion-ID fallback; repair prompts quote these lines instead.
+    intent_lines: tuple[str, ...] = ()
+
+    @property
+    def declares_intent(self) -> bool:
+        """True when the author wrote at least one nonblank ``Intent:`` declaration."""
+        return any(_INTENT_VALUE_RE.match(line) for line in self.intent_lines)
 
     @property
     def timeout_seconds(self) -> int:
@@ -757,6 +765,8 @@ class AcceptanceRunResult:
     #: Whether a miss here is evidence about the product. False when the criterion re-typed its
     #: expected value rather than deriving it; see :attr:`ProgrammaticAcceptance.binding`.
     binding: bool = True
+    #: The criterion's ``Intent:`` lines verbatim; see :attr:`ProgrammaticAcceptance.intent_lines`.
+    intent_lines: tuple[str, ...] = ()
 
     @property
     def outcome(self) -> str:
@@ -790,6 +800,8 @@ class AcceptanceObservation:
     skipped: bool = False
     integrity_ok: bool = True
     integrity_reasons: tuple[str, ...] = ()
+    #: The criterion's ``Intent:`` lines verbatim; see :attr:`ProgrammaticAcceptance.intent_lines`.
+    intent_lines: tuple[str, ...] = ()
 
     @property
     def outcome(self) -> str:
@@ -955,6 +967,9 @@ def _requirements_from_values(
     return tuple(requirements)
 
 
+#: An ``Intent:`` declaration whose value is not blank.
+_INTENT_VALUE_RE = re.compile(r"^\s*intent\s*:\s*\S", re.IGNORECASE)
+
 #: Metadata keys recognized inside an AC block. The set is closed on purpose: an unrecognized
 #: ``Key: value`` line ends the metadata run and begins the code, so an annotated assignment such
 #: as ``result: int = 5`` on the first code line cannot be mistaken for a declaration.
@@ -988,6 +1003,7 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
     if lines and not lines[0].strip():
         lines = lines[1:]
     meta: dict[str, list[str]] = {}
+    intent_lines: list[str] = []
     index = 0
     # Blank lines are consumed only when a declaration still follows them; the code must keep
     # any blank line that precedes its first statement, so the cursor advances to the declaration
@@ -1001,7 +1017,10 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
         match = AC_META_RE.match(lines[cursor])
         if match is None or match.group("key").strip().lower() not in _AC_META_KEYS:
             break
-        meta.setdefault(match.group("key").strip().lower(), []).append(match.group("value"))
+        key = match.group("key").strip().lower()
+        meta.setdefault(key, []).append(match.group("value"))
+        if key == "intent":
+            intent_lines.append(lines[cursor])
         index = cursor + 1
     # The proof body is whatever follows, character for character. Only the trailing blank lines
     # the author left before the end marker are dropped.
@@ -1017,6 +1036,7 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
         check_id=check_id,
         source=source,
         intent=intent or check_id,
+        intent_lines=tuple(intent_lines),
         code=code,
         sea_trials=sea_trials,
         full_suite=suite in {"full", "scoped"},
@@ -2658,6 +2678,7 @@ def run_programmatic_acceptance(
                 check_id=check.check_id,
                 source=check.source,
                 intent=check.intent,
+                intent_lines=check.intent_lines,
                 passed=False,
                 return_code=None,
                 stdout="",
@@ -2698,6 +2719,7 @@ def run_programmatic_acceptance(
                 check_id=check.check_id,
                 source=check.source,
                 intent=check.intent,
+                intent_lines=check.intent_lines,
                 passed=False,
                 return_code=1,
                 stdout="",
@@ -2717,6 +2739,7 @@ def run_programmatic_acceptance(
                     check_id=check.check_id,
                     source=check.source,
                     intent=check.intent,
+                    intent_lines=check.intent_lines,
                     passed=False,
                     return_code=None,
                     stdout="",
@@ -2773,6 +2796,7 @@ def run_programmatic_acceptance(
                         check_id=check.check_id,
                         source=check.source,
                         intent=check.intent,
+                        intent_lines=check.intent_lines,
                         passed=False,
                         return_code=None,
                         stdout=_timeout_output_text(stdout),
@@ -2824,6 +2848,7 @@ def run_programmatic_acceptance(
                 check_id=check.check_id,
                 source=check.source,
                 intent=check.intent,
+                intent_lines=check.intent_lines,
                 passed=return_code == 0,
                 return_code=return_code,
                 stdout=stdout,
@@ -2868,6 +2893,7 @@ def observe_programmatic_acceptance(
                 check_id=result.check_id,
                 source=result.source,
                 intent=result.intent,
+                intent_lines=result.intent_lines,
                 passed=result.passed,
                 return_code=result.return_code,
                 stdout=result.stdout,

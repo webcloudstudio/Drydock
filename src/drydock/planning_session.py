@@ -4153,6 +4153,24 @@ def _validate_plan_output(
             for check in _acceptance_checks(blocks[name], source=name)
             if (reason := process_readiness_defect(check.code)) is not None
         )
+        + tuple(
+            # The parsed intent falls back to the criterion ID, so presence is judged on the
+            # declarations the author wrote. Exhaustion forgives this kind; verify never checks it.
+            (
+                "missing-intent",
+                MalformedAcceptance(
+                    check.check_id,
+                    name,
+                    "declares no nonblank `Intent:` line; add one or two `Intent:` lines stating "
+                    "the behavior this criterion proves and, where useful, why its fixture "
+                    "values exercise it",
+                ),
+            )
+            for name in sorted(blocks)
+            if name not in _RESERVED_BLOCKS and name.lower().endswith(".md")
+            for check in _acceptance_checks(blocks[name], source=name)
+            if not check.declares_intent
+        )
         + tuple(("acceptance-malformed", defect) for defect in malformed_acceptance)
         + tuple(
             (kind, MalformedAcceptance(check.check_id, name, reason))

@@ -38,6 +38,10 @@ and measured something; everything else is reported, not charged.
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 
+`2026-10-26` · `ProgrammaticAcceptance.intent_lines` keeps each `Intent:` line exactly as authored,
+in order; `intent` remains the normalized join with ID fallback. Result types carry the lines into
+Build repair. Plan and AC repair already send the raw block (`tests/test_ac_intent.py`).
+
 `2026-10-26` · The unknown-decimal-provenance advisory is removed. Plan may select
 inputs and calculate expected results that do not appear in sources (`tests/test_acceptance_oracle.py`).
 

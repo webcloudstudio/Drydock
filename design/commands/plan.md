@@ -39,6 +39,13 @@ written.
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 
+`2026-10-26` · Plan authoring raises `missing-intent` for a criterion with no nonblank `Intent:`
+declaration (`ProgrammaticAcceptance.declares_intent`, not the criterion-ID fallback). It enters
+the bounded artifact repair loop; on exhaustion it is forgiven and blocks nothing. `plan verify`
+never checks it, so existing Blueprints without intent still verify and build.
+`BLUEPRINTS_CONTRACT.md` V41 requires one or two intent lines and states that Plan selects
+fixtures and expected results without source citation.
+
 `2026-10-26` · `decimal_provenance_advisories` and its `plan verify` warning are removed
 ([plan_ac_intent_and_tdd](../topics/plan_ac_intent_and_tdd.md), Slice A). Plan-selected decimal
 text such as LayersTesting `csv-format-cents-values` is admitted with no warning. Citation

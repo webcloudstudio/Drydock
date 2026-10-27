@@ -84,7 +84,8 @@ def test_generated_plan_does_not_reauthor_an_unknown_decimal_expectation(tmp_pat
     blocks = {
         "ARCHITECTURE.md": _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None."),
         "FEATURE-Status.md": "# FEATURE: Status\n\n## Programmatic Acceptance\n\n"
-        '=== AC conversion ===\nfrom app import result\nassert result == "10.00"\n'
+        "=== AC conversion ===\nIntent: Report the converted result as decimal text.\n"
+        'from app import result\nassert result == "10.00"\n'
         "=== END AC conversion ===\n",
         "MANIFEST.md": manifest,
     }
