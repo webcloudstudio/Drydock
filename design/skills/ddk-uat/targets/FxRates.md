@@ -151,7 +151,8 @@ system Python 3.10 in validation child scripts because the first invocation used
 without putting venv/bin on PATH. All four checks pass on the corrected targeted rerun (7.56s).
 No full-suite rerun is claimed after those fixture/environment corrections. A copied application under /tmp uses the generated library
 and an explicit init caller solely for compatibility verification; no application under runs/
-is patched. Fix outcome remains unverified until clean fresh UAT evidence.
+is patched. Fix commits: `d8b82d0` (Drydock initializer/contracts and skill handoff), `abbbb22` (kit inputs).
+Outcome: unverified until clean fresh UAT evidence.
 
 The /ddk-uat prompt V11 and skill 1.6.0 now require concrete verified recommendations for the
 separate implementation loop: observed failure/owner/evidence, exact file and behavior change,
@@ -170,7 +171,7 @@ active pass. This fixes the handoff failure demonstrated by this conversation.
 ## Actions
 
 - `2026-10-27` · FX-001: explicit initialization correction is implemented in kit commit
-  `abbbb22` and the accompanying Drydock generated initializer/contract repair. Outcome:
+  `abbbb22` and Drydock initializer/contract repair `d8b82d0`. Outcome:
   unverified by UAT. Ed requires a fresh run; close on clean import/plan/build/scoring evidence
   using the new sources. No resume or historical evidence mutation is required.
 
