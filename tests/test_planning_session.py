@@ -134,6 +134,8 @@ def test_plan_prompt_declares_strict_artifact_contract():
     # all of it against the declared output contract after the response.
     assert "Review the authored relationships" in prompt
     assert "Before responding, verify:" not in prompt
+    assert "Finish and close `TOPOLOGY.md` before opening `DECISIONS.json`." in prompt
+    assert "two opening lines and two closing lines" in prompt
 
 
 def test_stage_one_prompt_includes_read_only_built_work_ledger(tmp_path):
@@ -3217,6 +3219,31 @@ def test_outside_text_over_100_characters_is_not_submitted_for_waiver(tmp_path):
     assert not (target_dir / "MANIFEST.md").exists()
 
 
+@pytest.mark.parametrize("resumed", [False, True])
+def test_envelope_revision_keeps_entire_draft_and_required_context(resumed):
+    from drydock.prompt_assembly import PromptAssembly
+
+    original = PromptAssembly.single_prompt("SOURCE AUTHORITY\n")
+    draft = (
+        "=== BEGIN ARTIFACT TOPOLOGY.md ===\n"
+        + "instructions: Preserve this existing design.\n" * 120
+        + "=== BEGIN ARTIFACT DECISIONS.json ===\n[]\n"
+    )
+    assembly = ps._artifact_retry_assembly(
+        original,
+        reply=draft,
+        unattended=True,
+        resumed=resumed,
+        defect="TOPOLOGY.md: missing closing artifact marker",
+    )
+    text = assembly.rendered_text
+    assert draft.strip() in text  # A long draft must not use the prose-reply truncation limit.
+    assert text.count(draft.strip()) == 1
+    assert ("SOURCE AUTHORITY" in text) is not resumed
+    assert "retain valid content and extend or revise incomplete or incorrect content" in text
+    assert "Return both complete updated artifacts" in text
+
+
 _PROSE_REPLY = (
     "I can't produce the Stage 1 planning output as requested, because the stack contract "
     "conflicts with itself. Tell me which reading to take, or say to proceed."
@@ -3268,6 +3295,11 @@ def test_malformed_stage_one_is_resubmitted_once_with_exact_defects(tmp_path, pr
         if (closed, name) not in (("topology", "TOPOLOGY.md"), ("decisions", "DECISIONS.json")):
             assert f"{name}: missing closing artifact marker" in prompt
     assert "complete replacement" in prompt
+    assert "Use the previous reply below as the working draft" in prompt
+    assert "retain valid content and extend or revise incomplete or incorrect content" in prompt
+    assert "Do not merely append closing markers" in prompt
+    assert "Do not restart planning from scratch" in prompt
+    assert "Return both complete updated artifacts" in prompt
     assert any("malformed Stage 1 envelopes" in line for line in progress)
     assert (target_dir / "MANIFEST.md").exists()
     if provider == "claude":

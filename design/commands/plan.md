@@ -39,6 +39,19 @@ written.
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 
+`2026-10-26` · Stage 1 generation explicitly completes and closes TOPOLOGY.md before opening
+DECISIONS.json, then checks for two matched boundary pairs. A malformed-envelope retry treats
+the entire rejected response as its working draft: retain valid work, extend or revise incomplete
+or incorrect contents against the original task and reported defects, and preserve story IDs,
+relationships and decisions unless correction requires changes. It returns both complete updated
+artifacts, not appended markers, a patch or an isolated continuation. Source context is retained
+for stateless providers; Claude retains its resumed session. The existing single correction
+budget and downstream envelope/semantic validation remain unchanged. This is prompt guidance,
+not deterministic enforcement of draft preservation or a guarantee of model compliance.
+CommonMark finding CM-ENVELOPE-001 tracks live verification.
+Local verification: 473 planning/reliability/prompt/header/memory tests pass; repository lint,
+changed-code formatting and diff checks pass. Live model compliance remains unverified.
+
 `2026-10-26` · Plan authoring raises `missing-intent` for a criterion with no nonblank `Intent:`
 declaration (`ProgrammaticAcceptance.declares_intent`, not the criterion-ID fallback). It enters
 the bounded artifact repair loop; on exhaustion it is forgiven and blocks nothing. `plan verify`

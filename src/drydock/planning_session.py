@@ -4812,7 +4812,13 @@ def _artifact_retry_assembly(
         "Reply now with only the artifact blocks the Agent Task requires, in its delimiter form.",
         *(
             [
-                "Return a complete replacement: TOPOLOGY.md first, then DECISIONS.json.",
+                "Use the previous reply below as the working draft, not as a new planning task.",
+                "Do not restart planning from scratch: retain valid content and extend or revise incomplete or incorrect content",
+                "as needed to satisfy the original task and the reported defects. Preserve existing",
+                "story IDs, relationships, and decisions unless correcting them is necessary.",
+                "Do not merely append closing markers: review and complete each artifact's body.",
+                "Return both complete updated artifacts as a complete replacement: TOPOLOGY.md first,",
+                "then DECISIONS.json. Do not return only additions, a patch, or a continuation fragment.",
                 *emission_contract_lines((TOPOLOGY_BLOCK, DECISIONS_BLOCK)),
                 "Correct these exact boundary defects:",
                 defect,

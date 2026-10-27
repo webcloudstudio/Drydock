@@ -169,6 +169,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-26: `drydock plan` instructs Stage 1 to close each artifact before opening the next.
+  Its malformed-output retry revises and completes the existing draft, retaining valid work
+  while returning both complete updated artifacts. The one-retry budget and validation gates
+  remain unchanged; the retry permits necessary content corrections rather than only inserting
+  closing markers.
+
 - 2026-10-26: Acceptance criteria intent is a governed contract. `drydock plan` requires one or
   two nonblank `Intent:` lines per newly authored criterion (`missing-intent`, corrected in the
   bounded artifact repair loop and forgiven on exhaustion); `plan verify` does not check it, so

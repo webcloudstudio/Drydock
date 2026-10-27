@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
-version: 20261026 V55
+version: 20261026 V56
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, STORY_GUIDANCE.json, ACCEPTANCE.json, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -813,6 +813,10 @@ separate files with a bare opening delimiter, and never emit two consecutive
 `=== END ARTIFACT ===` lines. Emit each file once where possible. To correct a file within the
 same response, emit its complete replacement in a new block with the same filename; the last
 block is authoritative and receives the normal validation. Never emit a patch or partial update.
+
+Finish and close `TOPOLOGY.md` before opening `DECISIONS.json`. Check the completed response
+for two opening lines and two closing lines, one matched pair per artifact; complete any
+unfinished body before closing it.
 
 The complete Stage 1 response is:
 
