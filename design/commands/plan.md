@@ -62,6 +62,13 @@ later integration after all providers exist, before the terminal gate. No case o
 is removed. The ledger injection is deterministic; semantic scope correctness remains a model
 judgment and is not claimed as statically enforced.
 
+`2026-10-27` · Initial AC authoring explicitly requires every CLI call's exit assertion,
+including final readbacks, before consuming output or running another command. The shared
+Blueprint contract and current-batch continuation include setup/rejection/readback and incorrect/
+correct final-read examples; plan_create repeats the rule. This addresses LT-EXIT-001 at creation,
+without changing verification or adding automatic repair. Local prompt checks prove delivery and
+example guard behavior, not first-pass model compliance; Ed's fresh Plan output is the live proof.
+
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 

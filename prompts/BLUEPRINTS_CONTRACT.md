@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261027 V43
+version: 20261027 V44
 ---
 
 ## Overview
@@ -631,6 +631,47 @@ source rule requires to exist. A check that loads a transaction for account `A` 
 expected rejection passes for the wrong reason. Every setup call asserts the success its source
 declares: a valid staged asset loads with exit `0`, never `1`. A setup call that expects failure
 creates nothing, and the action under test then runs against the empty application.
+
+Every `cli_runner` invocation asserts its expected exit status before its result is consumed
+or another command runs. This includes setup, the action under test, and final readback calls.
+Successful setup and readback calls assert exit `0`; rejection calls assert the required rejection
+exit. A parsed output assertion never replaces the exit-status assertion.
+
+For example, set up an account, reject a deletion that would make its balance negative, then
+read back the account. This excerpt omits fixture details: choose `acct`, create the deposit and
+later outflow where indicated, and bind `deposit_id` from the successful deposit result. The
+remaining criterion asserts the source-defined unchanged state:
+
+```python
+code, out, err = cli_runner("account", "add", acct, "Delete Probe")
+assert code == 0
+# Create the deposit and later outflow here; assert each setup call's exit is 0.
+code, out, err = cli_runner("txn", "delete", deposit_id)
+assert code == 3
+assert out == ""
+code, out, err = cli_runner("account", "get", acct)
+assert code == 0
+row = parse(out)[1]
+```
+
+Incorrect final readback (the exit is unchecked):
+
+```python
+code, out, err = cli_runner("account", "get", acct)
+row = parse(out)[1]
+```
+
+Correct final readback:
+
+```python
+code, out, err = cli_runner("account", "get", acct)
+assert code == 0
+row = parse(out)[1]
+```
+
+Before returning each AC, inspect every `cli_runner` call, including the last call and calls
+inside loops or helpers. Each exit is asserted before output parsing, output assertions, or the
+next command; a helper returning the runner result requires its caller to assert the exit.
 
 **A check exercises the built application through the client its foundation publishes.** The
 Rigging file for the Target's web server, database and CLI publishes a `## Foundation Contract`

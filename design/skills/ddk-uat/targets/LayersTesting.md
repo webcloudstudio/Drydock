@@ -140,6 +140,20 @@ Preserve evidence-backed causes and verification status across LayersTesting run
 - Fix: none applied in this diagnosis. Outcome: open (authoring/admission cause), recovered
   in this run by existing mechanical repair; no UAT execution or evidence mutation performed.
 
+### LT-EXIT-001 — authorized initial-authoring correction, 2026-10-27
+
+- Ed explicitly selected creation guidance with examples rather than additional AC repair.
+- This commit updates `BLUEPRINTS_CONTRACT.md`, `plan_create.md` and `plan_continue.md`:
+  every setup, action and readback CLI invocation asserts its expected exit before consuming
+  output or running another command. Shared/current-batch examples show setup exit 0, rejection
+  exit 3, and incorrect/correct final readback; review includes final, loop and helper calls.
+- Verification: 145 prompt/harness/design checks pass. Example scripts parse; the existing
+  unchecked-call guard rejects the incorrect readback and accepts the corrected sequences.
+  Actual Stage 2 prompt assembly includes the rule and both readback examples.
+- Outcome: unverified pending fresh first-pass Plan output. No model call, generated AC edit,
+  new automatic repair, or verifier relaxation. The earlier admission-gap recommendation is
+  deferred; it is not part of this authorized prompt correction.
+
 ## Decisions
 
 - None.
@@ -150,7 +164,7 @@ Preserve evidence-backed causes and verification status across LayersTesting run
 
 ## Actions
 
-- `2026-10-27` · LT-EXIT-001 — share unchecked-call validation with pre-write artifact repair; close after authorized regression-backed repair and later clean affected-stage evidence. Final receipt for `20261027.135355` remains pending; inspect it before assigning an overall run verdict.
+- `2026-10-27` · LT-EXIT-001 — initial-authoring guidance corrected in this commit; close on fresh Plan output passing the exit guard without repair. Pre-write automatic repair is deferred in favor of Ed's first-pass authoring goal. Final receipt for `20261027.135355` remains pending; inspect before assigning an overall verdict.
 
 - `2026-10-26` · LT-STORE-001 — framework isolation repair is implemented (commit recorded in Details). Ed reruns from Plan; closes when configuration criteria use the harness fixture and verify/build cleanly. Preserve URL coverage rather than removing source requirements.
 - `2026-10-26` · LT-IFACE-001 — omitted empty field clauses are accepted without losing shared citations; Ed verifies the next plan has no interface rewrite warnings.

@@ -415,6 +415,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-27: Planning authoring contracts explicitly require exit assertions on every
+  `cli_runner` call, including final readbacks. Shared and current-batch guidance includes
+  setup, rejection and incorrect/correct readback examples to prevent unchecked calls in initial
+  AC generation; verification and repair behavior are unchanged.
+
 - 2026-10-27: Stage 2 planning repeats current-batch topology instructions and interfaces beside
   its work queue. Corpus selection guidance preserves deferred cross-feature coverage: a section
   containing later capabilities belongs on an integration after those providers exist, while the

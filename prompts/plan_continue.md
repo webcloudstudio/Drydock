@@ -1,7 +1,7 @@
 ---
 name: plan_continue
 description: Stage 2 Blueprint authoring instruction appended after plan_create has accepted and frozen a complete TOPOLOGY.md declaration.
-version: 20261027 V11
+version: 20261027 V12
 intent: Author one bounded batch of Blueprint specifications from the frozen topology, closing each artifact before opening the next.
 command: drydock plan create
 output: A bounded batch of Blueprint specification files
@@ -76,6 +76,47 @@ Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated 
 For each criterion, identify the delivered interface, required setup, source-derived expectation
 and failure diagnostics before writing code. Keep imports and tooling declarations inside the
 criterion. Close it with `=== END AC <id> ===`; that token never closes an artifact.
+
+Every `cli_runner` invocation asserts its expected exit status before its result is consumed
+or another command runs. This includes setup, the action under test, and final readback calls.
+Successful setup and readback calls assert exit `0`; rejection calls assert the required rejection
+exit. A parsed output assertion never replaces the exit-status assertion.
+
+For example, set up an account, reject a deletion that would make its balance negative, then
+read back the account. This excerpt omits fixture details: choose `acct`, create the deposit and
+later outflow where indicated, and bind `deposit_id` from the successful deposit result. The
+remaining criterion asserts the source-defined unchanged state:
+
+```python
+code, out, err = cli_runner("account", "add", acct, "Delete Probe")
+assert code == 0
+# Create the deposit and later outflow here; assert each setup call's exit is 0.
+code, out, err = cli_runner("txn", "delete", deposit_id)
+assert code == 3
+assert out == ""
+code, out, err = cli_runner("account", "get", acct)
+assert code == 0
+row = parse(out)[1]
+```
+
+Incorrect final readback (the exit is unchecked):
+
+```python
+code, out, err = cli_runner("account", "get", acct)
+row = parse(out)[1]
+```
+
+Correct final readback:
+
+```python
+code, out, err = cli_runner("account", "get", acct)
+assert code == 0
+row = parse(out)[1]
+```
+
+Before returning each AC, inspect every `cli_runner` call, including the last call and calls
+inside loops or helpers. Each exit is asserted before output parsing, output assertions, or the
+next command; a helper returning the runner result requires its caller to assert the exit.
 
 For staged corpus checks, follow `BLUEPRINTS_CONTRACT.md`: declare `Suite: scoped`, a supported
 listing `Probe:` and its `Probe Count:` protocol. Use literal runner arguments or literal string
