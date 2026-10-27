@@ -50,7 +50,8 @@ budget and downstream envelope/semantic validation remain unchanged. This is pro
 not deterministic enforcement of draft preservation or a guarantee of model compliance.
 CommonMark finding CM-ENVELOPE-001 tracks live verification.
 Local verification: 473 planning/reliability/prompt/header/memory tests pass; repository lint,
-changed-code formatting and diff checks pass. Live model compliance remains unverified.
+changed-code formatting and diff checks pass. The full suite passes with 4,620 passed and
+2 skipped. Live model compliance remains unverified.
 
 `2026-10-26` · Plan authoring raises `missing-intent` for a criterion with no nonblank `Intent:`
 declaration (`ProgrammaticAcceptance.declares_intent`, not the criterion-ID fallback). It enters

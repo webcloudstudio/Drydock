@@ -39,11 +39,19 @@ Preserve evidence-backed causes and verification status across CommonMark runs.
 - Deterministic reproduction: read preserved output into memory and call `pair_artifact_delimiters`. Initial unclosed tuple is `(TOPOLOGY.md, DECISIONS.json)`; retry unclosed tuple is `(TOPOLOGY.md,)`. Insert missing closes in memory only: both have two closed artifacts and no unclosed artifacts. No test suite or model call was run; evidence was not modified.
 - Contract review: initial prompt already contains a complete two-artifact example and mandatory per-file close rule. Retry names both defects, repeats the emission contract and asks for a complete replacement. The failure is not explained by an absent instruction. Source/acceptance content does not cause delimiter rejection; topology semantics were not established by the boundary-only replay.
 - Contributing mechanism: for Codex, `_artifact_retry_assembly` retains the full planning context and asks for a complete replacement. The retry prompt is 404,663 bytes; output grows from 6,941 to 16,057 bytes. This permits broad reauthoring during a framing correction. Context size causing the omission remains unproved.
-- Recommendation: separate envelope correction from semantic planning. A compact correction request should preserve bodies and change only boundary lines, with deterministic body-preservation and envelope validation plus existing semantic validation afterward. Keep a bounded failure path; do not infer completeness solely from an inserted close. Prompt wording can reduce errors but cannot guarantee them away.
+- Initial recommendation (superseded by Ed’s draft-revision instruction below): separate envelope correction from semantic planning. A compact correction request should preserve bodies and change only boundary lines, with deterministic body-preservation and envelope validation plus existing semantic validation afterward. Keep a bounded failure path; do not infer completeness solely from an inserted close. Prompt wording can reduce errors but cannot guarantee them away.
 - Prior history: the central ledger records recovered CommonMark envelope defects in `20261026.173709`; that row remains open with no fix commit. This run repeats the defect family and exhausts recovery; it does not prove regression of a repaired envelope mechanism.
-- Fix commit: none.
-- Verification: read-only deterministic replay above. No repair implemented and no UAT rerun.
-- Outcome: open.
+- Fix commit: `981de1b` — Revise existing planning drafts during artifact retries.
+- Diagnosis verification: read-only deterministic replay above. Subsequent repair verification is recorded below; no UAT rerun.
+- Outcome: unverified.
+
+### Authorized draft-revision change
+
+- Ed selected reuse and extension of the existing output, superseding the earlier envelope-only recommendation. No byte-preservation gate is added: content corrections are allowed.
+- Generation adds one short instruction to finish and close TOPOLOGY.md before DECISIONS.json and check both pairs. Retry uses the complete prior response as its draft, preserving valid content while completing or correcting bodies and returning both complete artifacts.
+- Prompt context remains unchanged: initial 396,281 bytes (387 KiB), retry 404,663 bytes (395 KiB) in the diagnosed run. Provider-reported input usage was 125,039 and 126,863 tokens. Largest initial parts: spec.txt 206,382 bytes, BLUEPRINTS_CONTRACT.md 68,140, task body 58,440, MANIFEST_CONTRACT.md 17,103, ANALYSIS.md 12,142. Context size is measured; causal attribution remains unproved.
+- Existing strict parsing, semantic validation, retry exhaustion and provider session behavior remain authoritative. This small instruction change cannot guarantee model compliance.
+- Local verification: 473 focused planning/reliability/prompt/header/memory tests passed; full suite 4,620 passed and 2 skipped; repository lint, changed-code formatting and diff checks passed. The added contract checks first failed against the old behavior. No provider call or UAT run was made for verification.
 
 ## Decisions
 
@@ -55,7 +63,7 @@ Preserve evidence-backed causes and verification status across CommonMark runs.
 
 ## Actions
 
-- `2026-10-26` · CM-ENVELOPE-001: review and authorize a bounded envelope-only correction change. Prove both missing-close cases, exact body preservation, valid neighbors, ambiguous/truncated rejection and correction exhaustion with isolated tests; then Ed verifies clean Plan execution in a later UAT. Prompt-only reliability remains unverified.
+- `2026-10-26` · CM-ENVELOPE-001: Ed authorized a small generation-contract change and draft-based repair, explicitly permitting content completion and revision rather than closing markers alone. Implementation retains source context and the one-retry budget; local verification is recorded in Details. Ed's later clean Plan-stage UAT is required to verify model compliance.
 
 ## Working Notes
 
