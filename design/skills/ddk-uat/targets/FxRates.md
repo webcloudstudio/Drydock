@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-27 V1 |
+| Version | 2026-10-27 V2 |
 | Description | FxRates source fidelity, grader lifecycle and managed-state diagnosis. |
 | Target | FxRates |
 | Evidence root | /mnt/c/Users/barlo/projects/drydock/uat/FxRates |
@@ -83,6 +83,42 @@ Build block-16 is not UAT step 16. The recorded build command is UAT step 10;
 resuming Build retains completed stories rather than restarting init/plan.
 These commands are handoff syntax, not a claim that unresolved causes are repaired.
 
+### Authorized source repair — 2026-10-27
+
+Ed explicitly authorized edits to the kit sources and supplied grader, then required a complete
+fresh run because instructions changed. This exception permits kit input changes, not historical
+run mutations. Changed kit files: sources/INSTRUCTIONS.md, bin/run.sh, README.md.
+The brief assigns schema provisioning to DATABASE and defines init as deleting all rates through
+the persistence interface, preserving schema. The grader preserves configured DSNs, resolves
+DATABASE_URL then DATABASE_PATH then APP/data/app.db, and refuses missing stores/tables through
+a read-only preflight. It creates no replacement store or schema. Its 35 checks and expected
+answers are unchanged. Grading explicitly owns and resets the dedicated test store's rows;
+agent grading uses the inherited Drydock-provisioned test store.
+
+Verification uses only /tmp/fxrates-grader-check-vd9ry9n9: copied application code, a SQLite backup
+of provisioned data, and the corrected copied grader. No UAT command or historical grader was
+executed. Shell syntax and missing/empty-store negative checks pass without schema creation;
+full grader passes 35/35 in each of three configurations: default path, sqlite:// DATABASE_URL
+with a conflicting DATABASE_PATH, and DATABASE_PATH alone. The conflicting path is never created.
+All 35 checks and expected answers are byte-identical to the preserved grader.
+This verifies grader compatibility, not a clean newly planned UAT.
+
+Kit commit blocked: git add reported pre-existing uat/FxRates/.git/index.lock; no lock was removed
+or modified. Source repair is unverified by UAT, and remains uncommitted in the kit until the
+owner resolves the lock. Root memory/changelog commit records this handoff separately.
+
+FX-001 now has an implemented source correction (Outcome: unverified); a fresh import/analyze/
+plan/build/score is required, never a resume of 20261027.152427. The old Continuation section
+above documents syntax only and is superseded for this repair. Operator command:
+`drydock uat FxRates --llm-provider claude --model haiku --plan-override-model sonnet`.
+
+FX-002 remains undetermined, not evidence requiring database restoration. Canonical deletion
+protection and testing against a provisioned isolated store are separate concerns. SQLite supports
+WAL; physical bytes can change without changed rows. No Drydock mutation-gate change is made
+within this source repair. The fresh grader no longer discards the inherited provisioned DSN.
+A recurrence of the alert needs a logical-state versus physical-file reproduction, not blind
+restoration. FX-003 is unchanged.
+
 ## Decisions
 
 - None.
@@ -95,10 +131,10 @@ These commands are handoff syntax, not a claim that unresolved causes are repair
 
 - `2026-10-27` · FX-001: reconcile Ed's provisioned-store grading intent with the governed kit
   brief/run.sh, then correct the earliest owning source/planning contract and regressions.
-  Close after reviewed correction and clean affected-stage UAT evidence; no repair authorized
-  or performed by this diagnosis.
+  Source correction implemented on 2026-10-27; close after the kit commit and clean fresh-run
+  evidence. The existing kit index lock prevents committing the authorized input edits.
 - `2026-10-27` · FX-002: reproduce fingerprint change on a temporary WAL database and inspect
-  preserved sidecar evidence before deciding whether any recovery is necessary. Close with
+  preserved sidecar evidence if the managed-state alert recurs; no restoration is currently justified. Close with
   discriminating regression and reviewed affected-stage UAT proof.
 - `2026-10-27` · FX-003: correct missing sh declarations in planning authoring; close with
   static declaration proof and clean planning evidence.

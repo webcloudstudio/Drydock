@@ -415,6 +415,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-27: FxRates kit instructions and supplied grader use the configured, schema-provisioned
+  test store. `fxrates init` empties rates without recreating schema; grading preserves database
+  configuration and refuses an unprovisioned store instead of replacing it with an empty SQLite
+  file. The 35 grading checks retain their expected results. Changed instructions require a
+  fresh kit run; historical runs remain unchanged.
+
 - 2026-10-27: Planning authoring contracts explicitly require exit assertions on every
   `cli_runner` call, including final readbacks. Shared and current-batch guidance includes
   setup, rejection and incorrect/correct readback examples to prevent unchecked calls in initial
