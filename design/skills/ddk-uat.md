@@ -43,6 +43,7 @@ newest dated entry describe the implemented behavior. See [stabilization](../top
 ### Target diagnosis memories
 
 - [CommonMark](ddk-uat/targets/CommonMark.md) — Stage 1 artifact-envelope diagnosis.
+- [LayersTesting](ddk-uat/targets/LayersTesting.md) — database-failure criteria versus the acceptance store lifecycle.
 
 ### Per-Target memory contract
 
