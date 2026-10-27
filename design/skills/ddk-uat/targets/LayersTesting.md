@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-27 V2 |
+| Version | 2026-10-27 V3 |
 | Description | LayersTesting UAT diagnosis and verification history. |
 | Target | LayersTesting |
 | Evidence root | /mnt/c/Users/barlo/projects/drydock/uat/LayersTesting |
@@ -108,6 +108,38 @@ Preserve evidence-backed causes and verification status across LayersTesting run
 - Published UAT files and generated products remain unchanged. Framework/prompt findings stay
   unverified until Ed's fresh affected-stage evidence; prompt compliance is not statically proved.
 
+### 20261027.135355 — LT-EXIT-001: unchecked final reads; recovered
+
+- Observed state: no `result.json`, evidence manifest or report index at diagnosis. Available
+  command streams end with `06-plan-repair`: five repaired, zero outstanding. `04-plan` writes
+  draft/unbuildable with rc=0; operator reports `05-plan-verify` rc=1. Final verdict/exit pending.
+  Cleanliness: not clean, because defective criteria required repair.
+- Provider/model: Claude Sonnet 5.5 for planning and repair; Haiku 5.5 for analyze.
+  Framework reports 0.8.0; receipt commit and source revision are unknown without final receipt.
+- Authority: imported `INSTRUCTIONS.md:65-70,121` requires atomic rejection of negative balances
+  with exit 3. These five proofs exercise source intent; no specification contamination proved.
+- Cause: original `FEATURE-NoNegativeBalance.md` omitted exit assertions on six final
+  `account get` calls: one each in nonneg-load/post/amend/delete and two in nonneg-transfer.
+  All rejection calls already asserted exit 3. `print(out, err)` was not causal; initial inspection
+  of the already-repaired workspace misleadingly suggested a false positive, ruled out by the
+  exact original bodies in `workspace/logs/20261027.141325.731Z_layerstesting_plan-repair_claude.prompt.md`.
+- Deterministic read-only replay: strip the `Intent:` declaration before passing original code
+  to `harness_exits.unchecked_calls`; it reports 42, 24, 30, 29, and 33/35 respectively after
+  normalizing the leading blank line. Repaired workspace bodies all return `[]`. A valid neighbor
+  with print between runner assignment and exit assertion also returns `[]`.
+- Repair output adds six `assert code == 0` statements; existing product assertions remain.
+  `06-plan-repair.stdout.log` records five repaired/zero outstanding; linked llm.jsonl records
+  provider rc=0. This is observed recovery, not a framework fix or clean-run proof.
+- Contributing admission gap: `planning_session.py:4127-4227` groups decidable authoring defects
+  but never invokes `unchecked_calls`; `plan_verify.py:768` first reports this defect after
+  serialization and lineage. Recommend sharing the existing guard with bounded artifact repair,
+  with an omitted-final-read regression plus asserted/rebound neighbors. Do not relax the guard.
+- The single SQLite construction/connectivity warning is an expected successful observation,
+  unrelated to missing exit assertions. Available init/import/analyze streams show no other
+  defective warning; complete envelope audit/final downstream outcome remains pending receipt.
+- Fix: none applied in this diagnosis. Outcome: open (authoring/admission cause), recovered
+  in this run by existing mechanical repair; no UAT execution or evidence mutation performed.
+
 ## Decisions
 
 - None.
@@ -117,6 +149,8 @@ Preserve evidence-backed causes and verification status across LayersTesting run
 - None.
 
 ## Actions
+
+- `2026-10-27` · LT-EXIT-001 — share unchecked-call validation with pre-write artifact repair; close after authorized regression-backed repair and later clean affected-stage evidence. Final receipt for `20261027.135355` remains pending; inspect it before assigning an overall run verdict.
 
 - `2026-10-26` · LT-STORE-001 — framework isolation repair is implemented (commit recorded in Details). Ed reruns from Plan; closes when configuration criteria use the harness fixture and verify/build cleanly. Preserve URL coverage rather than removing source requirements.
 - `2026-10-26` · LT-IFACE-001 — omitted empty field clauses are accepted without losing shared citations; Ed verifies the next plan has no interface rewrite warnings.
