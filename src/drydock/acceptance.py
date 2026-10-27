@@ -1689,10 +1689,9 @@ def accepted_status_codes(code: str) -> tuple[tuple[str, frozenset[int]], ...]:
 def weak_status_assertion(codes: frozenset[int]) -> str:
     """Return why an accepted-status set asserts nothing, or ``""`` when it is determinate.
 
-    A criterion states one expectation. ``404`` means the endpoint is not there, so admitting it
-    beside any other code makes the criterion true of an application that implements nothing —
-    which is how a real run produced 37 criteria that an empty FastAPI app satisfies. Asserted
-    alone it is the opposite: a deliberate negative probe, and one of the stronger checks there is.
+    ``404`` can indicate an absent endpoint, so admitting it beside success makes this assertion
+    weak in isolation. Later assertions can still require implemented behavior; this check does
+    not prove the entire criterion vacuous. A 404 asserted alone can be a deliberate negative probe.
 
     A stub is not the problem and is not caught here. A stub answers, and a criterion that pins
     the status it answers with is a real test of a real contract.
@@ -1701,14 +1700,15 @@ def weak_status_assertion(codes: frozenset[int]) -> str:
         return ""
     if 404 in codes:
         return (
-            f"accepts {sorted(codes)}: 404 means the endpoint is absent, so this passes against "
-            "an application that implements nothing. Assert 404 alone for a negative probe, or "
+            f"accepts {sorted(codes)}: 404 means the endpoint is absent, so this assertion alone can pass when the endpoint is absent. "
+            "Consider the entire criterion and its later assertions before changing it. "
+            "Assert 404 alone for a negative probe, or "
             "assert the status the implementation answers with."
         )
     if any(200 <= code < 300 for code in codes) and any(code >= 500 for code in codes):
         return (
             f"accepts {sorted(codes)}: success and server failure are both admitted, so the "
-            "criterion holds whatever the implementation does."
+            "assertion alone admits both outcomes; assess the entire criterion."
         )
     return ""
 

@@ -30,6 +30,9 @@ Apply the same acceptance and repair contracts to any Target selected by Ed.
 
 ### Current contract
 
+`2026-10-27` · AgentStore retains the fingerprint fast path; on change it compares a consistent SQLite backup with the pre-call backup, including schema, rows, rowids and relevant metadata. Concurrent physical changes or unreadable comparisons fail closed. WAL-only checkpoint activity can proceed without restore. This remains detection, not an OS sandbox.
+
+
 | Concern | Contract |
 |---|---|
 | Authority | Approved intent defines correctness; implementation establishes observed behavior. |

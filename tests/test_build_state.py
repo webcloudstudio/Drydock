@@ -212,3 +212,57 @@ def test_without_the_plugin_the_same_tests_collide(store, tmp_path):
         )
     assert completed.returncode == 1
     assert "1 failed, 1 passed" in completed.stdout
+
+
+def test_wal_checkpoint_without_logical_change_does_not_stop(store):
+    build, target, canonical = store
+    writer = sqlite3.connect(canonical)
+    writer.execute("PRAGMA journal_mode=WAL")
+    writer.execute("INSERT INTO records VALUES ('wal row')")
+    writer.commit()
+    with AgentStore(build, target) as state:
+        writer.close()
+    assert not state.violation
+    assert rows(canonical) == [("existing",), ("wal row",)]
+
+
+def test_agent_receives_the_acceptance_helper(store):
+    build, target, _ = store
+    with AgentStore(build, target) as state:
+        plugin = Path(state.environment["PYTHONPATH"].split(__import__("os").pathsep)[0])
+        assert (plugin / "drydock_acceptance.py").is_file()
+        import os
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from drydock_acceptance import database_environment; "
+                "assert callable(database_environment)",
+            ],
+            cwd=build,
+            env={**os.environ, **state.environment},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+
+def test_rowid_change_is_a_managed_change(store):
+    build, target, canonical = store
+    with AgentStore(build, target) as state:
+        with sqlite3.connect(canonical) as db:
+            db.execute("UPDATE records SET rowid = 100")
+    assert state.violation
+    assert rows(state.backup_path) == [("existing",)]
+
+
+def test_unreadable_managed_database_stops_and_preserves_backup(store):
+    build, target, canonical = store
+    with AgentStore(build, target) as state:
+        canonical.write_bytes(b"not sqlite")
+    assert state.violation
+    assert rows(state.backup_path) == [("existing",)]

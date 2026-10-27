@@ -10,12 +10,15 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import time
+from contextlib import closing
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan
 from drydock.database_apply import DEFAULT_DSN, PROVENANCE_FILENAME, apply_schema
+from drydock.paths import get_language_dir
 
 
 def _fingerprint(path: Path) -> tuple[str | None, str | None]:
@@ -24,6 +27,43 @@ def _fingerprint(path: Path) -> tuple[str | None, str | None]:
         sha256(item.read_bytes()).hexdigest() if item.is_file() else None
         for item in (path, Path(str(path) + "-wal"))
     )
+
+
+def _logical_state(path: Path) -> tuple[tuple[str, ...], tuple[int, ...], tuple[str, ...]]:
+    """Read a consistent logical SQLite image, including committed WAL contents.
+
+    Unsupported or unreadable databases fail closed rather than being treated as unchanged.
+    """
+    with closing(
+        sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+    ) as source:
+        with closing(sqlite3.connect(":memory:")) as copy:
+            deadline = time.monotonic() + 5
+
+            def progress(_status: int, _remaining: int, _total: int) -> None:
+                if time.monotonic() > deadline:
+                    raise TimeoutError("SQLite state comparison timed out")
+
+            source.backup(copy, pages=128, progress=progress, sleep=0.05)
+            pragmas = tuple(
+                copy.execute(f"PRAGMA {name}").fetchone()[0]
+                for name in ("user_version", "application_id", "auto_vacuum")
+            )
+            rowids = []
+            for _, name, kind, _, without_rowid, _ in copy.execute("PRAGMA table_list"):
+                if kind != "table" or without_rowid or name.startswith("sqlite_"):
+                    continue
+                quoted = '"' + name.replace('"', '""') + '"'
+                columns = {row[1].lower() for row in copy.execute(f"PRAGMA table_xinfo({quoted})")}
+                alias = next(
+                    (item for item in ("rowid", "_rowid_", "oid") if item not in columns), None
+                )
+                if alias is None:
+                    raise ValueError("cannot verify shadowed SQLite rowids")
+                rowids.extend(
+                    repr((name, *row)) for row in copy.execute(f"SELECT {alias}, * FROM {quoted}")
+                )
+            return tuple(sorted(copy.iterdump())), pragmas, tuple(sorted(rowids))
 
 
 _ISOLATION_PLUGIN = "drydock_store_isolation"
@@ -40,6 +80,10 @@ def _per_test_isolation(call_dir: Path, template: Path) -> dict[str, str]:
     shutil.copyfile(
         Path(__file__).with_name("pytest_store_isolation.py"),
         plugin_dir / f"{_ISOLATION_PLUGIN}.py",
+    )
+    shutil.copyfile(
+        get_language_dir("python") / "acceptance" / "drydock_acceptance.py",
+        plugin_dir / "drydock_acceptance.py",
     )
     return {
         "DRYDOCK_STORE_TEMPLATE": str(template),
@@ -123,17 +167,31 @@ class AgentStore:
 
     def __exit__(self, *exc) -> None:
         try:
+            diagnosis = "could not be verified"
             try:
                 changed = (
                     self._canonical is not None and _fingerprint(self._canonical) != self._before
                 )
             except OSError:
                 changed = True  # Retain the snapshot when state cannot be verified.
+            if changed and self._canonical is not None and self._canonical.is_file():
+                try:
+                    before_check = _fingerprint(self._canonical)
+                    same = _logical_state(self.backup_path) == _logical_state(self._canonical)
+                    # A concurrent physical change makes the comparison inconclusive.
+                    stable = before_check == _fingerprint(self._canonical)
+                    changed = not same or not stable
+                    if stable and not same:
+                        diagnosis = "has different schema or data"
+                except (OSError, sqlite3.Error, ValueError, TypeError, TimeoutError):
+                    changed = True
+            elif changed and self._canonical is not None and not self._canonical.exists():
+                diagnosis = "is missing"
             if changed:
                 self.violation = (
-                    "Managed SQLite state changed during agent execution. "
+                    f"Managed SQLite state changed or {diagnosis} during agent execution. "
                     f"Retained pre-call snapshot: {self.backup_path}. "
-                    "Review and restore through the persistence owner before continuing; "
+                    "Review the retained evidence through the persistence owner before continuing; "
                     "no automatic overwrite or reprovisioning was performed."
                 )
             elif self.backup_path is not None:
@@ -158,9 +216,9 @@ def persistence_recovery(target: str, owner: str | None, detail: str) -> str:
     """Preserve data first; identify the provisioning owner instead of retrying its consumer."""
     owner_text = f"DATABASE story `{owner}`" if owner else "the story implementing DATABASE.md"
     return (
-        f"Review persistence evidence and restore the configured store through {owner_text}.\n"
+        f"Review persistence evidence through {owner_text}; restore only if required.\n"
         "Preserve existing data and any retained managed-state snapshot; provisioning an empty "
         "store is not data recovery.\n"
         f"{detail}\n"
-        f"After the store is restored and verified, run: drydock build {target}"
+        f"After the store is verified and any required recovery is complete, run: drydock build {target}"
     )

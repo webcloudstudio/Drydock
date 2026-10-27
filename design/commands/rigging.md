@@ -27,6 +27,9 @@ catalogs new Rigging files for Analyze.
 
 ### Current contract
 
+`2026-10-27` · SQLite and persistence full/compact references provide matching task-oriented Python setup, DDL paths, initialization, test isolation and inspection instructions. Compact provenance hashes match source.
+
+
 The full and compact shipped persistence/SQLite/PostgreSQL/Python references publish the Python
 initializer consistently. Their provenance hashes match the updated full sources without a
 provider call. Generated schema and shipped engines remain DATABASE-owned. The initializer is

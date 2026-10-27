@@ -28,6 +28,9 @@ was given.
 
 ### Current contract
 
+`2026-10-27` · Agent calls receive the shipped acceptance configuration helper alongside their disposable-store pytest plugin. The helper creates a scratch DSN, not a schema; product initialization is exercised explicitly. Canonical-store fingerprint changes receive logical SQLite comparison and retain backups on change or uncertainty.
+
+
 | Concern | Contract |
 |---|---|
 | Authority | Selected Rigging foundation contracts and approved source interfaces. |

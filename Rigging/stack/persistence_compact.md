@@ -1,7 +1,38 @@
-<!-- Compacted from Rigging/stack/persistence.md sha256=8e3449043cb4d896787c713ac683d7ec025a13222e0d6d5c67ee6c6e3c07e351 on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/persistence.md sha256=dd1d0386b60bedfc7fdff8618d7d1ef9e0d496c736d544e19739cc8a08c7bc51 on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 <!-- Manually aligned with the source initialization contract on 2026-10-27. -->
 
 # Persistence & Service Encapsulation — Contract Surface
+
+## Database process — Python
+
+**Where is the schema?**
+Drydock generates `<application root>/schema.sql` from `DATABASE.md` and the `persistence/` package.
+Do not write or replace either artifact.
+
+**How do I initialize a selected store?**
+Call `persistence.initialize_database(dsn)` and close the returned database.
+This creates missing tables and indexes, preserves rows, and does not migrate existing tables.
+
+**How do I open a store?**
+Call `persistence.open_database(dsn)` and close the returned database. Opening does not initialize it.
+Use the application configuration: `DATABASE_URL`, then `DATABASE_PATH`, then `data/app.db`.
+
+**How do I run tests?**
+Use the inherited `DATABASE_URL` and `DATABASE_PATH`; Drydock supplies a disposable SQLite store
+for the build agent and a separate store per pytest test. Use `persistence.testing.db_session()`
+for ordinary persistence tests. Do not hardcode or directly inspect `data/app.db`.
+
+**How do I test initialization of a fresh store?**
+Use `from drydock_acceptance import database_environment` and
+`with database_environment(url="init.db") as root:`. Call the product's init command inside the
+context; the helper supplies a temporary directory and DSN but does not create the schema.
+Drydock supplies this helper to acceptance criteria and build agents. The normal acceptance
+runner remains responsible for the authoritative criterion result.
+
+**How do I inspect data?**
+Use generated repository operations on the configured test store. Do not import SQLite drivers
+or author SQL in application code. Never remove or replace a managed application store.
+
 
 ## Relational Persistence
 

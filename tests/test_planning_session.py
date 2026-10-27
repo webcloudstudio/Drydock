@@ -8173,3 +8173,15 @@ def test_schedule_supplies_guidance_metadata_without_a_spurious_foundation(
     assert not computation.fatal
     assert "unfounded-stack" not in {defect.code for defect in computation.warnings}
     assert computation.stories[0].stack_mode == "consumer"
+
+
+def test_weak_initial_status_does_not_claim_whole_criterion_passes():
+    blocks = {
+        "FEATURE-Example.md": _criterion(
+            "assert before.status_code in (200, 404)\nassert after.status_code == 200"
+        )
+    }
+    reason = ps._weak_acceptance_defects(blocks)[0].reason
+    assert "assertion alone" in reason
+    assert "entire criterion" in reason
+    assert "this passes against an application" not in reason

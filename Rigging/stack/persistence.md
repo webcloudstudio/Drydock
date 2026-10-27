@@ -11,6 +11,37 @@ Prerequisite: `stack/common.md`
 
 ---
 
+## Database process — Python
+
+**Where is the schema?**
+Drydock generates `<application root>/schema.sql` from `DATABASE.md` and the `persistence/` package.
+Do not write or replace either artifact.
+
+**How do I initialize a selected store?**
+Call `persistence.initialize_database(dsn)` and close the returned database.
+This creates missing tables and indexes, preserves rows, and does not migrate existing tables.
+
+**How do I open a store?**
+Call `persistence.open_database(dsn)` and close the returned database. Opening does not initialize it.
+Use the application configuration: `DATABASE_URL`, then `DATABASE_PATH`, then `data/app.db`.
+
+**How do I run tests?**
+Use the inherited `DATABASE_URL` and `DATABASE_PATH`; Drydock supplies a disposable SQLite store
+for the build agent and a separate store per pytest test. Use `persistence.testing.db_session()`
+for ordinary persistence tests. Do not hardcode or directly inspect `data/app.db`.
+
+**How do I test initialization of a fresh store?**
+Use `from drydock_acceptance import database_environment` and
+`with database_environment(url="init.db") as root:`. Call the product's init command inside the
+context; the helper supplies a temporary directory and DSN but does not create the schema.
+Drydock supplies this helper to acceptance criteria and build agents. The normal acceptance
+runner remains responsible for the authoritative criterion result.
+
+**How do I inspect data?**
+Use generated repository operations on the configured test store. Do not import SQLite drivers
+or author SQL in application code. Never remove or replace a managed application store.
+
+
 ## The Invariant
 
 **Rule**: All persistence and external-service access goes through a typed encapsulation

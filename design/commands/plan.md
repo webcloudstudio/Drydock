@@ -27,6 +27,9 @@ written.
 
 ### Current contract
 
+`2026-10-27` · Weak HTTP status decisions and warnings identify the suspect assertion and direct review of the complete criterion; they do not claim a later required success assertion passes against an absent endpoint. Existing material-review classification remains unchanged.
+
+
 | Concern | Contract |
 |---|---|
 | Authority | Approved source requirements and selected stack; source-defined text and formulas are preserved. |

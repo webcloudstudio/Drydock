@@ -2985,7 +2985,7 @@ def weak_acceptance_decisions(
     *,
     unattended: bool = False,
 ) -> tuple[Decision, ...]:
-    """Record each criterion that proves nothing, for the Commander to settle.
+    """Record each potentially weak status assertion for the Commander to review.
 
     ``severity: material`` and not ``blocking``: these criteria execute, and a plan full of stubs
     is a legitimate early pass. The record exists so the weakness is counted and visible rather
@@ -3001,10 +3001,11 @@ def weak_acceptance_decisions(
             story=None,
             status="recommended" if unattended else "open",
             archived=False,
-            title=f"Acceptance criterion {defect.check_id or 'container'} proves nothing",
+            title=f"Review status assertion in {defect.check_id or 'container'}",
             description=(
                 f"{defect.rendered}\n\n"
-                "A criterion states one expectation. Pin the status the implementation answers "
+                "Review the complete criterion, including later assertions, before changing it. "
+                "Where appropriate, pin the status the implementation answers "
                 "with — a stub that answers is a real contract and a real test — or assert the "
                 "not-found status alone as a deliberate negative probe. A criterion that needs a "
                 "row to exist creates it through the public interface first rather than admitting "
@@ -4079,8 +4080,7 @@ def _validate_plan_output(
         f"{defect.rendered} — recorded as a blocking decision; this criterion gates nothing"
         for defect in malformed_acceptance
     ) + tuple(
-        f"{defect.rendered} — recorded as a material decision; this criterion passes against an "
-        "implementation that does nothing"
+        f"{defect.rendered} — recorded as a material decision; review the complete criterion"
         for defect in _weak_acceptance_defects(blocks)
     )
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)

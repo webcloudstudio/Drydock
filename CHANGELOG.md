@@ -169,6 +169,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-27: Build agents receive the SQLite configuration-test helper and task-oriented
+  persistence Rigging, including generated schema and initializer paths. Managed SQLite changes
+  are compared against the retained logical backup so WAL checkpointing does not alone block a
+  build; changed or unverifiable data still stops with the backup preserved. Planning warnings
+  describe weak individual HTTP assertions without claiming the full criterion passes.
+
 - 2026-10-26: `drydock plan` instructs Stage 1 to close each artifact before opening the next.
   Its malformed-output retry revises and completes the existing draft, retaining valid work
   while returning both complete updated artifacts. The one-retry budget and validation gates

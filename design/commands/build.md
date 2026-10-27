@@ -26,6 +26,9 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 
 ### Current contract
 
+`2026-10-27` · SQLite agent-call guards compare a retained pre-call backup with a consistent logical image when main/WAL fingerprints change. Harmless WAL checkpointing proceeds; changed or unreadable state stops and keeps the backup. The build-agent environment includes `drydock_acceptance.database_environment` for fresh-store tests; canonical acceptance remains authoritative. Logical comparison does not sandbox arbitrary file access or establish UAT success.
+
+
 | Concern | Contract |
 |---|---|
 | Authority | Approved Blueprints, source constraints and generated foundation contracts. |

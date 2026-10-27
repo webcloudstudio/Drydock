@@ -26,6 +26,9 @@ and measured something; everything else is reported, not charged.
 
 ### Current contract
 
+`2026-10-27` · Build agents can import the shipped `database_environment` helper for local practice; only the Drydock acceptance runner owns the authoritative verdict. Weak status guidance describes an individual assertion and asks for whole-criterion review; it does not claim later assertions pass.
+
+
 | Concern | Contract |
 |---|---|
 | Authority | Source-derived behavior and independent governed evidence. |
