@@ -42,7 +42,7 @@ newest dated entry describe the implemented behavior. See [stabilization](../top
 
 ### Target diagnosis memories
 
-- None created yet. Add a relative link on first diagnosis; do not preseed a roster.
+- [CommonMark](ddk-uat/targets/CommonMark.md) — Stage 1 artifact-envelope diagnosis.
 
 ### Per-Target memory contract
 
