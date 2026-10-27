@@ -415,11 +415,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
-- 2026-10-27: FxRates kit instructions and supplied grader use the configured, schema-provisioned
-  test store. `fxrates init` empties rates without recreating schema; grading preserves database
-  configuration and refuses an unprovisioned store instead of replacing it with an empty SQLite
-  file. The 35 grading checks retain their expected results. Changed instructions require a
-  fresh kit run; historical runs remain unchanged.
+- 2026-10-27: Generated Python persistence exports `initialize_database(dsn)` for explicit
+  application initialization. It creates missing tables and indexes from DATABASE-generated
+  `schema.sql`, preserves existing records, resolves the script independently of cwd, and joins
+  acceptance rollback. Ordinary opens do not initialize; initialization never resets or migrates
+  tables. FxRates instructions now require this lifecycle, and its supplied grader initializes a
+  fresh isolated store through the application before running the unchanged 35 checks. Changed
+  instructions require a fresh kit run; historical runs remain unchanged.
+
+- 2026-10-27: `/ddk-uat` diagnoses failures with concrete, evidence-verified repair recommendations
+  naming the owning files, resulting behavior, regression proof and rerun boundary for a separate
+  implementation loop. Unproved hypotheses and optional low-value improvements remain notes;
+  explicitly authorized repairs are completed within the active pass.
 
 - 2026-10-27: Planning authoring contracts explicitly require exit assertions on every
   `cli_runner` call, including final readbacks. Shared and current-batch guidance includes

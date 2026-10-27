@@ -1,10 +1,10 @@
 ---
 name: uat_diagnostic
 description: Investigate warnings, errors, recovered defects, and downstream failures in a running or completed Drydock UAT run, including a successful run.
-version: 20261026 V10
+version: 20261027 V11
 intent: Assess operational success and clean execution separately, trace upstream warnings and errors through later artifacts and failures, and recommend the earliest corrective work supported by preserved evidence.
 command: operator diagnostic prompt
-output: A compact review handoff with verdict, material contract assumptions, evidence-backed causes, and next action or verified repair result.
+output: A compact review handoff explaining the failure, verified causes, concrete repair recommendations, or implemented repair results.
 ---
 
 # Diagnose the Latest Drydock UAT Run
@@ -199,6 +199,33 @@ implementation, and acceptance gates. Before blaming implementation or the model
 - Recommend the smallest change that repairs the cause, plus regression tests. Do not recommend a
   broad rewrite or another expensive UAT until narrow tests pass.
 
+## Concrete repair recommendations
+
+Every diagnosis explains what happened and delivers concrete repair suggestions for Ed's
+separate implementation loop. Diagnosis alone does not authorize implementation. Verify the
+cause and corrective scope against source authority, preserved evidence, current code, and a
+narrow deterministic reproduction or equivalent direct proof before recommending a repair.
+A verified cause is not a verified fix: label a proposed change `proposed`; use `implemented,
+locally verified` only after actual checks, and retain `unverified` UAT outcome until rerun proof.
+
+For each verified, material defect, persist and report one numbered recommendation with:
+
+- stable finding id and owning layer (`kit source`, `Drydock`, or `provider`);
+- observed failure, violated contract and shortest evidence/reproduction reference;
+- exact owning file/module and concrete resulting behavior to implement, including invariants
+  that must survive; no generic tasks such as "revise the scorer" or "look at the problem";
+- narrow regression and passing neighbor, with expected results;
+- required rerun boundary: fresh run after governed instruction/plan changes, or a justified
+  affected-stage resume for a compatible repair; never imply frozen inputs refresh on resume.
+
+Order recommendations by causal prerequisite and make them sufficient for another implementation
+pass without rediscovering the diagnosis. When repair is authorized, implement them in this pass
+and report results; do not hand already-authorized work back as recommendations. If no corrective
+change is verified, say `No verified repair recommendation` and name the exact missing
+observation and discriminating check in the Target memory. Unproved hypotheses and optional,
+low-value improvements belong in notes, not the repair list or mandatory next steps. They do not
+justify restoration, new gates, changed product semantics, or an unnecessary rerun.
+
 ## Authorized repair handoff
 
 For an authorized repair, reproduce the defect with a narrow failing regression, correct its
@@ -215,7 +242,7 @@ name the missing discriminating evidence; continue independent authorized work.
 ## Output Contract
 
 Target 150–200 words for the diagnosis, excluding any user-required completion footer. Include
-all material causes even if that requires more. Use the four sections below; omit empty detail,
+all material causes and actionable repair detail even if that requires more. Use the four sections below; omit empty detail,
 generic assurances, repeated consequences and a second summary. Keep full evidence in the Target memory
 and linked artifacts. Do not shorten the investigation merely to shorten its report.
 
@@ -238,10 +265,11 @@ reference. Attach downstream consequences to their cause instead of repeating th
 section. Include independent/recovered defects and label a Reporting Defect here. Distinguish
 proved, ruled-out and undetermined causal links. For a recurrence, name the prior fix and outcome.
 
-### Next Action
+### Repair Recommendations
 
-- Diagnosis only: the smallest correction or missing investigation, its deterministic proof,
-  and the affected stage Ed should rerun after repair/review. Do not imply repairs were performed.
+- Diagnosis only: numbered, verified repair recommendations using the concrete contract above.
+  State what happened and why each correction addresses the proved cause. Do not imply repairs
+  were performed. If none is justified, say so explicitly; keep uncertainties in memory notes.
 - Authorized repair: commit and changed files, actual test outcomes, residual risk, and what Ed
   should verify on rerun. Do not ask again to perform already-authorized work.
 - End with the Target memory path and finding/outcome updates. Do not append another recap

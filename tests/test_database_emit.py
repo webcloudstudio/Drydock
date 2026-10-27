@@ -810,3 +810,126 @@ def test_a_launched_process_does_not_inherit_the_harness(tmp_path, monkeypatch):
         "assert child.stdout.strip() == 'absent'\n",
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_generated_initializer_creates_fresh_store_and_preserves_rows_on_repeat(tmp_path):
+    build = _emitted_build(tmp_path)
+    result = _run_in_build(
+        build,
+        "from persistence import initialize_database\n"
+        "with initialize_database('nested/fresh.db') as db:\n"
+        "    assert db.tickets.list(status='open') == []\n"
+        "    key = db.tickets.create(status='open', title='Keep this record')\n"
+        "with initialize_database('sqlite://nested/fresh.db') as db:\n"
+        "    rows = db.tickets.list(status='open')\n"
+        "    assert [(r.id, r.title) for r in rows] == [(key.id, 'Keep this record')]\n",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_generated_initializer_locates_schema_independently_of_cwd(tmp_path):
+    build = _emitted_build(tmp_path)
+    result = _run_in_build(
+        build,
+        "import os\n"
+        "from persistence import initialize_database\n"
+        "os.chdir('..')\n"
+        "with initialize_database('elsewhere.db') as db:\n"
+        "    assert db.tickets.list(status='open') == []\n",
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "elsewhere.db").is_file()
+
+
+def test_generated_initializer_does_not_hide_missing_schema_or_apply_on_open(tmp_path):
+    build = _emitted_build(tmp_path)
+    result = _run_in_build(
+        build,
+        "from pathlib import Path\n"
+        "from persistence import initialize_database, open_database\n"
+        "with open_database('ordinary.db') as db:\n"
+        "    try:\n"
+        "        db.tickets.list(status='open')\n"
+        "    except Exception as error:\n"
+        "        assert 'no such table' in str(error), error\n"
+        "    else:\n"
+        "        raise AssertionError('ordinary open unexpectedly initialized schema')\n"
+        "Path('schema.sql').unlink()\n"
+        "try:\n"
+        "    initialize_database('missing-schema.db')\n"
+        "except FileNotFoundError:\n"
+        "    pass\n"
+        "else:\n"
+        "    raise AssertionError('missing schema was silently ignored')\n"
+        "assert not Path('missing-schema.db').exists()\n",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_generated_initializer_is_safe_inside_acceptance_rollback(tmp_path):
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    seed = _run_in_build(
+        build,
+        "from persistence import open_database\n"
+        "with open_database('data/app.db') as db:\n"
+        "    db.tickets.create(status='open', title='Canonical record')\n",
+    )
+    assert seed.returncode == 0, seed.stderr
+    result = _run_criterion(
+        build,
+        tmp_path,
+        "from persistence import initialize_database\n"
+        "with initialize_database('data/app.db') as db:\n"
+        "    assert [r.title for r in db.tickets.list(status='open')] == ['Canonical record']\n"
+        "    db.tickets.create(status='open', title='Rolled back')\n",
+    )
+    assert result.returncode == 0, result.stderr
+    after = _run_in_build(
+        build,
+        "from persistence import open_database\n"
+        "with open_database('data/app.db') as db:\n"
+        "    assert [r.title for r in db.tickets.list(status='open')] == ['Canonical record']\n",
+    )
+    assert after.returncode == 0, after.stderr
+
+
+def test_generated_initializer_cannot_execute_destructive_schema_sql(tmp_path):
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    result = _run_in_build(
+        build,
+        "from pathlib import Path\n"
+        "from persistence import initialize_database, open_database, PersistenceError\n"
+        "with open_database('data/app.db') as db:\n"
+        "    db.tickets.create(status='open', title='Preserved')\n"
+        "Path('schema.sql').write_text('CREATE TABLE IF NOT EXISTS surprise (id INTEGER); DROP TABLE tickets;')\n"
+        "try:\n"
+        "    initialize_database('data/app.db')\n"
+        "except PersistenceError as error:\n"
+        "    assert 'idempotent' in str(error)\n"
+        "else:\n"
+        "    raise AssertionError('destructive initialization succeeded')\n"
+        "with open_database('data/app.db') as db:\n"
+        "    assert [r.title for r in db.tickets.list(status='open')] == ['Preserved']\n"
+        "    assert db.driver.connect().execute(\"SELECT name FROM sqlite_master WHERE name='surprise'\").fetchall() == []\n",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_product_init_can_initialize_scratch_store_inside_acceptance_fixture(tmp_path):
+    build = _emitted_build(tmp_path)
+    assert apply_schema(build).applied
+    result = _run_criterion(
+        build,
+        tmp_path,
+        "from drydock_acceptance import database_environment\n"
+        "from persistence import initialize_database\n"
+        "with database_environment(url='new.db') as root:\n"
+        "    with initialize_database(str(root / 'new.db')) as db:\n"
+        "        db.tickets.create(status='open', title='Keep on repeat')\n"
+        "    with initialize_database(str(root / 'new.db')) as db:\n"
+        "        assert [r.title for r in db.tickets.list(status='open')] == ['Keep on repeat']\n",
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (build / "new.db").exists()

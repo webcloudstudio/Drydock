@@ -48,6 +48,15 @@ noun in the same sentence/report field. A product's malformed reference definiti
 combine with a different field's suite name to route product failures to Plan. Explicit
 `AC_BROKEN` claims and genuine local prose claims remain advisory and retain existing recovery.
 
+`2026-10-27` · Explicit source-required Python init delegates to generated
+`persistence.initialize_database(dsn)`: apply DATABASE-owned idempotent creation DDL to the
+selected store, return the open database, preserve existing records/definitions, never reset or
+migrate. Ordinary opens/startup still do not provision. DATABASE continues generating/provisioning
+its build store; later deterministic verification remains read-only. Generated initializer
+creation DDL joins acceptance rollback; ordinary execute_script remains forbidden in rollback.
+The implementation validates the whole initialization script as CREATE TABLE/INDEX IF NOT
+EXISTS before executing any statement. Canonical managed-state protection is unchanged.
+
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-26 V3 |
+| Version | 2026-10-27 V4 |
 | Description | Per-Target diagnosis-memory contract and index, with the historical central UAT ledger. |
 | Skill | `/ddk-uat` |
 | Prompts | `uat_diagnostic.md` |
@@ -36,6 +36,17 @@ so earlier causes and fixes remain discoverable.
 | Recovery | Trace the earliest cause and resource owner; do not accommodate an incorrect upstream oracle in later code. |
 | Proof | Preserved evidence plus local regressions; only later clean affected-stage evidence marks a fix verified. |
 | Handoff | Ed runs → invokes the skill → reviews diagnosis/authorized repair → reruns. Four compact sections report verdict, material assumptions, causes and next action; full detail stays in the Target memory and evidence. |
+
+`2026-10-27` · Prompt V11 / skill 1.6.0 requires every diagnosis to explain what happened
+and supply concrete, verified repair recommendations suitable for Ed's implementation loop.
+Each recommendation names its stable finding/owner, exact file/module and resulting behavior,
+violated contract and evidence/reproduction, preserved invariants, regression/passing neighbor,
+and justified fresh-run/resume boundary. A verified cause does not make a proposed fix verified.
+Unproved hypotheses and optional low-value changes stay in notes, outside mandatory repairs.
+When no repair is justified, the handoff says so and records the exact missing discriminating
+check. Explicitly authorized repairs are implemented in the same pass. Diagnosis-only scope,
+UAT/evidence ownership and per-Target memory remain unchanged. Skill validation,
+prompt/header/design checks and packaged-prompt V11 resolution pass.
 
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).

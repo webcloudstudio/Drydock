@@ -43,6 +43,17 @@ by the acceptance runner, never by generated application code. It owns scratch c
 DSNs and restoration, creates no schema, and does not replace CRUD acceptance or authorize
 remote stores. The compact contract was manually aligned with the full source and its hash.
 
+`2026-10-27` · Python persistence publishes `initialize_database(dsn) -> Database` from
+its generated package. DATABASE owns generation of schema.sql; explicit product init applies
+that script to a selected store, preserving records/definitions. Open does not imply init.
+Generated creation is allowed within acceptance rollback; scripts are validated as idempotent
+CREATE TABLE/INDEX only, and ordinary raw DDL remains forbidden there. The script path is package-
+relative, not cwd-relative. SQLite integration proves fresh creation, repeat-init preservation,
+ordinary-open behavior, missing script, destructive-script refusal and harness rollback. This
+change does not add a Go initializer or prove live PostgreSQL behavior; the Python engine adapter
+continues handling PostgreSQL DDL translation. Historical build-once prose is superseded for
+explicit Python initialization, not existing-table migration.
+
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 

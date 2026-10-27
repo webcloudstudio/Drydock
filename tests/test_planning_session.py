@@ -5805,10 +5805,14 @@ def _authoring_contract_blueprint_example() -> str:
     from drydock.paths import get_prompts_root
 
     contract = (get_prompts_root() / "BLUEPRINTS_CONTRACT.md").read_text(encoding="utf-8")
-    fences = re.findall(r"^```(?:markdown)?\n(.*?)^```", contract, re.MULTILINE | re.DOTALL)
-    examples = [fence for fence in fences if "=== AC " in fence]
-    assert examples, "the authoring contract no longer carries a worked === AC === example"
-    return max(examples, key=len)
+    fences = re.findall(r"^```markdown\n(.*?)^```[ \t]*$", contract, re.MULTILINE | re.DOTALL)
+    examples = [
+        fence
+        for fence in fences
+        if fence.lstrip().startswith("## Programmatic Acceptance\n") and "=== AC " in fence
+    ]
+    assert len(examples) == 1, "the contract must carry one standalone worked acceptance example"
+    return examples[0]
 
 
 def test_the_authoring_contract_example_parses_as_one_artifact():

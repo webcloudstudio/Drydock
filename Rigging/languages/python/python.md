@@ -35,7 +35,9 @@ are unknown, not proof that code or an interaction was unused.
 Use `stack/persistence.md`. Drydock copies `Rigging/languages/python/persistence/{db,sqlite,postgres}.py` and generates
 `persistence/{schema,__init__,testing}.py` plus `schema.sql` from `DATABASE.md`. Call
 `open_database(dsn)` and `db.<table>.<operation>(...)`; use `persistence.testing.db_session()`
-for criteria. SQLite uses the standard library; PostgreSQL needs `psycopg[binary]` in the project
+for criteria. Explicit init commands use `persistence.initialize_database(dsn)` to apply generated
+creation DDL to the selected store and preserve existing data; close the returned database.
+Ordinary opens do not initialize. SQLite uses the standard library; PostgreSQL needs `psycopg[binary]` in the project
 dependencies. Both engines ship together and the DSN selects the engine. Library verification
 lives in `tests/test_shipped_database.py`; a Target still verifies its own schema and operations.
 

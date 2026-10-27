@@ -1,7 +1,7 @@
 # Persistence & Service Encapsulation
 
 **Type:** guidance
-**Version:** 20261026 V6
+**Version:** 20261027 V7
 **Category:** Persistence
 **Description:** The single boundary rule for all persistent stores and external services — typed access classes, no raw access in application code
 
@@ -55,7 +55,7 @@ The Python package lands at `persistence/` in the build:
 |---|---|
 | `db.py`, `sqlite.py`, `postgres.py` | shipped by Drydock, copied unchanged |
 | `schema.py` | generated from `DATABASE.md` — tables, operations, row dataclasses |
-| `schema.sql` (beside the package) | generated DDL, applied once at the DATABASE step |
+| `schema.sql` (beside the package) | generated idempotent DDL, applied by DATABASE and explicit initialization |
 
 ### Calling it
 
@@ -167,22 +167,30 @@ chosen from the DSN, because the same build runs SQLite in development and test 
 production. `VARCHAR(n)` is declared once and emitted to both: PostgreSQL enforces the length,
 SQLite parses the same declaration and ignores it.
 
-**Schema is built once.** `schema.sql` is applied at the DATABASE build step and never again
-within a release. Application startup does not create or alter schema.
+**Schema generation and store initialization are separate.** DATABASE generates `schema.sql`
+and provisions the configured build store. A source-required explicit Python init command calls
+`persistence.initialize_database(dsn)` to create missing tables and indexes in the selected
+store, including a newly selected test database. It returns an open `Database`; callers close it.
+It applies only generated idempotent creation DDL, preserves existing records and table
+structures, and does not migrate or reset data. The initializer locates the script beside the
+package independently of cwd. `open_database(dsn)` and ordinary startup do not initialize schema.
+The generated initializer may run in the acceptance transaction; its schema and data changes
+roll back with that transaction. Ordinary raw DDL remains forbidden in rollback sessions.
 
 **Guardrails**
 
 - Do not write a repository, DAO, ORM model, or session factory.
 - Do not import `sqlite3`, `psycopg`, or a SQL string anywhere outside `persistence/`.
 - Do not edit anything under `persistence/` — edit `DATABASE.md` and rebuild.
-- Do not create or alter schema at application startup.
+- Do not author DDL in application code or initialize on ordinary startup. Explicit init delegates to the generated persistence initializer.
 
 ### Acceptance transactions
 
 **Acceptance store lifecycle.** The DATABASE step provisions and verifies the configured store
 once. Ordinary persistence criteria never replace DATABASE_URL/DATABASE_PATH, create a temporary
 database, apply DDL, or assume an empty store. Configuration tests use the harness-owned fixture
-below. The store may hold data before any criterion runs: assert on records the
+below, including source-required initialization through the product interface. The fixture
+itself creates no schema. The store may hold data before any criterion runs: assert on records the
 criterion created, or on a count read before setup (`after == before + 5`), never on an absolute
 table count.
 
@@ -193,9 +201,10 @@ sets both variables to absolute scratch paths and changes cwd to the yielded `Pa
 unsets a variable; empty string sets it empty; other arguments must be relative file names.
 Only `url` accepts `sqlite://`. Both variables and cwd are restored on exit, even on failure.
 The fixture creates no schema or parent directory; `url="missing/app.db"` tests open failure.
-Use separate contexts to test URL priority, prefix stripping, fallback and the default
-`data/app.db`. Assert behavior through the declared product interface, never ordinary CRUD
-against these unprovisioned paths. Direct DSN replacement remains forbidden.
+Use separate contexts to test explicit product initialization, URL priority, prefix stripping, fallback and the default
+`data/app.db`. Assert behavior through the declared product interface, never unrelated CRUD
+against these unprovisioned paths. Init acceptance may initialize through the product and verify
+creation, repeatability and preservation on its scratch store. Direct DSN replacement remains forbidden.
 
 The acceptance harness owns isolation. It begins one transaction before each Python criterion and
 rolls it back when the criterion ends, pass or fail. Every database the criterion's process opens

@@ -44,6 +44,14 @@ fixture owns the permitted configuration mutation; it is not a filesystem/proces
 Absolute/remote/traversal paths are refused. Tests prove canonical bytes and parent state
 survive, including exceptions, and the fixture imports in the real acceptance subprocess.
 
+`2026-10-27` · Source-required explicit init can be exercised through the product
+interface within `database_environment`. The fixture still creates no schema; generated Python
+initialization validates and applies only CREATE TABLE/INDEX IF NOT EXISTS and participates in
+the existing harness transaction. Fresh-store/init-repeat/preservation checks may use that
+scratch store, while unrelated CRUD continues against the provisioned canonical store. Ordinary
+execute_script and driver escapes remain forbidden inside rollback. No assertion or fixture is
+weakened to accommodate the former build-only initialization restriction.
+
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 

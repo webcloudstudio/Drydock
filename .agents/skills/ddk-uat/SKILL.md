@@ -2,7 +2,7 @@
 name: ddk-uat
 description: Investigate warnings, errors, recovered defects, and downstream failures in running or completed Drydock UAT runs, including successful runs, using Drydock's current versioned UAT diagnostic prompt. Invoke with "/ddk-uat TARGET" or "$ddk-uat TARGET", including after clearing conversation context.
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # Drydock UAT
@@ -12,7 +12,9 @@ future diagnoses without duplicating policy in this skill.
 
 Support Ed's manual kit-run → diagnosis → authorized repair → review → rerun workflow.
 The loaded prompt owns investigation depth, one diagnosis memory per Target with filename-case
-checks, and the compact review handoff.
+checks, and the compact review handoff. Every diagnosis explains what happened and provides
+concrete, evidence-verified repair recommendations for Ed's implementation loop. Keep unproved
+hypotheses and optional low-value improvements in notes, outside the repair list.
 Keep source/AC correctness and proved upstream defects central; do not replace operator review
 with an automatic outer loop. Perform the assumptions review; report only material conclusions.
 

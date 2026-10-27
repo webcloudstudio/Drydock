@@ -25,6 +25,14 @@ catalogs new Rigging files for Analyze.
 
 ## Details
 
+### Current contract
+
+The full and compact shipped persistence/SQLite/PostgreSQL/Python references publish the Python
+initializer consistently. Their provenance hashes match the updated full sources without a
+provider call. Generated schema and shipped engines remain DATABASE-owned. The initializer is
+an explicit creation API, not startup migration or canonical test cleanup.
+
+
 ### Syntax
 
 ```text

@@ -1,5 +1,5 @@
-<!-- Compacted from Rigging/stack/persistence.md sha256=450cc321e2e57a5dc2a353b44a1b780ff52268ae87a545d5b32b3d1fd243fb3e on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
-<!-- Manually aligned with the source configuration-fixture contract on 2026-10-26. -->
+<!-- Compacted from Rigging/stack/persistence.md sha256=8e3449043cb4d896787c713ac683d7ec025a13222e0d6d5c67ee6c6e3c07e351 on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Manually aligned with the source initialization contract on 2026-10-27. -->
 
 # Persistence & Service Encapsulation — Contract Surface
 
@@ -60,7 +60,13 @@ Constraints: Callers build against `DATABASE_compact.md`’s generated `Operatio
 
 The generated package supports SQLite and PostgreSQL selected from the runtime DSN.
 
-Constraints: Both engines are present in every build. The schema is applied once during the DATABASE build step and is not created or altered at application startup.
+Constraints: Both engines are present in every build. DATABASE generates idempotent schema.sql and provisions the build store. Ordinary startup does not apply DDL. Explicit source-required Python init uses initialize_database(dsn).
+
+### function_initialize_database
+
+Signature: `persistence.initialize_database(dsn: str) -> Database`
+
+Creates missing tables/indexes using generated schema.sql, resolved independently of cwd. Returns an open store; caller closes it. Repeated calls preserve existing records and table definitions. No reset or migration. Works inside acceptance rollback; ordinary raw DDL remains forbidden there. Missing scripts and execution failures propagate.
 
 ## Configuration
 
@@ -188,7 +194,9 @@ including failures. Creates no schema or parent directories; `url="missing/app.d
 failure. Test configuration priority, prefix, fallback and default through the product interface.
 
 Constraints: Configuration/open-failure acceptance only; no populated-store CRUD, external
-paths, other engines, direct DSN mutation or schema setup.
+paths, other engines, direct DSN mutation or caller-authored schema setup. Source-required init
+acceptance calls the product initializer inside this scratch context, then verifies creation,
+repeatability and data preservation. The fixture itself still creates no schema.
 
 ### Rule: python-criterion-transaction
 

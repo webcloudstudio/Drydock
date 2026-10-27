@@ -393,8 +393,30 @@ class Database:
     def __exit__(self, *_: object) -> None:
         self.close()
 
+    def _initialize_schema(self, sql: str) -> None:
+        """Apply generated idempotent creation DDL, including inside harness rollback.
+
+        Only the generated initializer calls this path. Ordinary execute_script remains
+        forbidden in rollback sessions; initialization never accepts data or migration SQL.
+        """
+        prepared = statements(self._driver.prepare_schema(sql))
+        for statement in prepared:
+            words = statement.upper().split()
+            if words[:5] not in (
+                ["CREATE", "TABLE", "IF", "NOT", "EXISTS"],
+                ["CREATE", "INDEX", "IF", "NOT", "EXISTS"],
+            ):
+                raise PersistenceError("initialization permits only idempotent table/index creation")
+        with self._harness.lock if self._harness is not None else nullcontext():
+            cursor = self._open("initialization")
+            try:
+                for statement in prepared:
+                    cursor.execute(statement)
+            finally:
+                cursor.close()
+
     def execute_script(self, sql: str) -> None:
-        """Apply generated DDL. The schema is built once, at the DATABASE build step."""
+        """Apply owner-supplied DDL outside rollback sessions; explicit init uses generated creation DDL."""
         if self._rollback_owner is not None or self._harness is not None:
             raise PersistenceError("schema and transaction SQL are forbidden in rollback sessions")
         cursor = self._open("schema")

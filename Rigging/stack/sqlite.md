@@ -28,7 +28,9 @@ Carried verbatim into `sqlite_compact.md`.
 
 For the shipped Python binding, use the standard-library `sqlite3` driver and a file path or
 `sqlite://` DSN. Configuration resolves `DATABASE_URL`, then `DATABASE_PATH`, then `data/app.db`.
-Drydock applies generated `schema.sql` only at the DATABASE step; later acceptance verifies the existing store without DDL. Declare
+Drydock provisions the build store at the DATABASE step; later acceptance verifies it without
+reprovisioning. Explicit Python init uses `persistence.initialize_database(dsn)` to apply generated
+`schema.sql` to a newly selected store, creating missing tables/indexes and preserving data. Declare
 schema changes in `DATABASE.md`; rebuilding applies idempotent creation statements, not a
 migration of existing tables. The engine owns connections and enables foreign keys.
 
@@ -57,15 +59,15 @@ edits, or replaces any file listed below.
 | Library | `persistence/db.py` | shipped `Rigging/languages/python/persistence/db.py`, copied unchanged: `Database`, statement construction, parameter binding, engine selection |
 | Engines | `persistence/sqlite.py`, `persistence/postgres.py` | shipped, copied unchanged; the DSN selects one at runtime |
 | Declaration | `persistence/schema.py` | generated from `DATABASE.md`: `SCHEMA` (tables, operations, row dataclasses) and `open_database(dsn)`; contains no SQL |
-| Interface | `persistence/__init__.py` | generated; exports `Database`, `PersistenceError`, `UnknownOperation`, `SCHEMA`, `open_database` |
+| Interface | `persistence/__init__.py` | generated; exports `Database`, `PersistenceError`, `UnknownOperation`, `SCHEMA`, `open_database`, `initialize_database` |
 | Verification | `schema-verification.json` | generated runtime catalog and count probes |
 | Fixture | `persistence/testing.py` | generated; `db_session()` |
 | DDL | `schema.sql` | generated from `DATABASE.md`; `CREATE ... IF NOT EXISTS` throughout |
 
 4. Drydock applies `schema.sql` through `open_database` to the configured store — `DATABASE_URL`,
-   else `DATABASE_PATH`, else `data/app.db` — at the DATABASE step and again before every
-   acceptance run, so a criterion that drives the application through its own client finds the
-   declared tables.
+   else `DATABASE_PATH`, else `data/app.db` — at the DATABASE step. Later acceptance verifies
+   without provisioning. Explicit Python init can initialize another selected store through
+   `initialize_database(dsn)`; the application never authors SQL or replaces generated schema.
 
 Every later story writes callers only: `route → service → db.<table>.<name>(...)`. The package
 exposes one attribute per declared table and one method per declared operation. Changing the
@@ -163,12 +165,12 @@ lengths for the production engine and do not rely on SQLite to catch them.
 proven the column types.
 
 **`ALTER TABLE`.** Only `ADD COLUMN` and `RENAME` are supported; there is no `DROP COLUMN` before
-3.35, no type change, and no `ADD CONSTRAINT`. Within a release this never arises — the schema is
-built once, at the DATABASE build step, from `schema.sql`.
+3.35, no type change, and no `ADD CONSTRAINT`. Initialization does not perform such migrations: it applies only idempotent creation from
+the DATABASE-generated `schema.sql`.
 
 ## Guardrails
 
 - Never import `sqlite3` outside the generated `persistence/` package.
 - Never hold a `sqlite3.Connection` on an application object; the engine owns connection lifetime.
-- Never create or alter schema at application startup.
+- Ordinary startup does not create or alter schema. Explicit source-required init delegates to the generated persistence initializer.
 - Never treat a green SQLite test as proof that column lengths or types hold in production.

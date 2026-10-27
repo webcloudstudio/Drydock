@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/languages/python/python.md sha256=fe344456a351e3237cfe3bae2408a69758d401430b935f60c15f91b9a97e8016 on 2026-10-18 by Rigging maintenance -->
+<!-- Compacted from Rigging/languages/python/python.md sha256=68196bfe920adce646fc68e2528fb116eb6f505999db985f3c26baca51b6e132 on 2026-10-18 by Rigging maintenance -->
 
 ## Foundation Contract
 
@@ -26,7 +26,9 @@ are unknown, not proof that code or an interaction was unused.
 Use `stack/persistence.md`. Drydock copies `Rigging/languages/python/persistence/{db,sqlite,postgres}.py` and generates
 `persistence/{schema,__init__,testing}.py` plus `schema.sql` from `DATABASE.md`. Call
 `open_database(dsn)` and `db.<table>.<operation>(...)`; use `persistence.testing.db_session()`
-for criteria. SQLite uses the standard library; PostgreSQL needs `psycopg[binary]` in the project
+for criteria. Explicit init commands use `persistence.initialize_database(dsn)` to apply generated
+creation DDL to the selected store and preserve existing data; close the returned database.
+Ordinary opens do not initialize. SQLite uses the standard library; PostgreSQL needs `psycopg[binary]` in the project
 dependencies. Both engines ship together and the DSN selects the engine. Library verification
 lives in `tests/test_shipped_database.py`; a Target still verifies its own schema and operations.
 

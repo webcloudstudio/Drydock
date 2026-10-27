@@ -500,6 +500,13 @@ nonnegative row count, and declared columns, constraints and indexes pass catalo
 Subsequent acceptance runs verify that store without recreating it. Missing or incompatible schema
 fails the build with a persistence diagnostic; rebuild the DATABASE step after correcting its cause.
 
+Explicit Python initialization uses `persistence.initialize_database(dsn) -> Database`. It applies
+the generated `schema.sql` to the selected store, creates missing tables and indexes, and
+preserves existing records and table definitions. Callers close the returned database. The
+script is resolved relative to the generated package, independently of the working directory.
+Ordinary `open_database` calls do not initialize schema. Init commands delegate to this API;
+application code does not author DDL. Initialization does not reset data or migrate tables.
+
 Application operations retain autocommit. The acceptance harness owns isolation: it begins one
 transaction before each Python criterion and rolls it back when the criterion ends, pass or fail.
 Every database the criterion's process opens joins that transaction, including
@@ -516,7 +523,9 @@ SQLite configuration acceptance can use the harness-owned
 `DATABASE_URL` precedence/prefix handling, `DATABASE_PATH` fallback, default paths and
 source-required open failures in a disposable directory, restoring cwd and both variables on
 exit. Arguments are relative SQLite file names; the fixture creates no schema. Ordinary
-persistence criteria continue using the provisioned application store.
+persistence criteria continue using the provisioned application store. Source-required init
+acceptance may call the product initializer inside the scratch context and verify creation,
+repeated init, and preservation; the fixture itself still creates no schema.
 
 ### Acceptance authoring checks
 

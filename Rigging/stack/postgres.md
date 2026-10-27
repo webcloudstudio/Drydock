@@ -28,8 +28,9 @@ Carried verbatim into `postgres_compact.md`.
 
 Provide a running PostgreSQL server and a `postgresql://` DSN through `DATABASE_URL`; keep
 credentials out of source control. The shipped Python binding uses `psycopg` or `psycopg2`;
-declare `psycopg[binary]` in project dependencies. Drydock applies generated `schema.sql` at the
-DATABASE step and before acceptance runs, creating referenced tables first. Declare schema
+declare `psycopg[binary]` in project dependencies. Drydock applies generated `schema.sql` at the DATABASE step; later acceptance verifies without
+reprovisioning. Explicit Python init uses `persistence.initialize_database(dsn)` to create missing
+tables/indexes on the selected store, preserving existing data. Declare schema
 changes in `DATABASE.md`; idempotent creation does not migrate existing tables. Provision schema
 migrations separately when existing data must be retained.
 
@@ -59,15 +60,15 @@ edits, or replaces any file listed below.
 | Library | `persistence/db.py` | shipped `Rigging/languages/python/persistence/db.py`, copied unchanged: `Database`, statement construction, parameter binding, engine selection |
 | Engines | `persistence/sqlite.py`, `persistence/postgres.py` | shipped, copied unchanged; the DSN selects one at runtime |
 | Declaration | `persistence/schema.py` | generated from `DATABASE.md`: `SCHEMA` (tables, operations, row dataclasses) and `open_database(dsn)`; contains no SQL |
-| Interface | `persistence/__init__.py` | generated; exports `Database`, `PersistenceError`, `UnknownOperation`, `SCHEMA`, `open_database` |
+| Interface | `persistence/__init__.py` | generated; exports `Database`, `PersistenceError`, `UnknownOperation`, `SCHEMA`, `open_database`, `initialize_database` |
 | Verification | `schema-verification.json` | generated runtime catalog and count probes |
 | Fixture | `persistence/testing.py` | generated; `db_session()` |
 | DDL | `schema.sql` | generated from `DATABASE.md`; `CREATE ... IF NOT EXISTS` throughout |
 
 4. Drydock applies `schema.sql` through `open_database` to the configured store — `DATABASE_URL`,
-   else `DATABASE_PATH`, else `data/app.db` — at the DATABASE step and again before every
-   acceptance run, so a criterion that drives the application through its own client finds the
-   declared tables.
+   else `DATABASE_PATH`, else `data/app.db` — at the DATABASE step. Later acceptance verifies
+   without provisioning. Explicit Python init can initialize another selected store through
+   `initialize_database(dsn)`; the application never authors SQL or replaces generated schema.
 
 Every later story writes callers only: `route → service → db.<table>.<name>(...)`. The package
 exposes one attribute per declared table and one method per declared operation. Changing the
@@ -160,7 +161,7 @@ PostgreSQL as the authority on both.
 
 ## Schema changes
 
-Within a release the schema is built once, at the DATABASE build step, and never migrated.
+The declaration is generated at DATABASE. Explicit initialization may apply its idempotent creation script to another store; it never migrates existing tables.
 Across releases PostgreSQL does support the changes that matter: `ALTER TABLE … ALTER COLUMN …
 TYPE varchar(n)` widens without a table rewrite, and `DROP NOT NULL` is instant while
 `SET NOT NULL` scans the table.
@@ -169,6 +170,6 @@ TYPE varchar(n)` widens without a table rewrite, and `DROP NOT NULL` is instant 
 
 - Never import `psycopg` or `psycopg2` outside the generated `persistence/` package.
 - Never build SQL by formatting values into a string; the engine binds parameters.
-- Never create or alter schema at application startup.
+- Ordinary startup does not create or alter schema. Explicit source-required init delegates to the generated persistence initializer.
 - Never store credentials in the repository; the DSN comes from the environment through the typed
   `Config` class.

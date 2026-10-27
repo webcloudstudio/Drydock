@@ -69,6 +69,22 @@ correct final-read examples; plan_create repeats the rule. This addresses LT-EXI
 without changing verification or adding automatic repair. Local prompt checks prove delivery and
 example guard behavior, not first-pass model compliance; Ed's fresh Plan output is the live proof.
 
+`2026-10-27` · The contract-example regression helper selects the standalone Programmatic
+Acceptance example by its explicit markdown fence and heading, not by fenced-block length.
+The former optional-language regex could treat closing fences as openers and skip the intended
+example; the full suite exposed three false failures selecting another example. No authoring
+contract, expected criterion, parser or assertion is weakened by this test-fixture correction. The
+three affected grammar/environment-example tests pass on rerun; the validation-shell smoke also
+passes with the project venv on PATH.
+
+`2026-10-27` · Source-required explicit Python initialization is preserved in feature
+Blueprints instead of being rewritten as DELETE against a pre-existing table. The generated
+`persistence.initialize_database(dsn)` creates missing tables/indexes from schema.sql and
+preserves rows. Source-required init acceptance uses the product interface inside harness-owned
+`database_environment`; setup may seed its scratch store to verify repeat-init preservation.
+Ordinary CRUD DSN/DDL prohibitions remain. This is an authoring contract plus generated runtime
+API, not a new static semantic validator. No master specification edits were authorized.
+
 Historical dated entries follow; where behavior has changed, this current contract and the
 newest dated entry describe the implemented behavior. See [stabilization](../topics/stabilization.md).
 

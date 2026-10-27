@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-27 V2 |
+| Version | 2026-10-27 V3 |
 | Description | FxRates source fidelity, grader lifecycle and managed-state diagnosis. |
 | Target | FxRates |
 | Evidence root | /mnt/c/Users/barlo/projects/drydock/uat/FxRates |
@@ -119,6 +119,46 @@ within this source repair. The fresh grader no longer discards the inherited pro
 A recurrence of the alert needs a logical-state versus physical-file reproduction, not blind
 restoration. FX-003 is unchanged.
 
+### Final explicit-initialization repair — 2026-10-27
+
+Ed corrected the earlier provisioned-store workaround: init creates missing schema, and testing
+on a fresh store is valid after initialization. This supersedes the earlier authorized repair
+entry's preservation of the grader DSN and clearing of rates. Canonical authority is Ed's latest
+instruction; no master specification block is edited. DATABASE generates the script/package;
+Python persistence.initialize_database(dsn) applies only idempotent creation, returns an open
+database, preserves existing rows/definitions, and resolves schema.sql independently of cwd.
+Ordinary opens do not initialize. The generated creation path joins acceptance rollback;
+ordinary arbitrary execute_script is still forbidden there.
+
+Kit commit `abbbb22` changes sources/INSTRUCTIONS.md, bin/run.sh and README.md: fresh temporary
+grader DSN, application init before load, no harness DDL, no canonical store mutation, temporary
+store cleanup. All 35 check bodies and expected answers are unchanged. The former kit index lock
+cleared without assistant intervention and the three-file commit succeeded.
+
+The first three generated-initializer regressions fail before implementation with ImportError.
+Focused verification: 175 passed, 1 skipped; includes initialization and acceptance rollback,
+source prompt/header and memory checks. Six integration regressions cover fresh/repeat
+preservation, cwd-independent script lookup, missing script and ordinary-open behavior,
+canonical acceptance rollback, destructive SQL refusal before any script statement executes,
+and scratch-fixture product initialization. The isolated fresh-store grader passes 35/35 with the generated initializer and a matching init
+caller. Installed-wheel resource resolution, fresh/repeat initialization and packaged diagnostic prompt
+V11 pass. Both wheel and sdist builds pass; the wheel is refreshed after final prompt wording.
+Repository Ruff lint/format, skill validation and diff checks pass.
+Full suite: 4,633 passed, 2 skipped, 4 failed in 953.07s. Three failures were the contract-example
+test helper selecting the wrong fence/example; corrected to explicit markdown/acceptance-heading
+selection with actual AC blocks, preserving all expected criteria/assertions. The fourth selected
+system Python 3.10 in validation child scripts because the first invocation used the venv Python
+without putting venv/bin on PATH. All four checks pass on the corrected targeted rerun (7.56s).
+No full-suite rerun is claimed after those fixture/environment corrections. A copied application under /tmp uses the generated library
+and an explicit init caller solely for compatibility verification; no application under runs/
+is patched. Fix outcome remains unverified until clean fresh UAT evidence.
+
+The /ddk-uat prompt V11 and skill 1.6.0 now require concrete verified recommendations for the
+separate implementation loop: observed failure/owner/evidence, exact file and behavior change,
+invariants, regression/passing neighbor, and fresh-run/resume boundary. Unproved or low-value
+ideas stay notes. Explicit repair authorization still requires completing the repair in the
+active pass. This fixes the handoff failure demonstrated by this conversation.
+
 ## Decisions
 
 - None.
@@ -129,16 +169,16 @@ restoration. FX-003 is unchanged.
 
 ## Actions
 
-- `2026-10-27` · FX-001: reconcile Ed's provisioned-store grading intent with the governed kit
-  brief/run.sh, then correct the earliest owning source/planning contract and regressions.
-  Source correction implemented on 2026-10-27; close after the kit commit and clean fresh-run
-  evidence. The existing kit index lock prevents committing the authorized input edits.
-- `2026-10-27` · FX-002: reproduce fingerprint change on a temporary WAL database and inspect
-  preserved sidecar evidence if the managed-state alert recurs; no restoration is currently justified. Close with
-  discriminating regression and reviewed affected-stage UAT proof.
-- `2026-10-27` · FX-003: correct missing sh declarations in planning authoring; close with
-  static declaration proof and clean planning evidence.
+- `2026-10-27` · FX-001: explicit initialization correction is implemented in kit commit
+  `abbbb22` and the accompanying Drydock generated initializer/contract repair. Outcome:
+  unverified by UAT. Ed requires a fresh run; close on clean import/plan/build/scoring evidence
+  using the new sources. No resume or historical evidence mutation is required.
 
 ## Working Notes
 
-- None.
+- FX-002 remains an unproved physical-fingerprint lead, not a verified repair recommendation or
+  a prerequisite to a fresh run. The built store and snapshot have identical inspected schema
+  and row counts; no data loss or need for restoration is established. A recurrence warrants a
+  temporary logical-state-versus-file-state reproduction before recommending any gate change.
+- FX-003's undeclared-sh advisory is retained as a low-value planning note. It did not cause the
+  terminal failure and is not part of this repair queue.

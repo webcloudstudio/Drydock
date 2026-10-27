@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20261027 V44
+version: 20261027 V45
 ---
 
 ## Overview
@@ -1145,7 +1145,11 @@ repository. A Target declaring a `DATABASE.md` in a language Drydock ships no ad
 before planning rather than reaching a build with no persistence layer to write. A Blueprint
 migration ledger record lives at `blueprint/migrations/MIGRATION-<AccessPatternId>.md`; it holds
 `upgrade` and `downgrade` snippets and is `planned` until the DATABASE build story completes, then
-`built`. Within a release the schema is built once and never migrated.
+`built`. The declaration is generated at DATABASE. An explicit source-required Python init command
+calls `persistence.initialize_database(dsn)` to create missing tables/indexes from generated
+`schema.sql`, preserves existing records, and closes the returned store. Initialization may run
+against a newly selected store; it never resets data or migrates existing tables. Do not replace
+source-required initialization with DELETE against an assumed pre-existing schema.
 
 `ARCHITECTURE.md` includes a module ownership table for persistence, configuration, file-store, and
 external-service boundaries. It states which module owns each boundary and which low-level APIs that
@@ -1204,8 +1208,10 @@ variables name absolute paths under the yielded scratch `Path`, and cwd is that 
 Assert that the product resolves `str(root / "primary.db")`; repeat separate contexts for URL
 without prefix, unset/empty URL fallback, and both unset for `data/app.db`. The fixture creates
 no schema or parent directories; `url="missing/app.db"` permits real open-failure assertions.
-It restores cwd and both variables even on assertion failure. Use this only for configuration
-and failure behavior, never populated-store CRUD. Direct environment replacement remains
+It restores cwd and both variables even on assertion failure. Use this for configuration,
+failure behavior, or source-required product initialization. For init acceptance call the declared
+product init interface in the scratch context, then verify fresh creation, repeated init and
+preservation of its own seeded records. Never author DDL or use this for unrelated CRUD. Direct environment replacement remains
 forbidden. Declare only exits and behavior supported by governed sources.
 
 The acceptance harness owns isolation. It begins one transaction before each Python criterion and

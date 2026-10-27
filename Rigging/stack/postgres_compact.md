@@ -1,4 +1,4 @@
-<!-- Compacted from Rigging/stack/postgres.md sha256=53b3d53ef2e98014a142826a0ee89c27336963d855cff5f34d14aeb5613deaca on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/postgres.md sha256=48c3b5a9bfafde48f13e5cda59d85fd8e01aea6546d32a7b8e93e977cbe685e5 on 2026-10-24 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
 ## Foundation Contract
 
@@ -15,8 +15,9 @@ Carried verbatim into `postgres_compact.md`.
 
 Provide a running PostgreSQL server and a `postgresql://` DSN through `DATABASE_URL`; keep
 credentials out of source control. The shipped Python binding uses `psycopg` or `psycopg2`;
-declare `psycopg[binary]` in project dependencies. Drydock applies generated `schema.sql` at the
-DATABASE step and before acceptance runs, creating referenced tables first. Declare schema
+declare `psycopg[binary]` in project dependencies. Drydock applies generated `schema.sql` at the DATABASE step; later acceptance verifies without
+reprovisioning. Explicit Python init uses `persistence.initialize_database(dsn)` to create missing
+tables/indexes on the selected store, preserving existing data. Declare schema
 changes in `DATABASE.md`; idempotent creation does not migrate existing tables. Provision schema
 migrations separately when existing data must be retained.
 
@@ -46,15 +47,15 @@ edits, or replaces any file listed below.
 | Library | `persistence/db.py` | shipped `Rigging/languages/python/persistence/db.py`, copied unchanged: `Database`, statement construction, parameter binding, engine selection |
 | Engines | `persistence/sqlite.py`, `persistence/postgres.py` | shipped, copied unchanged; the DSN selects one at runtime |
 | Declaration | `persistence/schema.py` | generated from `DATABASE.md`: `SCHEMA` (tables, operations, row dataclasses) and `open_database(dsn)`; contains no SQL |
-| Interface | `persistence/__init__.py` | generated; exports `Database`, `PersistenceError`, `UnknownOperation`, `SCHEMA`, `open_database` |
+| Interface | `persistence/__init__.py` | generated; exports `Database`, `PersistenceError`, `UnknownOperation`, `SCHEMA`, `open_database`, `initialize_database` |
 | Verification | `schema-verification.json` | generated runtime catalog and count probes |
 | Fixture | `persistence/testing.py` | generated; `db_session()` |
 | DDL | `schema.sql` | generated from `DATABASE.md`; `CREATE ... IF NOT EXISTS` throughout |
 
 4. Drydock applies `schema.sql` through `open_database` to the configured store — `DATABASE_URL`,
-   else `DATABASE_PATH`, else `data/app.db` — at the DATABASE step and again before every
-   acceptance run, so a criterion that drives the application through its own client finds the
-   declared tables.
+   else `DATABASE_PATH`, else `data/app.db` — at the DATABASE step. Later acceptance verifies
+   without provisioning. Explicit Python init can initialize another selected store through
+   `initialize_database(dsn)`; the application never authors SQL or replaces generated schema.
 
 Every later story writes callers only: `route → service → db.<table>.<name>(...)`. The package
 exposes one attribute per declared table and one method per declared operation. Changing the
