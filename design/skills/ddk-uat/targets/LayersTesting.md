@@ -35,7 +35,8 @@ Preserve evidence-backed causes and verification status across LayersTesting run
 - `operational-usage-before-database` is separable: `count extra` against the provisioned store still asserts exit 2, losing only the ordering proof.
 - `operational-unreadable-load-file` uses the provisioned store and passed verify.
 - Reproduction: `store_setup_defects(<AC body>)` on any of the four bodies returns the "configured database" defect. Not run against evidence; read-only.
-- Outcome: open. Correction requires Ed's decision (see Questions).
+- Fix `2026-10-26`: Ed directed a kit source edit (route a). PostgreSQL wording removed from `sources/INSTRUCTIONS.md`, `INSTRUCTIONS_go.md`, `INSTRUCTIONS_python.md` (Database section now SQLite-only) and `inputs/COMPASS.md` (network rule). Uncommitted in the kit; Ed commits kit history. The exit-1 row "database unreachable" (`INSTRUCTIONS.md:120`) remains and can still regenerate `operational-unreachable-database` / `operational-invalid-database-file`.
+- Outcome: unverified (postgres criteria); open (unreachable/invalid-store criteria).
 
 ### LT-IFACE-001 — `## Database Interface` entries omit `- supplies:` (recovered)
 
@@ -55,7 +56,7 @@ Preserve evidence-backed causes and verification status across LayersTesting run
 
 ## Questions
 
-- `2026-10-26` · LT-STORE-001: choose the route for source-required "database unreachable / invalid store → exit 1" behavior: (a) kit source edit as in FxRates, (b) `plan_create` routes such behavior to `## User Acceptance` and the verify/repair path permits that move, (c) a sanctioned negative-configuration criterion form (subprocess with explicit non-provisioned env, never the store). Closes when Ed decides.
+- `2026-10-26` · LT-STORE-001: remove "database unreachable" from the `INSTRUCTIONS.md:120` exit-1 row as in FxRates, or keep it and give Drydock an authoring route. Closes when Ed decides.
 
 ## Actions
 
