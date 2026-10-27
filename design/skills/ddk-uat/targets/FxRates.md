@@ -180,13 +180,13 @@ Prior 938021a detects physical changes, and this is a recurrence of the alert, n
 recurrence of a logical mutation. Do not restore or weaken detection on this evidence. Next
 proof: compare consistent logical backups including any WAL without mutating published evidence,
 and reproduce read/close with the same connection lifecycle; deliberate committed-write and
-deletion neighbors must still stop. Fix: local logical-state comparison and agent helper delivery (commit recorded in the implementation handoff). Outcome: unverified pending affected-stage UAT.
+deletion neighbors must still stop. Fix: `eebf518` logical-state comparison and agent helper delivery. Outcome: unverified pending affected-stage UAT.
 
 **FX-004 — inaccurate vacuous-criterion warning; reporting; open.** Plan stdout flags
 FEATURE-LiveVisibility.md#live-load-visible-in-rates as passing when the endpoint does nothing
 because the initial probe accepts 404. The same criterion requires `load` success and then
 HTTP 200 with the expected date and rate, so an absent endpoint fails the final assertions.
-No causal connection to the build stop. The warning generator is `acceptance.py` and `planning_session.py`; the local fix describes the assertion rather than claiming the whole criterion passes. UAT outcome unverified; accepting 404 before data exists is not itself a
+No causal connection to the build stop. The warning generator is `acceptance.py` and `planning_session.py`; fix `eebf518` describes the assertion rather than claiming the whole criterion passes. UAT outcome unverified; accepting 404 before data exists is not itself a
 proved defect. Plan verify independently warns dispatch-exit-codes hides output; no downstream
 causal link established. Plan lineage corrected unknown story id cli-usage-placeholder-none;
 its effect is undetermined and requires inspecting the attribution artifacts.
