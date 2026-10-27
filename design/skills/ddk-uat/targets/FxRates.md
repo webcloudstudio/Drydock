@@ -160,6 +160,49 @@ invariants, regression/passing neighbor, and fresh-run/resume boundary. Unproved
 ideas stay notes. Explicit repair authorization still requires completing the repair in the
 active pass. This fixes the handoff failure demonstrated by this conversation.
 
+### Run 20261027.190646 — 2026-10-27
+
+Receipt: failed / ERROR / acceptance NOT_RUN; initial-build-1 exit 1, block-4
+managed-state violation, not clean. Framework 9024185c80f14633e56d709968c8d86cfaaea238;
+Claude haiku build, sonnet plan; source revision not independently established. Paths below
+are relative to this run. This is the fresh run after d8b82d0 / kit abbbb22.
+
+**FX-002 — managed-state fingerprint alert recurred; mechanism undetermined.** AgentStore
+provisioned a disposable DSN and fingerprints the canonical SQLite main file and WAL. The
+provider transcript for 20261027.193228.463Z-05a4d299 records an explicit
+`sqlite3.connect('data/app.db')` and sqlite_master read, bypassing the supplied DSN; WAL
+sidecars were present at the beginning of the call. The physical fingerprint changed before
+acceptance; the pre-call logical backup is evidence/managed-state/sqlite-2rqgxlo6/app.db
+under workspace/targets/FxRates. The exact write or checkpoint and logical difference are not
+established. A separate temporary SQLite reproduction shows last-connection WAL checkpoint
+changes main/WAL fingerprints while preserving the row; it does not prove this run's cause.
+Prior 938021a detects physical changes, and this is a recurrence of the alert, not a proved
+recurrence of a logical mutation. Do not restore or weaken detection on this evidence. Next
+proof: compare consistent logical backups including any WAL without mutating published evidence,
+and reproduce read/close with the same connection lifecycle; deliberate committed-write and
+deletion neighbors must still stop. Fix: none for this recurrence. Outcome: recurred.
+
+**FX-004 — inaccurate vacuous-criterion warning; reporting; open.** Plan stdout flags
+FEATURE-LiveVisibility.md#live-load-visible-in-rates as passing when the endpoint does nothing
+because the initial probe accepts 404. The same criterion requires `load` success and then
+HTTP 200 with the expected date and rate, so an absent endpoint fails the final assertions.
+No causal connection to the build stop. Trace the warning generator and establish a minimal
+regression before recommending its repair; accepting 404 before data exists is not itself a
+proved defect. Plan verify independently warns dispatch-exit-codes hides output; no downstream
+causal link established. Plan lineage corrected unknown story id cli-usage-placeholder-none;
+its effect is undetermined and requires inspecting the attribution artifacts.
+
+**Setup evidence.** DATABASE block-2 closed/implemented before block-4; generated root
+`schema.sql`, persistence package, `initialize_database(dsn)`, and Drydock-managed disposable
+store already exist. FEATURE-Init requires the product's init handler to call that initializer.
+The agent reports 155 tests and nine criteria passing, but the managed-state gate prevented
+Drydock from executing any of block-4's 12 post-call checks. Three init criteria require the
+Drydock acceptance harness and the agent did not execute them verbatim. Thus agent self-report
+is not independent acceptance proof. Previous FX-001 initializer repair remains unverified.
+The provided grading harness is intentionally deferred until the application is complete.
+Exact setup guidance alone cannot enforce filesystem isolation. The available evidence does
+not prove that schema generation or provisioning was skipped.
+
 ## Decisions
 
 - None.
@@ -169,6 +212,11 @@ active pass. This fixes the handoff failure demonstrated by this conversation.
 - None.
 
 ## Actions
+
+- `2026-10-27` · Run 20261027.190646 FX-002: establish actual SQLite logical state and
+  physical fingerprint cause without modifying UAT; retain protection for real writes.
+- `2026-10-27` · Run 20261027.190646 FX-004: trace warning generator and regress the
+  complete criterion before proposing a correction; inspect corrected lineage attribution.
 
 - `2026-10-27` · FX-001: explicit initialization correction is implemented in kit commit
   `abbbb22` and Drydock initializer/contract repair `d8b82d0`. Outcome:
