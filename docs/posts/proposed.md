@@ -1,0 +1,79 @@
+---
+title: Drydock 0.8 Release 
+title_sub:
+subtitle: Specifications to Software using Agile and Test Driven Developement
+eyebrow: DRYDOCK BUILDS WORKING SOFTWARE
+logo: ../drydock_logo.png
+author: Ed Barlow
+studio: www.webcloudstudio.com
+year: October 23, 2026
+header_title: Drydock
+copyright: Copyright © 2026 Web Cloud Studio.
+---
+<style>
+.cover { margin-bottom: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+         border-bottom: none; padding-bottom: 0; }
+.cover::after { content: ""; display: block; border-top: 2px solid var(--green); margin-top: 24px; }
+#content { border-top: none; }
+#content h3:first-of-type { margin-top: 0; }
+#content hr { border: 0; border-top: 2px solid var(--green); margin: 16px 0; }
+@media print { .cover { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+               .cover::after { margin-top: 12px; } }
+</style>
+### **What is Drydock**
+Drydock is a specification-driven development tool that turns your notes and requirements into structured Blueprints and a build plan, then uses CLI coding agents to build and verify the software. It combines Agile planning, executable acceptance criteria, and repair loops in one workflow.
+
+  * Builds Working Software (Go or Python) from Your Notes/Specifications/Ideas using low-end models (Haiku 5.5, Luna, Gemini). <br>
+  * Based on **Agile Planning** and **Test Driven Development** Best Practices.
+  * `drydock run quarterdeck` is a complete web UX for your builds.
+---
+### **New Feature: Measured, self-correcting acceptance criteria**
+  * `drydock plan repair` pre-records, categorizes, and corrects acceptance criteria.
+### **New Feature: Self-Improving Builds**
+  * `drydock diagnose` reads failed runs, identifies the root cause, and proposes corrections. 
+  * `drydock build` iterates until all Acceptance Criteria succeed or no progress is detected.
+### **New Feature: Encapsulated Persistence Layer**
+  * `DATABASE.md` uses pre-built native libraries plus "named" SQL operations. Minimizes change impact radius.
+### **New Feature: Updated Drydock workflow**
+  * `drydock_runner.sh` provides our minimal self-repairing workflow to **build anything**.
+```bash
+drydock init MyApp                            # create the workspace
+drydock import MyApp "$INPUT_DIRECTORY"       # load your specifications, notes, images
+drydock analyze MyApp                         # create stories, questions, blockers
+drydock plan MyApp                            # create Blueprints and Manifest
+drydock plan verify MyApp || drydock plan repair MyApp  # repair/validate acceptance criteria
+
+# self-repairing build loop
+n=1; max=3
+while drydock status MyApp --ready
+do
+    echo "*** BUILD ATTEMPT $n ***"
+    drydock build MyApp || drydock diagnose MyApp --apply
+    n=$((n+1))
+    if [ "$n" -gt "$max" ]
+    then
+        echo "hit $max build attempts - aborting"
+        exit 1
+    fi
+done
+drydock status MyApp --check                  # Deterministic definition of done 
+drydock score release MyApp                   # LLM evaluated definition of done 
+```
+
+### **Release Notes:** 
+- Haiku 5.5 Builds!  
+  - 100K tokens limit. Recommend: `--plan-override-model sonnet` 
+- Gemini Support
+- The UAT Test Suite tests 10 projects under Haiku and Luna
+- Database encapsulation for SQLite and Postgres, Postgres instructions are provided.
+- Go and Python support 
+- Model token cost engineering optimizes payload size and effort - see `model_config.jsonl`. 
+- Layered topology - blueprint types: Foundation, persistence, web server, CLI, branding, services, API, screens.
+- `BUILD_LINEAGE.jsonl` traces specifications to code.
+- `drydock report` provides a core reporting suite
+
+---
+### **Drydock Plan**
+- **Version 0.8** released - I need folks to run it,  get me feedback, and star https://github.com/webcloudstudio/Drydock
+- **Version 0.9** overhauls the **refit process** into a best of breed workflow to manage change with SDD.
+- **Version 1.0 GA** tailors the **QuarterDeck Web Server** with a **no-Cli Workflow** - A Full web User Experience.
