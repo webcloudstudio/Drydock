@@ -518,8 +518,6 @@ def _splice_and_revert(
             continue
         if defect.kind in {"missing-selection-probe", "invalid-selection-probe", "probe-failed"}:
             old_body = _block_bodies(old)[defect.check_id]
-            # Compare proof text separately: a Probe-looking line inside a Python string
-            # is code, so stripping declaration-shaped lines alone would permit changing it.
             try:
                 old_check = parse_programmatic_acceptance_text(
                     _plain_block(defect.check_id, old_body), source=filename
@@ -538,23 +536,40 @@ def _splice_and_revert(
                     )
                 )
                 continue
-            body = _normalize_probe_command(body, new_check, source_root)
-            probe_lines = r"(?im)^[ \t]*Probe(?: Count)?:[^\n]*\n?"
-            if (
-                old_check.code != new_check.code
-                or re.sub(probe_lines, "", old_body).strip()
-                != re.sub(probe_lines, "", body).strip()
-            ):
+            # Accept only declarations; retain the original metadata and proof verbatim.
+            # Model-reprinted Python, formatting and Intent never become authoritative.
+            if not new_check.probe or not new_check.probe_count:
                 items.append(
                     RepairItem(
                         filename,
                         defect.check_id,
                         "unrepaired",
                         old,
-                        "probe repair changed content other than Probe/Probe Count and was rejected",
+                        "probe repair omitted Probe or Probe Count",
                     )
                 )
                 continue
+            header, separator, proof = old_body.partition("\n\n")
+            if not separator:
+                items.append(
+                    RepairItem(
+                        filename,
+                        defect.check_id,
+                        "unrepaired",
+                        old,
+                        "criterion has no declaration boundary",
+                    )
+                )
+                continue
+            header = re.sub(r"(?im)^[ \t]*Probe(?: Count)?:[^\n]*\n?", "", header)
+            body = (
+                header.rstrip("\n")
+                + f"\nProbe: {new_check.probe}"
+                + f"\nProbe Count: {new_check.probe_count}\n\n"
+                + proof
+            )
+            candidate = replace(old_check, probe=new_check.probe, probe_count=new_check.probe_count)
+            body = _normalize_probe_command(body, candidate, source_root)
         if defect.kind == "bad-citation":
             old_body = _block_bodies(old)[defect.check_id]
             # Citation repair may change the declaration only, never its proof or other metadata.

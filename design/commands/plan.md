@@ -27,6 +27,10 @@ written.
 
 ### Current contract
 
+`2026-10-28` · Selection-probe repair copies only the returned probe declarations into the
+original criterion. Model edits to Intent, other metadata, or proof are discarded, and the
+original selector and resulting declaration are reverified.
+
 `2026-10-28` · Mechanical probe repair normalizes a full Python listing command only when
 its runner and selector exactly match the criterion and it adds one literal flag. It checks the
 runner output to select summary or lines, preserves the criterion, and re-verifies nonempty

@@ -26,6 +26,9 @@ and measured something; everything else is reported, not charged.
 
 ### Current contract
 
+`2026-10-28` · Probe repair preserves original Intent, metadata and proof byte-for-byte while
+applying only the returned probe declarations; the original selector remains the proof target.
+
 `2026-10-28` · Plan repair can recover a matching full listing command into a flag-only probe,
 selecting the supported output protocol and retaining the existing nonempty-selection gate.
 

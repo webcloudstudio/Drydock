@@ -403,7 +403,9 @@ def test_a_missing_selection_probe_is_repaired_and_reverified(tmp_path):
 
 def test_a_selector_still_empty_after_repair_stays_unrepaired(tmp_path):
     """A declared probe that still proves zero cases is not a successful repair."""
-    target = _probe_target(tmp_path, FEATURE_Selector=_BROKEN_MISSING_PROBE)
+    target = _probe_target(
+        tmp_path, FEATURE_Selector=_BROKEN_MISSING_PROBE.replace('"alpha"', '"zzz"')
+    )
 
     result = repair("Demo", target, runner=_runner(_STILL_EMPTY_PROBE_BLOCK))
 
@@ -1054,9 +1056,10 @@ def test_probe_repair_cannot_drop_suite_or_change_assertions(tmp_path):
     )
     target = _probe_target(tmp_path, FEATURE_Selector=broken)
     result = repair("Demo", target, runner=_runner(_FIXED_PROBE_BLOCK))
-    assert not result.ok
-    assert "other than Probe/Probe Count" in result.items[0].detail
-    assert (target / "blueprint" / "FEATURE_Selector.md").read_text() == broken
+    assert result.ok
+    result_text = (target / "blueprint" / "FEATURE_Selector.md").read_text()
+    assert "Suite: scoped" in result_text
+    assert "assert result.returncode == 0" in result_text
 
 
 def test_unresolved_probe_arguments_do_not_spend_a_repair_call(tmp_path):
@@ -1189,3 +1192,19 @@ def test_summary_footer_is_not_counted_as_a_selected_case(tmp_path):
 
     assert not result.ok
     assert "use Probe Count: summary" in result.items[0].detail
+
+
+def test_probe_repair_preserves_original_proof_and_intent_despite_model_changes(tmp_path):
+    target = _probe_target(tmp_path, FEATURE_Selector=_BROKEN_MISSING_PROBE)
+    response = _FIXED_PROBE_BLOCK.replace(
+        "Intent: Selects a conformance slice through the staged runner.", "Intent: Altered."
+    ).replace("assert result.returncode == 0", "assert True")
+
+    result = repair("Demo", target, runner=_runner(response))
+
+    assert result.ok
+    text = (target / "blueprint" / "FEATURE_Selector.md").read_text()
+    assert "Intent: Selects a conformance slice through the staged runner." in text
+    assert "assert result.returncode == 0" in text
+    assert "assert True" not in text
+    assert "Probe: --list" in text
