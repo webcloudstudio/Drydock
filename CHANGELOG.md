@@ -169,6 +169,8 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-28: `/ddk-uat` handoffs explain the failure and proposed repair in plain English, identify the scope and purpose of unfamiliar mechanisms, and distinguish recommendations from implemented fixes.
+
 - 2026-10-28: Build repair feedback directs agents to diagnose and fix related failure clusters
   within each call, using representative examples and regression checks instead of a single-example
   instruction. Acceptance and stall limits remain unchanged.

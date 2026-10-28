@@ -1,7 +1,7 @@
 ---
 name: uat_diagnostic
 description: Investigate warnings, errors, recovered defects, and downstream failures in a running or completed Drydock UAT run, including a successful run.
-version: 20261027 V11
+version: 20261028 V12
 intent: Assess operational success and clean execution separately, trace upstream warnings and errors through later artifacts and failures, and recommend the earliest corrective work supported by preserved evidence.
 command: operator diagnostic prompt
 output: A compact review handoff explaining the failure, verified causes, concrete repair recommendations, or implemented repair results.
@@ -241,6 +241,12 @@ name the missing discriminating evidence; continue independent authorized work.
 
 ## Output Contract
 
+Lead with a plain-English explanation of what happened, what stopped or recovered, and why.
+Explain unfamiliar concepts in the context of this failure before giving implementation details.
+State the recommended repair, what it changes and its scope, and whether it has been implemented.
+Distinguish a Target-specific tool option from a general requirement; explain the purpose of any
+proposed requirement. Do not let labels, file paths, or a completion footer replace the diagnosis.
+
 Target 150–200 words for the diagnosis, excluding any user-required completion footer. Include
 all material causes and actionable repair detail even if that requires more. Use the four sections below; omit empty detail,
 generic assurances, repeated consequences and a second summary. Keep full evidence in the Target memory
@@ -260,7 +266,7 @@ that actually prevents further work; omit a questions section otherwise.
 
 ### Root Cause
 
-One bullet per distinct material cause: owner, observed mismatch and shortest useful evidence
+Explain the causal chain in ordinary English. One bullet per distinct material cause: owner, observed mismatch and shortest useful evidence
 reference. Attach downstream consequences to their cause instead of repeating them in another
 section. Include independent/recovered defects and label a Reporting Defect here. Distinguish
 proved, ruled-out and undetermined causal links. For a recurrence, name the prior fix and outcome.

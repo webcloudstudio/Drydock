@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 2026-10-27 V4 |
+| Version | 2026-10-28 V5 |
 | Description | Per-Target diagnosis-memory contract and index, with the historical central UAT ledger. |
 | Skill | `/ddk-uat` |
 | Prompts | `uat_diagnostic.md` |
@@ -36,6 +36,10 @@ so earlier causes and fixes remain discoverable.
 | Recovery | Trace the earliest cause and resource owner; do not accommodate an incorrect upstream oracle in later code. |
 | Proof | Preserved evidence plus local regressions; only later clean affected-stage evidence marks a fix verified. |
 | Handoff | Ed runs → invokes the skill → reviews diagnosis/authorized repair → reruns. Four compact sections report verdict, material assumptions, causes and next action; full detail stays in the Target memory and evidence. |
+
+`2026-10-28` · Prompt V12 and skill 1.7.0 require a plain-English causal explanation and
+recommendation, including the purpose and scope of unfamiliar mechanisms, and explicitly distinguish
+proposals from implemented repairs. The jq handoff failed this standard despite the prior contract.
 
 `2026-10-27` · Prompt V11 / skill 1.6.0 requires every diagnosis to explain what happened
 and supply concrete, verified repair recommendations suitable for Ed's implementation loop.
