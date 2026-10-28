@@ -427,6 +427,8 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-10-28: `drydock plan repair` uses the acceptance parser’s declaration boundaries, recovering criteria with spaced metadata or whitespace-only separators without duplicate probe fields or inserting metadata into Python.
+
 - 2026-10-28: `drydock plan repair` retains the original acceptance criterion when applying probe declarations, so model formatting or incidental proof changes cannot block a valid declaration or alter the test.
 
 - 2026-10-28: `drydock plan repair` recovers matching full-command selection probes into flag-only declarations, chooses the listing count protocol, and continues to reject empty selections while preserving the acceptance test.

@@ -27,6 +27,10 @@ written.
 
 ### Current contract
 
+`2026-10-28` · Acceptance parsing and probe repair share declaration-boundary detection.
+Whitespace-only blanks and blanks between metadata lines do not terminate declarations;
+repair replaces all probe declarations while retaining the original proof and other metadata.
+
 `2026-10-28` · Selection-probe repair copies only the returned probe declarations into the
 original criterion. Model edits to Intent, other metadata, or proof are discarded, and the
 original selector and resulting declaration are reverified.

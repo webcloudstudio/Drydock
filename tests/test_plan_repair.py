@@ -1208,3 +1208,44 @@ def test_probe_repair_preserves_original_proof_and_intent_despite_model_changes(
     assert "assert result.returncode == 0" in text
     assert "assert True" not in text
     assert "Probe: --list" in text
+
+
+@pytest.mark.parametrize("separator", ["\n  \n", "\n\t\n", "\n"])
+def test_probe_repair_uses_parser_boundary_and_preserves_proof(tmp_path, separator):
+    from drydock.acceptance import parse_programmatic_acceptance
+
+    broken = _BROKEN_MISSING_PROBE.replace("runner.\n\nimport", "runner." + separator + "import")
+    target = _probe_target(tmp_path, FEATURE_Selector=broken)
+    path = target / "blueprint/FEATURE_Selector.md"
+    before = parse_programmatic_acceptance(path)[0]
+
+    result = repair("Demo", target, runner=_runner(_FIXED_PROBE_BLOCK))
+
+    assert result.ok
+    after = parse_programmatic_acceptance(path)[0]
+    assert after.code == before.code
+    assert after.intent_lines == before.intent_lines
+    assert separator + "import subprocess" in path.read_text()
+
+
+def test_probe_repair_replaces_declarations_separated_by_blanks(tmp_path):
+    from drydock.acceptance import parse_programmatic_acceptance
+
+    broken = _BROKEN_MISSING_PROBE.replace(
+        "runner.\n\nimport",
+        "runner.\n\nSuite: scoped\n  \nProbe: --bogus\n\nProbe Count: lines\n\nimport",
+    )
+    target = _probe_target(tmp_path, FEATURE_Selector=broken)
+    path = target / "blueprint/FEATURE_Selector.md"
+    before = parse_programmatic_acceptance(path)[0]
+
+    result = repair("Demo", target, runner=_runner(_FIXED_PROBE_BLOCK))
+
+    assert result.ok
+    after = parse_programmatic_acceptance(path)[0]
+    assert after.code == before.code
+    assert after.intent_lines == before.intent_lines
+    assert after.full_suite == before.full_suite
+    assert after.probe == "--list"
+    assert after.probe_count == "lines"
+    assert path.read_text().count("Probe:") == 1

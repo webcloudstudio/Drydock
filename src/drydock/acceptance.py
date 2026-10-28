@@ -986,6 +986,23 @@ _AC_META_KEYS = frozenset({
 })
 
 
+def split_acceptance_declarations(body: str) -> tuple[str, str]:
+    """Split after the last leading declaration, retaining every character in both parts."""
+    lines = body.splitlines(keepends=True)
+    index = 0
+    while index < len(lines):
+        cursor = index
+        while cursor < len(lines) and not lines[cursor].strip():
+            cursor += 1
+        if cursor >= len(lines):
+            break
+        match = AC_META_RE.match(lines[cursor].rstrip("\r\n"))
+        if match is None or match.group("key").strip().lower() not in _AC_META_KEYS:
+            break
+        index = cursor + 1
+    return "".join(lines[:index]), "".join(lines[index:])
+
+
 def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcceptance:
     """Split one AC block into its declarations and its verbatim proof body.
 
@@ -997,34 +1014,19 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
     ``Suite: full`` and ``Gate: story-id`` are themselves valid Python annotations — and were
     reported as snippets reading undefined globals named after their own directives.
     """
-    lines = body.splitlines()
-    # The slice begins at the end of the opening marker's text, so the first element is that
-    # line's terminator rather than content. Dropping it keeps the metadata run at the top.
-    if lines and not lines[0].strip():
-        lines = lines[1:]
+    declarations, proof = split_acceptance_declarations(body)
     meta: dict[str, list[str]] = {}
     intent_lines: list[str] = []
-    index = 0
-    # Blank lines are consumed only when a declaration still follows them; the code must keep
-    # any blank line that precedes its first statement, so the cursor advances to the declaration
-    # rather than past the blanks.
-    while index < len(lines):
-        cursor = index
-        while cursor < len(lines) and not lines[cursor].strip():
-            cursor += 1
-        if cursor >= len(lines):
-            break
-        match = AC_META_RE.match(lines[cursor])
-        if match is None or match.group("key").strip().lower() not in _AC_META_KEYS:
-            break
+    for line in declarations.splitlines():
+        if not line.strip():
+            continue
+        match = AC_META_RE.match(line)
+        assert match is not None
         key = match.group("key").strip().lower()
         meta.setdefault(key, []).append(match.group("value"))
         if key == "intent":
-            intent_lines.append(lines[cursor])
-        index = cursor + 1
-    # The proof body is whatever follows, character for character. Only the trailing blank lines
-    # the author left before the end marker are dropped.
-    code = "\n".join(lines[index:]).strip("\n")
+            intent_lines.append(line)
+    code = "\n".join(proof.splitlines()).strip("\n")
     intent = " ".join(value.strip() for value in meta.get("intent", ()) if value.strip())
     suite = " ".join(meta.get("suite", ())).strip().lower()
     sea_trials = tuple(

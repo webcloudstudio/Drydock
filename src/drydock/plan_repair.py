@@ -53,6 +53,7 @@ from drydock.acceptance import (
     regex_defects,
     selection_probe_reason,
     selector_recognition,
+    split_acceptance_declarations,
     split_fused_acceptance_boundary,
     staged_regex_defects,
     syntax_defect,
@@ -549,23 +550,12 @@ def _splice_and_revert(
                     )
                 )
                 continue
-            header, separator, proof = old_body.partition("\n\n")
-            if not separator:
-                items.append(
-                    RepairItem(
-                        filename,
-                        defect.check_id,
-                        "unrepaired",
-                        old,
-                        "criterion has no declaration boundary",
-                    )
-                )
-                continue
+            header, proof = split_acceptance_declarations(old_body)
             header = re.sub(r"(?im)^[ \t]*Probe(?: Count)?:[^\n]*\n?", "", header)
             body = (
                 header.rstrip("\n")
                 + f"\nProbe: {new_check.probe}"
-                + f"\nProbe Count: {new_check.probe_count}\n\n"
+                + f"\nProbe Count: {new_check.probe_count}\n"
                 + proof
             )
             candidate = replace(old_check, probe=new_check.probe, probe_count=new_check.probe_count)
