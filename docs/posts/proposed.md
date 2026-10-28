@@ -63,7 +63,7 @@ drydock score release MyApp                   # LLM evaluated definition of done
 
 ### **Release Notes:** 
 - Haiku 5.5 Builds!  
-  - 100K tokens limit. Recommend: `--plan-override-model sonnet` 
+  - Drydock configures a 100K-token estimated input-prompt limit for Haiku 5.5 in `model_config.jsonl`. Recommend: `--plan-override-model sonnet` for planning.
 - Gemini Support
 - The UAT Test Suite tests 10 projects under Haiku and Luna
 - Database encapsulation for SQLite and Postgres, Postgres instructions are provided.
@@ -75,6 +75,19 @@ drydock score release MyApp                   # LLM evaluated definition of done
 
 ---
 ### **Drydock Plan**
-- **Version 0.8** released - I need folks to run it,  get me feedback, and star https://github.com/webcloudstudio/Drydock
+- **Version 0.8** released.
 - **Version 0.9** overhauls the **refit process** into a best of breed workflow to manage change with SDD.
 - **Version 1.0 GA** tailors the **QuarterDeck Web Server** with a **no-Cli Workflow** - A Full web User Experience.
+
+---
+### **Try Drydock**
+```bash
+uv tool install drydock-sdd
+```
+- **Code and setup:** https://github.com/webcloudstudio/Drydock
+- **Quick Start:** https://webcloudstudio.com/project-docs/drydock/QUICK_START.html
+
+### **Feedback wanted**
+I need folks to run Drydock against their own notes and specifications. Tell me where planning misses a requirement, an acceptance check measures the wrong thing, or a build or repair loop gets stuck. Include the command, model, and relevant error output so I can investigate.
+
+If Drydock is useful to you, please star the repository.
