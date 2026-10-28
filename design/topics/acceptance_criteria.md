@@ -26,6 +26,9 @@ and measured something; everything else is reported, not charged.
 
 ### Current contract
 
+`2026-10-28` · Plan repair can recover a matching full listing command into a flag-only probe,
+selecting the supported output protocol and retaining the existing nonempty-selection gate.
+
 `2026-10-27` · Build agents can import the shipped `database_environment` helper for local practice; only the Drydock acceptance runner owns the authoritative verdict. Weak status guidance describes an individual assertion and asks for whole-criterion review; it does not claim later assertions pass.
 
 

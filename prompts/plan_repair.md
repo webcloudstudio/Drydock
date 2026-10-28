@@ -32,6 +32,11 @@ Nothing else about that criterion's file, and nothing about any other criterion,
 For a `bad-citation` defect, numbered source files may also be supplied as context. Use only
 those sources to repair its `Cite:` declaration; never infer missing source text or line numbers.
 
+`Probe:` contains only additional listing flags, never a Python command, runner path, selector,
+or environment assignment. Drydock supplies the original runner and selector. For example, use
+`Probe: --list` only when the supplied runner supports that flag. If its listing ends with a
+case-count summary, use `Probe Count: summary`, not `lines`.
+
 Selection-probe repairs also receive the implicated staged runner source. Derive supported flags
 and count formats from that source; never invent a listing flag or edit the supplied runner.
 `Probe Count: json` counts JSON array elements; `[]` means zero, not one output line.

@@ -2435,6 +2435,11 @@ def selection_probe_reason(
                 "probe-failed",
                 f"{where}: structured JSON output is not a lines protocol; use Probe Count: json",
             )
+        if stdout_lines and re.fullmatch(r"\d+ cases, \d+ excluded", stdout_lines[-1]):
+            return (
+                "probe-failed",
+                f"{where}: listing includes a case-count summary; use Probe Count: summary",
+            )
         count = len(stdout_lines)
     else:
         match = _PROBE_SUMMARY_RE.match(stdout_lines[-1]) if stdout_lines else None

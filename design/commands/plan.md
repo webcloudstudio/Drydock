@@ -27,6 +27,12 @@ written.
 
 ### Current contract
 
+`2026-10-28` · Mechanical probe repair normalizes a full Python listing command only when
+its runner and selector exactly match the criterion and it adds one literal flag. It checks the
+runner output to select summary or lines, preserves the criterion, and re-verifies nonempty
+selection; mismatches and empty selections remain unrepaired. Planning and repair guidance
+require flag-only declarations.
+
 `2026-10-27` · Weak HTTP status decisions and warnings identify the suspect assertion and direct review of the complete criterion; they do not claim a later required success assertion passes against an absent endpoint. Existing material-review classification remains unchanged.
 
 

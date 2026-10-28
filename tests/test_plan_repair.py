@@ -1131,3 +1131,61 @@ def test_an_impossible_reason_is_kept_when_the_block_cannot_be_spliced(tmp_path)
     assert [(i.status, i.detail) for i in items] == [
         ("impossible", "the criterion source is missing")
     ]
+
+
+def test_full_probe_command_is_recovered_with_summary_and_original_test(tmp_path):
+    target = _probe_target(tmp_path, FEATURE_Selector=_BROKEN_MISSING_PROBE)
+    source = target / "blueprint" / "sources" / "run_probe.py"
+    source.write_text(_PROBE_RUNNER + '\n    print(f"{len(selected)} cases, 0 excluded")\n')
+    response = _FIXED_PROBE_BLOCK.replace(
+        "Probe: --list", "Probe: python3 sources/run_probe.py --select alpha --list"
+    )
+
+    result = repair("Demo", target, runner=_runner(response))
+
+    assert result.ok
+    text = (target / "blueprint" / "FEATURE_Selector.md").read_text()
+    assert "Probe: --list\nProbe Count: summary" in text
+    assert '"--select", "alpha"' in text
+    assert verify("Demo", target).ok
+
+
+def test_full_probe_command_with_empty_selection_does_not_pass(tmp_path):
+    broken = _BROKEN_MISSING_PROBE.replace('"alpha"', '"zzz"')
+    target = _probe_target(tmp_path, FEATURE_Selector=broken)
+    source = target / "blueprint" / "sources" / "run_probe.py"
+    source.write_text(_PROBE_RUNNER + '\n    print(f"{len(selected)} cases, 0 excluded")\n')
+    response = _FIXED_PROBE_BLOCK.replace('"alpha"', '"zzz"').replace(
+        "Probe: --list", "Probe: python3 sources/run_probe.py --select zzz --list"
+    )
+
+    result = repair("Demo", target, runner=_runner(response))
+
+    assert not result.ok
+    assert "selected 0 cases" in result.items[0].detail
+    assert (target / "blueprint" / "FEATURE_Selector.md").read_text() == broken
+
+
+def test_full_probe_command_with_different_selector_is_rejected(tmp_path):
+    target = _probe_target(tmp_path, FEATURE_Selector=_BROKEN_MISSING_PROBE)
+    response = _FIXED_PROBE_BLOCK.replace(
+        "Probe: --list", "Probe: python3 sources/run_probe.py --select beta --list"
+    )
+
+    result = repair("Demo", target, runner=_runner(response))
+
+    assert not result.ok
+    assert (target / "blueprint" / "FEATURE_Selector.md").read_text() == _BROKEN_MISSING_PROBE
+
+
+def test_summary_footer_is_not_counted_as_a_selected_case(tmp_path):
+    broken = _BROKEN_MISSING_PROBE.replace('"alpha"', '"zzz"')
+    target = _probe_target(tmp_path, FEATURE_Selector=broken)
+    source = target / "blueprint" / "sources" / "run_probe.py"
+    source.write_text(_PROBE_RUNNER + '\n    print(f"{len(selected)} cases, 0 excluded")\n')
+    response = _FIXED_PROBE_BLOCK.replace('"alpha"', '"zzz"')
+
+    result = repair("Demo", target, runner=_runner(response))
+
+    assert not result.ok
+    assert "use Probe Count: summary" in result.items[0].detail

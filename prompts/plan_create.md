@@ -685,7 +685,9 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 - A story that owns behavior the suite covers gates on its own slice: the runner scoped by its
   selector to the cases that story implements, executing them, asserting exit `0`. Declare the
   runner's list-mode selector as `Probe:` and its output format as `Probe Count:`; Drydock runs
-  the selection probe during verification. Do not execute tools or invent a selected count
+  the selection probe during verification. `Probe:` contains only additional listing flags,
+  never the runner command or selector; choose the output count protocol from the runner.
+  Do not execute tools or invent a selected count
   while authoring the plan. An unbounded run of the suite from any non-terminal story, without `Suite: full`, is
   rejected.
 - A pure harness staging story — one that proves the runner is staged and starts, implements none

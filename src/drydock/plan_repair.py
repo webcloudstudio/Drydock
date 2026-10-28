@@ -37,8 +37,9 @@ recovery.
 from __future__ import annotations
 
 import re
+import shlex
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import Protocol
@@ -434,6 +435,33 @@ def _assemble_container(
     )
 
 
+def _normalize_probe_command(body: str, check: ProgrammaticAcceptance, source_root: Path) -> str:
+    """Recover a full listing command only when it names the criterion's exact selector."""
+    recognized = selector_recognition(check.code, source_root)
+    if not recognized or not check.probe or check.probe_count != "lines":
+        return body
+    runner, option, value, _ = recognized
+    try:
+        tokens = shlex.split(check.probe)
+    except ValueError:
+        return body
+    if (
+        len(tokens) != 5
+        or Path(tokens[0]).name not in {"python", "python3"}
+        or tokens[1] != runner
+        or tokens[2:4] != [option, value]
+        or not re.fullmatch(r"--[A-Za-z0-9_-]+", tokens[4])
+    ):
+        return body
+    flag = tokens[4]
+    summary = selection_probe_reason(
+        replace(check, probe=flag, probe_count="summary"), blueprint_dir=source_root
+    )
+    mode = "summary" if summary is None or summary[0] == "empty-selection" else "lines"
+    body = re.sub(r"(?m)^([ \t]*Probe:)[^\n]*$", lambda m: f"{m[1]} {flag}", body, count=1)
+    return re.sub(r"(?m)^([ \t]*Probe Count:)[^\n]*$", lambda m: f"{m[1]} {mode}", body, count=1)
+
+
 def _splice_and_revert(
     filename: str,
     path: Path,
@@ -510,6 +538,7 @@ def _splice_and_revert(
                     )
                 )
                 continue
+            body = _normalize_probe_command(body, new_check, source_root)
             probe_lines = r"(?im)^[ \t]*Probe(?: Count)?:[^\n]*\n?"
             if (
                 old_check.code != new_check.code
