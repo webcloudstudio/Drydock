@@ -160,6 +160,32 @@ Preserve evidence-backed causes and verification status across CommonMark runs.
 - Published UAT files and generated products remain unchanged. Framework/prompt findings stay
   unverified until Ed's fresh affected-stage evidence; prompt compliance is not statically proved.
 
+### 20261027.211306 — slow conformance convergence
+
+- Receipt: failed / ERROR / acceptance NOT_RUN; Build integration block-13 exit 1. Plan verify
+  passed; 19 stories built, one failed. Framework `0f7d802`; Codex Luna Build / Terra Plan.
+- CM-REPAIR-002: integration starts at 143/187 block and 227/356 inline examples; after 21
+  repairs it reaches 184/187 and 273/356. Scoped checks overlap and must not be added. Multiple
+  calls improve only one or two examples, while others improve 10–17 within a check. Final
+  failures are 3 block and 83 inline examples. Build reports model success separately from
+  independent acceptance. The 22 agent calls occupy approximately 49.8 minutes; elapsed time
+  between calls is approximately 108.7 minutes, including grading and orchestration.
+- Repair prompts are 35.6–36.0 KB, with ~11.3 KB task body, ~5.8–6.0 KB feedback, 7.2 KB
+  Python/common Rigging, 4.4 KB integration Blueprint and 3.9 KB Compass/architecture. The
+  206 KB corpus is staged as `sources/spec.txt`, identified by path, and accessed through the
+  staged runner; it is not repeatedly embedded. Feedback includes failing IDs, example diff and
+  full log path. Provider transcript confirms logs were read. Large prompt as a cause is unproved.
+- The feedback directed the agent to choose one failing example and reproduce it; the final
+  call fixed example 356 and reported broader failures. The instruction is a plausible influence,
+  not proof that it alone caused limited progress. Fix `4323c45` directs representative failures
+  and coherent cause-based clusters while retaining red regressions and passing neighbors.
+  Local verification: 14 focused tests and Ruff passed. Outcome: unverified until a later affected
+  Build stage. Any Terra advantage remains unproved without a controlled comparison.
+- Existing stall rule stops after two consecutive measured calls with no criterion or
+  non-regressing case-count improvement. A gain of one case counts as progress; a high repair
+  budget therefore does not guarantee early termination for slow positive convergence. No stall
+  policy change was authorized. Earliest cause of the parser's remaining behavior is not established.
+
 ## Decisions
 
 - None.
@@ -169,6 +195,9 @@ Preserve evidence-backed causes and verification status across CommonMark runs.
 - None.
 
 ## Actions
+
+- `2026-10-28` · CM-REPAIR-002: verify `4323c45` with affected-stage UAT evidence; local prompt
+  tests cannot prove agent convergence. Investigate grading time and slow-progress policy separately.
 
 - `2026-10-26` · CM-ENVELOPE-001: clean Plan evidence in `20261027.022726` after `981de1b`
   verifies the affected-stage correction for the observed Terra run; model compliance remains
