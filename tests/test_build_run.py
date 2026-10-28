@@ -3343,6 +3343,11 @@ def test_repair_feedback_names_failing_checks_and_caps_size():
     assert "Resource exhaustion" not in text
     assert "diagnostic excerpts below are truncated" in text
     assert "diagnose coherent root-cause clusters" in text
+    assert "Fix each coherent" in text
+    assert "not just one example" in text
+    assert "Choose one failing example" not in text
+    assert "regressions for the causes" in text
+    assert "passing neighbors" in text
 
 
 def test_repair_feedback_says_ac_broken_stops_nothing():

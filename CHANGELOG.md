@@ -169,6 +169,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-10-28: Build repair feedback directs agents to diagnose and fix related failure clusters
+  within each call, using representative examples and regression checks instead of a single-example
+  instruction. Acceptance and stall limits remain unchanged.
+
 - 2026-10-27: Build agents receive the SQLite configuration-test helper and task-oriented
   persistence Rigging, including generated schema and initializer paths. Managed SQLite changes
   are compared against the retained logical backup so WAL checkpointing does not alone block a

@@ -26,6 +26,11 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 
 ### Current contract
 
+`2026-10-28` · Repair guidance groups related failures by cause and asks the agent to fix each
+coherent cluster feasible within a call; representative examples diagnose causes, not a one-case
+limit. Independent acceptance, staged corpus, expected values and stall policy remain authoritative.
+This instruction change is unverified in live UAT.
+
 `2026-10-27` · SQLite agent-call guards compare a retained pre-call backup with a consistent logical image when main/WAL fingerprints change. Harmless WAL checkpointing proceeds; changed or unreadable state stops and keeps the backup. The build-agent environment includes `drydock_acceptance.database_environment` for fresh-store tests; canonical acceptance remains authoritative. Logical comparison does not sandbox arbitrary file access or establish UAT success.
 
 
@@ -40,9 +45,9 @@ spends a bounded repair budget on model signal and hands the verdict to independ
 
 `2026-10-26` · Corpus repair feedback carries one bounded input/expected/actual example beside
 the assertion, retains the case inventory/full log, and explicitly flags an unchanged passing
-case count. Repair instructions require reproducing a failing example before editing, tracing
-the actual failing branch, adding a red regression, running it and a passing neighbor, and
-revising an ineffective edit within the call. Test claims must name executed commands/results;
+case count. Repair instructions use representative failures to diagnose shared causes, direct the
+agent to fix coherent clusters within each call, add red regressions, run passing neighbors, and
+revise ineffective edits within the call. Test claims must name executed commands/results;
 unrun checks remain unrun. This is prompt guidance, not enforcement that a provider executed tests;
 deterministic acceptance and the two-flat-call stop still own the verdict.
 
