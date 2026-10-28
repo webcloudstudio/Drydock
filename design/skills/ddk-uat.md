@@ -53,6 +53,8 @@ newest dated entry describe the implemented behavior. See [stabilization](../top
 
 ### Target diagnosis memories
 
+- [jq](ddk-uat/targets/jq.md) — scoped corpus probe declaration failure.
+
 - [FxRates](ddk-uat/targets/FxRates.md) — grader provisioning, init source fidelity and managed-state alert.
 
 - [CommonMark](ddk-uat/targets/CommonMark.md) — Stage 1 artifact-envelope diagnosis.
