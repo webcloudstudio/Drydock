@@ -1,7 +1,7 @@
 ---
 title: Drydock 0.8 Release 
 title_sub:
-subtitle: Specifications to Software using Agile and Test Driven Developement
+subtitle: Specifications to Software using Agile and Test Driven Development
 eyebrow: DRYDOCK BUILDS WORKING SOFTWARE
 logo: ../drydock_logo.png
 author: Ed Barlow
@@ -21,10 +21,11 @@ copyright: Copyright © 2026 Web Cloud Studio.
                .cover::after { margin-top: 12px; } }
 </style>
 ### **What is Drydock**
-Drydock is a specification-driven development tool that turns your notes and requirements into structured Blueprints and a build plan, then uses CLI coding agents to build and verify the software. It combines Agile planning, executable acceptance criteria, and repair loops in one workflow.
+Drydock decomposes specifications into small, dependency-linked stories called **Blueprints**, each with executable acceptance criteria. It builds stories in dependency order, selecting and compressing the context supplied to each coding-agent call. Drydock runs the acceptance checks itself and feeds measured failures back into repair; the agent's claim of success does not close a story.
 
   * Builds Working Software (Go or Python) from Your Notes/Specifications/Ideas using low-end models (Haiku 5.5, Luna, Gemini). <br>
   * Based on **Agile Planning** and **Test Driven Development** Best Practices.
+  * Runs through your existing **Claude Code or Codex subscription**; Gemini is a metered alternative.
   * `drydock run quarterdeck` is a complete web UX for your builds.
 ---
 ### **New Feature: Measured, self-correcting acceptance criteria**
