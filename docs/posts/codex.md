@@ -31,13 +31,8 @@ Build must iterate on a step until its acceptance criteria pass or repair stops.
 
     # build repairs failed code; diagnose corrects the Blueprints
     n=1; max=3
-    while drydock status MyApp --ready
-    do
-        if [ "$n" -gt "$max" ]
-        then
-            echo "hit $max build attempts - aborting"
-            exit 1
-        fi
+    while drydock status MyApp --ready; do
+        if [ "$n" -gt "$max" ]; then echo "hit $max build attempts - aborting"; exit 1; fi
         echo "*** BUILD ATTEMPT $n ***"
         drydock build MyApp || drydock diagnose MyApp --apply
         n=$((n+1))
@@ -49,8 +44,14 @@ Build must iterate on a step until its acceptance criteria pass or repair stops.
 ## What I learned
 
 - **LLM-authored acceptance criteria vary in quality.** Very early on, I found that the majority of failed tests were environmental: code that could not run due to missing libraries or connectivity. A full process was developed to pretest acceptance criteria, identify and correct criteria that fail before the build, identify existing behavior, and check coverage.
-- **Applications differ.** Some of the earlier applications that shipped included test criteria that should pass.
+- **Applications differ.** jq and CommonMark have huge test-case suites; other applications are database-oriented. The workflow must handle both.
 - **Encapsulation limits rebuilds.** Changes to foundational stories, such as the web server or persistence layer, can force full downstream rebuilds. Drydock ships named SQL operations and native libraries to encapsulate persistence changes. Only changes to the persistence contract require downstream Blueprint rebuilds.
 - **Some build failures require better specifications.** Repeated code repair cannot resolve an incorrect Blueprint. Diagnosis identifies the root cause and applies Blueprint corrections so the build can continue.
+- **Memory files limit code drift.** Testing a variety of projects exposes drift as fixes accumulate. Memory files retain the intended behavior, decisions, and constraints across those fixes.
+- **Context follows dependencies.** Dependency analysis selects the specifications, shared rules, and supporting context for each build step. XML prompt blocks identify each file and its role. Stack project guidance and shared rules before supporting context and the Blueprints.
+
+## Keeping the Cache Warm
+
+Keep the step's base prompt stable and put repair feedback at the end. Claude continues the block session; Codex reuses the base prompt with the latest feedback. Preserve the shared prefix instead of rebuilding or reordering it on each attempt. Track cache hits to measure the result.
 
 **Code Repository (MIT):** [Drydock](https://github.com/webcloudstudio/Drydock)

@@ -41,13 +41,16 @@ The Codex post is now edited independently around Ed's current introduction and 
 
 Ed's current Codex draft owns the wording, including his environmental-failure observation and cheap prompt-stacking iteration. The latest pass is a copy edit/evaluation, not authorization to invent replacement lessons. Corrected grammar, headings, command case, the incomplete diagnosis description, and the distinction between Blueprint files and the graph build plan. Replaced claims that criteria/pretesting "guarantee" quality or coverage with verify/assess wording. The shell workflow stays unchanged. Archived October drafts label the material New Features, not What I learned: measured criteria, self-improving builds, persistence encapsulation. September adds root-cause diagnosis and the incorrect adjacent-move assertion.
 
+Ed clarified Applications differ: jq/CommonMark have huge test-case suites, while other applications are database-oriented. The fragment is resolved. He treats the archived new features as lessons 1:1; do not replace his outer-loop explanation with "code repair alone is insufficient" or add an obvious generic retries lesson. Added brief lessons on memory files limiting code drift across varied projects and dependency-selected context/XML prompt blocks. Keeping the Cache Warm is a short separate section: preserve the step base prompt and append feedback; Claude resumes its block session, while Codex reuses the base plus only the latest feedback. Evidence: `prompt_assembly.py` renders `<pblock>` role/file metadata, `build.py` assembles declared roles, and `build_run.py` distinguishes Claude session appends from fresh-provider feedback. This is prompt-prefix reuse, not a separate keep-alive service or guaranteed cache hit.
+
+The Codex shell loop uses `while ...; do` and a one-line `if ...; then echo ...; exit 1; fi`, preserving the pre-build attempt-limit check. Ed requested compact syntax. Other posts are unchanged.
+
 ## Decisions
 
 - None.
 
 ## Questions
 
-- `2026-10-29` · Current `docs/posts/codex.md` has an unfinished Applications differ lesson: "Some of the earlier applications that shipped included test criteria that should pass". Asked Ed for the intended lesson/example; retain the fragment until clarified. This prevents treating the copy as ready to post.
 
 - `2026-10-29` · Ed reports an automatic rejection in "ClaudeCodeWorkflows". Requested the exact subreddit and rejection text; close with the supplied notice so any additional restriction can be addressed. The cause is not established by the public rules.
 
@@ -57,4 +60,4 @@ Ed's current Codex draft owns the wording, including his environmental-failure o
 
 ## Working Notes
 
-Suggested lessons for Ed's selection (not added to the post): cheap iteration needs measured progress and a stall stop; inner code repair and outer Blueprint diagnosis solve different failures; reusable context/step grouping matters alongside model price; existing behavior and new behavior need different pre-build expectations. First two follow Ed's current Self-Improving Loops section and archived build/diagnose descriptions; context follows the source graph/payload notes; existing behavior follows his current pretesting explanation. The Haiku/Sonnet planning distinction remains available from the source but is less relevant than Luna-specific experience here.
+Ed rejected generic retries and code-repair-insufficiency wording. Keep his existing build/diagnose explanation. The Haiku/Sonnet planning observation remains available but is secondary in the Codex post.

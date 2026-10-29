@@ -18,7 +18,9 @@ command surface and Typed Specification contract are unstable and may change bet
   and database encapsulation. A short specification-first rationale introduces the
   workflow; the Codex post explains Luna's staged Analyze/Plan/Build execution and
   repair before its command example. Provider-specific UAT results support the claims. Publication
-  and moderation acceptance remain unverified.
+  and moderation acceptance remain unverified. The Codex article also covers varied
+  application test styles, memory files for code drift, dependency-selected XML context,
+  cache-prefix reuse, and a compact shell loop.
 
 - 2026-10-25: `drydock run builder <Target>` starts or continues one Target through to a complete
   build in place. It is the lifecycle `drydock uat` runs (init, import, analyze, plan, plan
