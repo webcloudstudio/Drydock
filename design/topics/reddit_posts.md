@@ -23,20 +23,19 @@ Preserve Ed's concise wording while adapting Drydock posts to each community's r
 
 Public rules checked 2026-10-29: r/codex requires direct Codex relevance and appropriate flair; Showcase is applicable. r/ClaudeCode routes simple project sharing to its weekly showcase; standalone posts require how Claude Code was used and lessons learned. r/ClaudeWorkflows permits public posting but prohibits excessive promotion and advertising; most visible posts are curated summaries. Posting guidance is an HTML comment outside the rendered draft. Acceptance by moderation is unverified.
 
+Ed confirmed the same 0.8 release scope, use of Claude Code and Codex both to build Drydock and to build software, and no previous group rejection. His acceptance-test wording describes iterative pretesting to reveal accuracy, quality, and existing behavior; malformed tests, including imports from another step, are judged and repaired. This wording is used without inventing a stronger test-intent guarantee.
+
 ## Decisions
 
 - None.
 
 ## Questions
 
-- `2026-10-29` · Draft review: Ed's exact acceptance-criteria repair wording and its relationship to requirement intent remain pending; close with his supplied wording.
-- `2026-10-29` · `real.md` describes 0.8; confirm whether newer changes belong in these posts.
-- `2026-10-29` · ClaudeCode standalone eligibility: confirm how Claude Code was used and the lesson Ed wants to state. Current draft targets the weekly showcase.
-- `2026-10-29` · Prior moderation removals: requested any removal message to identify restrictions beyond public rules; close with a supplied message or confirmation none is available.
+- None.
 
 ## Actions
 
-- `2026-10-29` · Review the three drafts with Ed and apply his supplied wording before treating them as final copy. No Reddit publication has occurred.
+- `2026-10-29` · Review the three drafts with Ed and refine any remaining wording he flags. No Reddit publication has occurred.
 
 ## Working Notes
 

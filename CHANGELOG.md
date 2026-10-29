@@ -12,7 +12,8 @@ command surface and Typed Specification contract are unstable and may change bet
 
 - 2026-10-29: Documentation: three Reddit drafts adapt the Drydock 0.8 announcement for
   r/codex, r/ClaudeCode, and r/ClaudeWorkflows, retaining the source workflow and reported
-  release test matrix. Editorial wording and publication remain pending.
+  release test matrix and incorporating the author's acceptance-test pretesting explanation.
+  The drafts identify provider use and posting routes; publication remains pending.
 
 - 2026-10-25: `drydock run builder <Target>` starts or continues one Target through to a complete
   build in place. It is the lifecycle `drydock uat` runs (init, import, analyze, plan, plan

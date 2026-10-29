@@ -1,8 +1,8 @@
-<!-- Posting: comment in the current weekly showcase; omit the title. A standalone post needs confirmed detail on how Claude Code was used and what was learned. Draft: author wording and release scope pending. -->
+<!-- Posting: standalone project showcase; select the current Built with Claude showcase flair. Alternatively, omit the title and use the weekly showcase. Copy the body below; the first heading is the title. -->
 
 # Drydock 0.8 — Specifications to software with Haiku 5.5
 
-I develop **Drydock**. Builds use **Haiku 5.5**, Codex Luna, or Gemini.
+I use **Claude Code and Codex** to build **Drydock** and to build software through it. Builds use **Haiku 5.5**, Codex Luna, or Gemini.
 
 **Drydock** is a spec to software builder using **Agile Decomposition** to turn your **specifications** and **designs** into governed buildable Stories/**Blueprints** containing executable acceptance criteria that follow **Test Driven Development**. A graph database optimizes build ordering and context. Drydock is designed for large specifications.
 
@@ -10,7 +10,7 @@ I develop **Drydock**. Builds use **Haiku 5.5**, Codex Luna, or Gemini.
 * Payload size and effort are optimized by model; Haiku builds respect the 100K-token pricing threshold.
 * `drydock run quarterdeck` provides a locally hosted Web User Experience.
 
-**New Feature: Measured, self-correcting acceptance criteria.** AC are recorded, categorized, and corrected before each build step to measure "done" and code impact.
+**New Feature: Measured, self-correcting acceptance criteria.** Acceptance tests are iterated by pretesting, which reveals their accuracy, quality, and whether they test existing behavior. Tests which are not well formed — for example, those that require imports from another step — are judged and repaired.
 
 **New Feature: Self-Improving Builds.** `drydock build` iterates until all acceptance criteria succeed, no progress is detected, or it fails. `drydock diagnose --apply` identifies root causes and applies corrections.
 

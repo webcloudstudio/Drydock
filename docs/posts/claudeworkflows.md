@@ -1,8 +1,8 @@
-<!-- Posting: workflow submission; public rules prohibit excessive promotion or advertising. Most visible entries are curated summaries. Submission acceptance is unconfirmed. Draft: author wording and release scope pending. -->
+<!-- Posting: workflow submission; public rules prohibit excessive promotion or advertising. Most visible entries are curated summaries. Submission acceptance is unconfirmed. Copy the body below; the first heading is the title. -->
 
 # [Workflow] Drydock — Specifications, acceptance criteria, build, diagnose, repeat
 
-I develop **Drydock**. This is its workflow for building software from specifications using Haiku 5.5, Codex Luna, or Gemini.
+I develop **Drydock** using **Claude Code and Codex**. This is its workflow for building software from specifications using Haiku 5.5, Codex Luna, or Gemini.
 
 **Drydock** is a spec to software builder using **Agile Decomposition** to turn your **specifications** and **designs** into governed buildable Stories/**Blueprints** containing executable acceptance criteria that follow **Test Driven Development**. A graph database optimizes build ordering and context. Drydock is designed for large specifications.
 
@@ -10,7 +10,7 @@ I develop **Drydock**. This is its workflow for building software from specifica
 * Acceptance criteria measure each build step.
 * QuarterDeck exposes blockers, progress, and decisions in a locally hosted Web User Experience.
 
-**New Feature: Measured, self-correcting acceptance criteria.** AC are recorded, categorized, and corrected before each build step to measure "done" and code impact.
+**New Feature: Measured, self-correcting acceptance criteria.** Acceptance tests are iterated by pretesting, which reveals their accuracy, quality, and whether they test existing behavior. Tests which are not well formed — for example, those that require imports from another step — are judged and repaired.
 
 **New Feature: Self-Improving Builds.** `drydock build` iterates until all acceptance criteria succeed, no progress is detected, or it fails. `drydock diagnose --apply` identifies root causes and applies corrections.
 
