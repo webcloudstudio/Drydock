@@ -8,5 +8,6 @@ do
     echo "== $kit"
     git add --all
     git commit -m "updated"
+    git push 2>/dev/null
     cd $DIR
 done
