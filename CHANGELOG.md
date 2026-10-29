@@ -15,7 +15,9 @@ command surface and Typed Specification contract are unstable and may change bet
   r/ClaudeWorkflows. They explain Drydock's software-building workflow, its correction
   of acceptance criteria, code, and Blueprints, and reported UAT results. Each includes
   archived lessons on incorrect tests, specification repair, planning model choice,
-  and database encapsulation. Publication and moderation acceptance remain unverified.
+  and database encapsulation. A short specification-first rationale introduces the
+  workflow; provider-specific UAT results serve as supporting evidence. Publication
+  and moderation acceptance remain unverified.
 
 - 2026-10-25: `drydock run builder <Target>` starts or continues one Target through to a complete
   build in place. It is the lifecycle `drydock uat` runs (init, import, analyze, plan, plan

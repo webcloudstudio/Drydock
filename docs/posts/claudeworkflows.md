@@ -1,4 +1,4 @@
-# Drydock — a self-improving workflow to build software from specifications
+# Drydock — Building Software from Specifications
 
 **Drydock builds software from your specifications and designs using Agile and Test Driven Development.** It builds with low-end models and provides a full locally hosted Web User Experience—from vibe coding to enterprise tooling.
 
@@ -7,6 +7,8 @@
 I use **Claude Code and Codex** to build Drydock and to build software through it. The workflow below builds with **Haiku 5.5** or **Codex Luna**.
 
 # Self-Improving Builds
+
+**Building from specifications keeps the build tied to your requirements as the project grows.** Specifications define what to build, acceptance criteria measure completion, and changes go back into the specifications.
 
 `plan verify / plan repair` checks and corrects the acceptance criteria used to measure the build. `build` implements the Blueprints and repairs code that fails acceptance criteria. `diagnose --apply` identifies root causes and corrects the Blueprints when build repair cannot resolve the problem.
 
@@ -42,9 +44,7 @@ I use **Claude Code and Codex** to build Drydock and to build software through i
 * **Planning and building can need different models.** Two Haiku 5.5 projects required `--plan-override-model sonnet`: planning included large test kits and model output quality became poor.
 * **Encapsulation limits rebuilds.** `DATABASE.md` uses named SQL operations and native libraries. Most database changes do not require downstream Blueprint rebuilds.
 
-# UAT Testing
-
-The UAT matrix records successful builds for **10 projects under Haiku and Luna**, covering **Python, Go, SQLite, and Postgres**. Gemini was tested on two builds.
+The UAT matrix records passes for all ten projects under **Haiku and Luna**, covering Python, Go, SQLite, and Postgres.
 
 For ongoing changes, edit specifications, add change tickets, or comment on Blueprints. `drydock refit` maps changes into the Manifest for incremental builds.
 

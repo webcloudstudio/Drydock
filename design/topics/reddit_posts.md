@@ -33,6 +33,10 @@ All three documents contain **What I learned** with the four lessons Ed approved
 
 Ed rejected both the invented five-stage summary and the later SAIL-led rewrite. Condense his corpus and agreed wording; do not replace the product story with a methodology or acceptance-testing tutorial. Discuss substantive framing changes before implementation; the current edit is explicitly authorized. No release-announcement labels, installation pitch, star request, or invented workflow taxonomy appears in the posts. Syntax-check embedded shell without execution.
 
+All three titles are **Drydock — Building Software from Specifications**, matching Ed's Codex edit. A short rationale opens Self-Improving Builds: specifications define the software, acceptance criteria measure correctness, and changes return to the specifications as the source of truth. The general workflow definitions in `../patents/patent_acceptance.md` and `../patents/patent_refit.md` inform this explanation only; their claimed mechanisms are not implementation evidence. Patent files remain read-only.
+
+The purpose is to demonstrate a useful specification-driven software-building workflow, not document every SDD command. Codex demonstrates building with Luna; ClaudeCode demonstrates use of Claude Code/Haiku plus observed lessons; ClaudeWorkflows presents a reproducible workflow. UAT is supporting evidence, not the topic: omit the UAT Testing heading and keep one provider-relevant sentence reporting the source matrix's passes. Omit Gemini trial counts where they do not support the destination's topic.
+
 ## Decisions
 
 - None.
