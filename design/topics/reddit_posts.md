@@ -49,6 +49,8 @@ Ed corrected the diagnosis framing explicitly: the lesson is not that specificat
 
 Ed requires general lessons, not named-project examples. Applications differ now describes large test suites and database-oriented applications without naming kits. His latest prose is authoritative for voice; edits are limited to grammar, capitalization, and the requested correction. Preserve his concise memory-file and prompt-stacking lessons; do not restore a separate cache section he removed or reintroduce provider-specific mechanics without need.
 
+The latest Codex pass preserves Ed's two-workflow overview and lesson text. Minor changes: name Codex Luna explicitly, remove the repeated low-end-model phrase in the opening, fix spelling/grammar, normalize list punctuation and heading/link spacing. The command example is unchanged. Remaining repetition is intentional pending Ed's selection: loop overview describes the method, command steps map it to CLI actions, lessons explain the observed need. Suggested larger cuts are to shorten the build-step description, keep environmental/payload examples in lessons only, and avoid re-explaining AC repair in both overview and steps. Do not delete lessons to remove repetition.
+
 ## Decisions
 
 - None.
