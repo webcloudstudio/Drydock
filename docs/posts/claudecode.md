@@ -1,27 +1,27 @@
-# My Claude Code workflow: pretest acceptance criteria, then build and repair with Haiku
+# Specification Driven Delivery using TDD & Agile with Claude Code
 
-I use **Claude Code and Codex** both to build **Drydock** and to build software through it. For Haiku builds, the workflow is **specifications → Stories/Blueprints → pretested acceptance criteria → build → diagnose → verify**.
+**Drydock** is a spec to software builder using **Agile Decomposition** to turn your **specifications** and **designs** into governed buildable Stories/**Blueprints** containing executable acceptance criteria that follow **Test Driven Development (TDD)**. A graph database optimizes build ordering and context. Drydock is designed for large specifications, quick revision, and long-term maintenance.
 
-**Agile Decomposition** produces small buildable stories with executable acceptance criteria. A graph database orders the work and controls context. Related stories form build blocks with shared business rules, technology guidance, and branding.
+I use **Claude Code and Codex** to build Drydock and to build software through it. This is the **SAIL Method**, building with **Haiku 5.5**.
 
-# Workflow
+# S — Set Up
 
-**1. Resolve the specification first.** Import specifications, notes, or designs. Analysis produces stories, questions, and blockers. Clear the blockers before planning the build.
+    drydock init MyApp                            # create the workspace
+    drydock import MyApp "$INPUT_DIRECTORY"       # load your specifications, notes, images
 
-    drydock init MyApp
-    drydock import MyApp "$INPUT_DIRECTORY"
-    drydock analyze MyApp
+# A — Analyze and Plan
 
-**2. Test the tests.** Acceptance criteria are the builder's scoring function. Their quality affects both what gets built and whether it is measured as done.
+`drydock analyze` derives stories, questions, and blockers. The **Commander** is the product owner; `drydock run quarterdeck MyApp` provides the web console to review and answer before continuing.
 
-Acceptance tests are iterated by pretesting, which reveals their accuracy, quality, and whether they test existing behavior. Tests which are not well formed — for example, those that require imports from another step — are judged and repaired.
+`drydock plan` creates **Blueprints** and a **Manifest**: the build plan and dependency graph. Acceptance criteria are recorded, categorized, and corrected to measure "done" and code impact.
 
-    drydock plan MyApp
+    drydock analyze MyApp                         # create stories, questions, blockers
+    drydock plan MyApp                            # create Blueprints and Manifest
     drydock plan verify MyApp || drydock plan repair MyApp
 
-**3. Build with bounded repair.** Each block completes only when its deterministic acceptance criteria pass. Failed blocks get repair passes; repair stops at the configured limit or after two consecutive passes without progress.
+# I — Implement
 
-If the build fails, diagnosis can correct the Blueprints and invalidate their build graph. The next build works from those corrections.
+`drydock build` implements the software plan in managed chunks using the **Manifest**. **Rigging** applies company standards and branding. It iterates and self-repairs until all acceptance criteria succeed, no progress is detected, or it fails. `drydock diagnose --apply` identifies root causes and applies Blueprint corrections.
 
     # self-repairing build loop
     n=1; max=3
@@ -37,25 +37,19 @@ If the build fails, diagnosis can correct the Blueprints and invalidate their bu
         n=$((n+1))
     done
 
-The shell loop permits at most three build invocations. Reaching no ready work is followed by a completion check.
+    drydock status MyApp --check                  # Deterministic definition of done
+    drydock score release MyApp                   # LLM evaluated definition of done
 
-**4. Check the build and the project.** Build completion and project-level assessment are separate checks. `score release` runs the acceptance gate before an LLM judges `SEA_TRIALS.md`.
+# L — Loop
 
-    drydock status MyApp --check
-    drydock score release MyApp
+Edit specifications, add change tickets, or provide comments on the Blueprints. `drydock refit` maps changes into the **Manifest** for incremental builds. Rerun **Implement**.
 
-# What I learned from the builds
+    drydock refit MyApp                           # map changes into the Manifest
 
-**Planning and building need different model choices.** My test matrix records successful builds for **10 projects under Haiku and Luna**. Two Haiku 5.5 projects required `--plan-override-model sonnet`: planning included large test kits and model output quality became poor. Using Haiku for the build did not mean using it for every planning task.
+`drydock document` creates documentation from the Blueprints.
 
-**Test quality needs its own iteration.** Pretesting checks whether a criterion is usable before implementation is judged against it. The repair loop must handle malformed tests as well as failed builds.
+# What I learned
 
-**Repair needs a stop condition.** There is a limit per failed block and a separate limit on build invocations in the shell loop. Diagnosis stops on serious errors or misspecification.
+The test suite covers **10 projects under Haiku and Luna**, using Python, Go, SQLite, and Postgres. Two Haiku 5.5 projects required `--plan-override-model sonnet`: planning included large test kits and model output quality became poor. Haiku built the software; those projects needed Sonnet for planning.
 
-# Scope
-
-The ten projects are CommonMark, CsvStat, DrydockStats, DupFind, FxRates, LayersTesting, Quakes, ReadingList, Toml, and jq. The kits cover **Python, Go, SQLite, and Postgres**. Gemini was tested on two builds.
-
-`drydock run quarterdeck` shows blockers, progress, and decisions locally. Haiku payload size and effort are optimized by model, respecting its 100K-token pricing threshold.
-
-The commands are from [Drydock](https://github.com/webcloudstudio/Drydock), my MIT-licensed project.
+**Code Repository (MIT):** [Drydock](https://github.com/webcloudstudio/Drydock)

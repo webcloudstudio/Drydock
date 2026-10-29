@@ -1,27 +1,27 @@
-# Building from specifications with Codex Luna: decompose, pretest, build, diagnose
+# Specification Driven Delivery using TDD & Agile with Codex Luna
 
-My workflow uses **Agile Decomposition** and **Test Driven Development** to build software from specifications with **Codex Luna**. Specifications become buildable Stories/**Blueprints** with executable acceptance criteria. A graph database determines build order and context.
+**Drydock** is a spec to software builder using **Agile Decomposition** to turn your **specifications** and **designs** into governed buildable Stories/**Blueprints** containing executable acceptance criteria that follow **Test Driven Development (TDD)**. A graph database optimizes build ordering and context. Drydock is designed for large specifications, quick revision, and long-term maintenance.
 
-I develop [Drydock](https://github.com/webcloudstudio/Drydock), the MIT-licensed tool used for these commands, using Claude Code and Codex.
+I use **Codex and Claude Code** to build Drydock and to build software through it. This is the **SAIL Method** with **Codex Luna**. Token cost engineering optimizes payload size and effort by model.
 
-**The unit of work is a build block.** Related Blueprints are grouped with the applicable business rules, technology guidance, and branding. Each block receives the context needed for that work. Its acceptance criteria must pass before it completes.
+# S — Set Up
 
-# Workflow
+    drydock init MyApp                            # create the workspace
+    drydock import MyApp "$INPUT_DIRECTORY"       # load your specifications, notes, images
 
-**1. Import and decompose.** Start with specifications, notes, or designs. Analysis produces stories, questions, and blockers. Resolve blockers before continuing.
+# A — Analyze and Plan
 
-    drydock init MyApp
-    drydock import MyApp "$INPUT_DIRECTORY"
-    drydock analyze MyApp
+`drydock analyze` derives stories, questions, and blockers. The **Commander** is the product owner; `drydock run quarterdeck MyApp` provides the web console to review and answer before continuing.
 
-**2. Plan and pretest.** Planning produces the Blueprints and Manifest. Verify the acceptance criteria before using them as the builder's scoring function.
+`drydock plan` creates **Blueprints** and a **Manifest**: the build plan and dependency graph. Acceptance criteria are recorded, categorized, and corrected to measure "done" and code impact.
 
-    drydock plan MyApp
+    drydock analyze MyApp                         # create stories, questions, blockers
+    drydock plan MyApp                            # create Blueprints and Manifest
     drydock plan verify MyApp || drydock plan repair MyApp
 
-Acceptance tests are iterated by pretesting, which reveals their accuracy, quality, and whether they test existing behavior. Tests which are not well formed — for example, those that require imports from another step — are judged and repaired.
+# I — Implement
 
-**3. Build and repair.** `drydock build` runs ready blocks in dependency order and repairs failed blocks. Repair stops at the configured limit or after two consecutive passes without progress. If the build fails, `drydock diagnose --apply` identifies the root cause, applies Blueprint corrections, and invalidates the affected build graph.
+`drydock build` implements the software plan in managed chunks using the **Manifest**. **Rigging** applies company standards and branding. It iterates and self-repairs until all acceptance criteria succeed, no progress is detected, or it fails. `drydock diagnose --apply` identifies root causes and applies Blueprint corrections.
 
     # self-repairing build loop
     n=1; max=3
@@ -37,22 +37,19 @@ Acceptance tests are iterated by pretesting, which reveals their accuracy, quali
         n=$((n+1))
     done
 
-This outer loop permits at most three build invocations. It ends when no ready work remains or the limit is reached. The final check determines whether the build is complete.
+    drydock status MyApp --check                  # Deterministic definition of done
+    drydock score release MyApp                   # LLM evaluated definition of done
 
-**4. Check completion and project intent.** `status --check` checks build completion. `score release` runs the acceptance gate, then uses an LLM to judge the project-level criteria in `SEA_TRIALS.md`.
+# L — Loop
 
-    drydock status MyApp --check
-    drydock score release MyApp
+Edit specifications, add change tickets, or provide comments on the Blueprints. `drydock refit` maps changes into the **Manifest** for incremental builds. Rerun **Implement**.
 
-# What controls the build
+    drydock refit MyApp                           # map changes into the Manifest
 
-* **Context:** dependency-ordered blocks, with payload size and effort optimized by model.
-* **Database changes:** `DATABASE.md` defines named SQL operations using native libraries. Most database changes do not require downstream Blueprint rebuilds.
-* **Review:** `drydock run quarterdeck` exposes blockers, progress, and decisions in a locally hosted web console.
-* **Traceability:** `BUILD_LINEAGE.jsonl` traces specifications to code.
+`drydock document` creates documentation from the Blueprints.
 
-# Results and limits
+# Testing
 
-My test matrix records successful builds for **10 projects under Luna and Haiku**, covering Python, Go, SQLite, and Postgres: CommonMark, CsvStat, DrydockStats, DupFind, FxRates, LayersTesting, Quakes, ReadingList, Toml, and jq.
+The test suite covers **10 projects under Luna and Haiku**, using Python, Go, SQLite, and Postgres. Two Haiku 5.5 projects required `--plan-override-model sonnet` because planning included large test kits and model output quality became poor. Gemini was tested on two builds.
 
-Two Haiku 5.5 projects needed Sonnet for planning because large test kits degraded planning output. Gemini was tested on two builds.
+**Code Repository (MIT):** [Drydock](https://github.com/webcloudstudio/Drydock)

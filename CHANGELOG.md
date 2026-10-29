@@ -10,12 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-10-29: Documentation: three Reddit articles adapt
-  `docs/posts/20261029.specdrivendevelopment.md` into workflow posts for r/codex,
-  r/ClaudeCode, and r/ClaudeWorkflows. They explain decomposition, acceptance-test
-  pretesting, bounded build repair, diagnosis, and final verification, with distinct
-  provider context and reported test limitations. Release announcements and promotional
-  calls to action are omitted. Publication and moderation acceptance remain unverified.
+- 2026-10-29: Documentation: three Reddit posts condense
+  `docs/posts/20261029.specdrivendevelopment.md` and the specification's SAIL Method for
+  r/codex, r/ClaudeCode, and r/ClaudeWorkflows. They retain Set Up, Analyze and Plan,
+  Implement, and Loop, including `refit` for incremental change, with group-specific
+  provider context and reported test results. Publication and moderation acceptance
+  remain unverified.
 
 - 2026-10-25: `drydock run builder <Target>` starts or continues one Target through to a complete
   build in place. It is the lifecycle `drydock uat` runs (init, import, analyze, plan, plan

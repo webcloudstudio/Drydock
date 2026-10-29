@@ -1,36 +1,27 @@
-# A specification-to-software workflow: decompose, pretest, build, diagnose, verify
+# The SAIL Method for Specification Driven Delivery using TDD & Agile
 
-**The workflow:** turn specifications into small buildable stories, pretest their acceptance criteria, build in dependency order, and diagnose failed builds. Bound the retries and check completion at the end.
+**Drydock** is a spec to software builder using **Agile Decomposition** to turn your **specifications** and **designs** into governed buildable Stories/**Blueprints** containing executable acceptance criteria that follow **Test Driven Development (TDD)**. A graph database optimizes build ordering and context. Drydock is designed for large specifications, quick revision, and long-term maintenance.
 
-I use this with **Claude Code/Haiku 5.5** and **Codex/Luna**. I develop Drydock, the tool used in the examples, using both Claude Code and Codex.
+The **SAIL Method** uses the LLM as your **Agile and Test Driven Development** team. You are the **Commander** (product owner). Your **Compass** guides the build; the **QuarterDeck** web server enables communication with your team. I use **Claude Code and Codex** to build Drydock and to build software through it.
 
-# 1. Import the specifications
+# S — Set Up
 
-Start with specifications, notes, or designs in an input directory. Create a Target workspace and import the material.
+    drydock init MyApp                            # create the workspace
+    drydock import MyApp "$INPUT_DIRECTORY"       # load your specifications, notes, images
 
-    drydock init MyApp
-    drydock import MyApp "$INPUT_DIRECTORY"
+# A — Analyze and Plan
 
-# 2. Decompose and resolve blockers
+`drydock analyze` derives stories, questions, and blockers. The **Commander** is the product owner; `drydock run quarterdeck MyApp` provides the web console to review and answer before continuing.
 
-**Agile Decomposition** turns the material into stories, questions, and blockers. Resolve blockers before continuing. QuarterDeck provides a local web console for reviewing them.
+`drydock plan` creates **Blueprints** and a **Manifest**: the build plan and dependency graph. Acceptance criteria are recorded, categorized, and corrected to measure "done" and code impact.
 
-    drydock analyze MyApp
-
-# 3. Plan the work and pretest its acceptance criteria
-
-Planning creates **Blueprints** and a **Manifest**. Blueprints contain executable acceptance criteria; the Manifest tracks dependencies, build order, and runnable work. Related Blueprints are grouped into blocks with the applicable business rules, technology guidance, and branding to control build context.
-
-    drydock plan MyApp
+    drydock analyze MyApp                         # create stories, questions, blockers
+    drydock plan MyApp                            # create Blueprints and Manifest
     drydock plan verify MyApp || drydock plan repair MyApp
 
-**The acceptance criteria are the builder's scoring function.** Acceptance tests are iterated by pretesting, which reveals their accuracy, quality, and whether they test existing behavior. Tests which are not well formed — for example, those that require imports from another step — are judged and repaired.
+# I — Implement
 
-# 4. Build, diagnose, and retry within a limit
-
-`drydock build` executes ready blocks in order. A block completes only when all its deterministic acceptance criteria pass. Failed blocks get repair passes, stopping at the configured limit or after two consecutive passes without progress.
-
-If the build fails, `drydock diagnose --apply` identifies root causes and applies Blueprint corrections. Those corrections invalidate the build graph so the next build uses the updated plan. Serious errors or misspecification stop diagnosis.
+`drydock build` implements the software plan in managed chunks using the **Manifest**. **Rigging** applies company standards and branding. It iterates and self-repairs until all acceptance criteria succeed, no progress is detected, or it fails. `drydock diagnose --apply` identifies root causes and applies Blueprint corrections.
 
     # self-repairing build loop
     n=1; max=3
@@ -46,21 +37,19 @@ If the build fails, `drydock diagnose --apply` identifies root causes and applie
         n=$((n+1))
     done
 
-This limits the outer loop to **three build invocations**, separate from repair passes within each build. It also ends when no ready work remains. That condition alone does not establish completion.
+    drydock status MyApp --check                  # Deterministic definition of done
+    drydock score release MyApp                   # LLM evaluated definition of done
 
-# 5. Verify completion and project intent
+# L — Loop
 
-    drydock status MyApp --check
-    drydock score release MyApp
+Edit specifications, add change tickets, or provide comments on the Blueprints. `drydock refit` maps changes into the **Manifest** for incremental builds. Rerun **Implement**.
 
-`status --check` checks build completion. `score release` runs the acceptance gate, then uses an LLM to judge the project-level criteria in `SEA_TRIALS.md`.
+    drydock refit MyApp                           # map changes into the Manifest
 
-**Review during the workflow:** `drydock run quarterdeck` exposes blockers, progress, and decisions in a locally hosted web console.
+`drydock document` creates documentation from the Blueprints.
 
-# Tested scope and limitations
+# Testing
 
-My test matrix records successful builds for **10 projects under Haiku and Luna**: CommonMark, CsvStat, DrydockStats, DupFind, FxRates, LayersTesting, Quakes, ReadingList, Toml, and jq. The kits cover Python, Go, SQLite, and Postgres.
+The test suite covers **10 projects under Haiku and Luna**, using Python, Go, SQLite, and Postgres. Two Haiku 5.5 projects required `--plan-override-model sonnet` for planning because large test kits reduced model output quality.
 
-Two Haiku 5.5 projects needed `--plan-override-model sonnet` because large test kits degraded planning output. Gemini was tested on two builds. These results describe the tested projects; model choice for planning remains a separate decision from model choice for building.
-
-**Implementation/source:** [Drydock (MIT)](https://github.com/webcloudstudio/Drydock).
+**Code Repository (MIT):** [Drydock](https://github.com/webcloudstudio/Drydock)
