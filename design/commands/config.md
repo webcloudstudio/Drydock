@@ -24,6 +24,20 @@ repository.
 
 ## Details
 
+### Current contract
+
+The repository-root `model_config.jsonl` owns the shipped model seed. Both the source
+distribution and wheel include it; the wheel embeds it at
+`drydock/resources/model_config.jsonl`. Release builds must build a wheel from the source
+distribution without depending on checkout-only files. Packaging changes do not mutate the
+operator's live configuration. Missing build inputs fail the build before upload; repair the
+source distribution and rebuild. Proof: `tests/test_packaging.py` checks coverage of all forced
+wheel resources, and a local sdist-to-wheel build checks the embedded seed against the source.
+
+`2026-10-28` · Added the seed to the explicit sdist include list after TestPyPI's build failed
+with `Forced include not found: .../model_config.jsonl`. The wheel mapping was already correct;
+the sdist omitted its input. No command syntax or specification contract changed.
+
 ### Syntax
 
 ```text

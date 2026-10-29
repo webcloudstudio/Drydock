@@ -446,6 +446,10 @@ drydock run quarterdeck <Target>
 
 Help test Drydock on real projects. Open [issues](https://github.com/webcloudstudio/Drydock/issues). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+Release verification uses `uv build` to build the source distribution and then its wheel.
+Both distributions include the shipped `model_config.jsonl` seed. Run
+`python scripts/check_wheel_rigging.py` against the built wheel before publishing.
+
 ## License (See LICENSE)
 
 ```

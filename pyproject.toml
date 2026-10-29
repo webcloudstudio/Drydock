@@ -83,6 +83,7 @@ include = [
     "src/",
     "Rigging/",
     "prompts/",
+    "model_config.jsonl",
     "QuarterDeck/",
     "docs/Drydock_Specification.md",
     "LICENSE",
