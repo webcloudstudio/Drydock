@@ -14,13 +14,15 @@ command surface and Typed Specification contract are unstable and may change bet
   `docs/posts/20261029.specdrivendevelopment.md` for r/codex, r/ClaudeCode, and
   r/ClaudeWorkflows. They explain Drydock's software-building workflow, its correction
   of acceptance criteria, code, and Blueprints, and reported UAT results. Each includes
-  archived lessons on incorrect tests, specification repair, planning model choice,
+  archived lessons on incorrect tests, recoverable build failures, planning model choice,
   and database encapsulation. A short specification-first rationale introduces the
   workflow; the Codex post explains Luna's staged Analyze/Plan/Build execution and
   repair before its command example. Provider-specific UAT results support the claims. Publication
   and moderation acceptance remain unverified. The Codex article also covers varied
   application test styles, memory files for code drift, dependency-selected XML context,
-  cache-prefix reuse, and a compact shell loop.
+  cache-prefix reuse, and a compact shell loop. Diagnosis is described as recovery from
+  faulty acceptance criteria, partial agent output, and environmental failures, rather
+  than a presumption that specifications are wrong.
 
 - 2026-10-25: `drydock run builder <Target>` starts or continues one Target through to a complete
   build in place. It is the lifecycle `drydock uat` runs (init, import, analyze, plan, plan

@@ -27,9 +27,9 @@ Ed confirmed the same 0.8 release scope, use of Claude Code and Codex both to bu
 
 The posts lead with Ed's agreed product opening: software built from specifications and designs using Agile and Test Driven Development, low-end models, and a full locally hosted web experience, from vibe coding to enterprise tooling. The objective is buzz, repository discovery, and stars. Shared rules explain consistent branding and behavior. **Do not introduce SAIL terminology or make acceptance-test work the product's purpose.**
 
-The workflow's point is multi-level self-correction to deliver working software: `plan verify / plan repair` corrects acceptance criteria; `build` repairs failed code; `diagnose --apply` identifies root causes and corrects Blueprints when build repair cannot resolve the problem; `status --check / score release` measures completion and project objectives. The source command workflow retains its three-attempt build loop. Reported UAT passes are evidence for the workflow, not a promise that retries always succeed. `refit` supports ongoing change in one short closing paragraph.
+The workflow's point is multi-level self-correction to deliver working software: `plan verify / plan repair` corrects acceptance criteria; `build` repairs failed code; `diagnose --apply` identifies and repairs recoverable AC defects, partial blocks/agent-output failures, and environmental failures; `status --check / score release` measures completion and project objectives. The source command workflow retains its three-attempt build loop. Reported UAT passes are evidence for the workflow, not a promise that retries always succeed. `refit` supports ongoing change in one short closing paragraph.
 
-All three documents contain **What I learned** with the four lessons Ed approved: a failed test may reject correct code (the archived Marina adjacent-move assertion); some build failures require better specifications; planning and building can need different models (two Haiku planning overrides); database encapsulation limits downstream rebuilds. Sources are `docs/posts/archive/devlog_2026-09-09.md.unposted`, the October archived drafts, the renamed source, and Ed's supplied wording. The archived SQLAlchemy/Alembic implementation is historical and is not asserted as current. Test results remain reported source claims; no UAT evidence is inspected or commands executed.
+All three documents contain **What I learned** with the four lessons Ed approved: a failed test may reject correct code (the archived Marina adjacent-move assertion); diagnosis of recoverable AC, agent-output, and environmental failures (corrected by Ed; the earlier specification-error framing was rejected); planning and building can need different models (two Haiku planning overrides); database encapsulation limits downstream rebuilds. Sources are `docs/posts/archive/devlog_2026-09-09.md.unposted`, the October archived drafts, the renamed source, and Ed's supplied wording. The archived SQLAlchemy/Alembic implementation is historical and is not asserted as current. Test results remain reported source claims; no UAT evidence is inspected or commands executed.
 
 Ed rejected both the invented five-stage summary and the later SAIL-led rewrite. Condense his corpus and agreed wording; do not replace the product story with a methodology or acceptance-testing tutorial. Discuss substantive framing changes before implementation; the current edit is explicitly authorized. No release-announcement labels, installation pitch, star request, or invented workflow taxonomy appears in the posts. Syntax-check embedded shell without execution.
 
@@ -45,12 +45,15 @@ Ed clarified Applications differ: jq/CommonMark have huge test-case suites, whil
 
 The Codex shell loop uses `while ...; do` and a one-line `if ...; then echo ...; exit 1; fi`, preserving the pre-build attempt-limit check. Ed requested compact syntax. Other posts are unchanged.
 
+Ed corrected the diagnosis framing explicitly: the lesson is not that specifications are wrong or need improving. AC may be wrong and repairable on reflection, LLM output may contain partial blocks, or recoverable environmental failures may halt the build. The Codex step, shell comment, and lesson now consistently describe that purpose. Removed "Some build failures require better specifications" from this post. The source document remains unchanged; this correction governs editorial framing, not a product implementation change.
+
+Ed requires general lessons, not named-project examples. Applications differ now describes large test suites and database-oriented applications without naming kits. His latest prose is authoritative for voice; edits are limited to grammar, capitalization, and the requested correction. Preserve his concise memory-file and prompt-stacking lessons; do not restore a separate cache section he removed or reintroduce provider-specific mechanics without need.
+
 ## Decisions
 
 - None.
 
 ## Questions
-
 
 - `2026-10-29` · Ed reports an automatic rejection in "ClaudeCodeWorkflows". Requested the exact subreddit and rejection text; close with the supplied notice so any additional restriction can be addressed. The cause is not established by the public rules.
 
