@@ -1,29 +1,22 @@
-# Specification Driven Delivery using TDD & Agile with Claude Code
+# Drydock — building software from specifications with Claude Code
 
-**Drydock** is a spec to software builder using **Agile Decomposition** to turn your **specifications** and **designs** into governed buildable Stories/**Blueprints** containing executable acceptance criteria that follow **Test Driven Development (TDD)**. A graph database optimizes build ordering and context. Drydock is designed for large specifications, quick revision, and long-term maintenance.
+**Drydock builds software from your specifications and designs using Agile and Test Driven Development.** It builds with low-end models and provides a full locally hosted Web User Experience—from vibe coding to enterprise tooling.
 
-I use **Claude Code and Codex** to build Drydock and to build software through it. This is the **SAIL Method**, building with **Haiku 5.5**.
+**Agile Decomposition** turns specifications into buildable Stories/**Blueprints**. A graph database optimizes build ordering and context. Shared technology rules, business rules, and branding provide consistent behavior and style across your software.
 
-# S — Set Up
+I use **Claude Code and Codex** to build Drydock and to build software through it. Builds use **Haiku 5.5**, Codex Luna, or Gemini.
+
+# Self-Improving Builds
+
+`plan verify / plan repair` checks and corrects the acceptance criteria used to measure the build. `build` implements the Blueprints and repairs code that fails acceptance criteria. `diagnose --apply` identifies root causes and corrects the Blueprints when build repair cannot resolve the problem.
 
     drydock init MyApp                            # create the workspace
     drydock import MyApp "$INPUT_DIRECTORY"       # load your specifications, notes, images
-
-# A — Analyze and Plan
-
-`drydock analyze` derives stories, questions, and blockers. The **Commander** is the product owner; `drydock run quarterdeck MyApp` provides the web console to review and answer before continuing.
-
-`drydock plan` creates **Blueprints** and a **Manifest**: the build plan and dependency graph. Acceptance criteria are recorded, categorized, and corrected to measure "done" and code impact.
-
     drydock analyze MyApp                         # create stories, questions, blockers
     drydock plan MyApp                            # create Blueprints and Manifest
-    drydock plan verify MyApp || drydock plan repair MyApp
+    drydock plan verify MyApp || drydock plan repair MyApp  # repair/validate acceptance criteria
 
-# I — Implement
-
-`drydock build` implements the software plan in managed chunks using the **Manifest**. **Rigging** applies company standards and branding. It iterates and self-repairs until all acceptance criteria succeed, no progress is detected, or it fails. `drydock diagnose --apply` identifies root causes and applies Blueprint corrections.
-
-    # self-repairing build loop
+    # build repairs failed code; diagnose corrects the Blueprints
     n=1; max=3
     while drydock status MyApp --ready
     do
@@ -40,16 +33,19 @@ I use **Claude Code and Codex** to build Drydock and to build software through i
     drydock status MyApp --check                  # Deterministic definition of done
     drydock score release MyApp                   # LLM evaluated definition of done
 
-# L — Loop
-
-Edit specifications, add change tickets, or provide comments on the Blueprints. `drydock refit` maps changes into the **Manifest** for incremental builds. Rerun **Implement**.
-
-    drydock refit MyApp                           # map changes into the Manifest
-
-`drydock document` creates documentation from the Blueprints.
+`status --check` measures build completion; `score release` checks acceptance and project objectives. Builds stop when acceptance criteria succeed, no progress is detected, or they fail.
 
 # What I learned
 
-The test suite covers **10 projects under Haiku and Luna**, using Python, Go, SQLite, and Postgres. Two Haiku 5.5 projects required `--plan-override-model sonnet`: planning included large test kits and model output quality became poor. Haiku built the software; those projects needed Sonnet for planning.
+* **A failed test does not always mean failed code.** In Marina, a test required an item moved one position to become first in the entire collection. Diagnosis corrected the assertion to test the specified movement.
+* **Some build failures require better specifications.** Repeated code repair cannot resolve an incorrect Blueprint. Diagnosis identifies the root cause and applies Blueprint corrections so the build can continue.
+* **Planning and building can need different models.** Two Haiku 5.5 projects required `--plan-override-model sonnet`: planning included large test kits and model output quality became poor.
+* **Encapsulation limits rebuilds.** `DATABASE.md` uses named SQL operations and native libraries. Most database changes do not require downstream Blueprint rebuilds.
+
+# UAT Testing
+
+The UAT matrix records successful builds for **10 projects under Haiku and Luna**, covering **Python, Go, SQLite, and Postgres**. Gemini was tested on two builds.
+
+For ongoing changes, edit specifications, add change tickets, or comment on Blueprints. `drydock refit` maps changes into the Manifest for incremental builds.
 
 **Code Repository (MIT):** [Drydock](https://github.com/webcloudstudio/Drydock)
