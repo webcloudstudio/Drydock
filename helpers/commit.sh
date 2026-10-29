@@ -1,5 +1,5 @@
 DIR=/mnt/c/Users/barlo/projects/drydock
-LIST="CommonMark CsvStat DrydockStats DupFind FxRates LayersTesting Quakes README.md ReadingList Toml jq"
+LIST="CommonMark CsvStat DrydockStats DupFind FxRates LayersTesting Quakes ReadingList Toml jq"
 for kit in $LIST
 do
     echo $kit
