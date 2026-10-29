@@ -16,7 +16,8 @@ command surface and Typed Specification contract are unstable and may change bet
   of acceptance criteria, code, and Blueprints, and reported UAT results. Each includes
   archived lessons on incorrect tests, specification repair, planning model choice,
   and database encapsulation. A short specification-first rationale introduces the
-  workflow; provider-specific UAT results serve as supporting evidence. Publication
+  workflow; the Codex post explains Luna's staged Analyze/Plan/Build execution and
+  repair before its command example. Provider-specific UAT results support the claims. Publication
   and moderation acceptance remain unverified.
 
 - 2026-10-25: `drydock run builder <Target>` starts or continues one Target through to a complete
