@@ -39,11 +39,15 @@ The purpose is to demonstrate a useful specification-driven software-building wo
 
 The Codex post is now edited independently around Ed's current introduction and goal. Before the command example, short `drydock analyze`, `drydock plan`, `drydock build`, and `drydock diagnose --apply` paragraphs explain the workflow. Analyze owns stories, questions, and blockers; Plan owns Blueprints, ordering/context, and acceptance-criteria repair; Build owns step execution and measured code repair, followed immediately by diagnosis when build repair is insufficient. The Luna rationale is manageable build steps, relevant context, and measured progress for a large specification; do not invent a model context limit or imply a measured universal inability. Preserve Ed's introduction, correct only its duplicated words/punctuation, and retain the lessons. Other group drafts are outside this edit.
 
+Ed's current Codex draft owns the wording, including his environmental-failure observation and cheap prompt-stacking iteration. The latest pass is a copy edit/evaluation, not authorization to invent replacement lessons. Corrected grammar, headings, command case, the incomplete diagnosis description, and the distinction between Blueprint files and the graph build plan. Replaced claims that criteria/pretesting "guarantee" quality or coverage with verify/assess wording. The shell workflow stays unchanged. Archived October drafts label the material New Features, not What I learned: measured criteria, self-improving builds, persistence encapsulation. September adds root-cause diagnosis and the incorrect adjacent-move assertion.
+
 ## Decisions
 
 - None.
 
 ## Questions
+
+- `2026-10-29` · Current `docs/posts/codex.md` has an unfinished Applications differ lesson: "Some of the earlier applications that shipped included test criteria that should pass". Asked Ed for the intended lesson/example; retain the fragment until clarified. This prevents treating the copy as ready to post.
 
 - `2026-10-29` · Ed reports an automatic rejection in "ClaudeCodeWorkflows". Requested the exact subreddit and rejection text; close with the supplied notice so any additional restriction can be addressed. The cause is not established by the public rules.
 
@@ -53,4 +57,4 @@ The Codex post is now edited independently around Ed's current introduction and 
 
 ## Working Notes
 
-- None.
+Suggested lessons for Ed's selection (not added to the post): cheap iteration needs measured progress and a stall stop; inner code repair and outer Blueprint diagnosis solve different failures; reusable context/step grouping matters alongside model price; existing behavior and new behavior need different pre-build expectations. First two follow Ed's current Self-Improving Loops section and archived build/diagnose descriptions; context follows the source graph/payload notes; existing behavior follows his current pretesting explanation. The Haiku/Sonnet planning distinction remains available from the source but is less relevant than Luna-specific experience here.
