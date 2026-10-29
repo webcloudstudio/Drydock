@@ -10,10 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-10-29: Documentation: three Reddit drafts adapt the Drydock 0.8 announcement for
-  r/codex, r/ClaudeCode, and r/ClaudeWorkflows, retaining the source workflow and reported
-  release test matrix and incorporating the author's acceptance-test pretesting explanation.
-  The drafts identify provider use and posting routes; publication remains pending.
+- 2026-10-29: Documentation: three Reddit articles adapt
+  `docs/posts/20261029.specdrivendevelopment.md` into workflow posts for r/codex,
+  r/ClaudeCode, and r/ClaudeWorkflows. They explain decomposition, acceptance-test
+  pretesting, bounded build repair, diagnosis, and final verification, with distinct
+  provider context and reported test limitations. Release announcements and promotional
+  calls to action are omitted. Publication and moderation acceptance remain unverified.
 
 - 2026-10-25: `drydock run builder <Target>` starts or continues one Target through to a complete
   build in place. It is the lifecycle `drydock uat` runs (init, import, analyze, plan, plan

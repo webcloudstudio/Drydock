@@ -238,7 +238,7 @@ row here or breaks the format.
 | *Process stops* | `design/topics/process_stops.md` | `blockers.py`, `llm.py` (`fatal_stop`), `cli.py` (stop gate) |
 | *Language-agnostic Targets* | `design/topics/language_agnostic.md` | `technology_stack.py`, `Rigging/languages/` |
 | *Planner step validation* | `design/topics/planner_step_validation.md` | `planning_session.py` |
-| *Reddit posts* | `design/topics/reddit_posts.md` | `docs/posts/real.md`, provider-specific Reddit drafts |
+| *Reddit posts* | `design/topics/reddit_posts.md` | `docs/posts/20261029.specdrivendevelopment.md`, provider-specific Reddit drafts |
 | *Stabilization* | `design/topics/stabilization.md` | Reusable contracts, state inventory, frozen regression cases and staged release validation |
 | *Build lifecycle* | `design/topics/lifecycle.md` | `lifecycle.py`, `uat.py` (`run_fixture`) |
 | `/ddk-uat` skill | `design/skills/ddk-uat.md` | `prompts/uat_diagnostic.md`; indexes dynamically created per-Target memories in `design/skills/ddk-uat/targets/` |

@@ -1,28 +1,36 @@
-<!-- Posting: workflow submission; public rules prohibit excessive promotion or advertising. Most visible entries are curated summaries. Submission acceptance is unconfirmed. Copy the body below; the first heading is the title. -->
+# A specification-to-software workflow: decompose, pretest, build, diagnose, verify
 
-# [Workflow] Drydock — Specifications, acceptance criteria, build, diagnose, repeat
+**The workflow:** turn specifications into small buildable stories, pretest their acceptance criteria, build in dependency order, and diagnose failed builds. Bound the retries and check completion at the end.
 
-I develop **Drydock** using **Claude Code and Codex**. This is its workflow for building software from specifications using Haiku 5.5, Codex Luna, or Gemini.
+I use this with **Claude Code/Haiku 5.5** and **Codex/Luna**. I develop Drydock, the tool used in the examples, using both Claude Code and Codex.
 
-**Drydock** is a spec to software builder using **Agile Decomposition** to turn your **specifications** and **designs** into governed buildable Stories/**Blueprints** containing executable acceptance criteria that follow **Test Driven Development**. A graph database optimizes build ordering and context. Drydock is designed for large specifications.
+# 1. Import the specifications
 
-* **Agile** and **Test Driven Development** best practices.
-* Acceptance criteria measure each build step.
-* QuarterDeck exposes blockers, progress, and decisions in a locally hosted Web User Experience.
+Start with specifications, notes, or designs in an input directory. Create a Target workspace and import the material.
 
-**New Feature: Measured, self-correcting acceptance criteria.** Acceptance tests are iterated by pretesting, which reveals their accuracy, quality, and whether they test existing behavior. Tests which are not well formed — for example, those that require imports from another step — are judged and repaired.
+    drydock init MyApp
+    drydock import MyApp "$INPUT_DIRECTORY"
 
-**New Feature: Self-Improving Builds.** `drydock build` iterates until all acceptance criteria succeed, no progress is detected, or it fails. `drydock diagnose --apply` identifies root causes and applies corrections.
+# 2. Decompose and resolve blockers
 
-**New Feature: Encapsulated Persistence Layer.** `DATABASE.md` uses pre-built native libraries for named SQL operations to minimize change impact. Most database changes do not require downstream Blueprint rebuilds.
+**Agile Decomposition** turns the material into stories, questions, and blockers. Resolve blockers before continuing. QuarterDeck provides a local web console for reviewing them.
 
-# Workflow
+    drydock analyze MyApp
 
-    drydock init MyApp                            # create the workspace
-    drydock import MyApp "$INPUT_DIRECTORY"       # load your specifications, notes, images
-    drydock analyze MyApp                         # create stories, questions, blockers
-    drydock plan MyApp                            # create Blueprints and Manifest
-    drydock plan verify MyApp || drydock plan repair MyApp  # repair/validate acceptance criteria
+# 3. Plan the work and pretest its acceptance criteria
+
+Planning creates **Blueprints** and a **Manifest**. Blueprints contain executable acceptance criteria; the Manifest tracks dependencies, build order, and runnable work. Related Blueprints are grouped into blocks with the applicable business rules, technology guidance, and branding to control build context.
+
+    drydock plan MyApp
+    drydock plan verify MyApp || drydock plan repair MyApp
+
+**The acceptance criteria are the builder's scoring function.** Acceptance tests are iterated by pretesting, which reveals their accuracy, quality, and whether they test existing behavior. Tests which are not well formed — for example, those that require imports from another step — are judged and repaired.
+
+# 4. Build, diagnose, and retry within a limit
+
+`drydock build` executes ready blocks in order. A block completes only when all its deterministic acceptance criteria pass. Failed blocks get repair passes, stopping at the configured limit or after two consecutive passes without progress.
+
+If the build fails, `drydock diagnose --apply` identifies root causes and applies Blueprint corrections. Those corrections invalidate the build graph so the next build uses the updated plan. Serious errors or misspecification stop diagnosis.
 
     # self-repairing build loop
     n=1; max=3
@@ -38,28 +46,21 @@ I develop **Drydock** using **Claude Code and Codex**. This is its workflow for 
         n=$((n+1))
     done
 
-    drydock status MyApp --check                  # Deterministic definition of done
-    drydock score release MyApp                   # LLM evaluated definition of done
+This limits the outer loop to **three build invocations**, separate from repair passes within each build. It also ends when no ready work remains. That condition alone does not establish completion.
 
-# UAT Testing
+# 5. Verify completion and project intent
 
-The release test suite reports successful builds for **10 projects under Haiku and Luna**, covering Python, Go, SQLite, and Postgres. Two Haiku projects required `--plan-override-model sonnet` for planning. Gemini was tested on two builds.
+    drydock status MyApp --check
+    drydock score release MyApp
 
-    #                       Haiku   Luna
-    # CommonMark            Y       Y
-    # CsvStat               Y       Y
-    # DrydockStats          Y       Y
-    # DupFind               Y       Y
-    # FxRates               Y       Y
-    # LayersTesting         Y       Y
-    # Quakes                Y       Y
-    # ReadingList           Y       Y
-    # Toml                  Y       Y
-    # jq                    Y       Y
+`status --check` checks build completion. `score release` runs the acceptance gate, then uses an LLM to judge the project-level criteria in `SEA_TRIALS.md`.
 
-# Try Drydock
+**Review during the workflow:** `drydock run quarterdeck` exposes blockers, progress, and decisions in a locally hosted web console.
 
-    uv tool install drydock-sdd
+# Tested scope and limitations
 
-* **Code Repository (MIT):** https://github.com/webcloudstudio/Drydock
-* **Documentation:** https://webcloudstudio.com
+My test matrix records successful builds for **10 projects under Haiku and Luna**: CommonMark, CsvStat, DrydockStats, DupFind, FxRates, LayersTesting, Quakes, ReadingList, Toml, and jq. The kits cover Python, Go, SQLite, and Postgres.
+
+Two Haiku 5.5 projects needed `--plan-override-model sonnet` because large test kits degraded planning output. Gemini was tested on two builds. These results describe the tested projects; model choice for planning remains a separate decision from model choice for building.
+
+**Implementation/source:** [Drydock (MIT)](https://github.com/webcloudstudio/Drydock).
