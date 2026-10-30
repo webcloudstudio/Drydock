@@ -51,6 +51,8 @@ Ed requires general lessons, not named-project examples. Applications differ now
 
 The latest Codex pass preserves Ed's two-workflow overview and lesson text. Minor changes: name Codex Luna explicitly, remove the repeated low-end-model phrase in the opening, fix spelling/grammar, normalize list punctuation and heading/link spacing. The command example is unchanged. Remaining repetition is intentional pending Ed's selection: loop overview describes the method, command steps map it to CLI actions, lessons explain the observed need. Suggested larger cuts are to shorten the build-step description, keep environmental/payload examples in lessons only, and avoid re-explaining AC repair in both overview and steps. Do not delete lessons to remove repetition.
 
+Ed published the Codex post and moved it to `docs/posts/20261029.codex.md`. The ClaudeCode draft now copies that published text with one introductory sentence replaced: `I use Claude Code to build Drydock and to build software with Drydock.` Its workflow, technical detail, lessons and repository link support a standalone post with the Built with Claude Code flair under the checked moderator guidance. Preserve the published Codex file; acceptance remains unverified.
+
 ## Decisions
 
 - None.
@@ -61,7 +63,7 @@ The latest Codex pass preserves Ed's two-workflow overview and lesson text. Mino
 
 ## Actions
 
-- `2026-10-29` · Reconcile the reported automatic rejection with its exact notice when supplied. The workflow rewrites address public content rules; moderation acceptance is unverified. No Reddit publication has occurred.
+- `2026-10-29` · Reconcile the reported automatic rejection with its exact notice when supplied. The workflow rewrites address public content rules; moderation acceptance is unverified. Ed has published the Codex post; ClaudeCode publication is not reported.
 
 ## Working Notes
 
