@@ -6,6 +6,8 @@ do
     [ ! -e "$kit/.git" ] || continue
     cd $DIR/uat/$kit
     echo "== $kit"
+    rm -f /mnt/c/Users/barlo/projects/drydock/uat/$kit/.git/index.lock
+    drydock uat report $kit
     git add --all
     git commit -m "updated"
     git push 2>/dev/null

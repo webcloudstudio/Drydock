@@ -6,7 +6,7 @@ subtitle: The Complete Drydock Documentation
 logo: drydock_logo.png
 author: Ed Barlow
 studio: Web Cloud Studio
-year: June 28, 2026
+year: Oct 29, 2026
 nav_active: drydock.html
 header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.

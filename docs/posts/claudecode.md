@@ -1,6 +1,8 @@
 # Drydock — Build Software from Specifications
 
-I developed [Drydock](https://github.com/webcloudstudio/Drydock), an **Enterprise Grade Software Builder (MIT)** that uses **Agile** and **Test Driven Development** best practices to process your imported specifications using low-end models. I use Claude Code to build Drydock and to build software with Drydock. This post describes the two core self-repairing workflows that lead to quality builds.
+I developed [Drydock](https://github.com/webcloudstudio/Drydock), a **Professional Software Builder** (MIT) that uses **Agile** and **Test Driven Development** best practices to process your imported specifications using low-end models and build self-tested software. 
+
+This post describes the two core self-repairing workflows that lead to quality builds.
 
 **Goal:** Correctly build software from large specifications that need not be well defined. Maintain it after build.
 
@@ -14,16 +16,16 @@ I developed [Drydock](https://github.com/webcloudstudio/Drydock), an **Enterpris
     - Low-end models iterate well and cheaply with prompt stacking.
     - Known failure modes can be repaired. An LLM can diagnose errors and enable repair. This is surprisingly common in complex pipelines running low-end models. One example is a malformed LLM response.
 
-## Drydock Steps
+**Drydock Steps**
 
 - `drydock analyze` uses Agile Decomposition to define stories, create questionnaires, and identify blockers.
 - `drydock plan` creates **Blueprints** following Test Driven Development and stores a build plan in a graph database.
-    - `drydock plan verify` deterministic acceptance criteria checker.
-    - `drydock plan repair` llm repairs of acceptance criteria.
+    - `drydock plan verify` checks acceptance criteria deterministically.
+    - `drydock plan repair` uses an LLM to repair acceptance criteria.
 - `drydock build` executes the optimized build graph
     - `drydock diagnose --apply` identifies and repairs recoverable failures.
 
-## The Drydock Workflow
+**The Drydock Workflow**
 
     drydock init MyApp                            # create the workspace
     drydock import MyApp "$INPUT_DIRECTORY"       # load your specifications, notes, images
@@ -43,13 +45,14 @@ I developed [Drydock](https://github.com/webcloudstudio/Drydock), an **Enterpris
     drydock status MyApp --check                  # Deterministic definition of done
     drydock score release MyApp                   # LLM evaluated definition of done
 
-## What I learned
+**What I learned**
+
+I build Drydock with Claude Code Opus at the CLI. Persistent Markdown memory files by command and workflow, indexed in CLAUDE.md, keep design consistent across sessions and integrate with my /thinkthrough and /diagnose skills.
 
 - **LLM-authored AC vary in quality.** The majority of failed AC encountered are environmental—for example, code that cannot run due to missing libraries or connectivity. Pretesting AC for behavior and correctness enables the self-correcting loops described.
 - **Applications differ.** Context management must handle large test-case suites, database-oriented applications, and other project types. Context optimization requires understanding both what is being built and its dependencies.
 - **Encapsulation to limit rebuilds.** Changes to foundational stories, such as the web server or persistence layer, can force full downstream rebuilds. Drydock uses named SQL operations on native libraries to encapsulate persistence. Only contract changes imply downstream rebuilds.
 - **Failures need diagnosis.** There are large categories of repairable errors. For example, the LLM may return partial blocks or environmental errors may stop the build. Big savings accrue from self-diagnosis and repair of recoverable failures.
-- **Persistent memory limits code drift.** Memory files by command and process track intent, expected behavior, and edge cases. `AGENTS.md` identifies these specific memory files and rules.
 - **Prompt stacking is key.** Append files in an XML envelope and put detailed build instructions at the end. Repair appends the error and repair instructions, reusing the prompt prefix for caching and lower costs. This enables iteratively improving results.
 
 **Code Repository (MIT):** [Drydock](https://github.com/webcloudstudio/Drydock)
